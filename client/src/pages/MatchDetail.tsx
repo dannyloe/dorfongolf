@@ -447,12 +447,13 @@ export default function MatchDetail() {
           </p>
         ) : (
           <div className="space-y-3">
-            {eventMatches.map((em) => {
+            {eventMatches.filter(em => !em.parentMatchId).map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
               const results = calculateMatchPlayResults(em, scores);
               const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
               const isExpanded = expandedMatch === em.id;
+              const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
 
               return (
                 <div key={em.id} className="border border-border rounded-xl overflow-hidden">
@@ -504,6 +505,33 @@ export default function MatchDetail() {
                       </Button>
                     )}
                   </div>
+
+                  {/* Collapsed Press Matches */}
+                  {!isExpanded && pressMatches.length > 0 && (
+                    <div className="px-4 pb-3 space-y-1">
+                      {pressMatches.map((pm) => {
+                        const pressResults = calculateMatchPlayResults(pm, scores);
+                        const pressTeamA = pm.teams[0];
+                        const pressTeamB = pm.teams[1];
+                        const pressStatus = pressTeamA && pressTeamB ? getMatchStatus(pressResults, pressTeamA, pressTeamB, pm.matchType) : 'Not started';
+                        return (
+                          <div 
+                            key={pm.id} 
+                            className="flex items-center justify-between text-xs py-1 px-3 bg-muted/30 rounded"
+                            data-testid={`press-collapsed-${pm.id}`}
+                          >
+                            <span className="font-medium">Press (Hole {pm.startHole})</span>
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 bg-muted rounded-full">
+                                ${(pm.unitAmount / 100).toFixed(2)}
+                              </span>
+                              <span className="font-medium text-primary">{pressStatus}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {isExpanded && (
                     <motion.div
@@ -658,6 +686,47 @@ export default function MatchDetail() {
                                 })}
                                 <td className="p-2 text-center bg-muted/30"></td>
                               </tr>
+                              {/* Press Match Rows */}
+                              {pressMatches.map((pm) => {
+                                const pressResults = calculateMatchPlayResults(pm, scores);
+                                const pressStartHole = pm.startHole || 1;
+                                return (
+                                  <tr key={pm.id} className="border-t border-border/50 bg-muted/20">
+                                    <td className="p-2 font-semibold text-xs">
+                                      Press #{pressStartHole}
+                                      <span className="ml-1 text-muted-foreground">(${(pm.unitAmount / 100).toFixed(2)})</span>
+                                    </td>
+                                    {Array.from({ length: 9 }, (_, i) => i + 1).map((holeNum) => {
+                                      if (holeNum < pressStartHole) {
+                                        return <td key={holeNum} className="p-2 text-center text-muted-foreground/30">-</td>;
+                                      }
+                                      const pressResult = pressResults.find(r => r.holeNumber === holeNum);
+                                      if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
+                                        return <td key={holeNum} className="p-2 text-center">-</td>;
+                                      }
+                                      const diff = pressResult.cumulativeA - pressResult.cumulativeB;
+                                      if (diff > 0) return <td key={holeNum} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                      if (diff < 0) return <td key={holeNum} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                      return <td key={holeNum} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                    })}
+                                    <td className="p-2 text-center bg-muted/30"></td>
+                                    {Array.from({ length: 9 }, (_, i) => i + 10).map((holeNum) => {
+                                      if (holeNum < pressStartHole) {
+                                        return <td key={holeNum} className="p-2 text-center text-muted-foreground/30">-</td>;
+                                      }
+                                      const pressResult = pressResults.find(r => r.holeNumber === holeNum);
+                                      if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
+                                        return <td key={holeNum} className="p-2 text-center">-</td>;
+                                      }
+                                      const diff = pressResult.cumulativeA - pressResult.cumulativeB;
+                                      if (diff > 0) return <td key={holeNum} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                      if (diff < 0) return <td key={holeNum} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                      return <td key={holeNum} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                    })}
+                                    <td className="p-2 text-center bg-muted/30"></td>
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
