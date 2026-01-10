@@ -85,6 +85,7 @@ export default function MatchDetail() {
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
+  const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -224,138 +225,154 @@ export default function MatchDetail() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
-      {/* Header */}
-      <div className="bg-white rounded-3xl p-8 shadow-xl shadow-black/5 border border-border/50 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-accent/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-        
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-primary font-semibold tracking-wide uppercase text-xs">
-              <Calendar className="w-4 h-4" />
-              {match.createdAt && format(new Date(match.createdAt), "MMMM d, yyyy")}
-            </div>
-            <h1 className="text-4xl font-display font-bold text-foreground">{match.name}</h1>
-            <div className="flex items-center gap-2 text-muted-foreground text-lg">
-              <MapPin className="w-5 h-5 text-accent" />
+      {/* Header - Compact */}
+      <div className="bg-white rounded-xl px-4 py-3 shadow-md border border-border/50 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-display font-bold text-foreground">{match.name}</h1>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <MapPin className="w-4 h-4 text-accent" />
               {match.courseName}
-            </div>
+            </span>
+            <span className="flex items-center gap-1">
+              <Calendar className="w-4 h-4 text-primary" />
+              {match.createdAt && format(new Date(match.createdAt), "MMM d, yyyy")}
+            </span>
           </div>
+        </div>
 
-          <div className="flex gap-3">
-            {!isPlayer && (
-              <Button
-                onClick={handleJoinMatch}
-                disabled={addPlayer.isPending}
-                className="btn-primary"
-                data-testid="button-join-match"
-              >
-                <UserPlus className="w-4 h-4 mr-2" />
-                {addPlayer.isPending ? "Joining..." : "Join Event"}
-              </Button>
-            )}
-            {isCreator && (
-              showDeleteConfirm ? (
-                <div className="flex gap-2">
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      deleteMatch.mutate(matchId, {
-                        onSuccess: () => navigate("/")
-                      });
-                    }}
-                    disabled={deleteMatch.isPending}
-                    data-testid="button-confirm-delete-match"
-                  >
-                    {deleteMatch.isPending ? "Deleting..." : "Confirm Delete"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowDeleteConfirm(false)}
-                    data-testid="button-cancel-delete-match"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
+        <div className="flex gap-2">
+          {!isPlayer && (
+            <Button
+              size="sm"
+              onClick={handleJoinMatch}
+              disabled={addPlayer.isPending}
+              data-testid="button-join-match"
+            >
+              <UserPlus className="w-4 h-4 mr-1" />
+              {addPlayer.isPending ? "Joining..." : "Join"}
+            </Button>
+          )}
+          {isCreator && (
+            showDeleteConfirm ? (
+              <div className="flex gap-2">
                 <Button
-                  variant="ghost"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="text-muted-foreground hover:text-destructive"
-                  data-testid="button-delete-match"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    deleteMatch.mutate(matchId, {
+                      onSuccess: () => navigate("/")
+                    });
+                  }}
+                  disabled={deleteMatch.isPending}
+                  data-testid="button-confirm-delete-match"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
+                  {deleteMatch.isPending ? "..." : "Confirm"}
                 </Button>
-              )
-            )}
-          </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  data-testid="button-cancel-delete-match"
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-muted-foreground hover:text-destructive"
+                data-testid="button-delete-match"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )
+          )}
         </div>
       </div>
 
-      {/* Add Player Section (visible to creator) */}
+      {/* Add Player Section (visible to creator) - Collapsible */}
       {isCreator && (() => {
         const existingPlayerNames = players.map(p => p.name.toLowerCase());
         
         return (
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-            <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-primary" />
-              Add Player
-            </h3>
+          <div className="bg-white rounded-xl shadow-md border border-border/50 overflow-hidden">
+            <button
+              onClick={() => setAddPlayerCollapsed(!addPlayerCollapsed)}
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors"
+              data-testid="button-toggle-add-player"
+            >
+              <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-primary" />
+                Add Player ({players.length} added)
+              </h3>
+              {addPlayerCollapsed ? (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              )}
+            </button>
             
-            {/* Preset Players Grid */}
-            <div className="mb-4">
-              <p className="text-sm text-muted-foreground mb-2">Quick add from roster:</p>
-              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                {PRESET_PLAYERS.map((name) => {
-                  const isAdded = existingPlayerNames.includes(name.toLowerCase());
-                  return (
-                    <label
-                      key={name}
-                      className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${
-                        isAdded 
-                          ? 'bg-primary/10 text-primary border border-primary/20' 
-                          : 'bg-muted/50 hover:bg-muted border border-transparent'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isAdded}
-                        onChange={() => {
-                          if (!isAdded) {
-                            addPlayer.mutate({ name });
-                          }
-                        }}
-                        disabled={isAdded || addPlayer.isPending}
-                        className="w-3.5 h-3.5 rounded"
-                        data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
-                      />
-                      <span className="truncate">{name}</span>
-                    </label>
-                  );
-                })}
+            {!addPlayerCollapsed && (
+              <div className="px-4 pb-4 pt-2 border-t border-border/50">
+                {/* Preset Players Grid */}
+                <div className="mb-3">
+                  <p className="text-xs text-muted-foreground mb-2">Quick add from roster:</p>
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
+                    {PRESET_PLAYERS.map((name) => {
+                      const isAdded = existingPlayerNames.includes(name.toLowerCase());
+                      return (
+                        <label
+                          key={name}
+                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                            isAdded 
+                              ? 'bg-primary/10 text-primary border border-primary/20' 
+                              : 'bg-muted/50 hover:bg-muted border border-transparent'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isAdded}
+                            onChange={() => {
+                              if (!isAdded) {
+                                addPlayer.mutate({ name });
+                              }
+                            }}
+                            disabled={isAdded || addPlayer.isPending}
+                            className="w-3 h-3 rounded"
+                            data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                          />
+                          <span className="truncate">{name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                
+                {/* Custom Name Input */}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter player name..."
+                    value={newPlayerName}
+                    onChange={(e) => setNewPlayerName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
+                    className="flex-1 h-8 text-sm"
+                    data-testid="input-player-name"
+                  />
+                  <Button 
+                    size="sm"
+                    onClick={handleAddGuest} 
+                    disabled={!newPlayerName.trim() || addPlayer.isPending}
+                    data-testid="button-add-player"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add
+                  </Button>
+                </div>
               </div>
-            </div>
-            
-            {/* Custom Name Input */}
-            <div className="flex gap-3">
-              <Input
-                placeholder="Enter player name..."
-                value={newPlayerName}
-                onChange={(e) => setNewPlayerName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
-                className="flex-1"
-                data-testid="input-player-name"
-              />
-              <Button 
-                onClick={handleAddGuest} 
-                disabled={!newPlayerName.trim() || addPlayer.isPending}
-                data-testid="button-add-player"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add
-              </Button>
-            </div>
+            )}
           </div>
         );
       })()}
