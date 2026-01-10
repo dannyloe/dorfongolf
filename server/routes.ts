@@ -22,11 +22,11 @@ export async function registerRoutes(
       const input = api.matches.create.input.parse(req.body);
       const user = req.user as any;
       const match = await storage.createMatch({
-        ...input,
+        name: input.name,
+        courseName: input.courseName,
         creatorId: user.claims.sub,
       });
       
-      // Auto-add creator as player
       const currentUser = await storage.getUser(user.claims.sub);
       await storage.addPlayer({
         matchId: match.id,

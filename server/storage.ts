@@ -12,7 +12,7 @@ export interface IStorage {
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
 
   // App methods
-  createMatch(match: InsertMatch): Promise<Match>;
+  createMatch(match: { name: string; courseName: string; creatorId: string }): Promise<Match>;
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
   getMatchPlayers(matchId: number): Promise<Player[]>;
@@ -29,7 +29,7 @@ export class DatabaseStorage implements IStorage {
     return authStorage.upsertUser(user);
   }
 
-  async createMatch(match: InsertMatch): Promise<Match> {
+  async createMatch(match: { name: string; courseName: string; creatorId: string }): Promise<Match> {
     const [newMatch] = await db.insert(matches).values(match).returning();
     return newMatch;
   }

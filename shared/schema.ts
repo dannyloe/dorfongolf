@@ -11,7 +11,7 @@ export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   courseName: text("course_name").notNull(),
-  creatorId: text("creator_id").notNull(), // maps to users.id
+  creatorId: text("creator_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),
 });
@@ -19,15 +19,15 @@ export const matches = pgTable("matches", {
 export const players = pgTable("players", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
-  userId: text("user_id"), // null for guest players
-  name: text("name").notNull(), // display name for player
+  userId: text("user_id"), 
+  name: text("name").notNull(), 
 });
 
 export const scores = pgTable("scores", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
-  playerId: integer("player_id").notNull(), // maps to players.id
-  holeNumber: integer("hole_number").notNull(), // 1-18
+  playerId: integer("player_id").notNull(), 
+  holeNumber: integer("hole_number").notNull(), 
   strokes: integer("strokes").notNull(),
 });
 
