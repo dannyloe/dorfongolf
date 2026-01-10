@@ -446,7 +446,7 @@ export default function MatchDetail() {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
               const results = calculateMatchPlayResults(em, scores);
-              const status = teamA && teamB ? getMatchStatus(results, teamA, teamB) : 'Not started';
+              const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
               const isExpanded = expandedMatch === em.id;
 
               return (
@@ -557,9 +557,12 @@ export default function MatchDetail() {
                                 ))}
                                 {(() => {
                                   const outResult = results[8];
-                                  const outDiff = outResult ? outResult.cumulativeA - outResult.cumulativeB : 0;
                                   const hasOutScores = outResult?.teamAScore !== null;
                                   if (!hasOutScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (em.matchType === 'stroke_play') {
+                                    return <td className="p-2 text-center font-semibold bg-muted/30">{outResult.cumulativeA}</td>;
+                                  }
+                                  const outDiff = outResult ? outResult.cumulativeA - outResult.cumulativeB : 0;
                                   if (outDiff > 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{outDiff} UP</td>;
                                   if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(outDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
@@ -571,9 +574,12 @@ export default function MatchDetail() {
                                 ))}
                                 {(() => {
                                   const inResult = results[17];
-                                  const inDiff = inResult ? inResult.cumulativeA - inResult.cumulativeB : 0;
                                   const hasInScores = inResult?.teamAScore !== null;
                                   if (!hasInScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (em.matchType === 'stroke_play') {
+                                    return <td className="p-2 text-center font-semibold bg-muted/30">{inResult.cumulativeA}</td>;
+                                  }
+                                  const inDiff = inResult ? inResult.cumulativeA - inResult.cumulativeB : 0;
                                   if (inDiff > 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{inDiff} UP</td>;
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
@@ -588,9 +594,12 @@ export default function MatchDetail() {
                                 ))}
                                 {(() => {
                                   const outResult = results[8];
-                                  const outDiff = outResult ? outResult.cumulativeB - outResult.cumulativeA : 0;
                                   const hasOutScores = outResult?.teamBScore !== null;
                                   if (!hasOutScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (em.matchType === 'stroke_play') {
+                                    return <td className="p-2 text-center font-semibold bg-muted/30">{outResult.cumulativeB}</td>;
+                                  }
+                                  const outDiff = outResult ? outResult.cumulativeB - outResult.cumulativeA : 0;
                                   if (outDiff > 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{outDiff} UP</td>;
                                   if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(outDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
@@ -602,9 +611,12 @@ export default function MatchDetail() {
                                 ))}
                                 {(() => {
                                   const inResult = results[17];
-                                  const inDiff = inResult ? inResult.cumulativeB - inResult.cumulativeA : 0;
                                   const hasInScores = inResult?.teamBScore !== null;
                                   if (!hasInScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (em.matchType === 'stroke_play') {
+                                    return <td className="p-2 text-center font-semibold bg-muted/30">{inResult.cumulativeB}</td>;
+                                  }
+                                  const inDiff = inResult ? inResult.cumulativeB - inResult.cumulativeA : 0;
                                   if (inDiff > 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{inDiff} UP</td>;
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
@@ -616,6 +628,11 @@ export default function MatchDetail() {
                                   const diff = r.cumulativeA - r.cumulativeB;
                                   const hasScores = r.teamAScore !== null && r.teamBScore !== null;
                                   if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                  if (em.matchType === 'stroke_play') {
+                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
+                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
+                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
+                                  }
                                   if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
                                   if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
                                   return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
@@ -625,6 +642,11 @@ export default function MatchDetail() {
                                   const diff = r.cumulativeA - r.cumulativeB;
                                   const hasScores = r.teamAScore !== null && r.teamBScore !== null;
                                   if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                  if (em.matchType === 'stroke_play') {
+                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
+                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
+                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
+                                  }
                                   if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
                                   if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
                                   return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
@@ -638,10 +660,21 @@ export default function MatchDetail() {
                         {/* Running Status */}
                         <div className="flex justify-between items-center pt-2 border-t border-border">
                           <div className="text-sm">
-                            <span className="font-medium">Total Holes Won: </span>
-                            <span className="text-primary font-bold">{teamA?.name}: {results.filter(r => r.winner === 'A').length}</span>
-                            <span className="mx-2">|</span>
-                            <span className="text-accent font-bold">{teamB?.name}: {results.filter(r => r.winner === 'B').length}</span>
+                            {em.matchType === 'stroke_play' ? (
+                              <>
+                                <span className="font-medium">Total Strokes: </span>
+                                <span className="text-primary font-bold">{teamA?.name}: {results[17]?.cumulativeA ?? 0}</span>
+                                <span className="mx-2">|</span>
+                                <span className="text-accent font-bold">{teamB?.name}: {results[17]?.cumulativeB ?? 0}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-medium">Total Holes Won: </span>
+                                <span className="text-primary font-bold">{teamA?.name}: {results.filter(r => r.winner === 'A').length}</span>
+                                <span className="mx-2">|</span>
+                                <span className="text-accent font-bold">{teamB?.name}: {results.filter(r => r.winner === 'B').length}</span>
+                              </>
+                            )}
                           </div>
                           {isCreator && (
                             <Button
@@ -658,7 +691,7 @@ export default function MatchDetail() {
 
                         {/* Wager Summary */}
                         {em.unitAmount > 0 && (() => {
-                          const settlement = calculateBetSettlements(em.unitAmount, teamA!, teamB!, results);
+                          const settlement = calculateBetSettlements(em.unitAmount, teamA!, teamB!, results, em.matchType);
                           return (
                             <div className="pt-3 border-t border-border">
                               <div className="flex items-center justify-between mb-2">

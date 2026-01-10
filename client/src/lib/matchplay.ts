@@ -76,6 +76,8 @@ export function calculateMatchPlayResults(
   let cumulativeA = 0;
   let cumulativeB = 0;
 
+  const isStrokePlay = matchType === 'stroke_play';
+
   for (let hole = 1; hole <= 18; hole++) {
     const teamAScores = scores
       .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
@@ -90,24 +92,43 @@ export function calculateMatchPlayResults(
 
     let winner: 'A' | 'B' | 'tie' | null = null;
     
-    if (teamAHoleScore !== null && teamBHoleScore !== null) {
-      if (teamAHoleScore < teamBHoleScore) {
-        winner = 'A';
-        cumulativeA++;
-      } else if (teamBHoleScore < teamAHoleScore) {
-        winner = 'B';
-        cumulativeB++;
-      } else {
-        winner = 'tie';
+    if (isStrokePlay) {
+      // Stroke play: cumulative tracks total strokes
+      if (teamAHoleScore !== null) cumulativeA += teamAHoleScore;
+      if (teamBHoleScore !== null) cumulativeB += teamBHoleScore;
+      // No per-hole winner in stroke play
+    } else {
+      // Match play: cumulative tracks holes won
+      if (teamAHoleScore !== null && teamBHoleScore !== null) {
+        if (teamAHoleScore < teamBHoleScore) {
+          winner = 'A';
+          cumulativeA++;
+        } else if (teamBHoleScore < teamAHoleScore) {
+          winner = 'B';
+          cumulativeB++;
+        } else {
+          winner = 'tie';
+        }
       }
     }
 
-    const diff = cumulativeA - cumulativeB;
     let status = 'All Square';
-    if (diff > 0) {
-      status = `${teamA.name} ${diff} UP`;
-    } else if (diff < 0) {
-      status = `${teamB.name} ${Math.abs(diff)} UP`;
+    if (isStrokePlay) {
+      const diff = cumulativeA - cumulativeB;
+      if (diff < 0) {
+        status = `${teamA.name} ${Math.abs(diff)} ahead`;
+      } else if (diff > 0) {
+        status = `${teamB.name} ${diff} ahead`;
+      } else {
+        status = 'Tied';
+      }
+    } else {
+      const diff = cumulativeA - cumulativeB;
+      if (diff > 0) {
+        status = `${teamA.name} ${diff} UP`;
+      } else if (diff < 0) {
+        status = `${teamB.name} ${Math.abs(diff)} UP`;
+      }
     }
 
     results.push({
@@ -124,14 +145,26 @@ export function calculateMatchPlayResults(
   return results;
 }
 
-export function getMatchStatus(results: HoleResult[], teamA: Team, teamB: Team): string {
+export function getMatchStatus(results: HoleResult[], teamA: Team, teamB: Team, matchType?: string): string {
   const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
   
   if (!lastPlayedHole) return 'Not started';
   
+  const isStrokePlay = matchType === 'stroke_play';
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
   const holesRemaining = 18 - lastPlayedHole.holeNumber;
   
+  if (isStrokePlay) {
+    // Stroke play: lower total strokes wins
+    if (holesRemaining === 0) {
+      if (diff < 0) return `${teamA.name} wins by ${Math.abs(diff)}`;
+      if (diff > 0) return `${teamB.name} wins by ${diff}`;
+      return 'Match tied';
+    }
+    return lastPlayedHole.status;
+  }
+  
+  // Match play logic
   if (holesRemaining === 0) {
     if (diff > 0) return `${teamA.name} wins ${diff} up`;
     if (diff < 0) return `${teamB.name} wins ${Math.abs(diff)} up`;
@@ -162,14 +195,26 @@ export interface MatchSettlement {
   totalPot: number;
 }
 
-export function getMatchWinner(results: HoleResult[]): 'A' | 'B' | 'tie' | null {
+export function getMatchWinner(results: HoleResult[], matchType?: string): 'A' | 'B' | 'tie' | null {
   const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
   
   if (!lastPlayedHole) return null;
   
+  const isStrokePlay = matchType === 'stroke_play';
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
   const holesRemaining = 18 - lastPlayedHole.holeNumber;
   
+  if (isStrokePlay) {
+    // Stroke play: only complete after 18 holes, lower strokes wins
+    if (holesRemaining === 0) {
+      if (diff < 0) return 'A';
+      if (diff > 0) return 'B';
+      return 'tie';
+    }
+    return null;
+  }
+  
+  // Match play logic
   if (holesRemaining === 0) {
     if (diff > 0) return 'A';
     if (diff < 0) return 'B';
@@ -218,7 +263,7 @@ export function calculateLedger(
     if (!teamA || !teamB) continue;
 
     const results = calculateMatchPlayResults(em, scores);
-    const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results);
+    const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType);
 
     for (const s of settlement.settlements) {
       entries.push({
@@ -261,9 +306,10 @@ export function calculateBetSettlements(
   unitAmountCents: number,
   teamA: Team,
   teamB: Team,
-  results: HoleResult[]
+  results: HoleResult[],
+  matchType?: string
 ): MatchSettlement {
-  const winner = getMatchWinner(results);
+  const winner = getMatchWinner(results, matchType);
   const unitAmount = unitAmountCents / 100;
   
   const teamASize = teamA.members.length;
