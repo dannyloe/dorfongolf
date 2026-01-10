@@ -287,32 +287,78 @@ export default function MatchDetail() {
       </div>
 
       {/* Add Player Section (visible to creator) */}
-      {isCreator && (
-        <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-          <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
-            <UserPlus className="w-5 h-5 text-primary" />
-            Add Player
-          </h3>
-          <div className="flex gap-3">
-            <Input
-              placeholder="Enter player name..."
-              value={newPlayerName}
-              onChange={(e) => setNewPlayerName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
-              className="flex-1"
-              data-testid="input-player-name"
-            />
-            <Button 
-              onClick={handleAddGuest} 
-              disabled={!newPlayerName.trim() || addPlayer.isPending}
-              data-testid="button-add-player"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add
-            </Button>
+      {isCreator && (() => {
+        const presetPlayers = [
+          "Zimm", "Hutch", "Cody", "Cole", "Spikey", "CP", "Dooly", "Fontaine",
+          "Ian", "JR", "JP", "Jordan", "Wait", "MeerKat", "Chaney", "Neal",
+          "Nellie", "Hot Left Hansson", "Ocker", "Sub4 Seeger", "Tharnish",
+          "Yaffe", "Shu", "Smitty", "Holland", "Trey Billy", "Ty Adams", "Ty Matlock"
+        ];
+        const existingPlayerNames = players.map(p => p.name.toLowerCase());
+        
+        return (
+          <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
+            <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-primary" />
+              Add Player
+            </h3>
+            
+            {/* Preset Players Grid */}
+            <div className="mb-4">
+              <p className="text-sm text-muted-foreground mb-2">Quick add from roster:</p>
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-2">
+                {presetPlayers.map((name) => {
+                  const isAdded = existingPlayerNames.includes(name.toLowerCase());
+                  return (
+                    <label
+                      key={name}
+                      className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm cursor-pointer transition-colors ${
+                        isAdded 
+                          ? 'bg-primary/10 text-primary border border-primary/20' 
+                          : 'bg-muted/50 hover:bg-muted border border-transparent'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isAdded}
+                        onChange={() => {
+                          if (!isAdded) {
+                            addPlayer.mutate({ name });
+                          }
+                        }}
+                        disabled={isAdded || addPlayer.isPending}
+                        className="w-3.5 h-3.5 rounded"
+                        data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                      />
+                      <span className="truncate">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Custom Name Input */}
+            <div className="flex gap-3">
+              <Input
+                placeholder="Enter player name..."
+                value={newPlayerName}
+                onChange={(e) => setNewPlayerName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
+                className="flex-1"
+                data-testid="input-player-name"
+              />
+              <Button 
+                onClick={handleAddGuest} 
+                disabled={!newPlayerName.trim() || addPlayer.isPending}
+                data-testid="button-add-player"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Matches Section */}
       <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
