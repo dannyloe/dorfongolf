@@ -2,12 +2,12 @@ import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventM
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger } from "@/lib/matchplay";
 
 interface Player {
   id: number;
@@ -630,6 +630,98 @@ export default function MatchDetail() {
           </div>
         )}
       </div>
+
+      {/* Player Ledger */}
+      {eventMatches.length > 0 && (() => {
+        const { entries, balances } = calculateLedger(eventMatches, scores);
+        const hasCompletedMatches = entries.some(e => e.isComplete);
+        
+        if (!hasCompletedMatches) return null;
+        
+        return (
+          <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
+            <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
+              <Receipt className="w-5 h-5 text-accent" />
+              Betting Ledger
+            </h3>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Player Balances */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Player Standings</h4>
+                <div className="space-y-2">
+                  {balances.map((b) => (
+                    <div 
+                      key={b.playerId}
+                      className={`flex justify-between items-center px-4 py-3 rounded-lg ${
+                        b.netBalance > 0 
+                          ? 'bg-primary/10 border border-primary/20' 
+                          : b.netBalance < 0 
+                          ? 'bg-destructive/10 border border-destructive/20'
+                          : 'bg-muted'
+                      }`}
+                      data-testid={`ledger-balance-${b.playerId}`}
+                    >
+                      <div>
+                        <span className="font-semibold">{b.playerName}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ({b.matchesPlayed} {b.matchesPlayed === 1 ? 'match' : 'matches'})
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className={`font-bold text-lg ${
+                          b.netBalance > 0 ? 'text-primary' : b.netBalance < 0 ? 'text-destructive' : ''
+                        }`}>
+                          {b.netBalance > 0 ? '+' : ''}${b.netBalance.toFixed(2)}
+                        </span>
+                        <div className="text-xs text-muted-foreground">
+                          W: ${b.totalWon.toFixed(2)} / L: ${b.totalLost.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Individual Bets */}
+              <div>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Match Results</h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {Array.from(new Set(entries.filter(e => e.isComplete).map(e => e.matchId))).map((matchId) => {
+                    const matchEntries = entries.filter(e => e.matchId === matchId);
+                    const matchName = matchEntries[0]?.matchName || 'Match';
+                    
+                    return (
+                      <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
+                        <div className="text-sm font-semibold mb-2">{matchName}</div>
+                        <div className="grid grid-cols-2 gap-1">
+                          {matchEntries.map((e) => (
+                            <div 
+                              key={e.playerId}
+                              className={`flex justify-between text-xs px-2 py-1 rounded ${
+                                e.amount > 0 
+                                  ? 'text-primary bg-primary/5' 
+                                  : e.amount < 0 
+                                  ? 'text-destructive bg-destructive/5'
+                                  : 'text-muted-foreground'
+                              }`}
+                            >
+                              <span>{e.playerName}</span>
+                              <span className="font-medium">
+                                {e.amount > 0 ? '+' : ''}{e.amount === 0 ? 'Push' : `$${e.amount.toFixed(2)}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Scorecard Table */}
       <div className="glass-card rounded-2xl overflow-hidden overflow-x-auto">
