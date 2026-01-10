@@ -182,8 +182,8 @@ export class DatabaseStorage implements IStorage {
       unitAmount: parentMatch.unitAmount,
       parentMatchId: parentMatchId,
       startHole: startHole,
-      autoPressOriginal: parentMatch.autoPressAllPresses,
-      autoPressAllPresses: parentMatch.autoPressAllPresses,
+      autoPressOriginal: parentMatch.autoPressOriginal,
+      autoPressAllPresses: false,
     }).returning();
 
     // Copy teams from parent match

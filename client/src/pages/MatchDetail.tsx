@@ -84,7 +84,6 @@ export default function MatchDetail() {
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
-  const [autoPressAllPresses, setAutoPressAllPresses] = useState(false);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -135,16 +134,15 @@ export default function MatchDetail() {
       teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
       teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
       autoPressOriginal: isMatchPlay ? autoPressOriginal : false,
-      autoPressAllPresses: isMatchPlay ? autoPressAllPresses : false,
+      autoPressAllPresses: false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
         setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
-        setUnitAmount(5);
+        setUnitAmount(20);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
         setAutoPressOriginal(true);
-        setAutoPressAllPresses(false);
       }
     });
   };
@@ -384,7 +382,7 @@ export default function MatchDetail() {
                 </div>
               </div>
 
-              {/* Auto Press Options - Only for Match Play */}
+              {/* Auto Press Option - Only for Match Play */}
               {(selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL) && (
                 <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -393,19 +391,9 @@ export default function MatchDetail() {
                       checked={autoPressOriginal}
                       onChange={(e) => setAutoPressOriginal(e.target.checked)}
                       className="w-4 h-4 rounded border-border"
-                      data-testid="checkbox-auto-press-original"
+                      data-testid="checkbox-auto-press"
                     />
-                    <span className="text-sm font-medium">Auto Press Original</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoPressAllPresses}
-                      onChange={(e) => setAutoPressAllPresses(e.target.checked)}
-                      className="w-4 h-4 rounded border-border"
-                      data-testid="checkbox-auto-press-all"
-                    />
-                    <span className="text-sm font-medium">Auto Press All Presses</span>
+                    <span className="text-sm font-medium">Auto Press</span>
                   </label>
                   <p className="text-xs text-muted-foreground mt-1">
                     When 2+ down going into 18: Win doubles bet, loss pushes, tie unchanged
@@ -620,7 +608,7 @@ export default function MatchDetail() {
                                 ))}
                                 <th className="p-2 text-center font-semibold bg-muted/30">In</th>
                                 {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                  <th className="p-2 text-center font-semibold" colSpan={2}>Auto Press</th>
+                                  <th className="p-2 text-center font-semibold text-xs">Auto Press</th>
                                 )}
                               </tr>
                             </thead>
@@ -662,7 +650,7 @@ export default function MatchDetail() {
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
                                 {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                  <td colSpan={2}></td>
+                                  <td></td>
                                 )}
                               </tr>
                               <tr className="border-b border-border/50">
@@ -702,7 +690,7 @@ export default function MatchDetail() {
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
                                 {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                  <td colSpan={2}></td>
+                                  <td></td>
                                 )}
                               </tr>
                               <tr className="border-t-2 border-border">
@@ -736,42 +724,20 @@ export default function MatchDetail() {
                                 })}
                                 <td className="p-2 text-center bg-muted/30"></td>
                                 {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                  <>
-                                    <td className="p-2 text-center">
-                                      <div className="flex items-center justify-center gap-1">
-                                        <Checkbox
-                                          id={`autopress-original-${em.id}`}
-                                          checked={em.autoPressOriginal ?? true}
-                                          onCheckedChange={(checked) => {
-                                            updateAutoPress.mutate({ 
-                                              eventMatchId: em.id, 
-                                              autoPressOriginal: checked === true 
-                                            });
-                                          }}
-                                          disabled={updateAutoPress.isPending}
-                                          data-testid={`checkbox-autopress-original-${em.id}`}
-                                        />
-                                        <label htmlFor={`autopress-original-${em.id}`} className="text-xs cursor-pointer">Orig</label>
-                                      </div>
-                                    </td>
-                                    <td className="p-2 text-center">
-                                      <div className="flex items-center justify-center gap-1">
-                                        <Checkbox
-                                          id={`autopress-all-${em.id}`}
-                                          checked={em.autoPressAllPresses ?? false}
-                                          onCheckedChange={(checked) => {
-                                            updateAutoPress.mutate({ 
-                                              eventMatchId: em.id, 
-                                              autoPressAllPresses: checked === true 
-                                            });
-                                          }}
-                                          disabled={updateAutoPress.isPending}
-                                          data-testid={`checkbox-autopress-all-${em.id}`}
-                                        />
-                                        <label htmlFor={`autopress-all-${em.id}`} className="text-xs cursor-pointer">All</label>
-                                      </div>
-                                    </td>
-                                  </>
+                                  <td className="p-2 text-center">
+                                    <Checkbox
+                                      id={`autopress-${em.id}`}
+                                      checked={em.autoPressOriginal ?? true}
+                                      onCheckedChange={(checked) => {
+                                        updateAutoPress.mutate({ 
+                                          eventMatchId: em.id, 
+                                          autoPressOriginal: checked === true 
+                                        });
+                                      }}
+                                      disabled={updateAutoPress.isPending}
+                                      data-testid={`checkbox-autopress-${em.id}`}
+                                    />
+                                  </td>
                                 )}
                               </tr>
                               {/* Press Match Rows */}
@@ -813,7 +779,20 @@ export default function MatchDetail() {
                                     })}
                                     <td className="p-2 text-center bg-muted/30"></td>
                                     {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                      <td colSpan={2}></td>
+                                      <td className="p-2 text-center">
+                                        <Checkbox
+                                          id={`autopress-press-${pm.id}`}
+                                          checked={pm.autoPressOriginal ?? true}
+                                          onCheckedChange={(checked) => {
+                                            updateAutoPress.mutate({ 
+                                              eventMatchId: pm.id, 
+                                              autoPressOriginal: checked === true 
+                                            });
+                                          }}
+                                          disabled={updateAutoPress.isPending}
+                                          data-testid={`checkbox-autopress-${pm.id}`}
+                                        />
+                                      </td>
                                     )}
                                   </tr>
                                 );
