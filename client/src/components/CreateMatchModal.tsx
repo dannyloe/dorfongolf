@@ -55,7 +55,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
               <div className="p-6 border-b border-border/50 flex justify-between items-center bg-primary/5">
                 <h2 className="text-xl font-bold font-display text-primary flex items-center gap-2">
                   <Trophy className="w-5 h-5" />
-                  New Match
+                  New Event
                 </h2>
                 <button 
                   onClick={onClose}
@@ -67,7 +67,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
 
               <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-foreground/80">Match Name</label>
+                  <label className="text-sm font-semibold text-foreground/80">Event Name</label>
                   <input
                     {...register("name")}
                     placeholder="e.g. Sunday Morning Round"
@@ -106,7 +106,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
                     disabled={createMatch.isPending}
                     className="flex-1 btn-primary"
                   >
-                    {createMatch.isPending ? "Creating..." : "Create Match"}
+                    {createMatch.isPending ? "Creating..." : "Create Event"}
                   </button>
                 </div>
               </form>

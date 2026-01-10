@@ -34,17 +34,17 @@ export default function Dashboard() {
         <p className="text-muted-foreground text-lg">Ready for another round?</p>
       </motion.div>
 
-      {/* Active Matches Section */}
+      {/* Active Events Section */}
       <section>
         <h2 className="text-xl font-bold font-display text-foreground mb-6 flex items-center gap-2">
           <div className="w-2 h-8 bg-accent rounded-full" />
-          Active Matches
+          Active Events
         </h2>
         
         {activeMatches.length === 0 ? (
           <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
-            <p className="text-muted-foreground mb-4">No active matches found.</p>
-            <p className="text-sm font-medium text-primary">Click "New Match" to start playing!</p>
+            <p className="text-muted-foreground mb-4">No active events found.</p>
+            <p className="text-sm font-medium text-primary">Click "New Event" to start playing!</p>
           </div>
         ) : (
           <div className="grid gap-4">

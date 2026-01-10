@@ -51,8 +51,8 @@ export default function MatchDetail() {
     }
   }, [editingCell]);
 
-  if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading match details...</div>;
-  if (error || !match) return <div className="p-12 text-center text-destructive">Match not found</div>;
+  if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading event details...</div>;
+  if (error || !match) return <div className="p-12 text-center text-destructive">Event not found</div>;
 
   const players: Player[] = match.players || [];
   const scores: Score[] = match.scores || [];
@@ -143,7 +143,7 @@ export default function MatchDetail() {
                 data-testid="button-join-match"
               >
                 <UserPlus className="w-4 h-4 mr-2" />
-                {addPlayer.isPending ? "Joining..." : "Join Match"}
+                {addPlayer.isPending ? "Joining..." : "Join Event"}
               </Button>
             )}
             {isCreator && (
