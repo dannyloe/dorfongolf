@@ -1,4 +1,5 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress } from "@/hooks/use-matches";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -65,6 +66,7 @@ export default function MatchDetail() {
   const createEventMatch = useCreateEventMatch(matchId);
   const deleteEventMatch = useDeleteEventMatch(matchId);
   const createPress = useCreatePress(matchId);
+  const updateAutoPress = useUpdateAutoPress(matchId);
   
   const [newPlayerName, setNewPlayerName] = useState("");
   const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
@@ -617,6 +619,9 @@ export default function MatchDetail() {
                                   <th key={r.holeNumber} className="p-2 text-center font-medium">{r.holeNumber}</th>
                                 ))}
                                 <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                  <th className="p-2 text-center font-semibold" colSpan={2}>Auto Press</th>
+                                )}
                               </tr>
                             </thead>
                             <tbody>
@@ -656,6 +661,9 @@ export default function MatchDetail() {
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                  <td colSpan={2}></td>
+                                )}
                               </tr>
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-accent">{teamB?.name}</td>
@@ -693,6 +701,9 @@ export default function MatchDetail() {
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                  <td colSpan={2}></td>
+                                )}
                               </tr>
                               <tr className="border-t-2 border-border">
                                 <td className="p-2 font-semibold">Status</td>
@@ -724,6 +735,44 @@ export default function MatchDetail() {
                                   return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
                                 })}
                                 <td className="p-2 text-center bg-muted/30"></td>
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                  <>
+                                    <td className="p-2 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <Checkbox
+                                          id={`autopress-original-${em.id}`}
+                                          checked={em.autoPressOriginal ?? true}
+                                          onCheckedChange={(checked) => {
+                                            updateAutoPress.mutate({ 
+                                              eventMatchId: em.id, 
+                                              autoPressOriginal: checked === true 
+                                            });
+                                          }}
+                                          disabled={updateAutoPress.isPending}
+                                          data-testid={`checkbox-autopress-original-${em.id}`}
+                                        />
+                                        <label htmlFor={`autopress-original-${em.id}`} className="text-xs cursor-pointer">Orig</label>
+                                      </div>
+                                    </td>
+                                    <td className="p-2 text-center">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <Checkbox
+                                          id={`autopress-all-${em.id}`}
+                                          checked={em.autoPressAllPresses ?? false}
+                                          onCheckedChange={(checked) => {
+                                            updateAutoPress.mutate({ 
+                                              eventMatchId: em.id, 
+                                              autoPressAllPresses: checked === true 
+                                            });
+                                          }}
+                                          disabled={updateAutoPress.isPending}
+                                          data-testid={`checkbox-autopress-all-${em.id}`}
+                                        />
+                                        <label htmlFor={`autopress-all-${em.id}`} className="text-xs cursor-pointer">All</label>
+                                      </div>
+                                    </td>
+                                  </>
+                                )}
                               </tr>
                               {/* Press Match Rows */}
                               {pressMatches.map((pm) => {
@@ -763,6 +812,9 @@ export default function MatchDetail() {
                                       return <td key={holeNum} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                     })}
                                     <td className="p-2 text-center bg-muted/30"></td>
+                                    {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                      <td colSpan={2}></td>
+                                    )}
                                   </tr>
                                 );
                               })}

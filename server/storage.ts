@@ -163,6 +163,14 @@ export class DatabaseStorage implements IStorage {
     await db.delete(eventMatches).where(eq(eventMatches.id, eventMatchId));
   }
 
+  async updateEventMatchAutoPress(eventMatchId: number, data: { autoPressOriginal?: boolean; autoPressAllPresses?: boolean }): Promise<EventMatch> {
+    const [updated] = await db.update(eventMatches)
+      .set(data)
+      .where(eq(eventMatches.id, eventMatchId))
+      .returning();
+    return updated;
+  }
+
   async createPressMatch(parentMatchId: number, startHole: number): Promise<EventMatch> {
     const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
     if (!parentMatch) throw new Error("Parent match not found");

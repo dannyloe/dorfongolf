@@ -196,5 +196,20 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.eventMatches.updateAutoPress.path, isAuthenticated, async (req, res) => {
+    const eventMatchId = parseInt(req.params.id);
+    try {
+      const input = api.eventMatches.updateAutoPress.input.parse(req.body);
+      const updated = await storage.updateEventMatchAutoPress(eventMatchId, input);
+      const withTeams = await storage.getEventMatchWithTeams(updated.id);
+      res.json(withTeams);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

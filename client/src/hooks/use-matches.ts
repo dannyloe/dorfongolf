@@ -188,3 +188,26 @@ export function useCreatePress(matchId: number) {
     },
   });
 }
+
+type UpdateAutoPressInput = z.infer<typeof api.eventMatches.updateAutoPress.input>;
+
+export function useUpdateAutoPress(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, ...data }: { eventMatchId: number } & UpdateAutoPressInput) => {
+      const url = buildUrl(api.eventMatches.updateAutoPress.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.updateAutoPress.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update auto press settings");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}

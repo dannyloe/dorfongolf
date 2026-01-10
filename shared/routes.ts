@@ -146,6 +146,19 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateAutoPress: {
+      method: 'PATCH' as const,
+      path: '/api/event-matches/:id/auto-press',
+      input: z.object({
+        autoPressOriginal: z.boolean().optional(),
+        autoPressAllPresses: z.boolean().optional(),
+      }),
+      responses: {
+        200: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
   },
 };
 
