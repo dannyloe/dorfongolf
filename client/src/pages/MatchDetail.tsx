@@ -483,7 +483,6 @@ export default function MatchDetail() {
               const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
               const isExpanded = expandedMatch === em.id;
               const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
-              const combinedSettlement = calculateCombinedMatchSettlements(em, pressMatches, scores);
 
               return (
                 <div key={em.id} className="border border-border rounded-xl overflow-hidden">
@@ -510,7 +509,7 @@ export default function MatchDetail() {
                         </span>
                         {em.unitAmount > 0 && (
                           <span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">
-                            ${combinedSettlement.totalPot.toFixed(2)} pot
+                            ${(em.unitAmount / 100).toFixed(2)}
                           </span>
                         )}
                         <span className="text-sm font-medium text-primary">{status}</span>
