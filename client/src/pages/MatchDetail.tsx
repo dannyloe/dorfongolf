@@ -77,7 +77,7 @@ export default function MatchDetail() {
   // Event Match creation state
   const [showCreateMatch, setShowCreateMatch] = useState(false);
   const [selectedMatchType, setSelectedMatchType] = useState<MatchType>(MATCH_TYPES.MATCH_PLAY_1_BALL);
-  const [unitAmount, setUnitAmount] = useState<number>(5);
+  const [unitAmount, setUnitAmount] = useState<number>(20);
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
