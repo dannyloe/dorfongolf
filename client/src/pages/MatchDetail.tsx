@@ -86,6 +86,8 @@ export default function MatchDetail() {
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
+  const [matchesCollapsed, setMatchesCollapsed] = useState(false);
+  const [ledgerCollapsed, setLedgerCollapsed] = useState(false);
   
   // Round Robin wizard state (two groups)
   const [isRoundRobinMode, setIsRoundRobinMode] = useState(false);
@@ -473,12 +475,19 @@ export default function MatchDetail() {
 
       {/* Matches Section */}
       <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-display font-bold text-lg flex items-center gap-2">
-            <Swords className="w-5 h-5 text-primary" />
-            Matches ({eventMatches.length})
-          </h3>
-          {isCreator && players.length >= 2 && (
+        <div className="flex justify-between items-center">
+          <button
+            onClick={() => setMatchesCollapsed(!matchesCollapsed)}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            data-testid="button-toggle-matches"
+          >
+            <h3 className="font-display font-bold text-lg flex items-center gap-2">
+              <Swords className="w-5 h-5 text-primary" />
+              Matches ({eventMatches.length})
+            </h3>
+            {matchesCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+          </button>
+          {isCreator && players.length >= 2 && !matchesCollapsed && (
             <Button
               size="sm"
               onClick={() => setShowCreateMatch(true)}
@@ -491,7 +500,7 @@ export default function MatchDetail() {
         </div>
 
         {/* Create Match Form */}
-        {showCreateMatch && (
+        {!matchesCollapsed && showCreateMatch && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -812,14 +821,14 @@ export default function MatchDetail() {
         )}
 
         {/* Event Matches List */}
-        {eventMatches.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
+        {!matchesCollapsed && (eventMatches.length === 0 ? (
+          <p className="text-muted-foreground text-sm mt-4">
             {players.length < 2 
               ? "Add at least 2 players to create a match." 
               : "No matches yet. Create a match to track team competition!"}
           </p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 mt-4">
             {eventMatches.filter(em => !em.parentMatchId).map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
@@ -1401,7 +1410,7 @@ export default function MatchDetail() {
               );
             })}
           </div>
-        )}
+        ))}
       </div>
 
       {/* Player Ledger */}
@@ -1413,12 +1422,20 @@ export default function MatchDetail() {
         
         return (
           <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-            <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-accent" />
-              Betting Ledger
-            </h3>
+            <button
+              onClick={() => setLedgerCollapsed(!ledgerCollapsed)}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity w-full"
+              data-testid="button-toggle-ledger"
+            >
+              <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-accent" />
+                Betting Ledger
+              </h3>
+              {ledgerCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
             
-            <div className="grid md:grid-cols-[auto_1fr] gap-6">
+            {!ledgerCollapsed && (
+            <div className="grid md:grid-cols-[auto_1fr] gap-6 mt-4">
               {/* Player Balances */}
               <div className="min-w-fit">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3">Player Standings</h4>
@@ -1492,6 +1509,7 @@ export default function MatchDetail() {
                 </div>
               </div>
             </div>
+            )}
           </div>
         );
       })()}
