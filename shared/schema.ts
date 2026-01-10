@@ -41,6 +41,10 @@ export const eventMatches = pgTable("event_matches", {
   startHole: integer("start_hole").notNull().default(1),
   autoPressOriginal: boolean("auto_press_original").notNull().default(true),
   autoPressAllPresses: boolean("auto_press_all_presses").notNull().default(false),
+  // Nassau-specific auto press toggles (initialized from autoPressOriginal)
+  autoPressNassauFront9: boolean("auto_press_nassau_front9").notNull().default(true),
+  autoPressNassauBack9: boolean("auto_press_nassau_back9").notNull().default(true),
+  autoPressNassauOverall: boolean("auto_press_nassau_overall").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -187,6 +191,9 @@ export type CreateEventMatchRequest = {
   unitAmount?: number;
   autoPressOriginal?: boolean;
   autoPressAllPresses?: boolean;
+  autoPressNassauFront9?: boolean;
+  autoPressNassauBack9?: boolean;
+  autoPressNassauOverall?: boolean;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
 };

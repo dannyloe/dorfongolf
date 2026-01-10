@@ -129,6 +129,9 @@ export class DatabaseStorage implements IStorage {
       unitAmount: data.unitAmount || 0,
       autoPressOriginal: data.autoPressOriginal ?? true,
       autoPressAllPresses: data.autoPressAllPresses ?? false,
+      autoPressNassauFront9: data.autoPressNassauFront9 ?? true,
+      autoPressNassauBack9: data.autoPressNassauBack9 ?? true,
+      autoPressNassauOverall: data.autoPressNassauOverall ?? true,
     }).returning();
 
     // Create Team A
@@ -163,7 +166,13 @@ export class DatabaseStorage implements IStorage {
     await db.delete(eventMatches).where(eq(eventMatches.id, eventMatchId));
   }
 
-  async updateEventMatchAutoPress(eventMatchId: number, data: { autoPressOriginal?: boolean; autoPressAllPresses?: boolean }): Promise<EventMatch> {
+  async updateEventMatchAutoPress(eventMatchId: number, data: { 
+    autoPressOriginal?: boolean; 
+    autoPressAllPresses?: boolean;
+    autoPressNassauFront9?: boolean;
+    autoPressNassauBack9?: boolean;
+    autoPressNassauOverall?: boolean;
+  }): Promise<EventMatch> {
     const [updated] = await db.update(eventMatches)
       .set(data)
       .where(eq(eventMatches.id, eventMatchId))

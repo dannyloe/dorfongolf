@@ -105,6 +105,9 @@ export const api = {
         unitAmount: z.number().min(0).default(0),
         autoPressOriginal: z.boolean().default(true),
         autoPressAllPresses: z.boolean().default(false),
+        autoPressNassauFront9: z.boolean().default(true),
+        autoPressNassauBack9: z.boolean().default(true),
+        autoPressNassauOverall: z.boolean().default(true),
         teamA: z.object({
           name: z.string().min(1),
           playerIds: z.array(z.number()).min(1),
@@ -153,6 +156,9 @@ export const api = {
       input: z.object({
         autoPressOriginal: z.boolean().optional(),
         autoPressAllPresses: z.boolean().optional(),
+        autoPressNassauFront9: z.boolean().optional(),
+        autoPressNassauBack9: z.boolean().optional(),
+        autoPressNassauOverall: z.boolean().optional(),
       }),
       responses: {
         200: z.custom<typeof eventMatches.$inferSelect>(),

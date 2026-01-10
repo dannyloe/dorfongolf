@@ -127,6 +127,7 @@ export default function MatchDetail() {
     const autoMatchName = `${autoTeamAName} vs ${autoTeamBName}`;
     
     const isMatchPlay = selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL;
+    const isNassau = selectedMatchType === MATCH_TYPES.NASSAU;
     
     createEventMatch.mutate({
       name: autoMatchName,
@@ -134,8 +135,12 @@ export default function MatchDetail() {
       unitAmount: unitAmount * 100,
       teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
       teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
-      autoPressOriginal: isMatchPlay ? autoPressOriginal : false,
+      autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
       autoPressAllPresses: false,
+      // Nassau-specific: initialize all three to the same value as autoPressOriginal
+      autoPressNassauFront9: isNassau ? autoPressOriginal : true,
+      autoPressNassauBack9: isNassau ? autoPressOriginal : true,
+      autoPressNassauOverall: isNassau ? autoPressOriginal : true,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -423,8 +428,8 @@ export default function MatchDetail() {
                 </div>
               </div>
 
-              {/* Auto Press Option - Only for Match Play */}
-              {(selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL) && (
+              {/* Auto Press Option - For Match Play and Nassau */}
+              {(selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL || selectedMatchType === MATCH_TYPES.NASSAU) && (
                 <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -437,7 +442,9 @@ export default function MatchDetail() {
                     <span className="text-sm font-medium">Auto Press</span>
                   </label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    When 2+ down going into 18: Win doubles bet, loss pushes, tie unchanged
+                    {selectedMatchType === MATCH_TYPES.NASSAU 
+                      ? "When 2+ down: Win doubles bet, loss pushes. Applies to Front 9 (hole 9), Back 9 (hole 18), and Overall (hole 18)"
+                      : "When 2+ down going into 18: Win doubles bet, loss pushes, tie unchanged"}
                   </p>
                 </div>
               )}
@@ -742,7 +749,7 @@ export default function MatchDetail() {
                                     return (
                                       <>
                                         {/* Front 9 Status */}
-                                        <tr className="border-t-2 border-border bg-blue-50/50">
+                                        <tr className="border-t-2 border-border bg-blue-50/50 dark:bg-blue-950/30">
                                           <td className="p-2 font-semibold text-xs">Front 9</td>
                                           {nassauResults.front9.map((r) => {
                                             const diff = r.cumulativeA - r.cumulativeB;
@@ -759,21 +766,21 @@ export default function MatchDetail() {
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           <td className="p-2 text-center">
                                             <Checkbox
-                                              id={`autopress-nassau-${em.id}`}
-                                              checked={em.autoPressOriginal ?? true}
+                                              id={`autopress-nassau-front9-${em.id}`}
+                                              checked={em.autoPressNassauFront9 ?? true}
                                               onCheckedChange={(checked) => {
                                                 updateAutoPress.mutate({ 
                                                   eventMatchId: em.id, 
-                                                  autoPressOriginal: checked === true 
+                                                  autoPressNassauFront9: checked === true 
                                                 });
                                               }}
                                               disabled={updateAutoPress.isPending}
-                                              data-testid={`checkbox-autopress-nassau-${em.id}`}
+                                              data-testid={`checkbox-autopress-nassau-front9-${em.id}`}
                                             />
                                           </td>
                                         </tr>
                                         {/* Back 9 Status */}
-                                        <tr className="border-t border-border/50 bg-green-50/50">
+                                        <tr className="border-t border-border/50 bg-green-50/50 dark:bg-green-950/30">
                                           <td className="p-2 font-semibold text-xs">Back 9</td>
                                           {Array.from({ length: 9 }, (_, i) => (
                                             <td key={i + 1} className="p-2 text-center text-muted-foreground/30">-</td>
@@ -788,10 +795,23 @@ export default function MatchDetail() {
                                             return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
-                                          <td></td>
+                                          <td className="p-2 text-center">
+                                            <Checkbox
+                                              id={`autopress-nassau-back9-${em.id}`}
+                                              checked={em.autoPressNassauBack9 ?? true}
+                                              onCheckedChange={(checked) => {
+                                                updateAutoPress.mutate({ 
+                                                  eventMatchId: em.id, 
+                                                  autoPressNassauBack9: checked === true 
+                                                });
+                                              }}
+                                              disabled={updateAutoPress.isPending}
+                                              data-testid={`checkbox-autopress-nassau-back9-${em.id}`}
+                                            />
+                                          </td>
                                         </tr>
                                         {/* Overall Status */}
-                                        <tr className="border-t border-border/50 bg-amber-50/50">
+                                        <tr className="border-t border-border/50 bg-amber-50/50 dark:bg-amber-950/30">
                                           <td className="p-2 font-semibold text-xs">Overall</td>
                                           {nassauResults.overall.slice(0, 9).map((r) => {
                                             const diff = r.cumulativeA - r.cumulativeB;
@@ -811,7 +831,20 @@ export default function MatchDetail() {
                                             return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
-                                          <td></td>
+                                          <td className="p-2 text-center">
+                                            <Checkbox
+                                              id={`autopress-nassau-overall-${em.id}`}
+                                              checked={em.autoPressNassauOverall ?? true}
+                                              onCheckedChange={(checked) => {
+                                                updateAutoPress.mutate({ 
+                                                  eventMatchId: em.id, 
+                                                  autoPressNassauOverall: checked === true 
+                                                });
+                                              }}
+                                              disabled={updateAutoPress.isPending}
+                                              data-testid={`checkbox-autopress-nassau-overall-${em.id}`}
+                                            />
+                                          </td>
                                         </tr>
                                       </>
                                     );
