@@ -67,7 +67,6 @@ export default function MatchDetail() {
   
   // Event Match creation state
   const [showCreateMatch, setShowCreateMatch] = useState(false);
-  const [matchName, setMatchName] = useState("");
   const [unitAmount, setUnitAmount] = useState<number>(5);
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
@@ -107,13 +106,14 @@ export default function MatchDetail() {
   };
 
   const handleCreateEventMatch = () => {
-    if (!matchName.trim() || teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0) return;
+    if (teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0) return;
     
     const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
     const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
+    const autoMatchName = `${autoTeamAName} vs ${autoTeamBName}`;
     
     createEventMatch.mutate({
-      name: matchName.trim(),
+      name: autoMatchName,
       matchType: "match_play",
       unitAmount: unitAmount * 100,
       teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
@@ -121,7 +121,6 @@ export default function MatchDetail() {
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
-        setMatchName("");
         setUnitAmount(5);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
@@ -330,30 +329,18 @@ export default function MatchDetail() {
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Match Name</label>
-                  <Input
-                    placeholder="e.g., Front 9 Match"
-                    value={matchName}
-                    onChange={(e) => setMatchName(e.target.value)}
-                    className="mt-1"
-                    data-testid="input-match-name"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="5"
-                    value={unitAmount}
-                    onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
-                    className="mt-1"
-                    data-testid="input-unit-amount"
-                  />
-                </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="5"
+                  value={unitAmount}
+                  onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
+                  className="mt-1 max-w-32"
+                  data-testid="input-unit-amount"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -412,7 +399,7 @@ export default function MatchDetail() {
 
               <Button
                 onClick={handleCreateEventMatch}
-                disabled={!matchName.trim() || teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0 || createEventMatch.isPending}
+                disabled={teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0 || createEventMatch.isPending}
                 className="w-full"
                 data-testid="button-submit-create-match"
               >
@@ -621,6 +608,26 @@ export default function MatchDetail() {
                             </div>
                           );
                         })()}
+
+                        {/* Delete Match Button */}
+                        {isCreator && (
+                          <div className="pt-2 border-t border-border">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this match?')) {
+                                  deleteEventMatch.mutate(em.id);
+                                }
+                              }}
+                              disabled={deleteEventMatch.isPending}
+                              data-testid={`button-delete-match-${em.id}`}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              {deleteEventMatch.isPending ? "Deleting..." : "Delete Match"}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
