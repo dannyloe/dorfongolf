@@ -1418,15 +1418,15 @@ export default function MatchDetail() {
               Betting Ledger
             </h3>
             
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-[auto_1fr] gap-6">
               {/* Player Balances */}
-              <div>
+              <div className="min-w-fit">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3">Player Standings</h4>
                 <div className="space-y-2">
                   {balances.map((b) => (
                     <div 
                       key={b.playerId}
-                      className={`flex justify-between items-center px-4 py-3 rounded-lg ${
+                      className={`flex justify-between items-center gap-4 px-4 py-3 rounded-lg whitespace-nowrap ${
                         b.netBalance > 0 
                           ? 'bg-primary/10 border border-primary/20' 
                           : b.netBalance < 0 
@@ -1435,13 +1435,13 @@ export default function MatchDetail() {
                       }`}
                       data-testid={`ledger-balance-${b.playerId}`}
                     >
-                      <div>
+                      <div className="whitespace-nowrap">
                         <span className="font-semibold">{b.playerName}</span>
                         <span className="text-xs text-muted-foreground ml-2">
                           ({b.matchesPlayed} {b.matchesPlayed === 1 ? 'match' : 'matches'})
                         </span>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right whitespace-nowrap">
                         <span className={`font-bold text-lg ${
                           b.netBalance > 0 ? 'text-primary' : b.netBalance < 0 ? 'text-destructive' : ''
                         }`}>
@@ -1457,7 +1457,7 @@ export default function MatchDetail() {
               </div>
               
               {/* Individual Bets */}
-              <div>
+              <div className="min-w-0">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3">Match Results</h4>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {Array.from(new Set(entries.filter(e => e.isComplete).map(e => e.matchId))).map((matchId) => {
