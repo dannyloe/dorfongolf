@@ -1459,7 +1459,7 @@ export default function MatchDetail() {
               {/* Individual Bets */}
               <div className="min-w-0">
                 <h4 className="text-sm font-semibold text-muted-foreground mb-3">Match Results</h4>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+                <div className="space-y-2">
                   {Array.from(new Set(entries.filter(e => e.isComplete).map(e => e.matchId))).map((matchId) => {
                     const matchEntries = entries.filter(e => e.matchId === matchId);
                     const matchName = matchEntries[0]?.matchName || 'Match';
