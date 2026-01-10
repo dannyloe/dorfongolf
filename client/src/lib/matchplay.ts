@@ -38,12 +38,34 @@ export interface HoleResult {
   status: string;
 }
 
+function getTeamHoleScore(
+  teamScores: number[],
+  matchType: string
+): number | null {
+  if (teamScores.length === 0) return null;
+  
+  const sorted = [...teamScores].sort((a, b) => a - b);
+  
+  if (matchType === 'match_play_2_ball') {
+    // 2-ball: sum of lowest 2 scores
+    if (sorted.length < 2) {
+      // If team has less than 2 scores, use what's available
+      return sorted.reduce((sum, s) => sum + s, 0);
+    }
+    return sorted[0] + sorted[1];
+  }
+  
+  // Default (1-ball): lowest single score
+  return sorted[0];
+}
+
 export function calculateMatchPlayResults(
   eventMatch: EventMatch,
   scores: Score[]
 ): HoleResult[] {
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
+  const matchType = eventMatch.matchType || 'match_play_1_ball';
 
   if (!teamA || !teamB) return [];
 
@@ -63,16 +85,16 @@ export function calculateMatchPlayResults(
       .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
       .map((s) => s.strokes);
 
-    const teamABest = teamAScores.length > 0 ? Math.min(...teamAScores) : null;
-    const teamBBest = teamBScores.length > 0 ? Math.min(...teamBScores) : null;
+    const teamAHoleScore = getTeamHoleScore(teamAScores, matchType);
+    const teamBHoleScore = getTeamHoleScore(teamBScores, matchType);
 
     let winner: 'A' | 'B' | 'tie' | null = null;
     
-    if (teamABest !== null && teamBBest !== null) {
-      if (teamABest < teamBBest) {
+    if (teamAHoleScore !== null && teamBHoleScore !== null) {
+      if (teamAHoleScore < teamBHoleScore) {
         winner = 'A';
         cumulativeA++;
-      } else if (teamBBest < teamABest) {
+      } else if (teamBHoleScore < teamAHoleScore) {
         winner = 'B';
         cumulativeB++;
       } else {
@@ -90,8 +112,8 @@ export function calculateMatchPlayResults(
 
     results.push({
       holeNumber: hole,
-      teamAScore: teamABest,
-      teamBScore: teamBBest,
+      teamAScore: teamAHoleScore,
+      teamBScore: teamBHoleScore,
       winner,
       cumulativeA,
       cumulativeB,
