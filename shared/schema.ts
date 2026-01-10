@@ -199,3 +199,22 @@ export type TeamResponse = Team & {
 export type EventMatchResponse = EventMatch & {
   teams: TeamResponse[];
 };
+
+// Ledger types for tracking bets
+export type LedgerEntry = {
+  matchId: number;
+  matchName: string;
+  playerId: number;
+  playerName: string;
+  amount: number; // positive = win, negative = loss, 0 = tie/push
+  isComplete: boolean;
+};
+
+export type PlayerBalance = {
+  playerId: number;
+  playerName: string;
+  totalWon: number;
+  totalLost: number;
+  netBalance: number;
+  matchesPlayed: number;
+};
