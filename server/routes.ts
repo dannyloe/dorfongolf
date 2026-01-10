@@ -28,10 +28,14 @@ export async function registerRoutes(
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
+      const name = currentUser 
+        ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || user.claims.email || "Creator"
+        : "Creator";
+
       await storage.addPlayer({
         matchId: match.id,
         userId: user.claims.sub,
-        name: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : "Creator",
+        name: name,
       });
 
       res.status(201).json(match);
@@ -64,6 +68,16 @@ export async function registerRoutes(
     const matchId = parseInt(req.params.id);
     try {
       const input = api.matches.addPlayer.input.parse(req.body);
+      
+      // If userId is provided, check if they are already in the match
+      if (input.userId) {
+        const existingPlayers = await storage.getMatchPlayers(matchId);
+        const alreadyJoined = existingPlayers.find(p => p.userId === input.userId);
+        if (alreadyJoined) {
+          return res.status(200).json(alreadyJoined);
+        }
+      }
+
       const player = await storage.addPlayer({
         matchId,
         name: input.name,
