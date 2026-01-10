@@ -37,6 +37,8 @@ export const eventMatches = pgTable("event_matches", {
   name: text("name").notNull(),
   matchType: text("match_type").notNull().default("match_play"),
   unitAmount: integer("unit_amount").notNull().default(0),
+  parentMatchId: integer("parent_match_id"),
+  startHole: integer("start_hole").notNull().default(1),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

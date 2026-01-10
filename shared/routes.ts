@@ -132,6 +132,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    createPress: {
+      method: 'POST' as const,
+      path: '/api/event-matches/:id/press',
+      input: z.object({
+        startHole: z.number().min(2).max(17),
+      }),
+      responses: {
+        201: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
   },
 };
 

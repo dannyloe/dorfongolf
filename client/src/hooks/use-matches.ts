@@ -165,3 +165,26 @@ export function useDeleteEventMatch(matchId: number) {
     },
   });
 }
+
+type CreatePressInput = z.infer<typeof api.eventMatches.createPress.input>;
+
+export function useCreatePress(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, startHole }: { eventMatchId: number; startHole: number }) => {
+      const url = buildUrl(api.eventMatches.createPress.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.createPress.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startHole }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to create press");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}

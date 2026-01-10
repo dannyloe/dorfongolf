@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -46,6 +46,8 @@ interface EventMatch {
   name: string;
   matchType: string;
   unitAmount: number;
+  startHole?: number;
+  parentMatchId?: number | null;
   teams: Team[];
 }
 
@@ -60,8 +62,11 @@ export default function MatchDetail() {
   const deleteMatch = useDeleteMatch();
   const createEventMatch = useCreateEventMatch(matchId);
   const deleteEventMatch = useDeleteEventMatch(matchId);
+  const createPress = useCreatePress(matchId);
   
   const [newPlayerName, setNewPlayerName] = useState("");
+  const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
+  const [pressStartHole, setPressStartHole] = useState<number>(2);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingCell, setEditingCell] = useState<{ playerId: number; hole: number } | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -663,9 +668,9 @@ export default function MatchDetail() {
                             {em.matchType === 'stroke_play' ? (
                               <>
                                 <span className="font-medium">Total Strokes: </span>
-                                <span className="text-primary font-bold">{teamA?.name}: {results[17]?.cumulativeA ?? 0}</span>
+                                <span className="text-primary font-bold">{teamA?.name}: {results[results.length - 1]?.cumulativeA ?? 0}</span>
                                 <span className="mx-2">|</span>
-                                <span className="text-accent font-bold">{teamB?.name}: {results[17]?.cumulativeB ?? 0}</span>
+                                <span className="text-accent font-bold">{teamB?.name}: {results[results.length - 1]?.cumulativeB ?? 0}</span>
                               </>
                             ) : (
                               <>
@@ -676,18 +681,77 @@ export default function MatchDetail() {
                               </>
                             )}
                           </div>
-                          {isCreator && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => deleteEventMatch.mutate(em.id)}
-                              className="text-destructive hover:text-destructive"
-                              data-testid={`button-delete-event-match-${em.id}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && isCreator && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setPressDialogMatch(em.id);
+                                  setPressStartHole(2);
+                                }}
+                                data-testid={`button-add-press-${em.id}`}
+                              >
+                                <Plus className="w-3 h-3 mr-1" />
+                                Press
+                              </Button>
+                            )}
+                            {isCreator && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteEventMatch.mutate(em.id)}
+                                className="text-destructive hover:text-destructive"
+                                data-testid={`button-delete-event-match-${em.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Press Dialog */}
+                        {pressDialogMatch === em.id && (
+                          <div className="pt-3 border-t border-border">
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium">Start press on hole:</span>
+                              <Select
+                                value={pressStartHole.toString()}
+                                onValueChange={(val) => setPressStartHole(parseInt(val))}
+                              >
+                                <SelectTrigger className="w-20" data-testid="select-press-hole">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Array.from({ length: 16 }, (_, i) => i + 2).map((hole) => (
+                                    <SelectItem key={hole} value={hole.toString()}>
+                                      {hole}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  createPress.mutate({ eventMatchId: em.id, startHole: pressStartHole });
+                                  setPressDialogMatch(null);
+                                }}
+                                disabled={createPress.isPending}
+                                data-testid="button-confirm-press"
+                              >
+                                {createPress.isPending ? "Creating..." : "Create Press"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setPressDialogMatch(null)}
+                                data-testid="button-cancel-press"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Wager Summary */}
                         {em.unitAmount > 0 && (() => {

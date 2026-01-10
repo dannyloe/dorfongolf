@@ -178,5 +178,23 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post(api.eventMatches.createPress.path, isAuthenticated, async (req, res) => {
+    const parentMatchId = parseInt(req.params.id);
+    try {
+      const input = api.eventMatches.createPress.input.parse(req.body);
+      const pressMatch = await storage.createPressMatch(parentMatchId, input.startHole);
+      const withTeams = await storage.getEventMatchWithTeams(pressMatch.id);
+      res.status(201).json(withTeams);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message === "Parent match not found") {
+        return res.status(404).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

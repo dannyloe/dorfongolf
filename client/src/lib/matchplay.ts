@@ -25,6 +25,8 @@ interface EventMatch {
   eventId: number;
   name: string;
   matchType: string;
+  startHole?: number;
+  parentMatchId?: number | null;
   teams: Team[];
 }
 
@@ -66,6 +68,7 @@ export function calculateMatchPlayResults(
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
   const matchType = eventMatch.matchType || 'match_play_1_ball';
+  const startHole = eventMatch.startHole || 1;
 
   if (!teamA || !teamB) return [];
 
@@ -78,7 +81,7 @@ export function calculateMatchPlayResults(
 
   const isStrokePlay = matchType === 'stroke_play';
 
-  for (let hole = 1; hole <= 18; hole++) {
+  for (let hole = startHole; hole <= 18; hole++) {
     const teamAScores = scores
       .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
       .map((s) => s.strokes);

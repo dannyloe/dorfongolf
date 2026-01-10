@@ -160,6 +160,34 @@ export class DatabaseStorage implements IStorage {
     await db.delete(teams).where(eq(teams.eventMatchId, eventMatchId));
     await db.delete(eventMatches).where(eq(eventMatches.id, eventMatchId));
   }
+
+  async createPressMatch(parentMatchId: number, startHole: number): Promise<EventMatch> {
+    const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
+    if (!parentMatch) throw new Error("Parent match not found");
+
+    const [newPressMatch] = await db.insert(eventMatches).values({
+      eventId: parentMatch.eventId,
+      name: `Press from ${startHole}`,
+      matchType: parentMatch.matchType,
+      unitAmount: parentMatch.unitAmount,
+      parentMatchId: parentMatchId,
+      startHole: startHole,
+    }).returning();
+
+    // Copy teams from parent match
+    for (const parentTeam of parentMatch.teams) {
+      const [newTeam] = await db.insert(teams).values({
+        eventMatchId: newPressMatch.id,
+        name: parentTeam.name,
+      }).returning();
+
+      for (const member of parentTeam.members) {
+        await db.insert(teamMembers).values({ teamId: newTeam.id, playerId: member.playerId });
+      }
+    }
+
+    return newPressMatch;
+  }
 }
 
 export const storage = new DatabaseStorage();
