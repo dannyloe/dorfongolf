@@ -200,6 +200,34 @@ export class DatabaseStorage implements IStorage {
 
     return newPressMatch;
   }
+
+  async getPresetPlayersClaimed(): Promise<{ presetPlayerName: string; userId: string; userName: string }[]> {
+    const usersWithPreset = await db.select().from(users);
+    return usersWithPreset
+      .filter(u => u.presetPlayerName)
+      .map(u => ({
+        presetPlayerName: u.presetPlayerName!,
+        userId: u.id,
+        userName: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Unknown',
+      }));
+  }
+
+  async claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect> {
+    if (presetPlayerName) {
+      // Check if already claimed by someone else
+      const [existingClaim] = await db.select().from(users)
+        .where(eq(users.presetPlayerName, presetPlayerName));
+      if (existingClaim && existingClaim.id !== userId) {
+        throw new Error(`${presetPlayerName} is already claimed by another user`);
+      }
+    }
+
+    const [updated] = await db.update(users)
+      .set({ presetPlayerName })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
 }
 
 export const storage = new DatabaseStorage();

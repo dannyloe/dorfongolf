@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements } from "@/lib/matchplay";
 import { MATCH_TYPES, MATCH_TYPE_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
+import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Player {
@@ -288,12 +289,6 @@ export default function MatchDetail() {
 
       {/* Add Player Section (visible to creator) */}
       {isCreator && (() => {
-        const presetPlayers = [
-          "Zimm", "Hutch", "Cody", "Cole", "Spikey", "CP", "Dooly", "Fontaine",
-          "Ian", "JR", "JP", "Jordan", "Wait", "MeerKat", "Chaney", "Neal",
-          "Nellie", "Hot Left Hansson", "Ocker", "Sub4 Seeger", "Tharnish",
-          "Yaffe", "Shu", "Smitty", "Holland", "Trey Billy", "Ty Adams", "Ty Matlock"
-        ];
         const existingPlayerNames = players.map(p => p.name.toLowerCase());
         
         return (
@@ -307,7 +302,7 @@ export default function MatchDetail() {
             <div className="mb-4">
               <p className="text-sm text-muted-foreground mb-2">Quick add from roster:</p>
               <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                {presetPlayers.map((name) => {
+                {PRESET_PLAYERS.map((name) => {
                   const isAdded = existingPlayerNames.includes(name.toLowerCase());
                   return (
                     <label

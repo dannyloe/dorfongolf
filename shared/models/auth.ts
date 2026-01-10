@@ -21,9 +21,20 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  presetPlayerName: varchar("preset_player_name"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Preset player roster - centralized list
+export const PRESET_PLAYERS = [
+  "Danny", "Zimm", "Hutch", "Cody", "Cole", "Spikey", "CP", "Dooly", "Fontaine",
+  "Ian", "JR", "JP", "Jordan", "Wait", "MeerKat", "Chaney", "Neal",
+  "Nellie", "Hot Left Hansson", "Ocker", "Sub4 Seeger", "Tharnish",
+  "Yaffe", "Shu", "Smitty", "Holland", "Trey Billy", "Ty Adams", "Ty Matlock"
+] as const;
+
+export type PresetPlayerName = typeof PRESET_PLAYERS[number];

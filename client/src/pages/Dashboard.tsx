@@ -5,11 +5,22 @@ import { motion } from "framer-motion";
 import { Calendar, MapPin, ChevronRight, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { ClaimPresetPlayerModal } from "@/components/ClaimPresetPlayerModal";
 
 export default function Dashboard() {
   const { data: matches, isLoading } = useMatches();
   const { user } = useAuth();
+  const [showPresetModal, setShowPresetModal] = useState(false);
+  const [hasShownModal, setHasShownModal] = useState(false);
+
+  useEffect(() => {
+    // Only show modal once per session if user hasn't claimed a preset
+    if (user && !user.presetPlayerName && !hasShownModal) {
+      setShowPresetModal(true);
+      setHasShownModal(true);
+    }
+  }, [user, hasShownModal]);
 
   if (isLoading) {
     return (
@@ -68,6 +79,15 @@ export default function Dashboard() {
             ))}
           </div>
         </section>
+      )}
+
+      {user && (
+        <ClaimPresetPlayerModal
+          open={showPresetModal}
+          onClose={() => setShowPresetModal(false)}
+          currentUserId={user.id}
+          currentPresetName={user.presetPlayerName || null}
+        />
       )}
     </div>
   );

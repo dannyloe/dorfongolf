@@ -28,9 +28,11 @@ export async function registerRoutes(
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
-      const name = currentUser 
-        ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || user.claims.email || "Creator"
-        : "Creator";
+      // Use presetPlayerName if claimed, otherwise fall back to firstName/lastName or email
+      const name = currentUser?.presetPlayerName 
+        || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '') 
+        || user.claims.email 
+        || "Creator";
 
       await storage.addPlayer({
         matchId: match.id,
@@ -206,6 +208,48 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Preset Players Routes
+  app.get(api.presetPlayers.list.path, isAuthenticated, async (req, res) => {
+    const { PRESET_PLAYERS } = await import("@shared/models/auth");
+    const claimedList = await storage.getPresetPlayersClaimed();
+    const claimedMap = new Map(claimedList.map(c => [c.presetPlayerName, c]));
+    
+    const result = PRESET_PLAYERS.map(name => ({
+      name,
+      claimedByUserId: claimedMap.get(name)?.userId || null,
+      claimedByName: claimedMap.get(name)?.userName || null,
+    }));
+    
+    res.json(result);
+  });
+
+  app.post(api.presetPlayers.claim.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.presetPlayers.claim.input.parse(req.body);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      // Validate preset name is in the allowed list (or null to release)
+      if (input.presetPlayerName !== null) {
+        const { PRESET_PLAYERS } = await import("@shared/models/auth");
+        if (!PRESET_PLAYERS.includes(input.presetPlayerName as any)) {
+          return res.status(400).json({ message: `"${input.presetPlayerName}" is not a valid preset player name` });
+        }
+      }
+      
+      const updatedUser = await storage.claimPresetPlayer(userId, input.presetPlayerName);
+      res.json(updatedUser);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message.includes("already claimed")) {
+        return res.status(409).json({ message: err.message });
       }
       res.status(500).json({ message: "Internal server error" });
     }

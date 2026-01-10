@@ -7,6 +7,7 @@ import {
   players,
   eventMatches
 } from './schema';
+import { PRESET_PLAYERS, users } from './models/auth';
 
 export const errorSchemas = {
   validation: z.object({
@@ -157,6 +158,31 @@ export const api = {
         200: z.custom<typeof eventMatches.$inferSelect>(),
         400: errorSchemas.validation,
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  presetPlayers: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/preset-players',
+      responses: {
+        200: z.array(z.object({
+          name: z.string(),
+          claimedByUserId: z.string().nullable(),
+          claimedByName: z.string().nullable(),
+        })),
+      },
+    },
+    claim: {
+      method: 'POST' as const,
+      path: '/api/preset-players/claim',
+      input: z.object({
+        presetPlayerName: z.string().nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof users.$inferSelect>(),
+        400: errorSchemas.validation,
+        409: z.object({ message: z.string() }),
       },
     },
   },
