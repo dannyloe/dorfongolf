@@ -91,6 +91,7 @@ export default function MatchDetail() {
   
   // Round Robin wizard state (two groups)
   const [isRoundRobinMode, setIsRoundRobinMode] = useState(false);
+  const [roundRobinMatchType, setRoundRobinMatchType] = useState<MatchType>(MATCH_TYPES.MATCH_PLAY_1_BALL);
   const [roundRobinGroupAIds, setRoundRobinGroupAIds] = useState<number[]>([]);
   const [roundRobinGroupBIds, setRoundRobinGroupBIds] = useState<number[]>([]);
   const [roundRobinStep, setRoundRobinStep] = useState<'select' | 'preview'>('select');
@@ -223,7 +224,7 @@ export default function MatchDetail() {
         await new Promise<void>((resolve, reject) => {
           createEventMatch.mutate({
             name: `${teamAName} vs ${teamBName}`,
-            matchType: MATCH_TYPES.MATCH_PLAY_1_BALL,
+            matchType: roundRobinMatchType,
             unitAmount: unitAmount * 100,
             teamA: { name: teamAName, playerIds: pairing.teamA },
             teamB: { name: teamBName, playerIds: pairing.teamB },
@@ -661,6 +662,7 @@ export default function MatchDetail() {
                     </div>
 
                     <div className="p-3 bg-muted/50 rounded-lg text-sm">
+                      <p><strong>Match Type:</strong> {MATCH_TYPE_LABELS[roundRobinMatchType]}</p>
                       <p><strong>Wager:</strong> ${unitAmount} per player per match</p>
                       <p><strong>Auto Press:</strong> {autoPressOriginal ? 'Enabled' : 'Disabled'}</p>
                       <p><strong>Total Matches:</strong> {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).length}</p>
@@ -697,6 +699,13 @@ export default function MatchDetail() {
                     onValueChange={(value) => {
                       if (value === WIZARD_TYPES.ROUND_ROBIN_2_MAN) {
                         setIsRoundRobinMode(true);
+                        setRoundRobinMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+                        setRoundRobinGroupAIds([]);
+                        setRoundRobinGroupBIds([]);
+                        setRoundRobinStep('select');
+                      } else if (value === WIZARD_TYPES.ROUND_ROBIN_NASSAU) {
+                        setIsRoundRobinMode(true);
+                        setRoundRobinMatchType(MATCH_TYPES.NASSAU);
                         setRoundRobinGroupAIds([]);
                         setRoundRobinGroupBIds([]);
                         setRoundRobinStep('select');
