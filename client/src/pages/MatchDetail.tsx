@@ -688,7 +688,8 @@ export default function MatchDetail() {
                     onValueChange={(value) => {
                       if (value === WIZARD_TYPES.ROUND_ROBIN_2_MAN) {
                         setIsRoundRobinMode(true);
-                        setRoundRobinPlayerIds([]);
+                        setRoundRobinGroupAIds([]);
+                        setRoundRobinGroupBIds([]);
                         setRoundRobinStep('select');
                       } else {
                         setSelectedMatchType(value as MatchType);
