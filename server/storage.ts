@@ -1,13 +1,13 @@
 import { db } from "./db";
 import { 
-  matches, participants, scores, users,
-  type InsertMatch, type Match, type Participant, type Score, type InsertScore
+  matches, players, scores, users,
+  type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
-  // Auth methods required by Replit Auth integration
+  // Auth methods
   getUser(id: string): Promise<typeof users.$inferSelect | undefined>;
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
 
@@ -15,14 +15,13 @@ export interface IStorage {
   createMatch(match: InsertMatch): Promise<Match>;
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
-  getMatchParticipants(matchId: number): Promise<Participant[]>;
-  joinMatch(matchId: number, userId: string): Promise<Participant>;
+  getMatchPlayers(matchId: number): Promise<Player[]>;
+  addPlayer(player: InsertPlayer): Promise<Player>;
   getMatchScores(matchId: number): Promise<Score[]>;
   submitScore(score: InsertScore): Promise<Score>;
 }
 
 export class DatabaseStorage implements IStorage {
-  // Auth methods delegating to authStorage
   async getUser(id: string) {
     return authStorage.getUser(id);
   }
@@ -30,7 +29,6 @@ export class DatabaseStorage implements IStorage {
     return authStorage.upsertUser(user);
   }
 
-  // App methods
   async createMatch(match: InsertMatch): Promise<Match> {
     const [newMatch] = await db.insert(matches).values(match).returning();
     return newMatch;
@@ -45,21 +43,13 @@ export class DatabaseStorage implements IStorage {
     return match;
   }
 
-  async getMatchParticipants(matchId: number): Promise<Participant[]> {
-    return db.select().from(participants).where(eq(participants.matchId, matchId));
+  async getMatchPlayers(matchId: number): Promise<Player[]> {
+    return db.select().from(players).where(eq(players.matchId, matchId));
   }
 
-  async joinMatch(matchId: number, userId: string): Promise<Participant> {
-    // Check if already joined
-    const [existing] = await db.select().from(participants)
-      .where(and(eq(participants.matchId, matchId), eq(participants.userId, userId)));
-    
-    if (existing) return existing;
-
-    const [participant] = await db.insert(participants)
-      .values({ matchId, userId })
-      .returning();
-    return participant;
+  async addPlayer(player: InsertPlayer): Promise<Player> {
+    const [newPlayer] = await db.insert(players).values(player).returning();
+    return newPlayer;
   }
 
   async getMatchScores(matchId: number): Promise<Score[]> {
@@ -67,11 +57,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async submitScore(score: InsertScore): Promise<Score> {
-    // Check if score exists for this hole/user/match
     const [existing] = await db.select().from(scores)
       .where(and(
         eq(scores.matchId, score.matchId),
-        eq(scores.userId, score.userId),
+        eq(scores.playerId, score.playerId),
         eq(scores.holeNumber, score.holeNumber)
       ));
 

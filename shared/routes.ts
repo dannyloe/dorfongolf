@@ -4,7 +4,7 @@ import {
   matches, 
   insertScoreSchema, 
   scores, 
-  participants 
+  players 
 } from './schema';
 
 export const errorSchemas = {
@@ -44,28 +44,31 @@ export const api = {
       responses: {
         200: z.custom<typeof matches.$inferSelect & {
           creator: any;
-          participants: any[];
+          players: any[];
           scores: any[];
         }>(),
         404: errorSchemas.notFound,
       },
     },
-    join: {
+    addPlayer: {
       method: 'POST' as const,
-      path: '/api/matches/:id/join',
+      path: '/api/matches/:id/players',
+      input: z.object({
+        name: z.string().min(1),
+        userId: z.string().optional(),
+      }),
       responses: {
-        200: z.custom<typeof participants.$inferSelect>(),
-        404: errorSchemas.notFound,
-        400: z.object({ message: z.string() }),
+        201: z.custom<typeof players.$inferSelect>(),
+        400: errorSchemas.validation,
       },
     },
     submitScore: {
       method: 'POST' as const,
       path: '/api/matches/:id/scores',
       input: z.object({
+        playerId: z.number(),
         holeNumber: z.number().min(1).max(18),
         strokes: z.number().min(1),
-        userId: z.string().optional(),
       }),
       responses: {
         200: z.custom<typeof scores.$inferSelect>(),

@@ -16,16 +16,17 @@ export const matches = pgTable("matches", {
   completed: boolean("completed").default(false),
 });
 
-export const participants = pgTable("participants", {
+export const players = pgTable("players", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
-  userId: text("user_id").notNull(), // maps to users.id
+  userId: text("user_id"), // null for guest players
+  name: text("name").notNull(), // display name for player
 });
 
 export const scores = pgTable("scores", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
-  userId: text("user_id").notNull(), // maps to users.id
+  playerId: integer("player_id").notNull(), // maps to players.id
   holeNumber: integer("hole_number").notNull(), // 1-18
   strokes: integer("strokes").notNull(),
 });
@@ -37,19 +38,20 @@ export const matchesRelations = relations(matches, ({ one, many }) => ({
     fields: [matches.creatorId],
     references: [users.id],
   }),
-  participants: many(participants),
+  players: many(players),
   scores: many(scores),
 }));
 
-export const participantsRelations = relations(participants, ({ one }) => ({
+export const playersRelations = relations(players, ({ one, many }) => ({
   match: one(matches, {
-    fields: [participants.matchId],
+    fields: [players.matchId],
     references: [matches.id],
   }),
   user: one(users, {
-    fields: [participants.userId],
+    fields: [players.userId],
     references: [users.id],
   }),
+  scores: many(scores),
 }));
 
 export const scoresRelations = relations(scores, ({ one }) => ({
@@ -57,9 +59,9 @@ export const scoresRelations = relations(scores, ({ one }) => ({
     fields: [scores.matchId],
     references: [matches.id],
   }),
-  user: one(users, {
-    fields: [scores.userId],
-    references: [users.id],
+  player: one(players, {
+    fields: [scores.playerId],
+    references: [players.id],
   }),
 }));
 
@@ -68,13 +70,16 @@ export const scoresRelations = relations(scores, ({ one }) => ({
 export const insertMatchSchema = createInsertSchema(matches).omit({ 
   id: true, 
   createdAt: true, 
-  creatorId: true, // set by server from session
+  creatorId: true, 
   completed: true 
+});
+
+export const insertPlayerSchema = createInsertSchema(players).omit({
+  id: true,
 });
 
 export const insertScoreSchema = createInsertSchema(scores).omit({
   id: true,
-  userId: true, // set by server or verified
 });
 
 // === EXPLICIT API CONTRACT TYPES ===
@@ -82,7 +87,8 @@ export const insertScoreSchema = createInsertSchema(scores).omit({
 export type Match = typeof matches.$inferSelect;
 export type InsertMatch = z.infer<typeof insertMatchSchema>;
 
-export type Participant = typeof participants.$inferSelect;
+export type Player = typeof players.$inferSelect;
+export type InsertPlayer = z.infer<typeof insertPlayerSchema>;
 
 export type Score = typeof scores.$inferSelect;
 export type InsertScore = z.infer<typeof insertScoreSchema>;
@@ -90,15 +96,19 @@ export type InsertScore = z.infer<typeof insertScoreSchema>;
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
 
-// For submitting a score, we might want to allow submitting for specific hole
+export type AddPlayerRequest = {
+  name: string;
+  userId?: string;
+};
+
 export type SubmitScoreRequest = {
+  playerId: number;
   holeNumber: number;
   strokes: number;
-  userId?: string; // Optional: allows admin/creator to enter for others, otherwise defaults to self
 };
 
 export type MatchResponse = Match & {
   creator?: typeof users.$inferSelect;
-  participants?: (Participant & { user: typeof users.$inferSelect })[];
+  players?: Player[];
   scores?: Score[];
 };
