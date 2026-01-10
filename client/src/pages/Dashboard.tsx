@@ -107,13 +107,46 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
             : "bg-white border-primary/20 shadow-xl shadow-primary/5 hover:shadow-2xl hover:shadow-primary/10 hover:border-primary/40"}
         `}
       >
-        {!isHistory && (
-          <div className="absolute top-0 right-0 p-4">
-             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-               In Progress
-             </span>
-          </div>
-        )}
+        <div className="absolute top-0 right-0 p-4 flex items-center gap-2">
+          {isCreator && (
+            showConfirm ? (
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleDelete}
+                  disabled={deleteMatch.isPending}
+                  data-testid={`button-confirm-delete-${match.id}`}
+                >
+                  {deleteMatch.isPending ? "..." : "Confirm"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelDelete}
+                  data-testid={`button-cancel-delete-${match.id}`}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleDelete}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                data-testid={`button-delete-${match.id}`}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )
+          )}
+          {!isHistory && (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              In Progress
+            </span>
+          )}
+        </div>
         
         <div className="flex justify-between items-start">
           <div className="space-y-2">
@@ -132,45 +165,8 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-2">
-            {isCreator && (
-              <div className="flex gap-2">
-                {showConfirm ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={handleDelete}
-                      disabled={deleteMatch.isPending}
-                      data-testid={`button-confirm-delete-${match.id}`}
-                    >
-                      {deleteMatch.isPending ? "..." : "Confirm"}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleCancelDelete}
-                      data-testid={`button-cancel-delete-${match.id}`}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={handleDelete}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                    data-testid={`button-delete-${match.id}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-            )}
-            <div className="flex items-center self-end text-primary font-semibold text-sm group-hover:translate-x-1 transition-transform">
-              View Scorecard <ChevronRight className="w-4 h-4 ml-1" />
-            </div>
+          <div className="flex items-center self-end text-primary font-semibold text-sm group-hover:translate-x-1 transition-transform mt-8">
+            View Scorecard <ChevronRight className="w-4 h-4 ml-1" />
           </div>
         </div>
       </motion.div>
