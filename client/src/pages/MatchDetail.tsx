@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements } from "@/lib/matchplay";
 import { MATCH_TYPES, MATCH_TYPE_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -653,7 +653,7 @@ export default function MatchDetail() {
                                   <th key={r.holeNumber} className="p-2 text-center font-medium">{r.holeNumber}</th>
                                 ))}
                                 <th className="p-2 text-center font-semibold bg-muted/30">In</th>
-                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
                                   <th className="p-2 text-center font-semibold text-xs">Auto Press</th>
                                 )}
                               </tr>
@@ -695,7 +695,7 @@ export default function MatchDetail() {
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
-                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
                                   <td></td>
                                 )}
                               </tr>
@@ -735,57 +735,142 @@ export default function MatchDetail() {
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
-                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
                                   <td></td>
                                 )}
                               </tr>
-                              <tr className="border-t-2 border-border">
-                                <td className="p-2 font-semibold">Status</td>
-                                {results.slice(0, 9).map((r) => {
-                                  const diff = r.cumulativeA - r.cumulativeB;
-                                  const hasScores = r.teamAScore !== null && r.teamBScore !== null;
-                                  if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
-                                  if (em.matchType === 'stroke_play') {
-                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
-                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
-                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
-                                  }
-                                  if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
-                                  if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
-                                  return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
-                                })}
-                                <td className="p-2 text-center bg-muted/30"></td>
-                                {results.slice(9, 18).map((r) => {
-                                  const diff = r.cumulativeA - r.cumulativeB;
-                                  const hasScores = r.teamAScore !== null && r.teamBScore !== null;
-                                  if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
-                                  if (em.matchType === 'stroke_play') {
-                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
-                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
-                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
-                                  }
-                                  if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
-                                  if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
-                                  return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
-                                })}
-                                <td className="p-2 text-center bg-muted/30"></td>
-                                {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                  <td className="p-2 text-center">
-                                    <Checkbox
-                                      id={`autopress-${em.id}`}
-                                      checked={em.autoPressOriginal ?? true}
-                                      onCheckedChange={(checked) => {
-                                        updateAutoPress.mutate({ 
-                                          eventMatchId: em.id, 
-                                          autoPressOriginal: checked === true 
-                                        });
-                                      }}
-                                      disabled={updateAutoPress.isPending}
-                                      data-testid={`checkbox-autopress-${em.id}`}
-                                    />
-                                  </td>
-                                )}
-                              </tr>
+                              {em.matchType === 'nassau' ? (
+                                <>
+                                  {/* Nassau: 3 status rows for Front 9, Back 9, Overall */}
+                                  {(() => {
+                                    const nassauResults = calculateNassauResults(em, scores);
+                                    return (
+                                      <>
+                                        {/* Front 9 Status */}
+                                        <tr className="border-t-2 border-border bg-blue-50/50">
+                                          <td className="p-2 font-semibold text-xs">Front 9</td>
+                                          {nassauResults.front9.map((r) => {
+                                            const diff = r.cumulativeA - r.cumulativeB;
+                                            const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                            if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                            if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                            if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                            return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                          })}
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                          {Array.from({ length: 9 }, (_, i) => (
+                                            <td key={i + 10} className="p-2 text-center text-muted-foreground/30">-</td>
+                                          ))}
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                          <td className="p-2 text-center">
+                                            <Checkbox
+                                              id={`autopress-nassau-${em.id}`}
+                                              checked={em.autoPressOriginal ?? true}
+                                              onCheckedChange={(checked) => {
+                                                updateAutoPress.mutate({ 
+                                                  eventMatchId: em.id, 
+                                                  autoPressOriginal: checked === true 
+                                                });
+                                              }}
+                                              disabled={updateAutoPress.isPending}
+                                              data-testid={`checkbox-autopress-nassau-${em.id}`}
+                                            />
+                                          </td>
+                                        </tr>
+                                        {/* Back 9 Status */}
+                                        <tr className="border-t border-border/50 bg-green-50/50">
+                                          <td className="p-2 font-semibold text-xs">Back 9</td>
+                                          {Array.from({ length: 9 }, (_, i) => (
+                                            <td key={i + 1} className="p-2 text-center text-muted-foreground/30">-</td>
+                                          ))}
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                          {nassauResults.back9.map((r) => {
+                                            const diff = r.cumulativeA - r.cumulativeB;
+                                            const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                            if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                            if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                            if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                            return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                          })}
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                          <td></td>
+                                        </tr>
+                                        {/* Overall Status */}
+                                        <tr className="border-t border-border/50 bg-amber-50/50">
+                                          <td className="p-2 font-semibold text-xs">Overall</td>
+                                          {nassauResults.overall.slice(0, 9).map((r) => {
+                                            const diff = r.cumulativeA - r.cumulativeB;
+                                            const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                            if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                            if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                            if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                            return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                          })}
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                          {nassauResults.overall.slice(9, 18).map((r) => {
+                                            const diff = r.cumulativeA - r.cumulativeB;
+                                            const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                            if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                            if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                            if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                            return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                          })}
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                          <td></td>
+                                        </tr>
+                                      </>
+                                    );
+                                  })()}
+                                </>
+                              ) : (
+                                <tr className="border-t-2 border-border">
+                                  <td className="p-2 font-semibold">Status</td>
+                                  {results.slice(0, 9).map((r) => {
+                                    const diff = r.cumulativeA - r.cumulativeB;
+                                    const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                    if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                    if (em.matchType === 'stroke_play') {
+                                      if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
+                                      if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
+                                      return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
+                                    }
+                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
+                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
+                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
+                                  })}
+                                  <td className="p-2 text-center bg-muted/30"></td>
+                                  {results.slice(9, 18).map((r) => {
+                                    const diff = r.cumulativeA - r.cumulativeB;
+                                    const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                    if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                    if (em.matchType === 'stroke_play') {
+                                      if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
+                                      if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
+                                      return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
+                                    }
+                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
+                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
+                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
+                                  })}
+                                  <td className="p-2 text-center bg-muted/30"></td>
+                                  {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
+                                    <td className="p-2 text-center">
+                                      <Checkbox
+                                        id={`autopress-${em.id}`}
+                                        checked={em.autoPressOriginal ?? true}
+                                        onCheckedChange={(checked) => {
+                                          updateAutoPress.mutate({ 
+                                            eventMatchId: em.id, 
+                                            autoPressOriginal: checked === true 
+                                          });
+                                        }}
+                                        disabled={updateAutoPress.isPending}
+                                        data-testid={`checkbox-autopress-${em.id}`}
+                                      />
+                                    </td>
+                                  )}
+                                </tr>
+                              )}
                               {/* Press Match Rows */}
                               {pressMatches.map((pm) => {
                                 const pressResults = calculateMatchPlayResults(pm, scores);

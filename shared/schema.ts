@@ -230,6 +230,7 @@ export const MATCH_TYPES = {
   MATCH_PLAY_1_BALL: "match_play_1_ball",
   MATCH_PLAY_2_BALL: "match_play_2_ball",
   STROKE_PLAY: "stroke_play",
+  NASSAU: "nassau",
 } as const;
 
 export type MatchType = typeof MATCH_TYPES[keyof typeof MATCH_TYPES];
@@ -238,6 +239,7 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.MATCH_PLAY_1_BALL]: "Match Play - 1 Ball",
   [MATCH_TYPES.MATCH_PLAY_2_BALL]: "Match Play - 2 Ball",
   [MATCH_TYPES.STROKE_PLAY]: "Stroke Play",
+  [MATCH_TYPES.NASSAU]: "Nassau",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({

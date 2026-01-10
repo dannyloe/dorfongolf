@@ -267,31 +267,59 @@ export function calculateLedger(
     const teamB = em.teams[1];
     if (!teamA || !teamB) continue;
 
-    const results = calculateMatchPlayResults(em, scores);
-    // For parent matches: use autoPressOriginal
-    // For press matches: use autoPressOriginal (which inherits from parent's autoPressAllPresses setting)
     const shouldAutoPress = em.autoPressOriginal ?? true;
-    const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
 
-    for (const s of settlement.settlements) {
-      entries.push({
-        matchId: em.id,
-        matchName: em.name,
-        playerId: s.playerId,
-        playerName: s.playerName,
-        amount: s.amount,
-        isComplete: settlement.isComplete,
-      });
+    if (em.matchType === 'nassau') {
+      const nassauResults = calculateNassauResults(em, scores);
+      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, shouldAutoPress);
+      
+      for (const ns of nassauSettlements) {
+        for (const s of ns.settlement.settlements) {
+          entries.push({
+            matchId: em.id,
+            matchName: `${em.name} - ${ns.betName}`,
+            playerId: s.playerId,
+            playerName: s.playerName,
+            amount: s.amount,
+            isComplete: ns.settlement.isComplete,
+          });
 
-      if (settlement.isComplete) {
-        const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
-        if (s.amount > 0) {
-          existing.won += s.amount;
-        } else if (s.amount < 0) {
-          existing.lost += Math.abs(s.amount);
+          if (ns.settlement.isComplete) {
+            const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+            if (s.amount > 0) {
+              existing.won += s.amount;
+            } else if (s.amount < 0) {
+              existing.lost += Math.abs(s.amount);
+            }
+            existing.matches++;
+            playerTotals.set(s.playerId, existing);
+          }
         }
-        existing.matches++;
-        playerTotals.set(s.playerId, existing);
+      }
+    } else {
+      const results = calculateMatchPlayResults(em, scores);
+      const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
+
+      for (const s of settlement.settlements) {
+        entries.push({
+          matchId: em.id,
+          matchName: em.name,
+          playerId: s.playerId,
+          playerName: s.playerName,
+          amount: s.amount,
+          isComplete: settlement.isComplete,
+        });
+
+        if (settlement.isComplete) {
+          const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+          if (s.amount > 0) {
+            existing.won += s.amount;
+          } else if (s.amount < 0) {
+            existing.lost += Math.abs(s.amount);
+          }
+          existing.matches++;
+          playerTotals.set(s.playerId, existing);
+        }
       }
     }
   }
@@ -481,30 +509,58 @@ export function calculateCombinedMatchSettlements(
   const playerAmounts: Map<number, { name: string; amount: number }> = new Map();
   let totalPot = 0;
   let completedCount = 0;
+  let totalBets = 0;
 
   for (const match of allMatches) {
     const teamA = match.teams[0];
     const teamB = match.teams[1];
     if (!teamA || !teamB) continue;
 
-    const results = calculateMatchPlayResults(match, scores);
-    const settlement = calculateBetSettlements(
-      match.unitAmount || 0,
-      teamA,
-      teamB,
-      results,
-      match.matchType,
-      match.autoPressOriginal ?? true
-    );
+    if (match.matchType === 'nassau') {
+      // Nassau has 3 bets
+      totalBets += 3;
+      const nassauResults = calculateNassauResults(match, scores);
+      const nassauSettlements = calculateNassauSettlements(
+        match.unitAmount || 0,
+        teamA,
+        teamB,
+        nassauResults,
+        match.autoPressOriginal ?? true
+      );
 
-    totalPot += settlement.totalPot;
+      for (const ns of nassauSettlements) {
+        totalPot += ns.settlement.totalPot;
+        if (ns.settlement.isComplete) {
+          completedCount++;
+          for (const s of ns.settlement.settlements) {
+            const existing = playerAmounts.get(s.playerId) || { name: s.playerName, amount: 0 };
+            existing.amount += s.amount;
+            playerAmounts.set(s.playerId, existing);
+          }
+        }
+      }
+    } else {
+      // Regular match play or stroke play - 1 bet
+      totalBets += 1;
+      const results = calculateMatchPlayResults(match, scores);
+      const settlement = calculateBetSettlements(
+        match.unitAmount || 0,
+        teamA,
+        teamB,
+        results,
+        match.matchType,
+        match.autoPressOriginal ?? true
+      );
 
-    if (settlement.isComplete) {
-      completedCount++;
-      for (const s of settlement.settlements) {
-        const existing = playerAmounts.get(s.playerId) || { name: s.playerName, amount: 0 };
-        existing.amount += s.amount;
-        playerAmounts.set(s.playerId, existing);
+      totalPot += settlement.totalPot;
+
+      if (settlement.isComplete) {
+        completedCount++;
+        for (const s of settlement.settlements) {
+          const existing = playerAmounts.get(s.playerId) || { name: s.playerName, amount: 0 };
+          existing.amount += s.amount;
+          playerAmounts.set(s.playerId, existing);
+        }
       }
     }
   }
@@ -519,9 +575,298 @@ export function calculateCombinedMatchSettlements(
 
   return {
     totalPot: Math.round(totalPot * 100) / 100,
-    allComplete: completedCount === allMatches.length,
+    allComplete: completedCount === totalBets,
     completedCount,
-    totalMatches: allMatches.length,
+    totalMatches: totalBets,
     playerTotals,
   };
+}
+
+export interface NassauResults {
+  front9: HoleResult[];
+  back9: HoleResult[];
+  overall: HoleResult[];
+}
+
+export interface NassauBetResult {
+  name: string;
+  results: HoleResult[];
+  winner: 'A' | 'B' | 'tie' | null;
+  isComplete: boolean;
+  finalHole: number;
+  autoPressHole: number;
+}
+
+export function calculateNassauResults(
+  eventMatch: EventMatch,
+  scores: Score[]
+): NassauResults {
+  const teamA = eventMatch.teams[0];
+  const teamB = eventMatch.teams[1];
+
+  if (!teamA || !teamB) return { front9: [], back9: [], overall: [] };
+
+  const teamAPlayerIds = new Set(teamA.members.map((m) => m.playerId));
+  const teamBPlayerIds = new Set(teamB.members.map((m) => m.playerId));
+
+  const calculateRange = (startHole: number, endHole: number): HoleResult[] => {
+    const results: HoleResult[] = [];
+    let cumulativeA = 0;
+    let cumulativeB = 0;
+
+    for (let hole = startHole; hole <= endHole; hole++) {
+      const teamAScores = scores
+        .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
+        .map((s) => s.strokes);
+      
+      const teamBScores = scores
+        .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
+        .map((s) => s.strokes);
+
+      const teamAHoleScore = getTeamHoleScore(teamAScores, 'match_play_1_ball');
+      const teamBHoleScore = getTeamHoleScore(teamBScores, 'match_play_1_ball');
+
+      let winner: 'A' | 'B' | 'tie' | null = null;
+      
+      if (teamAHoleScore !== null && teamBHoleScore !== null) {
+        if (teamAHoleScore < teamBHoleScore) {
+          winner = 'A';
+          cumulativeA++;
+        } else if (teamBHoleScore < teamAHoleScore) {
+          winner = 'B';
+          cumulativeB++;
+        } else {
+          winner = 'tie';
+        }
+      }
+
+      const diff = cumulativeA - cumulativeB;
+      let status = 'All Square';
+      if (diff > 0) {
+        status = `${teamA.name} ${diff} UP`;
+      } else if (diff < 0) {
+        status = `${teamB.name} ${Math.abs(diff)} UP`;
+      }
+
+      results.push({
+        holeNumber: hole,
+        teamAScore: teamAHoleScore,
+        teamBScore: teamBHoleScore,
+        winner,
+        cumulativeA,
+        cumulativeB,
+        status,
+      });
+    }
+
+    return results;
+  };
+
+  return {
+    front9: calculateRange(1, 9),
+    back9: calculateRange(10, 18),
+    overall: calculateRange(1, 18),
+  };
+}
+
+function getNassauBetWinner(results: HoleResult[], finalHole: number): 'A' | 'B' | 'tie' | null {
+  const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
+  
+  if (!lastPlayedHole) return null;
+  if (lastPlayedHole.holeNumber < finalHole) return null;
+  
+  const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
+  const holesRemaining = finalHole - lastPlayedHole.holeNumber;
+  
+  if (holesRemaining === 0) {
+    if (diff > 0) return 'A';
+    if (diff < 0) return 'B';
+    return 'tie';
+  }
+  
+  if (Math.abs(diff) > holesRemaining) {
+    return diff > 0 ? 'A' : 'B';
+  }
+  
+  return null;
+}
+
+export interface NassauSettlement {
+  betName: string;
+  settlement: MatchSettlement;
+  autoPressTriggered: boolean;
+  autoPressMultiplier: number;
+}
+
+export function calculateNassauSettlements(
+  unitAmountCents: number,
+  teamA: Team,
+  teamB: Team,
+  nassauResults: NassauResults,
+  autoPress: boolean
+): NassauSettlement[] {
+  const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number }[] = [
+    { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8 },
+    { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17 },
+    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17 },
+  ];
+
+  return bets.map(bet => {
+    const winner = getNassauBetWinner(bet.results, bet.finalHole);
+    const unitAmount = unitAmountCents / 100;
+    
+    const teamASize = teamA.members.length;
+    const teamBSize = teamB.members.length;
+    const maxTeamSize = Math.max(teamASize, teamBSize);
+    
+    let autoPressMultiplier = 1;
+    let autoPressNullified = false;
+    let autoPressTriggered = false;
+    
+    if (autoPress && bet.results.length >= 2) {
+      const checkHoleResult = bet.results.find(r => r.holeNumber === bet.autoPressCheckHole);
+      const finalHoleResult = bet.results.find(r => r.holeNumber === bet.finalHole);
+      
+      if (checkHoleResult && finalHoleResult && 
+          finalHoleResult.teamAScore !== null && finalHoleResult.teamBScore !== null) {
+        const statusBeforeFinal = checkHoleResult.cumulativeA - checkHoleResult.cumulativeB;
+        
+        if (Math.abs(statusBeforeFinal) >= 2) {
+          autoPressTriggered = true;
+          const leaderBeforeFinal = statusBeforeFinal > 0 ? 'A' : 'B';
+          const finalHoleWinner = finalHoleResult.winner;
+          
+          if (finalHoleWinner === leaderBeforeFinal) {
+            autoPressMultiplier = 2;
+          } else if (finalHoleWinner === 'tie') {
+            autoPressMultiplier = 1;
+          } else {
+            autoPressNullified = true;
+          }
+        }
+      }
+    }
+    
+    const totalPot = unitAmount * maxTeamSize * autoPressMultiplier;
+    
+    if (winner === null) {
+      return {
+        betName: bet.name,
+        settlement: {
+          isComplete: false,
+          isTie: false,
+          winner: null,
+          winningTeamName: null,
+          settlements: [],
+          totalPot: unitAmount * maxTeamSize,
+        },
+        autoPressTriggered,
+        autoPressMultiplier,
+      };
+    }
+    
+    if (autoPressNullified) {
+      return {
+        betName: bet.name,
+        settlement: {
+          isComplete: true,
+          isTie: true,
+          winner: null,
+          winningTeamName: null,
+          settlements: [
+            ...teamA.members.map((m) => ({
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              teamName: teamA.name,
+              amount: 0,
+            })),
+            ...teamB.members.map((m) => ({
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              teamName: teamB.name,
+              amount: 0,
+            })),
+          ],
+          totalPot,
+        },
+        autoPressTriggered,
+        autoPressMultiplier,
+      };
+    }
+    
+    if (winner === 'tie') {
+      return {
+        betName: bet.name,
+        settlement: {
+          isComplete: true,
+          isTie: true,
+          winner: null,
+          winningTeamName: null,
+          settlements: [
+            ...teamA.members.map((m) => ({
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              teamName: teamA.name,
+              amount: 0,
+            })),
+            ...teamB.members.map((m) => ({
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              teamName: teamB.name,
+              amount: 0,
+            })),
+          ],
+          totalPot,
+        },
+        autoPressTriggered,
+        autoPressMultiplier,
+      };
+    }
+    
+    const winningTeam = winner === 'A' ? teamA : teamB;
+    const losingTeam = winner === 'A' ? teamB : teamA;
+    const winningTeamSize = winningTeam.members.length;
+    const losingTeamSize = losingTeam.members.length;
+    
+    const effectiveUnitAmount = unitAmount * autoPressMultiplier;
+    const effectiveTotalPot = effectiveUnitAmount * maxTeamSize;
+    
+    let winAmount: number;
+    let loseAmount: number;
+    
+    if (winningTeamSize >= losingTeamSize) {
+      winAmount = effectiveUnitAmount;
+      loseAmount = effectiveTotalPot / losingTeamSize;
+    } else {
+      winAmount = effectiveTotalPot / winningTeamSize;
+      loseAmount = effectiveUnitAmount;
+    }
+    
+    return {
+      betName: bet.name,
+      settlement: {
+        isComplete: true,
+        isTie: false,
+        winner,
+        winningTeamName: winningTeam.name,
+        settlements: [
+          ...winningTeam.members.map((m) => ({
+            playerId: m.playerId,
+            playerName: m.player?.name || `Player ${m.playerId}`,
+            teamName: winningTeam.name,
+            amount: Math.round(winAmount * 100) / 100,
+          })),
+          ...losingTeam.members.map((m) => ({
+            playerId: m.playerId,
+            playerName: m.player?.name || `Player ${m.playerId}`,
+            teamName: losingTeam.name,
+            amount: -Math.round(loseAmount * 100) / 100,
+          })),
+        ],
+        totalPot: effectiveTotalPot,
+      },
+      autoPressTriggered,
+      autoPressMultiplier,
+    };
+  });
 }
