@@ -8,6 +8,8 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger } from "@/lib/matchplay";
+import { MATCH_TYPES, MATCH_TYPE_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Player {
   id: number;
@@ -67,6 +69,7 @@ export default function MatchDetail() {
   
   // Event Match creation state
   const [showCreateMatch, setShowCreateMatch] = useState(false);
+  const [selectedMatchType, setSelectedMatchType] = useState<MatchType>(MATCH_TYPES.MATCH_PLAY_1_BALL);
   const [unitAmount, setUnitAmount] = useState<number>(5);
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
@@ -114,13 +117,14 @@ export default function MatchDetail() {
     
     createEventMatch.mutate({
       name: autoMatchName,
-      matchType: "match_play",
+      matchType: selectedMatchType,
       unitAmount: unitAmount * 100,
       teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
       teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
+        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
         setUnitAmount(5);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
@@ -329,18 +333,38 @@ export default function MatchDetail() {
             </div>
             
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="5"
-                  value={unitAmount}
-                  onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
-                  className="mt-1 max-w-32"
-                  data-testid="input-unit-amount"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Match Type</label>
+                  <Select
+                    value={selectedMatchType}
+                    onValueChange={(value) => setSelectedMatchType(value as MatchType)}
+                  >
+                    <SelectTrigger className="mt-1" data-testid="select-match-type">
+                      <SelectValue placeholder="Select match type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MATCH_TYPE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value} data-testid={`option-${opt.value}`}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="5"
+                    value={unitAmount}
+                    onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
+                    className="mt-1"
+                    data-testid="input-unit-amount"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -445,6 +469,9 @@ export default function MatchDetail() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
+                        <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
+                          {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
+                        </span>
                         {em.unitAmount > 0 && (
                           <span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">
                             ${(em.unitAmount / 100).toFixed(2)}
