@@ -37,12 +37,7 @@ export default function Ledger() {
   }, [dateRange]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/ledger", queryParams],
-    queryFn: async () => {
-      const res = await fetch(`/api/ledger?${queryParams}`);
-      if (!res.ok) throw new Error("Failed to fetch ledger data");
-      return res.json();
-    },
+    queryKey: [`/api/ledger?${queryParams}`],
   });
 
   const ledgerResults = useMemo(() => {
