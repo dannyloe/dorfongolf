@@ -1479,11 +1479,17 @@ export default function MatchDetail() {
                 <div className="space-y-2">
                   {Array.from(new Set(entries.filter(e => e.isComplete).map(e => e.matchId))).map((matchId) => {
                     const matchEntries = entries.filter(e => e.matchId === matchId);
-                    const matchName = matchEntries[0]?.matchName || 'Match';
+                    const eventMatch = eventMatches.find(em => em.id === matchId);
+                    const teamA = eventMatch?.teams[0];
+                    const teamB = eventMatch?.teams[1];
+                    const matchType = eventMatch?.matchType ? (MATCH_TYPE_LABELS[eventMatch.matchType as MatchType] || eventMatch.matchType) : '';
+                    const matchTitle = teamA && teamB 
+                      ? `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`
+                      : matchEntries[0]?.matchName || 'Match';
                     
                     return (
                       <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
-                        <div className="text-sm font-semibold mb-2">{matchName}</div>
+                        <div className="text-sm font-semibold mb-2">{matchTitle}</div>
                         <div className="grid grid-cols-2 gap-1">
                           {matchEntries.map((e) => (
                             <div 
