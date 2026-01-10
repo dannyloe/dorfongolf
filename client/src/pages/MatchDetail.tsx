@@ -87,9 +87,10 @@ export default function MatchDetail() {
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
   
-  // Round Robin wizard state
+  // Round Robin wizard state (two groups)
   const [isRoundRobinMode, setIsRoundRobinMode] = useState(false);
-  const [roundRobinPlayerIds, setRoundRobinPlayerIds] = useState<number[]>([]);
+  const [roundRobinGroupAIds, setRoundRobinGroupAIds] = useState<number[]>([]);
+  const [roundRobinGroupBIds, setRoundRobinGroupBIds] = useState<number[]>([]);
   const [roundRobinStep, setRoundRobinStep] = useState<'select' | 'preview'>('select');
   const [isCreatingRoundRobin, setIsCreatingRoundRobin] = useState(false);
 
@@ -189,28 +190,16 @@ export default function MatchDetail() {
     return teams;
   };
 
-  // Generate all match pairings between disjoint teams
-  const generateRoundRobinMatches = (playerIds: number[]): { teamA: [number, number]; teamB: [number, number] }[] => {
-    const teams = generateTwoPlayerTeams(playerIds);
+  // Generate cross-product matches between Group A teams and Group B teams
+  const generateRoundRobinMatches = (groupAIds: number[], groupBIds: number[]): { teamA: [number, number]; teamB: [number, number] }[] => {
+    const groupATeams = generateTwoPlayerTeams(groupAIds);
+    const groupBTeams = generateTwoPlayerTeams(groupBIds);
     const matches: { teamA: [number, number]; teamB: [number, number] }[] = [];
-    const seenPairings = new Set<string>();
 
-    for (let i = 0; i < teams.length; i++) {
-      for (let j = i + 1; j < teams.length; j++) {
-        const teamA = teams[i];
-        const teamB = teams[j];
-        // Check if teams are disjoint (no shared players)
-        if (!teamA.some(p => teamB.includes(p))) {
-          // Normalize pairing to avoid duplicates
-          const sigA = teamA.slice().sort().join(',');
-          const sigB = teamB.slice().sort().join(',');
-          const pairingSig = [sigA, sigB].sort().join('|');
-          
-          if (!seenPairings.has(pairingSig)) {
-            seenPairings.add(pairingSig);
-            matches.push({ teamA, teamB });
-          }
-        }
+    // Cross-product: every Group A team vs every Group B team
+    for (const teamA of groupATeams) {
+      for (const teamB of groupBTeams) {
+        matches.push({ teamA, teamB });
       }
     }
     return matches;
@@ -219,10 +208,10 @@ export default function MatchDetail() {
   const getPlayerNameById = (id: number) => players.find(p => p.id === id)?.name || 'Unknown';
 
   const handleCreateRoundRobinMatches = async () => {
-    if (roundRobinPlayerIds.length < 4) return;
+    if (roundRobinGroupAIds.length < 2 || roundRobinGroupBIds.length < 2) return;
     
     setIsCreatingRoundRobin(true);
-    const matchPairings = generateRoundRobinMatches(roundRobinPlayerIds);
+    const matchPairings = generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds);
     
     try {
       for (const pairing of matchPairings) {
@@ -248,7 +237,8 @@ export default function MatchDetail() {
       // Reset wizard state
       setShowCreateMatch(false);
       setIsRoundRobinMode(false);
-      setRoundRobinPlayerIds([]);
+      setRoundRobinGroupAIds([]);
+      setRoundRobinGroupBIds([]);
       setRoundRobinStep('select');
       setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
     } catch (error) {
@@ -258,11 +248,21 @@ export default function MatchDetail() {
     }
   };
 
-  const toggleRoundRobinPlayer = (playerId: number) => {
-    if (roundRobinPlayerIds.includes(playerId)) {
-      setRoundRobinPlayerIds(roundRobinPlayerIds.filter(id => id !== playerId));
+  const toggleRoundRobinPlayerInGroup = (playerId: number, group: 'A' | 'B') => {
+    if (group === 'A') {
+      if (roundRobinGroupAIds.includes(playerId)) {
+        setRoundRobinGroupAIds(roundRobinGroupAIds.filter(id => id !== playerId));
+      } else {
+        setRoundRobinGroupAIds([...roundRobinGroupAIds, playerId]);
+        setRoundRobinGroupBIds(roundRobinGroupBIds.filter(id => id !== playerId));
+      }
     } else {
-      setRoundRobinPlayerIds([...roundRobinPlayerIds, playerId]);
+      if (roundRobinGroupBIds.includes(playerId)) {
+        setRoundRobinGroupBIds(roundRobinGroupBIds.filter(id => id !== playerId));
+      } else {
+        setRoundRobinGroupBIds([...roundRobinGroupBIds, playerId]);
+        setRoundRobinGroupAIds(roundRobinGroupAIds.filter(id => id !== playerId));
+      }
     }
   };
 
@@ -504,7 +504,8 @@ export default function MatchDetail() {
               <Button size="icon" variant="ghost" onClick={() => {
                 setShowCreateMatch(false);
                 setIsRoundRobinMode(false);
-                setRoundRobinPlayerIds([]);
+                setRoundRobinGroupAIds([]);
+                setRoundRobinGroupBIds([]);
                 setRoundRobinStep('select');
               }}>
                 <X className="w-4 h-4" />
@@ -546,36 +547,68 @@ export default function MatchDetail() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">
-                        Select Players (minimum 4)
-                      </label>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        All possible 2-man team combinations will play against each other
-                      </p>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
-                        {players.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => toggleRoundRobinPlayer(p.id)}
-                            className={`px-3 py-2 rounded-lg text-sm transition-colors ${
-                              roundRobinPlayerIds.includes(p.id)
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-muted hover:bg-muted/80"
-                            }`}
-                            data-testid={`button-rr-player-${p.id}`}
-                          >
-                            {p.name}
-                          </button>
-                        ))}
+                    <p className="text-xs text-muted-foreground">
+                      Select players for Group 1 (left) and Group 2 (right). All 2-man teams from Group 1 will play against all 2-man teams from Group 2.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
+                          <span className="font-semibold text-primary text-sm">
+                            Group 1 ({roundRobinGroupAIds.length} players, {generateTwoPlayerTeams(roundRobinGroupAIds).length} teams)
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          {players.map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => toggleRoundRobinPlayerInGroup(p.id, 'A')}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                roundRobinGroupAIds.includes(p.id)
+                                  ? "bg-primary text-primary-foreground"
+                                  : roundRobinGroupBIds.includes(p.id)
+                                  ? "bg-muted/50 text-muted-foreground line-through"
+                                  : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-rr-group-a-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
+                          <span className="font-semibold text-accent text-sm">
+                            Group 2 ({roundRobinGroupBIds.length} players, {generateTwoPlayerTeams(roundRobinGroupBIds).length} teams)
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          {players.map((p) => (
+                            <button
+                              key={p.id}
+                              onClick={() => toggleRoundRobinPlayerInGroup(p.id, 'B')}
+                              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                roundRobinGroupBIds.includes(p.id)
+                                  ? "bg-accent text-accent-foreground"
+                                  : roundRobinGroupAIds.includes(p.id)
+                                  ? "bg-muted/50 text-muted-foreground line-through"
+                                  : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-rr-group-b-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
-                    {roundRobinPlayerIds.length >= 4 && (
+                    {roundRobinGroupAIds.length >= 2 && roundRobinGroupBIds.length >= 2 && (
                       <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
                         <p className="text-sm font-medium text-primary">
-                          {generateTwoPlayerTeams(roundRobinPlayerIds).length} possible teams, {' '}
-                          {generateRoundRobinMatches(roundRobinPlayerIds).length} matches will be created
+                          {generateTwoPlayerTeams(roundRobinGroupAIds).length} Group 1 teams x {generateTwoPlayerTeams(roundRobinGroupBIds).length} Group 2 teams = {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).length} matches
                         </p>
                       </div>
                     )}
@@ -585,7 +618,8 @@ export default function MatchDetail() {
                         variant="outline"
                         onClick={() => {
                           setIsRoundRobinMode(false);
-                          setRoundRobinPlayerIds([]);
+                          setRoundRobinGroupAIds([]);
+                          setRoundRobinGroupBIds([]);
                         }}
                         className="flex-1"
                       >
@@ -593,7 +627,7 @@ export default function MatchDetail() {
                       </Button>
                       <Button
                         onClick={() => setRoundRobinStep('preview')}
-                        disabled={roundRobinPlayerIds.length < 4}
+                        disabled={roundRobinGroupAIds.length < 2 || roundRobinGroupBIds.length < 2}
                         className="flex-1"
                         data-testid="button-rr-preview"
                       >
@@ -604,7 +638,7 @@ export default function MatchDetail() {
                 ) : (
                   <>
                     <div className="max-h-64 overflow-y-auto space-y-2">
-                      {generateRoundRobinMatches(roundRobinPlayerIds).map((match, idx) => {
+                      {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).map((match, idx) => {
                         const teamAName = match.teamA.map(id => getPlayerNameById(id)).join('/');
                         const teamBName = match.teamB.map(id => getPlayerNameById(id)).join('/');
                         return (
@@ -620,7 +654,7 @@ export default function MatchDetail() {
                     <div className="p-3 bg-muted/50 rounded-lg text-sm">
                       <p><strong>Wager:</strong> ${unitAmount} per player per match</p>
                       <p><strong>Auto Press:</strong> {autoPressOriginal ? 'Enabled' : 'Disabled'}</p>
-                      <p><strong>Total Matches:</strong> {generateRoundRobinMatches(roundRobinPlayerIds).length}</p>
+                      <p><strong>Total Matches:</strong> {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).length}</p>
                     </div>
 
                     <div className="flex gap-2">
@@ -638,7 +672,7 @@ export default function MatchDetail() {
                         className="flex-1"
                         data-testid="button-rr-create"
                       >
-                        {isCreatingRoundRobin ? 'Creating...' : `Create ${generateRoundRobinMatches(roundRobinPlayerIds).length} Matches`}
+                        {isCreatingRoundRobin ? 'Creating...' : `Create ${generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).length} Matches`}
                       </Button>
                     </div>
                   </>
