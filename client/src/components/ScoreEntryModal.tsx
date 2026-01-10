@@ -1,30 +1,65 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Hash, Award } from "lucide-react";
+import { X, Hash, Award, Users } from "lucide-react";
 import { useSubmitScore } from "@/hooks/use-matches";
+
+interface Player {
+  id: number;
+  matchId: number;
+  userId: string | null;
+  name: string;
+}
 
 interface ScoreEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
   matchId: number;
-  existingScores?: Record<number, number>; // hole -> score map
+  players: Player[];
+  existingScores?: { playerId: number; holeNumber: number; strokes: number }[];
 }
 
-export function ScoreEntryModal({ isOpen, onClose, matchId, existingScores = {} }: ScoreEntryModalProps) {
+export function ScoreEntryModal({ isOpen, onClose, matchId, players, existingScores = [] }: ScoreEntryModalProps) {
+  const [selectedPlayer, setSelectedPlayer] = useState<number | null>(players[0]?.id || null);
   const [selectedHole, setSelectedHole] = useState<number>(1);
   const [strokes, setStrokes] = useState<number>(4);
   const submitScore = useSubmitScore(matchId);
 
+  const getExistingScore = (playerId: number, hole: number) => {
+    return existingScores.find(s => s.playerId === playerId && s.holeNumber === hole)?.strokes;
+  };
+
   const handleSubmit = () => {
+    if (selectedPlayer === null) return;
+    
     submitScore.mutate(
-      { holeNumber: selectedHole, strokes },
+      { playerId: selectedPlayer, holeNumber: selectedHole, strokes },
       {
         onSuccess: () => {
-          onClose();
+          // Move to next hole
+          if (selectedHole < 18) {
+            setSelectedHole(selectedHole + 1);
+            const nextScore = getExistingScore(selectedPlayer, selectedHole + 1);
+            setStrokes(nextScore || 4);
+          } else {
+            onClose();
+          }
         },
       }
     );
+  };
+
+  const handlePlayerChange = (playerId: number) => {
+    setSelectedPlayer(playerId);
+    const score = getExistingScore(playerId, selectedHole);
+    setStrokes(score || 4);
+  };
+
+  const handleHoleChange = (hole: number) => {
+    setSelectedHole(hole);
+    if (selectedPlayer !== null) {
+      const score = getExistingScore(selectedPlayer, hole);
+      setStrokes(score || 4);
+    }
   };
 
   const increment = () => setStrokes(s => Math.min(s + 1, 15));
@@ -45,7 +80,7 @@ export function ScoreEntryModal({ isOpen, onClose, matchId, existingScores = {} 
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
           >
             <div className="p-4 border-b border-border flex justify-between items-center bg-primary text-primary-foreground">
               <h2 className="text-lg font-bold font-display">Enter Score</h2>
@@ -55,6 +90,29 @@ export function ScoreEntryModal({ isOpen, onClose, matchId, existingScores = {} 
             </div>
 
             <div className="p-6 space-y-6">
+              {/* Player Selection */}
+              <div className="space-y-3">
+                <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4" /> Select Player
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {players.map((player) => (
+                    <button
+                      key={player.id}
+                      onClick={() => handlePlayerChange(player.id)}
+                      className={`
+                        px-3 py-2 rounded-lg text-sm font-medium transition-all
+                        ${selectedPlayer === player.id 
+                          ? "bg-primary text-white shadow-lg" 
+                          : "bg-muted text-muted-foreground hover:bg-muted-foreground/10"}
+                      `}
+                    >
+                      {player.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Hole Selection */}
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
@@ -62,17 +120,13 @@ export function ScoreEntryModal({ isOpen, onClose, matchId, existingScores = {} 
                 </label>
                 <div className="grid grid-cols-6 gap-2">
                   {Array.from({ length: 18 }, (_, i) => i + 1).map((hole) => {
-                    const hasScore = existingScores[hole] !== undefined;
+                    const hasScore = selectedPlayer !== null && getExistingScore(selectedPlayer, hole) !== undefined;
                     const isSelected = selectedHole === hole;
                     
                     return (
                       <button
                         key={hole}
-                        onClick={() => {
-                          setSelectedHole(hole);
-                          if (existingScores[hole]) setStrokes(existingScores[hole]);
-                          else setStrokes(4); // Default par
-                        }}
+                        onClick={() => handleHoleChange(hole)}
                         className={`
                           aspect-square rounded-lg text-sm font-bold flex items-center justify-center transition-all
                           ${isSelected 
@@ -115,7 +169,7 @@ export function ScoreEntryModal({ isOpen, onClose, matchId, existingScores = {} 
 
               <button
                 onClick={handleSubmit}
-                disabled={submitScore.isPending}
+                disabled={submitScore.isPending || selectedPlayer === null}
                 className="w-full btn-primary"
               >
                 {submitScore.isPending ? "Saving..." : "Save Score"}

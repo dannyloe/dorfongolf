@@ -1,36 +1,116 @@
-import { useMatch, useJoinMatch } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Share2 } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus } from "lucide-react";
 import { format } from "date-fns";
-import { ScoreEntryModal } from "@/components/ScoreEntryModal";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+interface Player {
+  id: number;
+  matchId: number;
+  userId: string | null;
+  name: string;
+}
+
+interface Score {
+  id: number;
+  matchId: number;
+  playerId: number;
+  holeNumber: number;
+  strokes: number;
+}
 
 export default function MatchDetail() {
   const [, params] = useRoute("/match/:id");
   const matchId = parseInt(params?.id || "0");
   const { data: match, isLoading, error } = useMatch(matchId);
   const { user } = useAuth();
-  const joinMatch = useJoinMatch();
-  const [isScoreModalOpen, setIsScoreModalOpen] = useState(false);
+  const addPlayer = useAddPlayer(matchId);
+  const submitScore = useSubmitScore(matchId);
+  
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [editingCell, setEditingCell] = useState<{ playerId: number; hole: number } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  // Focus input when editing cell changes
+  useEffect(() => {
+    if (editingCell) {
+      const key = `${editingCell.playerId}-${editingCell.hole}`;
+      const input = inputRefs.current[key];
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  }, [editingCell]);
 
   if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading match details...</div>;
   if (error || !match) return <div className="p-12 text-center text-destructive">Match not found</div>;
 
-  const isParticipant = match.participants?.some(p => p.userId === user?.id);
-  
-  // Calculate totals
-  const getParticipantScore = (userId: string) => {
-    return match.scores?.filter(s => s.userId === userId).reduce((acc, curr) => acc + curr.strokes, 0) || 0;
-  };
-  
-  // Get score for specific user and hole
-  const getScore = (userId: string, hole: number) => {
-    return match.scores?.find(s => s.userId === userId && s.holeNumber === hole)?.strokes || "-";
+  const players: Player[] = match.players || [];
+  const scores: Score[] = match.scores || [];
+  const isCreator = user?.id === match.creatorId;
+  const isPlayer = players.some((p: Player) => p.userId === user?.id);
+  const currentPlayer = players.find((p: Player) => p.userId === user?.id);
+
+  const getPlayerScore = (playerId: number) => {
+    return scores.filter((s: Score) => s.playerId === playerId).reduce((acc, curr) => acc + curr.strokes, 0) || 0;
   };
 
-  const currentUserScores = match.scores?.filter(s => s.userId === user?.id).reduce((acc, curr) => ({ ...acc, [curr.holeNumber]: curr.strokes }), {}) || {};
+  const getScore = (playerId: number, hole: number): number | null => {
+    const score = scores.find((s: Score) => s.playerId === playerId && s.holeNumber === hole);
+    return score ? score.strokes : null;
+  };
+
+  const handleJoinMatch = () => {
+    if (!user) return;
+    const name = user.firstName 
+      ? `${user.firstName} ${user.lastName || ''}`.trim() 
+      : user.email || "Player";
+    addPlayer.mutate({ name, userId: user.id });
+  };
+
+  const handleAddGuest = () => {
+    if (!newPlayerName.trim()) return;
+    addPlayer.mutate({ name: newPlayerName.trim() });
+    setNewPlayerName("");
+  };
+
+  const handleCellClick = (playerId: number, hole: number) => {
+    const currentScore = getScore(playerId, hole);
+    setEditingCell({ playerId, hole });
+    setEditValue(currentScore !== null ? String(currentScore) : "");
+  };
+
+  const handleScoreSubmit = (playerId: number, hole: number) => {
+    const strokes = parseInt(editValue);
+    if (!isNaN(strokes) && strokes >= 1 && strokes <= 20) {
+      submitScore.mutate({ playerId, holeNumber: hole, strokes });
+    }
+    
+    // Move to next hole
+    if (hole < 18) {
+      setEditingCell({ playerId, hole: hole + 1 });
+      setEditValue(getScore(playerId, hole + 1)?.toString() || "");
+    } else {
+      setEditingCell(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, playerId: number, hole: number) => {
+    if (e.key === "Enter") {
+      handleScoreSubmit(playerId, hole);
+    } else if (e.key === "Escape") {
+      setEditingCell(null);
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      handleScoreSubmit(playerId, hole);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
@@ -42,7 +122,7 @@ export default function MatchDetail() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-primary font-semibold tracking-wide uppercase text-xs">
               <Calendar className="w-4 h-4" />
-              {format(new Date(match.createdAt!), "MMMM d, yyyy")}
+              {match.createdAt && format(new Date(match.createdAt), "MMMM d, yyyy")}
             </div>
             <h1 className="text-4xl font-display font-bold text-foreground">{match.name}</h1>
             <div className="flex items-center gap-2 text-muted-foreground text-lg">
@@ -52,25 +132,71 @@ export default function MatchDetail() {
           </div>
 
           <div className="flex gap-3">
-             {!isParticipant ? (
-              <button
-                onClick={() => joinMatch.mutate(match.id)}
-                disabled={joinMatch.isPending}
+            {!isPlayer && (
+              <Button
+                onClick={handleJoinMatch}
+                disabled={addPlayer.isPending}
                 className="btn-primary"
+                data-testid="button-join-match"
               >
                 <UserPlus className="w-4 h-4 mr-2" />
-                {joinMatch.isPending ? "Joining..." : "Join Match"}
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsScoreModalOpen(true)}
-                className="btn-primary"
-              >
-                <Trophy className="w-4 h-4 mr-2" />
-                Enter Score
-              </button>
+                {addPlayer.isPending ? "Joining..." : "Join Match"}
+              </Button>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Add Player Section (visible to creator) */}
+      {isCreator && (
+        <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
+          <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
+            <UserPlus className="w-5 h-5 text-primary" />
+            Add Player
+          </h3>
+          <div className="flex gap-3">
+            <Input
+              placeholder="Enter player name..."
+              value={newPlayerName}
+              onChange={(e) => setNewPlayerName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleAddGuest()}
+              className="flex-1"
+              data-testid="input-player-name"
+            />
+            <Button 
+              onClick={handleAddGuest} 
+              disabled={!newPlayerName.trim() || addPlayer.isPending}
+              data-testid="button-add-player"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Players List */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
+        <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-accent" />
+          Players ({players.length})
+        </h3>
+        <div className="flex flex-wrap gap-2">
+          {players.map((p: Player) => (
+            <span 
+              key={p.id} 
+              className={`px-3 py-1 rounded-full text-sm font-medium ${
+                p.userId === user?.id 
+                  ? "bg-primary text-primary-foreground" 
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {p.name} {p.userId === user?.id && "(You)"}
+            </span>
+          ))}
+          {players.length === 0 && (
+            <span className="text-muted-foreground">No players yet</span>
+          )}
         </div>
       </div>
 
@@ -87,47 +213,74 @@ export default function MatchDetail() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {match.participants?.map((p) => {
+            {players.map((p: Player) => {
               const isCurrentUser = p.userId === user?.id;
+              const canEdit = isCreator || isCurrentUser;
+              
               return (
                 <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isCurrentUser ? "bg-accent/5" : ""}`}>
                   <td className={`p-4 font-semibold sticky left-0 bg-white/95 backdrop-blur z-10 ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
                     <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
-                      {p.user.firstName || "Player"} {isCurrentUser && "(You)"}
+                      {p.name} {isCurrentUser && "(You)"}
                     </div>
                   </td>
-                  {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => (
-                    <td key={hole} className="p-3 text-center border-l border-border/30">
-                      <span className={`font-mono font-medium ${isCurrentUser ? "text-foreground" : "text-muted-foreground"}`}>
-                        {getScore(p.userId, hole)}
-                      </span>
-                    </td>
-                  ))}
+                  {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => {
+                    const score = getScore(p.id, hole);
+                    const isEditing = editingCell?.playerId === p.id && editingCell?.hole === hole;
+                    const cellKey = `${p.id}-${hole}`;
+                    
+                    return (
+                      <td 
+                        key={hole} 
+                        className="p-1 text-center border-l border-border/30"
+                        onClick={() => canEdit && handleCellClick(p.id, hole)}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={(el) => { inputRefs.current[cellKey] = el; }}
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={() => handleScoreSubmit(p.id, hole)}
+                            onKeyDown={(e) => handleKeyDown(e, p.id, hole)}
+                            className="w-10 h-8 text-center border border-primary rounded focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono"
+                            data-testid={`input-score-${p.id}-${hole}`}
+                          />
+                        ) : (
+                          <span 
+                            className={`
+                              font-mono font-medium inline-block w-10 h-8 leading-8 rounded
+                              ${canEdit ? "cursor-pointer hover:bg-primary/10" : ""}
+                              ${isCurrentUser ? "text-foreground" : "text-muted-foreground"}
+                            `}
+                            data-testid={`score-cell-${p.id}-${hole}`}
+                          >
+                            {score !== null ? score : "-"}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
                   <td className="p-4 text-center font-bold text-lg bg-primary/5 text-primary">
-                    {getParticipantScore(p.userId)}
+                    {getPlayerScore(p.id) || "-"}
                   </td>
                 </tr>
               );
             })}
             
-            {(!match.participants || match.participants.length === 0) && (
+            {players.length === 0 && (
               <tr>
                 <td colSpan={20} className="p-12 text-center text-muted-foreground">
-                  No players yet. Be the first to join!
+                  No players yet. {!isPlayer && "Join the match to start tracking scores!"}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-
-      <ScoreEntryModal 
-        isOpen={isScoreModalOpen} 
-        onClose={() => setIsScoreModalOpen(false)} 
-        matchId={matchId}
-        existingScores={currentUserScores}
-      />
     </div>
   );
 }

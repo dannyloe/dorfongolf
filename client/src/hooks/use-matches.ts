@@ -6,6 +6,7 @@ import { z } from "zod";
 type MatchListResponse = z.infer<typeof api.matches.list.responses[200]>;
 type MatchDetailResponse = z.infer<typeof api.matches.get.responses[200]>;
 type CreateMatchInput = z.infer<typeof api.matches.create.input>;
+type AddPlayerInput = z.infer<typeof api.matches.addPlayer.input>;
 type ScoreInput = z.infer<typeof api.matches.submitScore.input>;
 
 export function useMatches() {
@@ -59,20 +60,22 @@ export function useCreateMatch() {
   });
 }
 
-export function useJoinMatch() {
+export function useAddPlayer(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (matchId: number) => {
-      const url = buildUrl(api.matches.join.path, { id: matchId });
+    mutationFn: async (data: AddPlayerInput) => {
+      const url = buildUrl(api.matches.addPlayer.path, { id: matchId });
       const res = await fetch(url, {
-        method: api.matches.join.method,
+        method: api.matches.addPlayer.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
         credentials: "include",
       });
       
-      if (!res.ok) throw new Error("Failed to join match");
-      return api.matches.join.responses[200].parse(await res.json());
+      if (!res.ok) throw new Error("Failed to add player");
+      return api.matches.addPlayer.responses[201].parse(await res.json());
     },
-    onSuccess: (_, matchId) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
       queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
     },
