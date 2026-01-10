@@ -673,19 +673,20 @@ function getNassauBetWinner(results: HoleResult[], finalHole: number): 'A' | 'B'
   const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
   
   if (!lastPlayedHole) return null;
-  if (lastPlayedHole.holeNumber < finalHole) return null;
   
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
   const holesRemaining = finalHole - lastPlayedHole.holeNumber;
   
+  // Check for early clinch (e.g., 3 & 2 means 3 up with 2 holes remaining)
+  if (Math.abs(diff) > holesRemaining) {
+    return diff > 0 ? 'A' : 'B';
+  }
+  
+  // If we've played the final hole, determine winner
   if (holesRemaining === 0) {
     if (diff > 0) return 'A';
     if (diff < 0) return 'B';
     return 'tie';
-  }
-  
-  if (Math.abs(diff) > holesRemaining) {
-    return diff > 0 ? 'A' : 'B';
   }
   
   return null;
