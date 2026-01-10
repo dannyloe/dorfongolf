@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements } from "@/lib/matchplay";
 import { MATCH_TYPES, MATCH_TYPE_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -892,41 +892,44 @@ export default function MatchDetail() {
                           </div>
                         )}
 
-                        {/* Wager Summary */}
+                        {/* Wager Summary - Combined for parent + all presses */}
                         {em.unitAmount > 0 && (() => {
-                          const settlement = calculateBetSettlements(em.unitAmount, teamA!, teamB!, results, em.matchType, em.autoPressOriginal);
+                          const combined = calculateCombinedMatchSettlements(em, pressMatches, scores);
                           return (
                             <div className="pt-3 border-t border-border">
                               <div className="flex items-center justify-between mb-2">
                                 <h5 className="font-semibold text-sm flex items-center gap-2">
                                   Wager Summary
-                                  <span className="text-xs text-muted-foreground">(${(em.unitAmount / 100).toFixed(2)}/player)</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    ({combined.totalMatches} {combined.totalMatches === 1 ? 'match' : 'matches'} - ${combined.totalPot.toFixed(2)} total pot)
+                                  </span>
                                 </h5>
-                                {settlement.isComplete && (
-                                  <span className={`text-xs px-2 py-0.5 rounded ${settlement.isTie ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
-                                    {settlement.isTie ? 'Match Halved - No Payouts' : `${settlement.winningTeamName} Wins!`}
+                                {combined.completedCount > 0 && (
+                                  <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                    {combined.completedCount}/{combined.totalMatches} complete
                                   </span>
                                 )}
                               </div>
                               
-                              {!settlement.isComplete ? (
-                                <p className="text-xs text-muted-foreground">Match in progress - pot: ${settlement.totalPot.toFixed(2)}</p>
-                              ) : settlement.isTie ? (
-                                <p className="text-xs text-muted-foreground">All bets returned</p>
+                              {combined.completedCount === 0 ? (
+                                <p className="text-xs text-muted-foreground">Matches in progress</p>
                               ) : (
                                 <div className="grid grid-cols-2 gap-2">
-                                  {settlement.settlements.map((s) => (
+                                  {combined.playerTotals.map((p) => (
                                     <div 
-                                      key={s.playerId}
+                                      key={p.playerId}
                                       className={`flex justify-between items-center px-3 py-1.5 rounded-lg text-sm ${
-                                        s.amount > 0 
+                                        p.amount > 0 
                                           ? 'bg-primary/10 text-primary' 
-                                          : 'bg-destructive/10 text-destructive'
+                                          : p.amount < 0
+                                          ? 'bg-destructive/10 text-destructive'
+                                          : 'bg-muted text-muted-foreground'
                                       }`}
+                                      data-testid={`wager-summary-${p.playerId}`}
                                     >
-                                      <span className="font-medium">{s.playerName}</span>
+                                      <span className="font-medium">{p.playerName}</span>
                                       <span className="font-bold">
-                                        {s.amount > 0 ? '+' : ''}${s.amount.toFixed(2)}
+                                        {p.amount > 0 ? '+' : ''}${p.amount.toFixed(2)}
                                       </span>
                                     </div>
                                   ))}

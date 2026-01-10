@@ -270,7 +270,7 @@ export function calculateLedger(
     const results = calculateMatchPlayResults(em, scores);
     // For parent matches: use autoPressOriginal
     // For press matches: use autoPressOriginal (which inherits from parent's autoPressAllPresses setting)
-    const shouldAutoPress = em.autoPressOriginal ?? false;
+    const shouldAutoPress = em.autoPressOriginal ?? true;
     const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
 
     for (const s of settlement.settlements) {
@@ -461,5 +461,67 @@ export function calculateBetSettlements(
     winningTeamName: winningTeam.name,
     settlements,
     totalPot: effectiveTotalPot,
+  };
+}
+
+export interface CombinedSettlement {
+  totalPot: number;
+  allComplete: boolean;
+  completedCount: number;
+  totalMatches: number;
+  playerTotals: { playerId: number; playerName: string; amount: number }[];
+}
+
+export function calculateCombinedMatchSettlements(
+  parentMatch: EventMatchWithUnit,
+  pressMatches: EventMatchWithUnit[],
+  scores: Score[]
+): CombinedSettlement {
+  const allMatches = [parentMatch, ...pressMatches];
+  const playerAmounts: Map<number, { name: string; amount: number }> = new Map();
+  let totalPot = 0;
+  let completedCount = 0;
+
+  for (const match of allMatches) {
+    const teamA = match.teams[0];
+    const teamB = match.teams[1];
+    if (!teamA || !teamB) continue;
+
+    const results = calculateMatchPlayResults(match, scores);
+    const settlement = calculateBetSettlements(
+      match.unitAmount || 0,
+      teamA,
+      teamB,
+      results,
+      match.matchType,
+      match.autoPressOriginal ?? true
+    );
+
+    totalPot += settlement.totalPot;
+
+    if (settlement.isComplete) {
+      completedCount++;
+      for (const s of settlement.settlements) {
+        const existing = playerAmounts.get(s.playerId) || { name: s.playerName, amount: 0 };
+        existing.amount += s.amount;
+        playerAmounts.set(s.playerId, existing);
+      }
+    }
+  }
+
+  const playerTotals = Array.from(playerAmounts.entries())
+    .map(([playerId, data]) => ({
+      playerId,
+      playerName: data.name,
+      amount: Math.round(data.amount * 100) / 100,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  return {
+    totalPot: Math.round(totalPot * 100) / 100,
+    allComplete: completedCount === allMatches.length,
+    completedCount,
+    totalMatches: allMatches.length,
+    playerTotals,
   };
 }
