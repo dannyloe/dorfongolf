@@ -102,6 +102,8 @@ export const api = {
         name: z.string().min(1),
         matchType: z.string().default("match_play"),
         unitAmount: z.number().min(0).default(0),
+        autoPressOriginal: z.boolean().default(true),
+        autoPressAllPresses: z.boolean().default(false),
         teamA: z.object({
           name: z.string().min(1),
           playerIds: z.array(z.number()).min(1),

@@ -127,6 +127,8 @@ export class DatabaseStorage implements IStorage {
       name: data.name,
       matchType: data.matchType,
       unitAmount: data.unitAmount || 0,
+      autoPressOriginal: data.autoPressOriginal ?? true,
+      autoPressAllPresses: data.autoPressAllPresses ?? false,
     }).returning();
 
     // Create Team A
@@ -172,6 +174,8 @@ export class DatabaseStorage implements IStorage {
       unitAmount: parentMatch.unitAmount,
       parentMatchId: parentMatchId,
       startHole: startHole,
+      autoPressOriginal: parentMatch.autoPressAllPresses,
+      autoPressAllPresses: parentMatch.autoPressAllPresses,
     }).returning();
 
     // Copy teams from parent match

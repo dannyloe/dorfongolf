@@ -48,6 +48,8 @@ interface EventMatch {
   unitAmount: number;
   startHole?: number;
   parentMatchId?: number | null;
+  autoPressOriginal?: boolean;
+  autoPressAllPresses?: boolean;
   teams: Team[];
 }
 
@@ -79,6 +81,8 @@ export default function MatchDetail() {
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
+  const [autoPressOriginal, setAutoPressOriginal] = useState(true);
+  const [autoPressAllPresses, setAutoPressAllPresses] = useState(false);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -120,12 +124,16 @@ export default function MatchDetail() {
     const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
     const autoMatchName = `${autoTeamAName} vs ${autoTeamBName}`;
     
+    const isMatchPlay = selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL;
+    
     createEventMatch.mutate({
       name: autoMatchName,
       matchType: selectedMatchType,
       unitAmount: unitAmount * 100,
       teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
       teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
+      autoPressOriginal: isMatchPlay ? autoPressOriginal : false,
+      autoPressAllPresses: isMatchPlay ? autoPressAllPresses : false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -133,6 +141,8 @@ export default function MatchDetail() {
         setUnitAmount(5);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
+        setAutoPressOriginal(true);
+        setAutoPressAllPresses(false);
       }
     });
   };
@@ -371,6 +381,35 @@ export default function MatchDetail() {
                   />
                 </div>
               </div>
+
+              {/* Auto Press Options - Only for Match Play */}
+              {(selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL) && (
+                <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoPressOriginal}
+                      onChange={(e) => setAutoPressOriginal(e.target.checked)}
+                      className="w-4 h-4 rounded border-border"
+                      data-testid="checkbox-auto-press-original"
+                    />
+                    <span className="text-sm font-medium">Auto Press Original</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={autoPressAllPresses}
+                      onChange={(e) => setAutoPressAllPresses(e.target.checked)}
+                      className="w-4 h-4 rounded border-border"
+                      data-testid="checkbox-auto-press-all"
+                    />
+                    <span className="text-sm font-medium">Auto Press All Presses</span>
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When 2+ down going into 18: Win doubles bet, loss pushes, tie unchanged
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

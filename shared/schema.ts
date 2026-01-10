@@ -39,6 +39,8 @@ export const eventMatches = pgTable("event_matches", {
   unitAmount: integer("unit_amount").notNull().default(0),
   parentMatchId: integer("parent_match_id"),
   startHole: integer("start_hole").notNull().default(1),
+  autoPressOriginal: boolean("auto_press_original").notNull().default(true),
+  autoPressAllPresses: boolean("auto_press_all_presses").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -183,6 +185,8 @@ export type CreateEventMatchRequest = {
   name: string;
   matchType: string;
   unitAmount?: number;
+  autoPressOriginal?: boolean;
+  autoPressAllPresses?: boolean;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
 };
