@@ -4,7 +4,8 @@ import {
   matches, 
   insertScoreSchema, 
   scores, 
-  players 
+  players,
+  eventMatches
 } from './schema';
 
 export const errorSchemas = {
@@ -46,6 +47,7 @@ export const api = {
           creator: any;
           players: any[];
           scores: any[];
+          eventMatches: any[];
         }>(),
         404: errorSchemas.notFound,
       },
@@ -82,6 +84,51 @@ export const api = {
         204: z.void(),
         404: errorSchemas.notFound,
         403: z.object({ message: z.string() }),
+      },
+    },
+  },
+  eventMatches: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/matches/:id/event-matches',
+      responses: {
+        200: z.array(z.custom<typeof eventMatches.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/matches/:id/event-matches',
+      input: z.object({
+        name: z.string().min(1),
+        matchType: z.string().default("match_play"),
+        teamA: z.object({
+          name: z.string().min(1),
+          playerIds: z.array(z.number()).min(1),
+        }),
+        teamB: z.object({
+          name: z.string().min(1),
+          playerIds: z.array(z.number()).min(1),
+        }),
+      }),
+      responses: {
+        201: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/event-matches/:id',
+      responses: {
+        200: z.any(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/event-matches/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
       },
     },
   },

@@ -1,7 +1,8 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users,
-  type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer
+  matches, players, scores, users, eventMatches, teams, teamMembers,
+  type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
+  type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -77,12 +78,86 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteMatch(matchId: number): Promise<void> {
-    // Delete scores first
+    // Delete event match data first
+    const eventMatchesList = await db.select().from(eventMatches).where(eq(eventMatches.eventId, matchId));
+    for (const em of eventMatchesList) {
+      const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, em.id));
+      for (const team of teamsList) {
+        await db.delete(teamMembers).where(eq(teamMembers.teamId, team.id));
+      }
+      await db.delete(teams).where(eq(teams.eventMatchId, em.id));
+    }
+    await db.delete(eventMatches).where(eq(eventMatches.eventId, matchId));
+    // Delete scores
     await db.delete(scores).where(eq(scores.matchId, matchId));
     // Delete players
     await db.delete(players).where(eq(players.matchId, matchId));
     // Delete match
     await db.delete(matches).where(eq(matches.id, matchId));
+  }
+
+  async getEventMatches(eventId: number): Promise<EventMatch[]> {
+    return db.select().from(eventMatches).where(eq(eventMatches.eventId, eventId));
+  }
+
+  async getEventMatchWithTeams(eventMatchId: number) {
+    const [eventMatch] = await db.select().from(eventMatches).where(eq(eventMatches.id, eventMatchId));
+    if (!eventMatch) return undefined;
+
+    const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, eventMatchId));
+    const teamsWithMembers = await Promise.all(
+      teamsList.map(async (team) => {
+        const members = await db.select().from(teamMembers).where(eq(teamMembers.teamId, team.id));
+        const membersWithPlayers = await Promise.all(
+          members.map(async (member) => {
+            const [player] = await db.select().from(players).where(eq(players.id, member.playerId));
+            return { ...member, player };
+          })
+        );
+        return { ...team, members: membersWithPlayers };
+      })
+    );
+
+    return { ...eventMatch, teams: teamsWithMembers };
+  }
+
+  async createEventMatch(eventId: number, data: CreateEventMatchRequest): Promise<EventMatch> {
+    const [newEventMatch] = await db.insert(eventMatches).values({
+      eventId,
+      name: data.name,
+      matchType: data.matchType,
+    }).returning();
+
+    // Create Team A
+    const [teamA] = await db.insert(teams).values({
+      eventMatchId: newEventMatch.id,
+      name: data.teamA.name,
+    }).returning();
+
+    for (const playerId of data.teamA.playerIds) {
+      await db.insert(teamMembers).values({ teamId: teamA.id, playerId });
+    }
+
+    // Create Team B
+    const [teamB] = await db.insert(teams).values({
+      eventMatchId: newEventMatch.id,
+      name: data.teamB.name,
+    }).returning();
+
+    for (const playerId of data.teamB.playerIds) {
+      await db.insert(teamMembers).values({ teamId: teamB.id, playerId });
+    }
+
+    return newEventMatch;
+  }
+
+  async deleteEventMatch(eventMatchId: number): Promise<void> {
+    const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, eventMatchId));
+    for (const team of teamsList) {
+      await db.delete(teamMembers).where(eq(teamMembers.teamId, team.id));
+    }
+    await db.delete(teams).where(eq(teams.eventMatchId, eventMatchId));
+    await db.delete(eventMatches).where(eq(eventMatches.id, eventMatchId));
   }
 }
 

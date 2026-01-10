@@ -124,3 +124,44 @@ export function useDeleteMatch() {
     },
   });
 }
+
+type CreateEventMatchInput = z.infer<typeof api.eventMatches.create.input>;
+
+export function useCreateEventMatch(eventId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateEventMatchInput) => {
+      const url = buildUrl(api.eventMatches.create.path, { id: eventId });
+      const res = await fetch(url, {
+        method: api.eventMatches.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to create match");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, eventId] });
+    },
+  });
+}
+
+export function useDeleteEventMatch(eventId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (eventMatchId: number) => {
+      const url = buildUrl(api.eventMatches.delete.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.delete.method,
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to delete event match");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, eventId] });
+    },
+  });
+}

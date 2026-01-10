@@ -1,12 +1,13 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2 } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { calculateMatchPlayResults, getMatchStatus } from "@/lib/matchplay";
 
 interface Player {
   id: number;
@@ -23,6 +24,28 @@ interface Score {
   strokes: number;
 }
 
+interface TeamMember {
+  id: number;
+  teamId: number;
+  playerId: number;
+  player?: Player;
+}
+
+interface Team {
+  id: number;
+  eventMatchId: number;
+  name: string;
+  members: TeamMember[];
+}
+
+interface EventMatch {
+  id: number;
+  eventId: number;
+  name: string;
+  matchType: string;
+  teams: Team[];
+}
+
 export default function MatchDetail() {
   const [, params] = useRoute("/match/:id");
   const [, navigate] = useLocation();
@@ -32,12 +55,23 @@ export default function MatchDetail() {
   const addPlayer = useAddPlayer(matchId);
   const submitScore = useSubmitScore(matchId);
   const deleteMatch = useDeleteMatch();
+  const createEventMatch = useCreateEventMatch(matchId);
+  const deleteEventMatch = useDeleteEventMatch(matchId);
   
   const [newPlayerName, setNewPlayerName] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingCell, setEditingCell] = useState<{ playerId: number; hole: number } | null>(null);
   const [editValue, setEditValue] = useState("");
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  
+  // Event Match creation state
+  const [showCreateMatch, setShowCreateMatch] = useState(false);
+  const [matchName, setMatchName] = useState("");
+  const [teamAName, setTeamAName] = useState("Team A");
+  const [teamBName, setTeamBName] = useState("Team B");
+  const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
+  const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
+  const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -56,12 +90,51 @@ export default function MatchDetail() {
 
   const players: Player[] = match.players || [];
   const scores: Score[] = match.scores || [];
+  const eventMatches: EventMatch[] = match.eventMatches || [];
   const isCreator = user?.id === match.creatorId;
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   const currentPlayer = players.find((p: Player) => p.userId === user?.id);
 
   const getPlayerScore = (playerId: number) => {
     return scores.filter((s: Score) => s.playerId === playerId).reduce((acc, curr) => acc + curr.strokes, 0) || 0;
+  };
+
+  const handleCreateEventMatch = () => {
+    if (!matchName.trim() || teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0) return;
+    
+    createEventMatch.mutate({
+      name: matchName.trim(),
+      matchType: "match_play",
+      teamA: { name: teamAName, playerIds: teamAPlayerIds },
+      teamB: { name: teamBName, playerIds: teamBPlayerIds },
+    }, {
+      onSuccess: () => {
+        setShowCreateMatch(false);
+        setMatchName("");
+        setTeamAName("Team A");
+        setTeamBName("Team B");
+        setTeamAPlayerIds([]);
+        setTeamBPlayerIds([]);
+      }
+    });
+  };
+
+  const togglePlayerInTeam = (playerId: number, team: 'A' | 'B') => {
+    if (team === 'A') {
+      if (teamAPlayerIds.includes(playerId)) {
+        setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== playerId));
+      } else {
+        setTeamAPlayerIds([...teamAPlayerIds, playerId]);
+        setTeamBPlayerIds(teamBPlayerIds.filter(id => id !== playerId));
+      }
+    } else {
+      if (teamBPlayerIds.includes(playerId)) {
+        setTeamBPlayerIds(teamBPlayerIds.filter(id => id !== playerId));
+      } else {
+        setTeamBPlayerIds([...teamBPlayerIds, playerId]);
+        setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== playerId));
+      }
+    }
   };
 
   const getScore = (playerId: number, hole: number): number | null => {
@@ -236,6 +309,281 @@ export default function MatchDetail() {
             <span className="text-muted-foreground">No players yet</span>
           )}
         </div>
+      </div>
+
+      {/* Matches Section */}
+      <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-display font-bold text-lg flex items-center gap-2">
+            <Swords className="w-5 h-5 text-primary" />
+            Matches ({eventMatches.length})
+          </h3>
+          {isCreator && players.length >= 2 && (
+            <Button
+              size="sm"
+              onClick={() => setShowCreateMatch(true)}
+              data-testid="button-create-match"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Match
+            </Button>
+          )}
+        </div>
+
+        {/* Create Match Form */}
+        {showCreateMatch && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            className="mb-6 p-4 bg-muted/30 rounded-xl border border-border"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-semibold">Create Match Play</h4>
+              <Button size="icon" variant="ghost" onClick={() => setShowCreateMatch(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Match Name</label>
+                <Input
+                  placeholder="e.g., Front 9 Match"
+                  value={matchName}
+                  onChange={(e) => setMatchName(e.target.value)}
+                  className="mt-1"
+                  data-testid="input-match-name"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Input
+                    placeholder="Team A Name"
+                    value={teamAName}
+                    onChange={(e) => setTeamAName(e.target.value)}
+                    className="mb-2 font-semibold"
+                    data-testid="input-team-a-name"
+                  />
+                  <div className="space-y-1">
+                    {players.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => togglePlayerInTeam(p.id, 'A')}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                          teamAPlayerIds.includes(p.id)
+                            ? "bg-primary text-primary-foreground"
+                            : teamBPlayerIds.includes(p.id)
+                            ? "bg-muted/50 text-muted-foreground line-through"
+                            : "bg-muted hover:bg-muted/80"
+                        }`}
+                        data-testid={`button-add-team-a-${p.id}`}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Input
+                    placeholder="Team B Name"
+                    value={teamBName}
+                    onChange={(e) => setTeamBName(e.target.value)}
+                    className="mb-2 font-semibold"
+                    data-testid="input-team-b-name"
+                  />
+                  <div className="space-y-1">
+                    {players.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => togglePlayerInTeam(p.id, 'B')}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                          teamBPlayerIds.includes(p.id)
+                            ? "bg-accent text-accent-foreground"
+                            : teamAPlayerIds.includes(p.id)
+                            ? "bg-muted/50 text-muted-foreground line-through"
+                            : "bg-muted hover:bg-muted/80"
+                        }`}
+                        data-testid={`button-add-team-b-${p.id}`}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={handleCreateEventMatch}
+                disabled={!matchName.trim() || teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0 || createEventMatch.isPending}
+                className="w-full"
+                data-testid="button-submit-create-match"
+              >
+                {createEventMatch.isPending ? "Creating..." : "Create Match"}
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Event Matches List */}
+        {eventMatches.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            {players.length < 2 
+              ? "Add at least 2 players to create a match." 
+              : "No matches yet. Create a match to track team competition!"}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {eventMatches.map((em) => {
+              const teamA = em.teams[0];
+              const teamB = em.teams[1];
+              const results = calculateMatchPlayResults(em, scores);
+              const status = teamA && teamB ? getMatchStatus(results, teamA, teamB) : 'Not started';
+              const isExpanded = expandedMatch === em.id;
+
+              return (
+                <div key={em.id} className="border border-border rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+                    data-testid={`button-expand-match-${em.id}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-primary" />
+                        <span className="font-semibold">{teamA?.name || "Team A"}</span>
+                      </div>
+                      <span className="text-muted-foreground">vs</span>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-accent" />
+                        <span className="font-semibold">{teamB?.name || "Team B"}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-primary">{status}</span>
+                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      className="border-t border-border"
+                    >
+                      <div className="p-4 space-y-4">
+                        {/* Team Members */}
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="font-medium text-primary mb-1">{teamA?.name}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {teamA?.members.map((m) => (
+                                <span key={m.id} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                  {m.player?.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="font-medium text-accent mb-1">{teamB?.name}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {teamB?.members.map((m) => (
+                                <span key={m.id} className="px-2 py-0.5 bg-accent/10 text-accent rounded text-xs">
+                                  {m.player?.name}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Match Play Scoreboard */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-border">
+                                <th className="p-2 text-left font-semibold">Hole</th>
+                                {results.slice(0, 9).map((r) => (
+                                  <th key={r.holeNumber} className="p-2 text-center font-medium">{r.holeNumber}</th>
+                                ))}
+                                <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
+                                {results.slice(9, 18).map((r) => (
+                                  <th key={r.holeNumber} className="p-2 text-center font-medium">{r.holeNumber}</th>
+                                ))}
+                                <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr className="border-b border-border/50">
+                                <td className="p-2 font-semibold text-primary">{teamA?.name}</td>
+                                {results.slice(0, 9).map((r) => (
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-green-100 text-green-800 font-bold' : ''}`}>
+                                    {r.teamAScore ?? '-'}
+                                  </td>
+                                ))}
+                                <td className="p-2 text-center font-semibold bg-muted/30">
+                                  {results.slice(0, 9).filter(r => r.winner === 'A').length}
+                                </td>
+                                {results.slice(9, 18).map((r) => (
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-green-100 text-green-800 font-bold' : ''}`}>
+                                    {r.teamAScore ?? '-'}
+                                  </td>
+                                ))}
+                                <td className="p-2 text-center font-semibold bg-muted/30">
+                                  {results.slice(9, 18).filter(r => r.winner === 'A').length}
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="p-2 font-semibold text-accent">{teamB?.name}</td>
+                                {results.slice(0, 9).map((r) => (
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-amber-100 text-amber-800 font-bold' : ''}`}>
+                                    {r.teamBScore ?? '-'}
+                                  </td>
+                                ))}
+                                <td className="p-2 text-center font-semibold bg-muted/30">
+                                  {results.slice(0, 9).filter(r => r.winner === 'B').length}
+                                </td>
+                                {results.slice(9, 18).map((r) => (
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-amber-100 text-amber-800 font-bold' : ''}`}>
+                                    {r.teamBScore ?? '-'}
+                                  </td>
+                                ))}
+                                <td className="p-2 text-center font-semibold bg-muted/30">
+                                  {results.slice(9, 18).filter(r => r.winner === 'B').length}
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Running Status */}
+                        <div className="flex justify-between items-center pt-2 border-t border-border">
+                          <div className="text-sm">
+                            <span className="font-medium">Total Holes Won: </span>
+                            <span className="text-primary font-bold">{teamA?.name}: {results.filter(r => r.winner === 'A').length}</span>
+                            <span className="mx-2">|</span>
+                            <span className="text-accent font-bold">{teamB?.name}: {results.filter(r => r.winner === 'B').length}</span>
+                          </div>
+                          {isCreator && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => deleteEventMatch.mutate(em.id)}
+                              className="text-destructive hover:text-destructive"
+                              data-testid={`button-delete-event-match-${em.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Scorecard Table */}
