@@ -253,3 +253,19 @@ export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value,
   value: value as MatchType,
   label,
 }));
+
+// UI-only wizard types (not stored in DB)
+export const WIZARD_TYPES = {
+  ROUND_ROBIN_2_MAN: "round_robin_2_man",
+} as const;
+
+export type WizardType = typeof WIZARD_TYPES[keyof typeof WIZARD_TYPES];
+
+export const WIZARD_TYPE_LABELS: Record<WizardType, string> = {
+  [WIZARD_TYPES.ROUND_ROBIN_2_MAN]: "Round Robin - Match Play 1 Ball (2 man teams)",
+};
+
+export const ALL_MATCH_OPTIONS = [
+  ...MATCH_TYPE_OPTIONS,
+  { value: WIZARD_TYPES.ROUND_ROBIN_2_MAN, label: WIZARD_TYPE_LABELS[WIZARD_TYPES.ROUND_ROBIN_2_MAN], isWizard: true },
+];
