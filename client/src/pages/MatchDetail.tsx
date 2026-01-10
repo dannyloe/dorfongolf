@@ -69,8 +69,6 @@ export default function MatchDetail() {
   const [showCreateMatch, setShowCreateMatch] = useState(false);
   const [matchName, setMatchName] = useState("");
   const [unitAmount, setUnitAmount] = useState<number>(5);
-  const [teamAName, setTeamAName] = useState("Team A");
-  const [teamBName, setTeamBName] = useState("Team B");
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
@@ -101,22 +99,30 @@ export default function MatchDetail() {
     return scores.filter((s: Score) => s.playerId === playerId).reduce((acc, curr) => acc + curr.strokes, 0) || 0;
   };
 
+  const getTeamNameFromPlayerIds = (playerIds: number[]) => {
+    return playerIds
+      .map(id => players.find(p => p.id === id)?.name || '')
+      .filter(Boolean)
+      .join('/');
+  };
+
   const handleCreateEventMatch = () => {
     if (!matchName.trim() || teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0) return;
+    
+    const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
+    const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
     
     createEventMatch.mutate({
       name: matchName.trim(),
       matchType: "match_play",
       unitAmount: unitAmount * 100,
-      teamA: { name: teamAName, playerIds: teamAPlayerIds },
-      teamB: { name: teamBName, playerIds: teamBPlayerIds },
+      teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
+      teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
         setMatchName("");
         setUnitAmount(5);
-        setTeamAName("Team A");
-        setTeamBName("Team B");
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
       }
@@ -290,31 +296,6 @@ export default function MatchDetail() {
         </div>
       )}
 
-      {/* Players List */}
-      <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-        <h3 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-accent" />
-          Players ({players.length})
-        </h3>
-        <div className="flex flex-wrap gap-2">
-          {players.map((p: Player) => (
-            <span 
-              key={p.id} 
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                p.userId === user?.id 
-                  ? "bg-primary text-primary-foreground" 
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {p.name} {p.userId === user?.id && "(You)"}
-            </span>
-          ))}
-          {players.length === 0 && (
-            <span className="text-muted-foreground">No players yet</span>
-          )}
-        </div>
-      </div>
-
       {/* Matches Section */}
       <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
         <div className="flex justify-between items-center mb-4">
@@ -377,13 +358,11 @@ export default function MatchDetail() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Input
-                    placeholder="Team A Name"
-                    value={teamAName}
-                    onChange={(e) => setTeamAName(e.target.value)}
-                    className="mb-2 font-semibold"
-                    data-testid="input-team-a-name"
-                  />
+                  <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
+                    <span className="font-semibold text-primary text-sm">
+                      {teamAPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamAPlayerIds) : "Select players..."}
+                    </span>
+                  </div>
                   <div className="space-y-1">
                     {players.map((p) => (
                       <button
@@ -405,13 +384,11 @@ export default function MatchDetail() {
                 </div>
 
                 <div>
-                  <Input
-                    placeholder="Team B Name"
-                    value={teamBName}
-                    onChange={(e) => setTeamBName(e.target.value)}
-                    className="mb-2 font-semibold"
-                    data-testid="input-team-b-name"
-                  />
+                  <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
+                    <span className="font-semibold text-accent text-sm">
+                      {teamBPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamBPlayerIds) : "Select players..."}
+                    </span>
+                  </div>
                   <div className="space-y-1">
                     {players.map((p) => (
                       <button
