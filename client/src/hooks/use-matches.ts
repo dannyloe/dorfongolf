@@ -127,11 +127,11 @@ export function useDeleteMatch() {
 
 type CreateEventMatchInput = z.infer<typeof api.eventMatches.create.input>;
 
-export function useCreateEventMatch(eventId: number) {
+export function useCreateEventMatch(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateEventMatchInput) => {
-      const url = buildUrl(api.eventMatches.create.path, { id: eventId });
+      const url = buildUrl(api.eventMatches.create.path, { id: matchId });
       const res = await fetch(url, {
         method: api.eventMatches.create.method,
         headers: { "Content-Type": "application/json" },
@@ -143,12 +143,12 @@ export function useCreateEventMatch(eventId: number) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, eventId] });
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
     },
   });
 }
 
-export function useDeleteEventMatch(eventId: number) {
+export function useDeleteEventMatch(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (eventMatchId: number) => {
@@ -161,7 +161,7 @@ export function useDeleteEventMatch(eventId: number) {
       if (!res.ok) throw new Error("Failed to delete event match");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, eventId] });
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
     },
   });
 }

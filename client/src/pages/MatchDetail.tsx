@@ -517,7 +517,7 @@ export default function MatchDetail() {
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-primary">{teamA?.name}</td>
                                 {results.slice(0, 9).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-green-100 text-green-800 font-bold' : ''}`}>
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
                                     {r.teamAScore ?? '-'}
                                   </td>
                                 ))}
@@ -525,7 +525,7 @@ export default function MatchDetail() {
                                   {results.slice(0, 9).filter(r => r.winner === 'A').length}
                                 </td>
                                 {results.slice(9, 18).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-green-100 text-green-800 font-bold' : ''}`}>
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
                                     {r.teamAScore ?? '-'}
                                   </td>
                                 ))}
@@ -536,7 +536,7 @@ export default function MatchDetail() {
                               <tr>
                                 <td className="p-2 font-semibold text-accent">{teamB?.name}</td>
                                 {results.slice(0, 9).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-amber-100 text-amber-800 font-bold' : ''}`}>
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
                                     {r.teamBScore ?? '-'}
                                   </td>
                                 ))}
@@ -544,7 +544,7 @@ export default function MatchDetail() {
                                   {results.slice(0, 9).filter(r => r.winner === 'B').length}
                                 </td>
                                 {results.slice(9, 18).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-amber-100 text-amber-800 font-bold' : ''}`}>
+                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
                                     {r.teamBScore ?? '-'}
                                   </td>
                                 ))}
