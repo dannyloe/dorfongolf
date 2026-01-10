@@ -555,36 +555,81 @@ export default function MatchDetail() {
                                     {r.teamAScore ?? '-'}
                                   </td>
                                 ))}
-                                <td className="p-2 text-center font-semibold bg-muted/30">
-                                  {results.slice(0, 9).filter(r => r.winner === 'A').length}
-                                </td>
+                                {(() => {
+                                  const outResult = results[8];
+                                  const outDiff = outResult ? outResult.cumulativeA - outResult.cumulativeB : 0;
+                                  const hasOutScores = outResult?.teamAScore !== null;
+                                  if (!hasOutScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (outDiff > 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{outDiff} UP</td>;
+                                  if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(outDiff)} DN</td>;
+                                  return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
+                                })()}
                                 {results.slice(9, 18).map((r) => (
                                   <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
                                     {r.teamAScore ?? '-'}
                                   </td>
                                 ))}
-                                <td className="p-2 text-center font-semibold bg-muted/30">
-                                  {results.slice(9, 18).filter(r => r.winner === 'A').length}
-                                </td>
+                                {(() => {
+                                  const inResult = results[17];
+                                  const inDiff = inResult ? inResult.cumulativeA - inResult.cumulativeB : 0;
+                                  const hasInScores = inResult?.teamAScore !== null;
+                                  if (!hasInScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (inDiff > 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{inDiff} UP</td>;
+                                  if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(inDiff)} DN</td>;
+                                  return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
+                                })()}
                               </tr>
-                              <tr>
+                              <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-accent">{teamB?.name}</td>
                                 {results.slice(0, 9).map((r) => (
                                   <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
                                     {r.teamBScore ?? '-'}
                                   </td>
                                 ))}
-                                <td className="p-2 text-center font-semibold bg-muted/30">
-                                  {results.slice(0, 9).filter(r => r.winner === 'B').length}
-                                </td>
+                                {(() => {
+                                  const outResult = results[8];
+                                  const outDiff = outResult ? outResult.cumulativeB - outResult.cumulativeA : 0;
+                                  const hasOutScores = outResult?.teamBScore !== null;
+                                  if (!hasOutScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (outDiff > 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{outDiff} UP</td>;
+                                  if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(outDiff)} DN</td>;
+                                  return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
+                                })()}
                                 {results.slice(9, 18).map((r) => (
                                   <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
                                     {r.teamBScore ?? '-'}
                                   </td>
                                 ))}
-                                <td className="p-2 text-center font-semibold bg-muted/30">
-                                  {results.slice(9, 18).filter(r => r.winner === 'B').length}
-                                </td>
+                                {(() => {
+                                  const inResult = results[17];
+                                  const inDiff = inResult ? inResult.cumulativeB - inResult.cumulativeA : 0;
+                                  const hasInScores = inResult?.teamBScore !== null;
+                                  if (!hasInScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (inDiff > 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{inDiff} UP</td>;
+                                  if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(inDiff)} DN</td>;
+                                  return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
+                                })()}
+                              </tr>
+                              <tr className="border-t-2 border-border">
+                                <td className="p-2 font-semibold">Status</td>
+                                {results.slice(0, 9).map((r) => {
+                                  const diff = r.cumulativeA - r.cumulativeB;
+                                  const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                  if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                  if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
+                                  if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
+                                  return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
+                                })}
+                                <td className="p-2 text-center bg-muted/30"></td>
+                                {results.slice(9, 18).map((r) => {
+                                  const diff = r.cumulativeA - r.cumulativeB;
+                                  const hasScores = r.teamAScore !== null && r.teamBScore !== null;
+                                  if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                  if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
+                                  if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
+                                  return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
+                                })}
+                                <td className="p-2 text-center bg-muted/30"></td>
                               </tr>
                             </tbody>
                           </table>
