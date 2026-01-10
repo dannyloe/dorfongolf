@@ -9,7 +9,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements } from "@/lib/matchplay";
-import { MATCH_TYPES, MATCH_TYPE_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
+import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -86,6 +86,12 @@ export default function MatchDetail() {
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
+  
+  // Round Robin wizard state
+  const [isRoundRobinMode, setIsRoundRobinMode] = useState(false);
+  const [roundRobinPlayerIds, setRoundRobinPlayerIds] = useState<number[]>([]);
+  const [roundRobinStep, setRoundRobinStep] = useState<'select' | 'preview'>('select');
+  const [isCreatingRoundRobin, setIsCreatingRoundRobin] = useState(false);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -169,6 +175,94 @@ export default function MatchDetail() {
         setTeamBPlayerIds([...teamBPlayerIds, playerId]);
         setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== playerId));
       }
+    }
+  };
+
+  // Generate all 2-player combinations from selected players
+  const generateTwoPlayerTeams = (playerIds: number[]): [number, number][] => {
+    const teams: [number, number][] = [];
+    for (let i = 0; i < playerIds.length; i++) {
+      for (let j = i + 1; j < playerIds.length; j++) {
+        teams.push([playerIds[i], playerIds[j]]);
+      }
+    }
+    return teams;
+  };
+
+  // Generate all match pairings between disjoint teams
+  const generateRoundRobinMatches = (playerIds: number[]): { teamA: [number, number]; teamB: [number, number] }[] => {
+    const teams = generateTwoPlayerTeams(playerIds);
+    const matches: { teamA: [number, number]; teamB: [number, number] }[] = [];
+    const seenPairings = new Set<string>();
+
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        const teamA = teams[i];
+        const teamB = teams[j];
+        // Check if teams are disjoint (no shared players)
+        if (!teamA.some(p => teamB.includes(p))) {
+          // Normalize pairing to avoid duplicates
+          const sigA = teamA.slice().sort().join(',');
+          const sigB = teamB.slice().sort().join(',');
+          const pairingSig = [sigA, sigB].sort().join('|');
+          
+          if (!seenPairings.has(pairingSig)) {
+            seenPairings.add(pairingSig);
+            matches.push({ teamA, teamB });
+          }
+        }
+      }
+    }
+    return matches;
+  };
+
+  const getPlayerNameById = (id: number) => players.find(p => p.id === id)?.name || 'Unknown';
+
+  const handleCreateRoundRobinMatches = async () => {
+    if (roundRobinPlayerIds.length < 4) return;
+    
+    setIsCreatingRoundRobin(true);
+    const matchPairings = generateRoundRobinMatches(roundRobinPlayerIds);
+    
+    try {
+      for (const pairing of matchPairings) {
+        const teamAName = pairing.teamA.map(id => getPlayerNameById(id)).join('/');
+        const teamBName = pairing.teamB.map(id => getPlayerNameById(id)).join('/');
+        
+        await new Promise<void>((resolve, reject) => {
+          createEventMatch.mutate({
+            name: `${teamAName} vs ${teamBName}`,
+            matchType: MATCH_TYPES.MATCH_PLAY_1_BALL,
+            unitAmount: unitAmount * 100,
+            teamA: { name: teamAName, playerIds: pairing.teamA },
+            teamB: { name: teamBName, playerIds: pairing.teamB },
+            autoPressOriginal: autoPressOriginal,
+            autoPressAllPresses: false,
+          }, {
+            onSuccess: () => resolve(),
+            onError: (err) => reject(err),
+          });
+        });
+      }
+      
+      // Reset wizard state
+      setShowCreateMatch(false);
+      setIsRoundRobinMode(false);
+      setRoundRobinPlayerIds([]);
+      setRoundRobinStep('select');
+      setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+    } catch (error) {
+      console.error('Error creating round robin matches:', error);
+    } finally {
+      setIsCreatingRoundRobin(false);
+    }
+  };
+
+  const toggleRoundRobinPlayer = (playerId: number) => {
+    if (roundRobinPlayerIds.includes(playerId)) {
+      setRoundRobinPlayerIds(roundRobinPlayerIds.filter(id => id !== playerId));
+    } else {
+      setRoundRobinPlayerIds([...roundRobinPlayerIds, playerId]);
     }
   };
 
@@ -404,25 +498,174 @@ export default function MatchDetail() {
             className="mb-6 p-4 bg-muted/30 rounded-xl border border-border"
           >
             <div className="flex justify-between items-center mb-4">
-              <h4 className="font-semibold">Create Match Play</h4>
-              <Button size="icon" variant="ghost" onClick={() => setShowCreateMatch(false)}>
+              <h4 className="font-semibold">
+                {isRoundRobinMode ? 'Round Robin - Match Play 1 Ball (2 man teams)' : 'Create Match Play'}
+              </h4>
+              <Button size="icon" variant="ghost" onClick={() => {
+                setShowCreateMatch(false);
+                setIsRoundRobinMode(false);
+                setRoundRobinPlayerIds([]);
+                setRoundRobinStep('select');
+              }}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
             
+            {/* Round Robin Wizard */}
+            {isRoundRobinMode ? (
+              <div className="space-y-4">
+                {roundRobinStep === 'select' ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Wager ($ per player per match)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="20"
+                          value={unitAmount}
+                          onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
+                          className="mt-1"
+                          data-testid="input-rr-unit-amount"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <div className="space-y-2 p-3 bg-muted/30 rounded-lg flex-1">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={autoPressOriginal}
+                              onChange={(e) => setAutoPressOriginal(e.target.checked)}
+                              className="w-4 h-4 rounded border-border"
+                              data-testid="checkbox-rr-auto-press"
+                            />
+                            <span className="text-sm font-medium">Auto Press</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">
+                        Select Players (minimum 4)
+                      </label>
+                      <p className="text-xs text-muted-foreground mb-2">
+                        All possible 2-man team combinations will play against each other
+                      </p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
+                        {players.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => toggleRoundRobinPlayer(p.id)}
+                            className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                              roundRobinPlayerIds.includes(p.id)
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted hover:bg-muted/80"
+                            }`}
+                            data-testid={`button-rr-player-${p.id}`}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {roundRobinPlayerIds.length >= 4 && (
+                      <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
+                        <p className="text-sm font-medium text-primary">
+                          {generateTwoPlayerTeams(roundRobinPlayerIds).length} possible teams, {' '}
+                          {generateRoundRobinMatches(roundRobinPlayerIds).length} matches will be created
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsRoundRobinMode(false);
+                          setRoundRobinPlayerIds([]);
+                        }}
+                        className="flex-1"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onClick={() => setRoundRobinStep('preview')}
+                        disabled={roundRobinPlayerIds.length < 4}
+                        className="flex-1"
+                        data-testid="button-rr-preview"
+                      >
+                        Preview Matches
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="max-h-64 overflow-y-auto space-y-2">
+                      {generateRoundRobinMatches(roundRobinPlayerIds).map((match, idx) => {
+                        const teamAName = match.teamA.map(id => getPlayerNameById(id)).join('/');
+                        const teamBName = match.teamB.map(id => getPlayerNameById(id)).join('/');
+                        return (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-white rounded-lg border border-border/50">
+                            <span className="text-sm font-medium text-primary">{teamAName}</span>
+                            <span className="text-xs text-muted-foreground">vs</span>
+                            <span className="text-sm font-medium text-accent">{teamBName}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="p-3 bg-muted/50 rounded-lg text-sm">
+                      <p><strong>Wager:</strong> ${unitAmount} per player per match</p>
+                      <p><strong>Auto Press:</strong> {autoPressOriginal ? 'Enabled' : 'Disabled'}</p>
+                      <p><strong>Total Matches:</strong> {generateRoundRobinMatches(roundRobinPlayerIds).length}</p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setRoundRobinStep('select')}
+                        className="flex-1"
+                        disabled={isCreatingRoundRobin}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onClick={handleCreateRoundRobinMatches}
+                        disabled={isCreatingRoundRobin}
+                        className="flex-1"
+                        data-testid="button-rr-create"
+                      >
+                        {isCreatingRoundRobin ? 'Creating...' : `Create ${generateRoundRobinMatches(roundRobinPlayerIds).length} Matches`}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Match Type</label>
                   <Select
                     value={selectedMatchType}
-                    onValueChange={(value) => setSelectedMatchType(value as MatchType)}
+                    onValueChange={(value) => {
+                      if (value === WIZARD_TYPES.ROUND_ROBIN_2_MAN) {
+                        setIsRoundRobinMode(true);
+                        setRoundRobinPlayerIds([]);
+                        setRoundRobinStep('select');
+                      } else {
+                        setSelectedMatchType(value as MatchType);
+                      }
+                    }}
                   >
                     <SelectTrigger className="mt-1" data-testid="select-match-type">
                       <SelectValue placeholder="Select match type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {MATCH_TYPE_OPTIONS.map((opt) => (
+                      {ALL_MATCH_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value} data-testid={`option-${opt.value}`}>
                           {opt.label}
                         </SelectItem>
@@ -529,6 +772,7 @@ export default function MatchDetail() {
                 {createEventMatch.isPending ? "Creating..." : "Create Match"}
               </Button>
             </div>
+            )}
           </motion.div>
         )}
 
