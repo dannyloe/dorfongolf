@@ -243,6 +243,7 @@ export interface LedgerEntry {
   playerName: string;
   amount: number;
   isComplete: boolean;
+  createdAt?: string;
 }
 
 export interface PlayerBalance {
@@ -256,6 +257,7 @@ export interface PlayerBalance {
 
 interface EventMatchWithUnit extends EventMatch {
   unitAmount?: number;
+  createdAt?: string;
 }
 
 export function calculateLedger(
@@ -290,6 +292,7 @@ export function calculateLedger(
             playerName: s.playerName,
             amount: s.amount,
             isComplete: ns.settlement.isComplete,
+            createdAt: em.createdAt,
           });
 
           if (ns.settlement.isComplete) {
@@ -316,6 +319,7 @@ export function calculateLedger(
           playerName: s.playerName,
           amount: s.amount,
           isComplete: settlement.isComplete,
+          createdAt: em.createdAt,
         });
 
         if (settlement.isComplete) {

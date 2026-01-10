@@ -239,6 +239,7 @@ export default function Ledger() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Date</TableHead>
                   <TableHead>Match</TableHead>
                   <TableHead>Player</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -248,6 +249,9 @@ export default function Ledger() {
               <TableBody>
                 {ledgerResults.entries.map((entry, idx) => (
                   <TableRow key={`${entry.matchId}-${entry.playerId}-${idx}`} data-testid={`row-entry-${idx}`}>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {entry.createdAt ? format(new Date(entry.createdAt), "MMM d, yyyy") : "-"}
+                    </TableCell>
                     <TableCell className="font-medium">{entry.matchName}</TableCell>
                     <TableCell>{entry.playerName}</TableCell>
                     <TableCell className={`text-right font-bold ${entry.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
