@@ -427,32 +427,51 @@ export default function MatchDetail() {
 
               return (
                 <div key={em.id} className="border border-border rounded-xl overflow-hidden">
-                  <button
-                    onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
-                    className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
-                    data-testid={`button-expand-match-${em.id}`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-primary" />
-                        <span className="font-semibold">{teamA?.name || "Team A"}</span>
+                  <div className="flex items-center">
+                    <button
+                      onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
+                      className="flex-1 p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+                      data-testid={`button-expand-match-${em.id}`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-primary" />
+                          <span className="font-semibold">{teamA?.name || "Team A"}</span>
+                        </div>
+                        <span className="text-muted-foreground">vs</span>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-4 h-4 text-accent" />
+                          <span className="font-semibold">{teamB?.name || "Team B"}</span>
+                        </div>
                       </div>
-                      <span className="text-muted-foreground">vs</span>
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4 text-accent" />
-                        <span className="font-semibold">{teamB?.name || "Team B"}</span>
+                      <div className="flex items-center gap-3">
+                        {em.unitAmount > 0 && (
+                          <span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">
+                            ${(em.unitAmount / 100).toFixed(2)}
+                          </span>
+                        )}
+                        <span className="text-sm font-medium text-primary">{status}</span>
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {em.unitAmount > 0 && (
-                        <span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">
-                          ${(em.unitAmount / 100).toFixed(2)}
-                        </span>
-                      )}
-                      <span className="text-sm font-medium text-primary">{status}</span>
-                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </div>
-                  </button>
+                    </button>
+                    {isCreator && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="mr-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this match?')) {
+                            deleteEventMatch.mutate(em.id);
+                          }
+                        }}
+                        disabled={deleteEventMatch.isPending}
+                        data-testid={`button-delete-match-${em.id}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
 
                   {isExpanded && (
                     <motion.div
@@ -609,25 +628,6 @@ export default function MatchDetail() {
                           );
                         })()}
 
-                        {/* Delete Match Button */}
-                        {isCreator && (
-                          <div className="pt-2 border-t border-border">
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => {
-                                if (confirm('Are you sure you want to delete this match?')) {
-                                  deleteEventMatch.mutate(em.id);
-                                }
-                              }}
-                              disabled={deleteEventMatch.isPending}
-                              data-testid={`button-delete-match-${em.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              {deleteEventMatch.isPending ? "Deleting..." : "Delete Match"}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     </motion.div>
                   )}
