@@ -27,6 +27,8 @@ interface EventMatch {
   matchType: string;
   startHole?: number;
   parentMatchId?: number | null;
+  autoPressOriginal?: boolean;
+  autoPressAllPresses?: boolean;
   teams: Team[];
 }
 
@@ -266,7 +268,10 @@ export function calculateLedger(
     if (!teamA || !teamB) continue;
 
     const results = calculateMatchPlayResults(em, scores);
-    const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType);
+    // For parent matches: use autoPressOriginal
+    // For press matches: use autoPressOriginal (which inherits from parent's autoPressAllPresses setting)
+    const shouldAutoPress = em.autoPressOriginal ?? false;
+    const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
 
     for (const s of settlement.settlements) {
       entries.push({
@@ -310,15 +315,48 @@ export function calculateBetSettlements(
   teamA: Team,
   teamB: Team,
   results: HoleResult[],
-  matchType?: string
+  matchType?: string,
+  autoPress?: boolean
 ): MatchSettlement {
   const winner = getMatchWinner(results, matchType);
-  const unitAmount = unitAmountCents / 100;
+  let unitAmount = unitAmountCents / 100;
   
   const teamASize = teamA.members.length;
   const teamBSize = teamB.members.length;
   const maxTeamSize = Math.max(teamASize, teamBSize);
-  const totalPot = unitAmount * maxTeamSize;
+  
+  // Auto Press logic: check if one team was 2+ down going into hole 18
+  let autoPressMultiplier = 1;
+  let autoPressNullified = false;
+  
+  if (autoPress && results.length >= 2 && matchType !== 'stroke_play') {
+    // Get status before hole 18 (after hole 17)
+    const hole17Result = results.find(r => r.holeNumber === 17);
+    const hole18Result = results.find(r => r.holeNumber === 18);
+    
+    if (hole17Result && hole18Result && hole18Result.teamAScore !== null && hole18Result.teamBScore !== null) {
+      const statusBefore18 = hole17Result.cumulativeA - hole17Result.cumulativeB;
+      
+      // Check if either team was 2+ down going into 18
+      if (Math.abs(statusBefore18) >= 2) {
+        const leaderBefore18 = statusBefore18 > 0 ? 'A' : 'B';
+        const hole18Winner = hole18Result.winner;
+        
+        if (hole18Winner === leaderBefore18) {
+          // Leader won hole 18 - double the bet
+          autoPressMultiplier = 2;
+        } else if (hole18Winner === 'tie') {
+          // Tie on 18 - unchanged
+          autoPressMultiplier = 1;
+        } else {
+          // Leader lost hole 18 - bet is nullified (push)
+          autoPressNullified = true;
+        }
+      }
+    }
+  }
+  
+  const totalPot = unitAmount * maxTeamSize * autoPressMultiplier;
   
   if (winner === null) {
     return {
@@ -327,6 +365,31 @@ export function calculateBetSettlements(
       winner: null,
       winningTeamName: null,
       settlements: [],
+      totalPot: unitAmount * maxTeamSize,
+    };
+  }
+  
+  // If auto press nullified the bet, treat as a push
+  if (autoPressNullified) {
+    return {
+      isComplete: true,
+      isTie: true,
+      winner: null,
+      winningTeamName: null,
+      settlements: [
+        ...teamA.members.map((m) => ({
+          playerId: m.playerId,
+          playerName: m.player?.name || `Player ${m.playerId}`,
+          teamName: teamA.name,
+          amount: 0,
+        })),
+        ...teamB.members.map((m) => ({
+          playerId: m.playerId,
+          playerName: m.player?.name || `Player ${m.playerId}`,
+          teamName: teamB.name,
+          amount: 0,
+        })),
+      ],
       totalPot,
     };
   }
@@ -361,15 +424,19 @@ export function calculateBetSettlements(
   const winningTeamSize = winningTeam.members.length;
   const losingTeamSize = losingTeam.members.length;
   
+  // Apply auto press multiplier to amounts
+  const effectiveUnitAmount = unitAmount * autoPressMultiplier;
+  const effectiveTotalPot = effectiveUnitAmount * maxTeamSize;
+  
   let winAmount: number;
   let loseAmount: number;
   
   if (winningTeamSize >= losingTeamSize) {
-    winAmount = unitAmount;
-    loseAmount = totalPot / losingTeamSize;
+    winAmount = effectiveUnitAmount;
+    loseAmount = effectiveTotalPot / losingTeamSize;
   } else {
-    winAmount = totalPot / winningTeamSize;
-    loseAmount = unitAmount;
+    winAmount = effectiveTotalPot / winningTeamSize;
+    loseAmount = effectiveUnitAmount;
   }
   
   const settlements: PlayerSettlement[] = [
@@ -393,6 +460,6 @@ export function calculateBetSettlements(
     winner,
     winningTeamName: winningTeam.name,
     settlements,
-    totalPot,
+    totalPot: effectiveTotalPot,
   };
 }

@@ -863,7 +863,7 @@ export default function MatchDetail() {
 
                         {/* Wager Summary */}
                         {em.unitAmount > 0 && (() => {
-                          const settlement = calculateBetSettlements(em.unitAmount, teamA!, teamB!, results, em.matchType);
+                          const settlement = calculateBetSettlements(em.unitAmount, teamA!, teamB!, results, em.matchType, em.autoPressOriginal);
                           return (
                             <div className="pt-3 border-t border-border">
                               <div className="flex items-center justify-between mb-2">
