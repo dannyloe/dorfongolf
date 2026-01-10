@@ -123,3 +123,131 @@ export function getMatchStatus(results: HoleResult[], teamA: Team, teamB: Team):
   
   return lastPlayedHole.status;
 }
+
+export interface PlayerSettlement {
+  playerId: number;
+  playerName: string;
+  teamName: string;
+  amount: number;
+}
+
+export interface MatchSettlement {
+  isComplete: boolean;
+  isTie: boolean;
+  winner: 'A' | 'B' | null;
+  winningTeamName: string | null;
+  settlements: PlayerSettlement[];
+  totalPot: number;
+}
+
+export function getMatchWinner(results: HoleResult[]): 'A' | 'B' | 'tie' | null {
+  const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
+  
+  if (!lastPlayedHole) return null;
+  
+  const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
+  const holesRemaining = 18 - lastPlayedHole.holeNumber;
+  
+  if (holesRemaining === 0) {
+    if (diff > 0) return 'A';
+    if (diff < 0) return 'B';
+    return 'tie';
+  }
+  
+  if (Math.abs(diff) > holesRemaining) {
+    return diff > 0 ? 'A' : 'B';
+  }
+  
+  return null;
+}
+
+export function calculateBetSettlements(
+  unitAmountCents: number,
+  teamA: Team,
+  teamB: Team,
+  results: HoleResult[]
+): MatchSettlement {
+  const winner = getMatchWinner(results);
+  const unitAmount = unitAmountCents / 100;
+  
+  const teamASize = teamA.members.length;
+  const teamBSize = teamB.members.length;
+  const maxTeamSize = Math.max(teamASize, teamBSize);
+  const totalPot = unitAmount * maxTeamSize;
+  
+  if (winner === null) {
+    return {
+      isComplete: false,
+      isTie: false,
+      winner: null,
+      winningTeamName: null,
+      settlements: [],
+      totalPot,
+    };
+  }
+  
+  if (winner === 'tie') {
+    return {
+      isComplete: true,
+      isTie: true,
+      winner: null,
+      winningTeamName: null,
+      settlements: [
+        ...teamA.members.map((m) => ({
+          playerId: m.playerId,
+          playerName: m.player?.name || `Player ${m.playerId}`,
+          teamName: teamA.name,
+          amount: 0,
+        })),
+        ...teamB.members.map((m) => ({
+          playerId: m.playerId,
+          playerName: m.player?.name || `Player ${m.playerId}`,
+          teamName: teamB.name,
+          amount: 0,
+        })),
+      ],
+      totalPot,
+    };
+  }
+  
+  const winningTeam = winner === 'A' ? teamA : teamB;
+  const losingTeam = winner === 'A' ? teamB : teamA;
+  
+  const winningTeamSize = winningTeam.members.length;
+  const losingTeamSize = losingTeam.members.length;
+  
+  let winAmount: number;
+  let loseAmount: number;
+  
+  if (winningTeamSize >= losingTeamSize) {
+    winAmount = unitAmount;
+    loseAmount = totalPot / losingTeamSize;
+  } else {
+    winAmount = totalPot / winningTeamSize;
+    loseAmount = unitAmount;
+  }
+  
+  const settlements: PlayerSettlement[] = [
+    ...winningTeam.members.map((m) => ({
+      playerId: m.playerId,
+      playerName: m.player?.name || `Player ${m.playerId}`,
+      teamName: winningTeam.name,
+      amount: Math.round(winAmount * 100) / 100,
+    })),
+    ...losingTeam.members.map((m) => ({
+      playerId: m.playerId,
+      playerName: m.player?.name || `Player ${m.playerId}`,
+      teamName: losingTeam.name,
+      amount: -Math.round(loseAmount * 100) / 100,
+    })),
+  ];
+  
+  return {
+    isComplete: true,
+    isTie: false,
+    winner,
+    winningTeamName: winningTeam.name,
+    settlements,
+    totalPot,
+  };
+}

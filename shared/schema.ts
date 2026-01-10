@@ -36,6 +36,7 @@ export const eventMatches = pgTable("event_matches", {
   eventId: integer("event_id").notNull(),
   name: text("name").notNull(),
   matchType: text("match_type").notNull().default("match_play"),
+  unitAmount: integer("unit_amount").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -179,6 +180,7 @@ export type SubmitScoreRequest = {
 export type CreateEventMatchRequest = {
   name: string;
   matchType: string;
+  unitAmount?: number;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
 };

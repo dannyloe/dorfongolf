@@ -126,6 +126,7 @@ export class DatabaseStorage implements IStorage {
       eventId,
       name: data.name,
       matchType: data.matchType,
+      unitAmount: data.unitAmount || 0,
     }).returning();
 
     // Create Team A

@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements } from "@/lib/matchplay";
 
 interface Player {
   id: number;
@@ -43,6 +43,7 @@ interface EventMatch {
   eventId: number;
   name: string;
   matchType: string;
+  unitAmount: number;
   teams: Team[];
 }
 
@@ -67,6 +68,7 @@ export default function MatchDetail() {
   // Event Match creation state
   const [showCreateMatch, setShowCreateMatch] = useState(false);
   const [matchName, setMatchName] = useState("");
+  const [unitAmount, setUnitAmount] = useState<number>(5);
   const [teamAName, setTeamAName] = useState("Team A");
   const [teamBName, setTeamBName] = useState("Team B");
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
@@ -105,12 +107,14 @@ export default function MatchDetail() {
     createEventMatch.mutate({
       name: matchName.trim(),
       matchType: "match_play",
+      unitAmount: unitAmount * 100,
       teamA: { name: teamAName, playerIds: teamAPlayerIds },
       teamB: { name: teamBName, playerIds: teamBPlayerIds },
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
         setMatchName("");
+        setUnitAmount(5);
         setTeamAName("Team A");
         setTeamBName("Team B");
         setTeamAPlayerIds([]);
@@ -345,15 +349,30 @@ export default function MatchDetail() {
             </div>
             
             <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Match Name</label>
-                <Input
-                  placeholder="e.g., Front 9 Match"
-                  value={matchName}
-                  onChange={(e) => setMatchName(e.target.value)}
-                  className="mt-1"
-                  data-testid="input-match-name"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Match Name</label>
+                  <Input
+                    placeholder="e.g., Front 9 Match"
+                    value={matchName}
+                    onChange={(e) => setMatchName(e.target.value)}
+                    className="mt-1"
+                    data-testid="input-match-name"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="5"
+                    value={unitAmount}
+                    onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
+                    className="mt-1"
+                    data-testid="input-unit-amount"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -461,6 +480,11 @@ export default function MatchDetail() {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
+                      {em.unitAmount > 0 && (
+                        <span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">
+                          ${(em.unitAmount / 100).toFixed(2)}
+                        </span>
+                      )}
                       <span className="text-sm font-medium text-primary">{status}</span>
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </div>
@@ -576,6 +600,50 @@ export default function MatchDetail() {
                             </Button>
                           )}
                         </div>
+
+                        {/* Wager Summary */}
+                        {em.unitAmount > 0 && (() => {
+                          const settlement = calculateBetSettlements(em.unitAmount, teamA!, teamB!, results);
+                          return (
+                            <div className="pt-3 border-t border-border">
+                              <div className="flex items-center justify-between mb-2">
+                                <h5 className="font-semibold text-sm flex items-center gap-2">
+                                  Wager Summary
+                                  <span className="text-xs text-muted-foreground">(${(em.unitAmount / 100).toFixed(2)}/player)</span>
+                                </h5>
+                                {settlement.isComplete && (
+                                  <span className={`text-xs px-2 py-0.5 rounded ${settlement.isTie ? 'bg-muted text-muted-foreground' : 'bg-primary/10 text-primary'}`}>
+                                    {settlement.isTie ? 'Match Halved - No Payouts' : `${settlement.winningTeamName} Wins!`}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {!settlement.isComplete ? (
+                                <p className="text-xs text-muted-foreground">Match in progress - pot: ${settlement.totalPot.toFixed(2)}</p>
+                              ) : settlement.isTie ? (
+                                <p className="text-xs text-muted-foreground">All bets returned</p>
+                              ) : (
+                                <div className="grid grid-cols-2 gap-2">
+                                  {settlement.settlements.map((s) => (
+                                    <div 
+                                      key={s.playerId}
+                                      className={`flex justify-between items-center px-3 py-1.5 rounded-lg text-sm ${
+                                        s.amount > 0 
+                                          ? 'bg-primary/10 text-primary' 
+                                          : 'bg-destructive/10 text-destructive'
+                                      }`}
+                                    >
+                                      <span className="font-medium">{s.playerName}</span>
+                                      <span className="font-bold">
+                                        {s.amount > 0 ? '+' : ''}${s.amount.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </motion.div>
                   )}
