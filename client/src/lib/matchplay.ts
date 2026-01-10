@@ -161,6 +161,80 @@ export function getMatchWinner(results: HoleResult[]): 'A' | 'B' | 'tie' | null 
   return null;
 }
 
+export interface LedgerEntry {
+  matchId: number;
+  matchName: string;
+  playerId: number;
+  playerName: string;
+  amount: number;
+  isComplete: boolean;
+}
+
+export interface PlayerBalance {
+  playerId: number;
+  playerName: string;
+  totalWon: number;
+  totalLost: number;
+  netBalance: number;
+  matchesPlayed: number;
+}
+
+interface EventMatchWithUnit extends EventMatch {
+  unitAmount?: number;
+}
+
+export function calculateLedger(
+  eventMatches: EventMatchWithUnit[],
+  scores: Score[]
+): { entries: LedgerEntry[]; balances: PlayerBalance[] } {
+  const entries: LedgerEntry[] = [];
+  const playerTotals: Map<number, { name: string; won: number; lost: number; matches: number }> = new Map();
+
+  for (const em of eventMatches) {
+    const teamA = em.teams[0];
+    const teamB = em.teams[1];
+    if (!teamA || !teamB) continue;
+
+    const results = calculateMatchPlayResults(em, scores);
+    const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results);
+
+    for (const s of settlement.settlements) {
+      entries.push({
+        matchId: em.id,
+        matchName: em.name,
+        playerId: s.playerId,
+        playerName: s.playerName,
+        amount: s.amount,
+        isComplete: settlement.isComplete,
+      });
+
+      if (settlement.isComplete) {
+        const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+        if (s.amount > 0) {
+          existing.won += s.amount;
+        } else if (s.amount < 0) {
+          existing.lost += Math.abs(s.amount);
+        }
+        existing.matches++;
+        playerTotals.set(s.playerId, existing);
+      }
+    }
+  }
+
+  const balances: PlayerBalance[] = Array.from(playerTotals.entries()).map(([playerId, data]) => ({
+    playerId,
+    playerName: data.name,
+    totalWon: Math.round(data.won * 100) / 100,
+    totalLost: Math.round(data.lost * 100) / 100,
+    netBalance: Math.round((data.won - data.lost) * 100) / 100,
+    matchesPlayed: data.matches,
+  }));
+
+  balances.sort((a, b) => b.netBalance - a.netBalance);
+
+  return { entries, balances };
+}
+
 export function calculateBetSettlements(
   unitAmountCents: number,
   teamA: Team,
