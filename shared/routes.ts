@@ -192,6 +192,19 @@ export const api = {
       },
     },
   },
+  ledger: {
+    get: {
+      method: 'GET' as const,
+      path: '/api/ledger',
+      responses: {
+        200: z.object({
+          matches: z.array(z.any()),
+          eventMatches: z.array(z.any()),
+          scores: z.array(z.any()),
+        }),
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

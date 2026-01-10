@@ -213,6 +213,19 @@ export async function registerRoutes(
     }
   });
 
+  // Ledger Route
+  app.get(api.ledger.get.path, isAuthenticated, async (req, res) => {
+    try {
+      const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+      const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+      
+      const ledgerData = await storage.getLedgerData(startDate, endDate);
+      res.json(ledgerData);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Preset Players Routes
   app.get(api.presetPlayers.list.path, isAuthenticated, async (req, res) => {
     const { PRESET_PLAYERS } = await import("@shared/models/auth");

@@ -237,6 +237,42 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updated;
   }
+
+  async getLedgerData(startDate?: Date, endDate?: Date) {
+    // Get all matches (optionally filtered by date)
+    let allMatches = await db.select().from(matches).orderBy(matches.createdAt);
+    
+    if (startDate) {
+      allMatches = allMatches.filter(m => m.createdAt && new Date(m.createdAt) >= startDate);
+    }
+    if (endDate) {
+      const endOfDay = new Date(endDate);
+      endOfDay.setHours(23, 59, 59, 999);
+      allMatches = allMatches.filter(m => m.createdAt && new Date(m.createdAt) <= endOfDay);
+    }
+
+    // Get all event matches with teams for these matches
+    const allEventMatches: any[] = [];
+    const allScores: Score[] = [];
+
+    for (const match of allMatches) {
+      const eventMatchesList = await this.getEventMatches(match.id);
+      for (const em of eventMatchesList) {
+        const withTeams = await this.getEventMatchWithTeams(em.id);
+        if (withTeams) {
+          allEventMatches.push(withTeams);
+        }
+      }
+      const matchScores = await this.getMatchScores(match.id);
+      allScores.push(...matchScores);
+    }
+
+    return {
+      matches: allMatches,
+      eventMatches: allEventMatches,
+      scores: allScores,
+    };
+  }
 }
 
 export const storage = new DatabaseStorage();

@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
 import MatchDetail from "@/pages/MatchDetail";
+import Ledger from "@/pages/Ledger";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -55,6 +56,9 @@ function Router() {
       </Route>
       <Route path="/match/:id">
         <PrivateRoute component={MatchDetail} />
+      </Route>
+      <Route path="/ledger">
+        <PrivateRoute component={Ledger} />
       </Route>
       <Route component={NotFound} />
     </Switch>

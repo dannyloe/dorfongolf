@@ -2,7 +2,7 @@ import { useMatches, useDeleteMatch } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, Trash2 } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
@@ -40,9 +40,18 @@ export default function Dashboard() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
+        className="flex items-start justify-between"
       >
-        <h1 className="text-4xl font-display font-bold text-primary mb-2">Welcome back</h1>
-        <p className="text-muted-foreground text-lg">Ready for another round?</p>
+        <div>
+          <h1 className="text-4xl font-display font-bold text-primary mb-2">Welcome back</h1>
+          <p className="text-muted-foreground text-lg">Ready for another round?</p>
+        </div>
+        <Link href="/ledger">
+          <Button variant="outline" className="gap-2" data-testid="button-view-ledger">
+            <DollarSign className="w-4 h-4" />
+            View Ledger
+          </Button>
+        </Link>
       </motion.div>
 
       {/* Active Events Section */}
