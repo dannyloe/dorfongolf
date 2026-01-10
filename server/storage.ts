@@ -75,6 +75,15 @@ export class DatabaseStorage implements IStorage {
     const [newScore] = await db.insert(scores).values(score).returning();
     return newScore;
   }
+
+  async deleteMatch(matchId: number): Promise<void> {
+    // Delete scores first
+    await db.delete(scores).where(eq(scores.matchId, matchId));
+    // Delete players
+    await db.delete(players).where(eq(players.matchId, matchId));
+    // Delete match
+    await db.delete(matches).where(eq(matches.id, matchId));
+  }
 }
 
 export const storage = new DatabaseStorage();

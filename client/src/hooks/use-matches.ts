@@ -102,3 +102,25 @@ export function useSubmitScore(matchId: number) {
     },
   });
 }
+
+export function useDeleteMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (matchId: number) => {
+      const url = buildUrl(api.matches.delete.path, { id: matchId });
+      const res = await fetch(url, {
+        method: api.matches.delete.method,
+        credentials: "include",
+      });
+      
+      if (res.status === 403) {
+        const error = await res.json();
+        throw new Error(error.message);
+      }
+      if (!res.ok) throw new Error("Failed to delete match");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
+    },
+  });
+}

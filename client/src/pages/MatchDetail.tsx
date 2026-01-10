@@ -1,8 +1,8 @@
-import { useMatch, useAddPlayer, useSubmitScore } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,13 +25,16 @@ interface Score {
 
 export default function MatchDetail() {
   const [, params] = useRoute("/match/:id");
+  const [, navigate] = useLocation();
   const matchId = parseInt(params?.id || "0");
   const { data: match, isLoading, error } = useMatch(matchId);
   const { user } = useAuth();
   const addPlayer = useAddPlayer(matchId);
   const submitScore = useSubmitScore(matchId);
+  const deleteMatch = useDeleteMatch();
   
   const [newPlayerName, setNewPlayerName] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingCell, setEditingCell] = useState<{ playerId: number; hole: number } | null>(null);
   const [editValue, setEditValue] = useState("");
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -142,6 +145,41 @@ export default function MatchDetail() {
                 <UserPlus className="w-4 h-4 mr-2" />
                 {addPlayer.isPending ? "Joining..." : "Join Match"}
               </Button>
+            )}
+            {isCreator && (
+              showDeleteConfirm ? (
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      deleteMatch.mutate(matchId, {
+                        onSuccess: () => navigate("/")
+                      });
+                    }}
+                    disabled={deleteMatch.isPending}
+                    data-testid="button-confirm-delete-match"
+                  >
+                    {deleteMatch.isPending ? "Deleting..." : "Confirm Delete"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    data-testid="button-cancel-delete-match"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-muted-foreground hover:text-destructive"
+                  data-testid="button-delete-match"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              )
             )}
           </div>
         </div>

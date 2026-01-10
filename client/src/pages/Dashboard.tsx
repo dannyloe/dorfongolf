@@ -1,11 +1,15 @@
-import { useMatches } from "@/hooks/use-matches";
+import { useMatches, useDeleteMatch } from "@/hooks/use-matches";
+import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, User } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 export default function Dashboard() {
   const { data: matches, isLoading } = useMatches();
+  const { user } = useAuth();
 
   if (isLoading) {
     return (
@@ -40,13 +44,12 @@ export default function Dashboard() {
         {activeMatches.length === 0 ? (
           <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
             <p className="text-muted-foreground mb-4">No active matches found.</p>
-            {/* The Create Match action is in Layout, so we just guide them */}
             <p className="text-sm font-medium text-primary">Click "New Match" to start playing!</p>
           </div>
         ) : (
           <div className="grid gap-4">
             {activeMatches.map((match) => (
-              <MatchCard key={match.id} match={match} />
+              <MatchCard key={match.id} match={match} userId={user?.id} />
             ))}
           </div>
         )}
@@ -61,7 +64,7 @@ export default function Dashboard() {
           </h2>
           <div className="grid gap-4 opacity-80 hover:opacity-100 transition-opacity">
             {pastMatches.map((match) => (
-              <MatchCard key={match.id} match={match} isHistory />
+              <MatchCard key={match.id} match={match} isHistory userId={user?.id} />
             ))}
           </div>
         </section>
@@ -70,7 +73,28 @@ export default function Dashboard() {
   );
 }
 
-function MatchCard({ match, isHistory = false }: { match: any, isHistory?: boolean }) {
+function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory?: boolean, userId?: string }) {
+  const deleteMatch = useDeleteMatch();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const isCreator = userId === match.creatorId;
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (showConfirm) {
+      deleteMatch.mutate(match.id);
+      setShowConfirm(false);
+    } else {
+      setShowConfirm(true);
+    }
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowConfirm(false);
+  };
+
   return (
     <Link href={`/match/${match.id}`}>
       <motion.div
@@ -108,8 +132,45 @@ function MatchCard({ match, isHistory = false }: { match: any, isHistory?: boole
             </div>
           </div>
 
-          <div className="flex items-center self-end text-primary font-semibold text-sm group-hover:translate-x-1 transition-transform">
-            View Scorecard <ChevronRight className="w-4 h-4 ml-1" />
+          <div className="flex flex-col items-end gap-2">
+            {isCreator && (
+              <div className="flex gap-2">
+                {showConfirm ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleDelete}
+                      disabled={deleteMatch.isPending}
+                      data-testid={`button-confirm-delete-${match.id}`}
+                    >
+                      {deleteMatch.isPending ? "..." : "Confirm"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelDelete}
+                      data-testid={`button-cancel-delete-${match.id}`}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleDelete}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    data-testid={`button-delete-${match.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            )}
+            <div className="flex items-center self-end text-primary font-semibold text-sm group-hover:translate-x-1 transition-transform">
+              View Scorecard <ChevronRight className="w-4 h-4 ml-1" />
+            </div>
           </div>
         </div>
       </motion.div>

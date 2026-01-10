@@ -111,5 +111,21 @@ export async function registerRoutes(
     }
   });
 
+  app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id);
+    const user = req.user as any;
+    
+    const match = await storage.getMatch(matchId);
+    if (!match) return res.status(404).json({ message: "Match not found" });
+    
+    // Only the creator can delete
+    if (match.creatorId !== user.claims.sub) {
+      return res.status(403).json({ message: "Only the match creator can delete this match" });
+    }
+    
+    await storage.deleteMatch(matchId);
+    res.status(204).send();
+  });
+
   return httpServer;
 }
