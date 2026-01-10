@@ -192,30 +192,30 @@ export default function Ledger() {
             Player Balances
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {ledgerResults?.balances && ledgerResults.balances.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Player</TableHead>
-                  <TableHead className="text-right">Matches</TableHead>
-                  <TableHead className="text-right">Won</TableHead>
-                  <TableHead className="text-right">Lost</TableHead>
-                  <TableHead className="text-right">Net Balance</TableHead>
+                  <TableHead className="whitespace-nowrap min-w-fit">Player</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Matches</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Won</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Lost</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Net Balance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {ledgerResults.balances.map((balance) => (
                   <TableRow key={balance.playerId} data-testid={`row-player-${balance.playerId}`}>
-                    <TableCell className="font-medium">{balance.playerName}</TableCell>
-                    <TableCell className="text-right">{balance.matchesPlayed}</TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="font-medium whitespace-nowrap">{balance.playerName}</TableCell>
+                    <TableCell className="text-right whitespace-nowrap">{balance.matchesPlayed}</TableCell>
+                    <TableCell className="text-right text-green-600 whitespace-nowrap">
                       +${balance.totalWon.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right text-red-600">
+                    <TableCell className="text-right text-red-600 whitespace-nowrap">
                       -${balance.totalLost.toFixed(2)}
                     </TableCell>
-                    <TableCell className={`text-right font-bold ${balance.netBalance >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <TableCell className={`text-right font-bold whitespace-nowrap ${balance.netBalance >= 0 ? "text-green-600" : "text-red-600"}`}>
                       {balance.netBalance >= 0 ? "+" : ""}${balance.netBalance.toFixed(2)}
                     </TableCell>
                   </TableRow>
@@ -234,30 +234,30 @@ export default function Ledger() {
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {ledgerResults?.entries && ledgerResults.entries.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Match</TableHead>
-                  <TableHead>Player</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Date</TableHead>
+                  <TableHead className="whitespace-nowrap min-w-fit">Match</TableHead>
+                  <TableHead className="whitespace-nowrap min-w-fit">Player</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {ledgerResults.entries.map((entry, idx) => (
                   <TableRow key={`${entry.matchId}-${entry.playerId}-${idx}`} data-testid={`row-entry-${idx}`}>
-                    <TableCell className="text-muted-foreground text-sm">
+                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
                       {entry.createdAt ? format(new Date(entry.createdAt), "MMM d, yyyy") : "-"}
                     </TableCell>
-                    <TableCell className="font-medium">{entry.matchName}</TableCell>
-                    <TableCell>{entry.playerName}</TableCell>
-                    <TableCell className={`text-right font-bold ${entry.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <TableCell className="font-medium whitespace-nowrap">{entry.matchName}</TableCell>
+                    <TableCell className="whitespace-nowrap">{entry.playerName}</TableCell>
+                    <TableCell className={`text-right font-bold whitespace-nowrap ${entry.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
                       {entry.amount >= 0 ? "+" : ""}${entry.amount.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right whitespace-nowrap">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                         entry.isComplete 
                           ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
