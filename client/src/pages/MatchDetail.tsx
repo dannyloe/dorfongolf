@@ -1559,14 +1559,28 @@ export default function MatchDetail() {
                         {isEditing ? (
                           <input
                             ref={(el) => { inputRefs.current[cellKey] = el; }}
-                            type="number"
-                            min="1"
-                            max="20"
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={2}
                             value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '');
+                              setEditValue(val);
+                              if (val.length === 1 && parseInt(val) >= 1 && parseInt(val) <= 9) {
+                                const strokes = parseInt(val);
+                                submitScore.mutate({ playerId: p.id, holeNumber: hole, strokes });
+                                if (hole < 18) {
+                                  setEditingCell({ playerId: p.id, hole: hole + 1 });
+                                  setEditValue(getScore(p.id, hole + 1)?.toString() || "");
+                                } else {
+                                  setEditingCell(null);
+                                }
+                              }
+                            }}
                             onBlur={() => handleScoreSubmit(p.id, hole)}
                             onKeyDown={(e) => handleKeyDown(e, p.id, hole)}
-                            className="w-10 h-8 text-center border border-primary rounded focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono"
+                            className="w-10 h-8 text-center border border-primary rounded focus:outline-none focus:ring-2 focus:ring-primary/50 font-mono [appearance:textfield]"
                             data-testid={`input-score-${p.id}-${hole}`}
                           />
                         ) : (
