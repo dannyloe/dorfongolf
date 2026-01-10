@@ -31,7 +31,7 @@ export type User = typeof users.$inferSelect;
 
 // Preset player roster - centralized list
 export const PRESET_PLAYERS = [
-  "Danny", "Zimm", "Hutch", "Cody", "Cole", "Spikey", "CP", "Dooly", "Fontaine",
+  "DLoe", "Zimm", "Hutch", "Cody", "Cole", "Spikey", "CP", "Dooly", "Fontaine",
   "Ian", "JR", "JP", "Jordan", "Wait", "MeerKat", "Chaney", "Neal",
   "Nellie", "Hot Left Hansson", "Ocker", "Sub4 Seeger", "Tharnish",
   "Yaffe", "Shu", "Smitty", "Holland", "Trey Billy", "Ty Adams", "Ty Matlock"
