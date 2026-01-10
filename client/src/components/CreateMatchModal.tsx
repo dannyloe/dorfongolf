@@ -82,11 +82,16 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
                   <label className="text-sm font-semibold text-foreground/80">Course Name</label>
                   <div className="relative">
                     <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <input
+                    <select
                       {...register("courseName")}
-                      placeholder="e.g. Augusta National"
-                      className="input-field pl-10"
-                    />
+                      className="input-field pl-10 appearance-none cursor-pointer"
+                      data-testid="select-course-name"
+                    >
+                      <option value="">Select a course...</option>
+                      <option value="Hardscrabble">Hardscrabble</option>
+                      <option value="Blessings">Blessings</option>
+                      <option value="Fayetteville CC">Fayetteville CC</option>
+                    </select>
                   </div>
                   {errors.courseName && (
                     <p className="text-sm text-destructive mt-1">{errors.courseName.message}</p>
