@@ -29,6 +29,9 @@ interface EventMatch {
   parentMatchId?: number | null;
   autoPressOriginal?: boolean;
   autoPressAllPresses?: boolean;
+  autoPressNassauFront9?: boolean;
+  autoPressNassauBack9?: boolean;
+  autoPressNassauOverall?: boolean;
   teams: Team[];
 }
 
@@ -271,7 +274,12 @@ export function calculateLedger(
 
     if (em.matchType === 'nassau') {
       const nassauResults = calculateNassauResults(em, scores);
-      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, shouldAutoPress);
+      const nassauAutoPressSettings = {
+        front9: em.autoPressNassauFront9 ?? true,
+        back9: em.autoPressNassauBack9 ?? true,
+        overall: em.autoPressNassauOverall ?? true,
+      };
+      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, nassauAutoPressSettings);
       
       for (const ns of nassauSettlements) {
         for (const s of ns.settlement.settlements) {
@@ -520,12 +528,17 @@ export function calculateCombinedMatchSettlements(
       // Nassau has 3 bets
       totalBets += 3;
       const nassauResults = calculateNassauResults(match, scores);
+      const nassauAutoPressSettings = {
+        front9: match.autoPressNassauFront9 ?? true,
+        back9: match.autoPressNassauBack9 ?? true,
+        overall: match.autoPressNassauOverall ?? true,
+      };
       const nassauSettlements = calculateNassauSettlements(
         match.unitAmount || 0,
         teamA,
         teamB,
         nassauResults,
-        match.autoPressOriginal ?? true
+        nassauAutoPressSettings
       );
 
       for (const ns of nassauSettlements) {
@@ -699,17 +712,28 @@ export interface NassauSettlement {
   autoPressMultiplier: number;
 }
 
+export interface NassauAutoPressSettings {
+  front9: boolean;
+  back9: boolean;
+  overall: boolean;
+}
+
 export function calculateNassauSettlements(
   unitAmountCents: number,
   teamA: Team,
   teamB: Team,
   nassauResults: NassauResults,
-  autoPress: boolean
+  autoPressSettings: boolean | NassauAutoPressSettings
 ): NassauSettlement[] {
-  const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number }[] = [
-    { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8 },
-    { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17 },
-    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17 },
+  // Handle both legacy boolean and new object format
+  const settings: NassauAutoPressSettings = typeof autoPressSettings === 'boolean'
+    ? { front9: autoPressSettings, back9: autoPressSettings, overall: autoPressSettings }
+    : autoPressSettings;
+
+  const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number; autoPress: boolean }[] = [
+    { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8, autoPress: settings.front9 },
+    { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.back9 },
+    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.overall },
   ];
 
   return bets.map(bet => {
@@ -724,7 +748,7 @@ export function calculateNassauSettlements(
     let autoPressNullified = false;
     let autoPressTriggered = false;
     
-    if (autoPress && bet.results.length >= 2) {
+    if (bet.autoPress && bet.results.length >= 2) {
       const checkHoleResult = bet.results.find(r => r.holeNumber === bet.autoPressCheckHole);
       const finalHoleResult = bet.results.find(r => r.holeNumber === bet.finalHole);
       
