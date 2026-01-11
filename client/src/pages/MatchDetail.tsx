@@ -55,6 +55,60 @@ interface EventMatch {
   teams: Team[];
 }
 
+function ScoreCell({ score, par, testId }: { score: number | null; par: number; testId: string }) {
+  if (score === null) {
+    return <span className="font-mono font-medium inline-block w-10 h-8 leading-8 text-muted-foreground" data-testid={testId}>-</span>;
+  }
+  
+  const diff = score - par;
+  
+  if (diff === 0) {
+    return <span className="font-mono font-medium inline-block w-10 h-8 leading-8 text-foreground" data-testid={testId}>{score}</span>;
+  }
+  
+  if (diff < 0) {
+    const circleCount = Math.abs(diff);
+    const circles = Array.from({ length: circleCount }, (_, i) => (
+      <span 
+        key={i} 
+        className="absolute inset-0 flex items-center justify-center"
+        style={{ 
+          transform: `scale(${1 + i * 0.35})`,
+        }}
+      >
+        <span className="w-6 h-6 rounded-full border-2 border-red-500" />
+      </span>
+    ));
+    
+    return (
+      <span className="font-mono font-bold inline-flex items-center justify-center w-10 h-8 text-red-500 relative" data-testid={testId}>
+        {circles}
+        <span className="relative z-10">{score}</span>
+      </span>
+    );
+  }
+  
+  const squareCount = Math.min(diff, 3);
+  const squares = Array.from({ length: squareCount }, (_, i) => (
+    <span 
+      key={i} 
+      className="absolute inset-0 flex items-center justify-center"
+      style={{ 
+        transform: `scale(${1 + i * 0.35})`,
+      }}
+    >
+      <span className="w-6 h-6 border-2 border-blue-500" />
+    </span>
+  ));
+  
+  return (
+    <span className="font-mono font-bold inline-flex items-center justify-center w-10 h-8 text-blue-500 relative" data-testid={testId}>
+      {squares}
+      <span className="relative z-10">{score}</span>
+    </span>
+  );
+}
+
 export default function MatchDetail() {
   const [, params] = useRoute("/match/:id");
   const [, navigate] = useLocation();
@@ -1816,16 +1870,18 @@ export default function MatchDetail() {
                             data-testid={`input-score-${p.id}-${hole}`}
                           />
                         ) : (
-                          <span 
+                          <div 
                             className={`
-                              font-mono font-medium inline-block w-10 h-8 leading-8 rounded
+                              inline-block rounded
                               ${canEdit ? "cursor-pointer hover:bg-primary/10" : ""}
-                              ${isCurrentUser ? "text-foreground" : "text-muted-foreground"}
                             `}
-                            data-testid={`score-cell-${p.id}-${hole}`}
                           >
-                            {score !== null ? score : "-"}
-                          </span>
+                            <ScoreCell 
+                              score={score} 
+                              par={getHolePar(hole)} 
+                              testId={`score-cell-${p.id}-${hole}`}
+                            />
+                          </div>
                         )}
                       </td>
                     );
