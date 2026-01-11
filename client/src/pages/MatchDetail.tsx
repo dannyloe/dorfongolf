@@ -3,7 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -490,21 +490,34 @@ export default function MatchDetail() {
         
         return (
           <div className="bg-white rounded-xl shadow-md border border-border/50 overflow-hidden">
-            <button
-              onClick={() => setAddPlayerCollapsed(!addPlayerCollapsed)}
-              className="w-full px-4 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors"
-              data-testid="button-toggle-add-player"
-            >
-              <h3 className="font-display font-semibold text-sm flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-primary" />
-                Add Player ({players.length} added)
-              </h3>
-              {addPlayerCollapsed ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
+            <div className="flex items-center justify-between px-4 py-3">
+              <button
+                onClick={() => setAddPlayerCollapsed(!addPlayerCollapsed)}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                data-testid="button-toggle-add-player"
+              >
+                <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-primary" />
+                  Add Player ({players.length} added)
+                </h3>
+                {addPlayerCollapsed ? (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                )}
+              </button>
+              <Link href={`/match/${matchId}/scores`}>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="gap-1"
+                  data-testid="button-scan-scorecard-header"
+                >
+                  <Camera className="w-4 h-4" />
+                  Scan Scorecard
+                </Button>
+              </Link>
+            </div>
             
             {!addPlayerCollapsed && (
               <div className="px-4 pb-4 pt-2 border-t border-border/50">
@@ -1799,11 +1812,18 @@ export default function MatchDetail() {
       {/* Scorecard Table */}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Scorecard</h2>
-        <Link href={`/match/${matchId}/scores`}>
-          <Button variant="outline" size="sm" data-testid="button-quick-score-entry">
-            Quick Score Entry
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/match/${matchId}/scores`}>
+            <Button variant="outline" size="icon" data-testid="button-scan-scorecard">
+              <Camera className="w-4 h-4" />
+            </Button>
+          </Link>
+          <Link href={`/match/${matchId}/scores`}>
+            <Button variant="outline" size="sm" data-testid="button-quick-score-entry">
+              Quick Score Entry
+            </Button>
+          </Link>
+        </div>
       </div>
       <div className="glass-card rounded-2xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm">
