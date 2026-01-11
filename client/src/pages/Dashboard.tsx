@@ -171,20 +171,31 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
               </Button>
             )
           )}
-          {!isHistory && (
+          {!isHistory ? (
             <button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (confirm('Mark this event as ended?')) {
-                  updateStatus.mutate({ matchId: match.id, completed: true });
-                }
+                updateStatus.mutate({ matchId: match.id, completed: true });
               }}
               disabled={updateStatus.isPending}
               className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors cursor-pointer"
               data-testid={`button-end-event-${match.id}`}
             >
               {updateStatus.isPending ? "..." : "In Progress"}
+            </button>
+          ) : (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                updateStatus.mutate({ matchId: match.id, completed: false });
+              }}
+              disabled={updateStatus.isPending}
+              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors cursor-pointer"
+              data-testid={`button-reopen-event-${match.id}`}
+            >
+              {updateStatus.isPending ? "..." : "Ended"}
             </button>
           )}
         </div>
