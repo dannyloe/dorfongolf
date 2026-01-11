@@ -1,8 +1,9 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
-  type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest
+  type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
+  type Course, type CourseHole, type InsertCourse, type InsertCourseHole
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -272,6 +273,52 @@ export class DatabaseStorage implements IStorage {
       eventMatches: allEventMatches,
       scores: allScores,
     };
+  }
+
+  // Course methods
+  async getCourses(): Promise<Course[]> {
+    return db.select().from(courses).orderBy(courses.name);
+  }
+
+  async getCourse(id: number): Promise<Course | undefined> {
+    const [course] = await db.select().from(courses).where(eq(courses.id, id));
+    return course;
+  }
+
+  async getCourseByName(name: string): Promise<Course | undefined> {
+    const [course] = await db.select().from(courses).where(eq(courses.name, name));
+    return course;
+  }
+
+  async getCourseHoles(courseId: number): Promise<CourseHole[]> {
+    return db.select().from(courseHoles)
+      .where(eq(courseHoles.courseId, courseId))
+      .orderBy(courseHoles.holeNumber);
+  }
+
+  async createCourse(course: InsertCourse): Promise<Course> {
+    const [newCourse] = await db.insert(courses).values(course).returning();
+    return newCourse;
+  }
+
+  async createCourseHole(hole: InsertCourseHole): Promise<CourseHole> {
+    const [newHole] = await db.insert(courseHoles).values(hole).returning();
+    return newHole;
+  }
+
+  async seedCourseIfNotExists(courseName: string, pars: number[]): Promise<Course> {
+    let course = await this.getCourseByName(courseName);
+    if (!course) {
+      course = await this.createCourse({ name: courseName });
+      for (let i = 0; i < 18; i++) {
+        await this.createCourseHole({
+          courseId: course.id,
+          holeNumber: i + 1,
+          par: pars[i] || 4,
+        });
+      }
+    }
+    return course;
   }
 }
 

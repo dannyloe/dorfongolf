@@ -268,5 +268,38 @@ export async function registerRoutes(
     }
   });
 
+  // Courses Routes
+  app.get(api.courses.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const coursesList = await storage.getCourses();
+      const result = await Promise.all(coursesList.map(async (course) => {
+        const holes = await storage.getCourseHoles(course.id);
+        const totalPar = holes.reduce((sum, h) => sum + h.par, 0);
+        return { ...course, holes, totalPar };
+      }));
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Seed courses on startup
+  seedCourses();
+
   return httpServer;
+}
+
+// Seed the three courses with default par values
+async function seedCourses() {
+  // Default par 72 layout: 4,4,3,5,4,4,4,3,5 (out: 36) | 4,4,3,5,4,4,4,3,5 (in: 36)
+  const defaultPars = [4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 3, 5];
+  
+  try {
+    await storage.seedCourseIfNotExists("Hardscrabble", defaultPars);
+    await storage.seedCourseIfNotExists("Blessings", defaultPars);
+    await storage.seedCourseIfNotExists("Fayetteville CC", defaultPars);
+    console.log("Courses seeded successfully");
+  } catch (err) {
+    console.error("Error seeding courses:", err);
+  }
 }

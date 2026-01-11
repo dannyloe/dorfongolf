@@ -5,7 +5,9 @@ import {
   insertScoreSchema, 
   scores, 
   players,
-  eventMatches
+  eventMatches,
+  courses,
+  courseHoles
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -202,6 +204,25 @@ export const api = {
           eventMatches: z.array(z.any()),
           scores: z.array(z.any()),
         }),
+      },
+    },
+  },
+  courses: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/courses',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          name: z.string(),
+          holes: z.array(z.object({
+            id: z.number(),
+            courseId: z.number(),
+            holeNumber: z.number(),
+            par: z.number(),
+          })),
+          totalPar: z.number(),
+        })),
       },
     },
   },

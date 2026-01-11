@@ -7,10 +7,23 @@ import { users } from "./models/auth";
 
 // === TABLE DEFINITIONS ===
 
+export const courses = pgTable("courses", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+});
+
+export const courseHoles = pgTable("course_holes", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull(),
+  holeNumber: integer("hole_number").notNull(),
+  par: integer("par").notNull(),
+});
+
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   courseName: text("course_name").notNull(),
+  courseId: integer("course_id"),
   creatorId: text("creator_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),
@@ -62,10 +75,26 @@ export const teamMembers = pgTable("team_members", {
 
 // === RELATIONS ===
 
+export const coursesRelations = relations(courses, ({ many }) => ({
+  holes: many(courseHoles),
+  matches: many(matches),
+}));
+
+export const courseHolesRelations = relations(courseHoles, ({ one }) => ({
+  course: one(courses, {
+    fields: [courseHoles.courseId],
+    references: [courses.id],
+  }),
+}));
+
 export const matchesRelations = relations(matches, ({ one, many }) => ({
   creator: one(users, {
     fields: [matches.creatorId],
     references: [users.id],
+  }),
+  course: one(courses, {
+    fields: [matches.courseId],
+    references: [courses.id],
   }),
   players: many(players),
   scores: many(scores),
@@ -123,6 +152,14 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
 
 // === BASE SCHEMAS ===
 
+export const insertCourseSchema = createInsertSchema(courses).omit({
+  id: true,
+});
+
+export const insertCourseHoleSchema = createInsertSchema(courseHoles).omit({
+  id: true,
+});
+
 export const insertMatchSchema = createInsertSchema(matches).omit({ 
   id: true, 
   createdAt: true, 
@@ -152,6 +189,12 @@ export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
 });
 
 // === EXPLICIT API CONTRACT TYPES ===
+
+export type Course = typeof courses.$inferSelect;
+export type InsertCourse = z.infer<typeof insertCourseSchema>;
+
+export type CourseHole = typeof courseHoles.$inferSelect;
+export type InsertCourseHole = z.infer<typeof insertCourseHoleSchema>;
 
 export type Match = typeof matches.$inferSelect;
 export type InsertMatch = z.infer<typeof insertMatchSchema>;
