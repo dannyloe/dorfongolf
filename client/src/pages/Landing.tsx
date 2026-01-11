@@ -17,12 +17,7 @@ export default function Landing() {
           </div>
           <span className="font-display font-bold text-2xl text-primary">Dorf on Golf</span>
         </div>
-        <a 
-          href="/api/login"
-          className="px-6 py-2.5 rounded-full font-semibold text-primary border-2 border-primary/10 hover:bg-primary hover:text-white transition-all duration-300"
-        >
-          Sign In
-        </a>
+        {/* Sign In button moved to hero section */}
       </nav>
 
       {/* Hero */}
@@ -48,7 +43,7 @@ export default function Landing() {
                 href="/api/login"
                 className="btn-primary text-lg px-8 py-4 group"
               >
-                Start Tracking Free
+                Sign In
                 <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
             </div>
