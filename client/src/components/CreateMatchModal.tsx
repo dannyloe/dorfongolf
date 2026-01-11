@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -6,6 +5,7 @@ import { useCreateMatch } from "@/hooks/use-matches";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trophy, MapPin } from "lucide-react";
 import { insertMatchSchema } from "@shared/schema";
+import { format } from "date-fns";
 
 interface CreateMatchModalProps {
   isOpen: boolean;
@@ -19,6 +19,10 @@ type FormData = z.infer<typeof formSchema>;
 export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: format(new Date(), "MMMM d, yyyy"),
+      courseName: "",
+    },
   });
 
   const createMatch = useCreateMatch();
