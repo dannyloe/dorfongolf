@@ -125,6 +125,27 @@ export function useDeleteMatch() {
   });
 }
 
+export function useUpdateMatchStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ matchId, completed }: { matchId: number; completed: boolean }) => {
+      const url = buildUrl(api.matches.updateStatus.path, { id: matchId });
+      const res = await fetch(url, {
+        method: api.matches.updateStatus.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update match status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
+    },
+  });
+}
+
 type CreateEventMatchInput = z.infer<typeof api.eventMatches.create.input>;
 
 export function useCreateEventMatch(matchId: number) {

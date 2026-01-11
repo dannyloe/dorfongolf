@@ -1,4 +1,4 @@
-import { useMatches, useDeleteMatch } from "@/hooks/use-matches";
+import { useMatches, useDeleteMatch, useUpdateMatchStatus } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
@@ -104,6 +104,7 @@ export default function Dashboard() {
 
 function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory?: boolean, userId?: string }) {
   const deleteMatch = useDeleteMatch();
+  const updateStatus = useUpdateMatchStatus();
   const [showConfirm, setShowConfirm] = useState(false);
   const isCreator = userId === match.creatorId;
 
@@ -171,9 +172,20 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
             )
           )}
           {!isHistory && (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-              In Progress
-            </span>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (confirm('Mark this event as ended?')) {
+                  updateStatus.mutate({ matchId: match.id, completed: true });
+                }
+              }}
+              disabled={updateStatus.isPending}
+              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors cursor-pointer"
+              data-testid={`button-end-event-${match.id}`}
+            >
+              {updateStatus.isPending ? "..." : "In Progress"}
+            </button>
           )}
         </div>
         

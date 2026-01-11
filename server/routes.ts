@@ -137,6 +137,23 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.patch(api.matches.updateStatus.path, isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id);
+    try {
+      const input = api.matches.updateStatus.input.parse(req.body);
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const updated = await storage.updateMatchStatus(matchId, input.completed);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Event Matches (Team vs Team within an Event)
   app.get(api.eventMatches.list.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);

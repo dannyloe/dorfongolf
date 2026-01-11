@@ -5,7 +5,7 @@ import {
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -37,6 +37,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMatches(): Promise<Match[]> {
+    // Auto-complete events older than 7 days
+    await this.autoCompleteOldMatches();
     return db.select().from(matches).orderBy(matches.createdAt);
   }
 
@@ -76,6 +78,26 @@ export class DatabaseStorage implements IStorage {
 
     const [newScore] = await db.insert(scores).values(score).returning();
     return newScore;
+  }
+
+  async updateMatchStatus(matchId: number, completed: boolean): Promise<Match> {
+    const [updated] = await db.update(matches)
+      .set({ completed })
+      .where(eq(matches.id, matchId))
+      .returning();
+    return updated;
+  }
+
+  async autoCompleteOldMatches(): Promise<void> {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    await db.update(matches)
+      .set({ completed: true })
+      .where(and(
+        eq(matches.completed, false),
+        lt(matches.createdAt, sevenDaysAgo)
+      ));
   }
 
   async deleteMatch(matchId: number): Promise<void> {

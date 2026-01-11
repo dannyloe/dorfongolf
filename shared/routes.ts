@@ -89,6 +89,17 @@ export const api = {
         403: z.object({ message: z.string() }),
       },
     },
+    updateStatus: {
+      method: 'PATCH' as const,
+      path: '/api/matches/:id/status',
+      input: z.object({
+        completed: z.boolean(),
+      }),
+      responses: {
+        200: z.custom<typeof matches.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   eventMatches: {
     list: {
