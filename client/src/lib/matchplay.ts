@@ -899,3 +899,180 @@ export function calculateNassauSettlements(
     };
   });
 }
+
+// Skins Match Types and Calculations
+export interface SkinResult {
+  holeNumber: number;
+  winnerId: number | null;
+  winnerName: string | null;
+  lowestScore: number | null;
+  isSkin: boolean;
+}
+
+export interface SkinsMatchResult {
+  holeResults: SkinResult[];
+  totalSkins: number;
+  skinWinners: { playerId: number; playerName: string; skinsWon: number }[];
+  skinValue: number;
+  totalPool: number;
+  isComplete: boolean;
+  settlements: { playerId: number; playerName: string; amount: number }[];
+}
+
+export function calculateSkinsResults(
+  includedPlayerIds: number[],
+  playerNames: Map<number, string>,
+  scores: Score[],
+  unitAmount: number
+): SkinsMatchResult {
+  const holeResults: SkinResult[] = [];
+  const skinCounts = new Map<number, number>();
+  
+  // Initialize skin counts for all included players
+  for (const playerId of includedPlayerIds) {
+    skinCounts.set(playerId, 0);
+  }
+  
+  // Check if all 18 holes have scores for all included players
+  let allHolesComplete = true;
+  for (let hole = 1; hole <= 18; hole++) {
+    const holesScored = includedPlayerIds.every(pid => 
+      scores.some(s => s.playerId === pid && s.holeNumber === hole)
+    );
+    if (!holesScored) {
+      allHolesComplete = false;
+      break;
+    }
+  }
+  
+  // Calculate skins for each hole
+  for (let hole = 1; hole <= 18; hole++) {
+    const holeScores = includedPlayerIds.map(playerId => {
+      const score = scores.find(s => s.playerId === playerId && s.holeNumber === hole);
+      return { playerId, strokes: score?.strokes ?? null };
+    }).filter(s => s.strokes !== null) as { playerId: number; strokes: number }[];
+    
+    if (holeScores.length === 0) {
+      holeResults.push({
+        holeNumber: hole,
+        winnerId: null,
+        winnerName: null,
+        lowestScore: null,
+        isSkin: false,
+      });
+      continue;
+    }
+    
+    const minScore = Math.min(...holeScores.map(s => s.strokes));
+    const playersWithMinScore = holeScores.filter(s => s.strokes === minScore);
+    
+    // Check if there's a lone low score
+    if (playersWithMinScore.length !== 1) {
+      // Tie - no skin
+      holeResults.push({
+        holeNumber: hole,
+        winnerId: null,
+        winnerName: null,
+        lowestScore: minScore,
+        isSkin: false,
+      });
+      continue;
+    }
+    
+    const potentialWinner = playersWithMinScore[0];
+    
+    // For holes 1-17: must also tie or beat lowest on next hole
+    if (hole < 18) {
+      const nextHoleScores = includedPlayerIds.map(playerId => {
+        const score = scores.find(s => s.playerId === playerId && s.holeNumber === hole + 1);
+        return { playerId, strokes: score?.strokes ?? null };
+      }).filter(s => s.strokes !== null) as { playerId: number; strokes: number }[];
+      
+      if (nextHoleScores.length === 0) {
+        // Next hole not played yet - can't determine if skin is won
+        holeResults.push({
+          holeNumber: hole,
+          winnerId: potentialWinner.playerId,
+          winnerName: playerNames.get(potentialWinner.playerId) || 'Unknown',
+          lowestScore: minScore,
+          isSkin: false, // Pending - need next hole
+        });
+        continue;
+      }
+      
+      const nextMinScore = Math.min(...nextHoleScores.map(s => s.strokes));
+      const winnerNextScore = nextHoleScores.find(s => s.playerId === potentialWinner.playerId);
+      
+      if (winnerNextScore && winnerNextScore.strokes <= nextMinScore) {
+        // Winner tied or beat lowest on next hole - skin awarded!
+        const currentCount = skinCounts.get(potentialWinner.playerId) || 0;
+        skinCounts.set(potentialWinner.playerId, currentCount + 1);
+        
+        holeResults.push({
+          holeNumber: hole,
+          winnerId: potentialWinner.playerId,
+          winnerName: playerNames.get(potentialWinner.playerId) || 'Unknown',
+          lowestScore: minScore,
+          isSkin: true,
+        });
+      } else {
+        // Winner didn't tie/beat on next hole - no skin
+        holeResults.push({
+          holeNumber: hole,
+          winnerId: potentialWinner.playerId,
+          winnerName: playerNames.get(potentialWinner.playerId) || 'Unknown',
+          lowestScore: minScore,
+          isSkin: false,
+        });
+      }
+    } else {
+      // Hole 18: just needs lone low score
+      const currentCount = skinCounts.get(potentialWinner.playerId) || 0;
+      skinCounts.set(potentialWinner.playerId, currentCount + 1);
+      
+      holeResults.push({
+        holeNumber: hole,
+        winnerId: potentialWinner.playerId,
+        winnerName: playerNames.get(potentialWinner.playerId) || 'Unknown',
+        lowestScore: minScore,
+        isSkin: true,
+      });
+    }
+  }
+  
+  // Calculate totals
+  const totalSkins = Array.from(skinCounts.values()).reduce((sum, count) => sum + count, 0);
+  const totalPool = unitAmount * includedPlayerIds.length;
+  const skinValue = totalSkins > 0 ? totalPool / totalSkins : 0;
+  
+  const skinWinners = Array.from(skinCounts.entries())
+    .filter(([_, count]) => count > 0)
+    .map(([playerId, skinsWon]) => ({
+      playerId,
+      playerName: playerNames.get(playerId) || 'Unknown',
+      skinsWon,
+    }));
+  
+  // Calculate settlements
+  const settlements = includedPlayerIds.map(playerId => {
+    const skinsWon = skinCounts.get(playerId) || 0;
+    const winnings = skinsWon * skinValue;
+    const netAmount = winnings - unitAmount; // Everyone pays in, winners get paid
+    
+    return {
+      playerId,
+      playerName: playerNames.get(playerId) || 'Unknown',
+      amount: Math.round(netAmount * 100) / 100,
+    };
+  });
+  
+  return {
+    holeResults,
+    totalSkins,
+    skinWinners,
+    skinValue: Math.round(skinValue * 100) / 100,
+    totalPool,
+    isComplete: allHolesComplete,
+    settlements,
+  };
+}
