@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, User, Trophy, LayoutDashboard, Plus } from "lucide-react";
+import { LogOut, User, Trophy, Plus, BookOpen, MapPin } from "lucide-react";
 import { CreateMatchModal } from "./CreateMatchModal";
 import { useState } from "react";
 
@@ -29,12 +29,28 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="flex items-center gap-4">
               <nav className="hidden md:flex items-center gap-1 mr-4">
                 <Link 
-                  href="/" 
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  href="/dashboard" 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isActive('/dashboard') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  data-testid="link-dashboard"
                 >
                   Dashboard
                 </Link>
-                {/* Add more nav items here if needed */}
+                <Link 
+                  href="/ledger" 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${isActive('/ledger') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  data-testid="link-ledger"
+                >
+                  <BookOpen className="w-4 h-4" />
+                  Ledger
+                </Link>
+                <Link 
+                  href="/courses" 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${isActive('/courses') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  data-testid="link-courses"
+                >
+                  <MapPin className="w-4 h-4" />
+                  Courses
+                </Link>
               </nav>
 
               <button

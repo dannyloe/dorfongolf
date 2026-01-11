@@ -218,6 +218,7 @@ export interface CourseHole {
   courseId: number;
   holeNumber: number;
   par: number;
+  handicap: number | null;
 }
 
 export interface Course {
@@ -234,6 +235,71 @@ export function useCourses() {
       const res = await fetch(api.courses.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch courses");
       return res.json() as Promise<Course[]>;
+    },
+  });
+}
+
+type CreateCourseInput = z.infer<typeof api.courses.create.input>;
+type UpdateHoleInput = z.infer<typeof api.courses.updateHole.input>;
+
+export function useCreateCourse() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: CreateCourseInput) => {
+      const res = await fetch(api.courses.create.path, {
+        method: api.courses.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to create course");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.courses.list.path] });
+    },
+  });
+}
+
+export function useUpdateCourseHole() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ courseId, holeNumber, ...data }: { courseId: number; holeNumber: number } & UpdateHoleInput) => {
+      const url = buildUrl(api.courses.updateHole.path, { id: courseId, holeNumber });
+      const res = await fetch(url, {
+        method: api.courses.updateHole.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update hole");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.courses.list.path] });
+    },
+  });
+}
+
+export function useDeleteCourse() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (courseId: number) => {
+      const url = buildUrl(api.courses.delete.path, { id: courseId });
+      const res = await fetch(url, {
+        method: api.courses.delete.method,
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to delete course");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.courses.list.path] });
     },
   });
 }
