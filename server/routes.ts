@@ -283,6 +283,65 @@ export async function registerRoutes(
     }
   });
 
+  app.post(api.courses.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.courses.create.input.parse(req.body);
+      const course = await storage.createFullCourse(input.name, input.holes);
+      res.status(201).json(course);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message.includes("unique")) {
+        return res.status(400).json({ message: "A course with this name already exists" });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.courses.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const input = api.courses.update.input.parse(req.body);
+      const course = await storage.updateCourse(courseId, input);
+      if (!course) return res.status(404).json({ message: "Course not found" });
+      res.json(course);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.courses.updateHole.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const holeNumber = parseInt(req.params.holeNumber);
+      const input = api.courses.updateHole.input.parse(req.body);
+      const hole = await storage.updateCourseHole(courseId, holeNumber, input);
+      if (!hole) return res.status(404).json({ message: "Hole not found" });
+      res.json(hole);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.courses.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const course = await storage.getCourse(courseId);
+      if (!course) return res.status(404).json({ message: "Course not found" });
+      await storage.deleteCourse(courseId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Seed courses on startup
   seedCourses();
 

@@ -17,6 +17,7 @@ export const courseHoles = pgTable("course_holes", {
   courseId: integer("course_id").notNull(),
   holeNumber: integer("hole_number").notNull(),
   par: integer("par").notNull(),
+  handicap: integer("handicap"),
 });
 
 export const matches = pgTable("matches", {

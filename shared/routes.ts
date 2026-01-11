@@ -220,9 +220,63 @@ export const api = {
             courseId: z.number(),
             holeNumber: z.number(),
             par: z.number(),
+            handicap: z.number().nullable(),
           })),
           totalPar: z.number(),
         })),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/courses',
+      input: z.object({
+        name: z.string().min(1),
+        holes: z.array(z.object({
+          holeNumber: z.number().min(1).max(18),
+          par: z.number().min(3).max(6),
+          handicap: z.number().min(1).max(18).nullable().optional(),
+        })).length(18),
+      }),
+      responses: {
+        201: z.object({ id: z.number(), name: z.string() }),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/courses/:id',
+      input: z.object({
+        name: z.string().min(1).optional(),
+      }),
+      responses: {
+        200: z.object({ id: z.number(), name: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateHole: {
+      method: 'PUT' as const,
+      path: '/api/courses/:id/holes/:holeNumber',
+      input: z.object({
+        par: z.number().min(3).max(6).optional(),
+        handicap: z.number().min(1).max(18).nullable().optional(),
+      }),
+      responses: {
+        200: z.object({ 
+          id: z.number(), 
+          courseId: z.number(), 
+          holeNumber: z.number(), 
+          par: z.number(),
+          handicap: z.number().nullable(),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/courses/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
       },
     },
   },

@@ -320,6 +320,43 @@ export class DatabaseStorage implements IStorage {
     }
     return course;
   }
+
+  async updateCourse(id: number, data: { name?: string }): Promise<Course | undefined> {
+    const [updated] = await db.update(courses)
+      .set(data)
+      .where(eq(courses.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateCourseHole(courseId: number, holeNumber: number, data: { par?: number; handicap?: number | null }): Promise<CourseHole | undefined> {
+    const [updated] = await db.update(courseHoles)
+      .set(data)
+      .where(and(
+        eq(courseHoles.courseId, courseId),
+        eq(courseHoles.holeNumber, holeNumber)
+      ))
+      .returning();
+    return updated;
+  }
+
+  async deleteCourse(id: number): Promise<void> {
+    await db.delete(courseHoles).where(eq(courseHoles.courseId, id));
+    await db.delete(courses).where(eq(courses.id, id));
+  }
+
+  async createFullCourse(name: string, holes: { holeNumber: number; par: number; handicap?: number | null }[]): Promise<Course> {
+    const course = await this.createCourse({ name });
+    for (const hole of holes) {
+      await db.insert(courseHoles).values({
+        courseId: course.id,
+        holeNumber: hole.holeNumber,
+        par: hole.par,
+        handicap: hole.handicap ?? null,
+      });
+    }
+    return course;
+  }
 }
 
 export const storage = new DatabaseStorage();
