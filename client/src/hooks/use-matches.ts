@@ -211,3 +211,29 @@ export function useUpdateAutoPress(matchId: number) {
     },
   });
 }
+
+// Course types
+export interface CourseHole {
+  id: number;
+  courseId: number;
+  holeNumber: number;
+  par: number;
+}
+
+export interface Course {
+  id: number;
+  name: string;
+  holes: CourseHole[];
+  totalPar: number;
+}
+
+export function useCourses() {
+  return useQuery({
+    queryKey: [api.courses.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.courses.list.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch courses");
+      return res.json() as Promise<Course[]>;
+    },
+  });
+}

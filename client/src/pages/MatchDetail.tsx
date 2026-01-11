@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useCourses } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation } from "wouter";
@@ -60,6 +60,7 @@ export default function MatchDetail() {
   const [, navigate] = useLocation();
   const matchId = parseInt(params?.id || "0");
   const { data: match, isLoading, error } = useMatch(matchId);
+  const { data: coursesList } = useCourses();
   const { user } = useAuth();
   const addPlayer = useAddPlayer(matchId);
   const submitScore = useSubmitScore(matchId);
@@ -121,6 +122,10 @@ export default function MatchDetail() {
   const isCreator = user?.id === match.creatorId;
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   const currentPlayer = players.find((p: Player) => p.userId === user?.id);
+  
+  // Find course par data for this match
+  const matchCourse = coursesList?.find(c => c.name === match.courseName);
+  const getHolePar = (hole: number) => matchCourse?.holes.find(h => h.holeNumber === hole)?.par ?? 4;
 
   const getPlayerScore = (playerId: number) => {
     return scores.filter((s: Score) => s.playerId === playerId).reduce((acc, curr) => acc + curr.strokes, 0) || 0;
@@ -1748,6 +1753,16 @@ export default function MatchDetail() {
               ))}
               <th className="p-4 text-center font-bold text-foreground bg-primary/10">Total</th>
             </tr>
+            {/* Par Row */}
+            {matchCourse && (
+              <tr className="bg-muted/30 text-xs">
+                <td className="p-2 text-left font-medium sticky left-0 bg-muted/30 backdrop-blur z-10 text-muted-foreground">Par</td>
+                {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => (
+                  <td key={hole} className="p-2 text-center font-medium text-muted-foreground">{getHolePar(hole)}</td>
+                ))}
+                <td className="p-2 text-center font-bold text-muted-foreground bg-primary/5">{matchCourse.totalPar}</td>
+              </tr>
+            )}
           </thead>
           <tbody className="divide-y divide-border">
             {players.map((p: Player) => {
