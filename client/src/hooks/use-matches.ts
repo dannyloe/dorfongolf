@@ -303,3 +303,42 @@ export function useDeleteCourse() {
     },
   });
 }
+
+// Scorecard scanning types and hook
+export interface ScannedHole {
+  holeNumber: number;
+  strokes: number | null;
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+export interface ScannedPlayer {
+  playerName: string;
+  holes: ScannedHole[];
+}
+
+export interface ScanResult {
+  success: boolean;
+  scores: ScannedPlayer[];
+  rawText?: string;
+}
+
+type ScanScorecardInput = z.infer<typeof api.scorecard.scan.input>;
+
+export function useScanScorecard() {
+  return useMutation({
+    mutationFn: async (data: ScanScorecardInput): Promise<ScanResult> => {
+      const res = await fetch(api.scorecard.scan.path, {
+        method: api.scorecard.scan.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to scan scorecard");
+      }
+      return res.json();
+    },
+  });
+}

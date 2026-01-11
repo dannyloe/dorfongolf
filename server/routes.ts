@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { ai } from "./replit_integrations/image/client";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -339,6 +340,91 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Scorecard OCR Scanning
+  app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.scorecard.scan.input.parse(req.body);
+      
+      const prompt = `You are analyzing a golf scorecard image. Extract the scores for each player.
+
+The players in this match are: ${input.playerNames.join(', ')}
+${input.courseName ? `The course is: ${input.courseName}` : ''}
+
+Please analyze this scorecard image and extract scores for each hole (1-18).
+
+IMPORTANT: Return ONLY a valid JSON object in this exact format, with no additional text before or after:
+{
+  "scores": [
+    {
+      "playerName": "Player Name",
+      "holes": [
+        {"holeNumber": 1, "strokes": 4, "confidence": "high"},
+        {"holeNumber": 2, "strokes": 5, "confidence": "medium"},
+        ...
+      ]
+    }
+  ],
+  "rawText": "any notes about the scorecard"
+}
+
+Rules:
+- Match player names exactly as provided: ${input.playerNames.join(', ')}
+- Use null for strokes if a hole score is unreadable or missing
+- confidence should be "high", "medium", or "low" based on legibility
+- Include all 18 holes for each player, using null for missing data
+- rawText can include any observations about the scorecard quality`;
+
+      // Extract MIME type from data URL (supports jpeg, png, heic, webp, etc.)
+      const mimeMatch = input.imageBase64.match(/^data:(image\/[^;]+);base64,/);
+      const mimeType = mimeMatch?.[1] || "image/jpeg";
+      const base64Data = input.imageBase64.replace(/^data:image\/[^;]+;base64,/, '');
+      
+      if (!base64Data) {
+        return res.status(400).json({ message: "Invalid image data" });
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{
+          role: "user",
+          parts: [
+            { text: prompt },
+            { 
+              inlineData: {
+                mimeType,
+                data: base64Data
+              }
+            }
+          ]
+        }]
+      });
+
+      const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // Extract JSON from the response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(400).json({ 
+          message: "Could not parse scorecard. Please try with a clearer image." 
+        });
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      res.json({
+        success: true,
+        scores: parsed.scores || [],
+        rawText: parsed.rawText || ''
+      });
+    } catch (err) {
+      console.error("Scorecard scan error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to process scorecard image" });
     }
   });
 

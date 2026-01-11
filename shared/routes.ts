@@ -280,6 +280,33 @@ export const api = {
       },
     },
   },
+  scorecard: {
+    scan: {
+      method: 'POST' as const,
+      path: '/api/scorecard/scan',
+      input: z.object({
+        imageBase64: z.string(),
+        playerNames: z.array(z.string()),
+        courseName: z.string().optional(),
+      }),
+      responses: {
+        200: z.object({
+          success: z.boolean(),
+          scores: z.array(z.object({
+            playerName: z.string(),
+            holes: z.array(z.object({
+              holeNumber: z.number(),
+              strokes: z.number().nullable(),
+              confidence: z.enum(['high', 'medium', 'low']).optional(),
+            })),
+          })),
+          rawText: z.string().optional(),
+        }),
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

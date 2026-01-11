@@ -1,14 +1,16 @@
-import { useMatch, useSubmitScore, useCourses } from "@/hooks/use-matches";
+import { useMatch, useSubmitScore, useCourses, useScanScorecard, ScannedPlayer, ScannedHole } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { useToast } from "@/hooks/use-toast";
 
 interface Player {
   id: number;
@@ -146,6 +148,8 @@ export default function QuickScoreEntry() {
   const { data: coursesList } = useCourses();
   const { user } = useAuth();
   const submitScore = useSubmitScore(matchId);
+  const scanScorecard = useScanScorecard();
+  const { toast } = useToast();
   
   const [currentHole, setCurrentHole] = useState(1);
   const [editingPlayer, setEditingPlayer] = useState<number | null>(null);
@@ -153,6 +157,11 @@ export default function QuickScoreEntry() {
   const [hiddenPlayerIds, setHiddenPlayerIds] = useState<Set<number>>(new Set());
   const [playerOrder, setPlayerOrder] = useState<number[]>([]);
   const inputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scannedScores, setScannedScores] = useState<ScannedPlayer[]>([]);
+  const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
   
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -276,6 +285,102 @@ export default function QuickScoreEntry() {
   const allPlayersHaveScore = visiblePlayers.every(p => getScore(p.id, currentHole) !== null);
   const holePar = getHolePar(currentHole);
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      
+      try {
+        const result = await scanScorecard.mutateAsync({
+          imageBase64: base64,
+          playerNames: players.map(p => p.name),
+          courseName: match.courseName,
+        });
+        
+        if (result.success && result.scores.length > 0) {
+          setScannedScores(result.scores);
+          const editable: Record<string, Record<number, string>> = {};
+          result.scores.forEach(ps => {
+            editable[ps.playerName] = {};
+            ps.holes.forEach(h => {
+              editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
+            });
+          });
+          setEditableScores(editable);
+          setShowScanModal(true);
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Scan Failed",
+            description: "Could not extract scores from the image. Please try a clearer photo.",
+          });
+        }
+      } catch (err) {
+        toast({
+          variant: "destructive",
+          title: "Scan Error",
+          description: err instanceof Error ? err.message : "Failed to process scorecard",
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmScores = async () => {
+    let successCount = 0;
+    let errorCount = 0;
+    
+    for (const playerName of Object.keys(editableScores)) {
+      const player = players.find(p => p.name === playerName);
+      if (!player) continue;
+      
+      for (const [holeStr, strokesStr] of Object.entries(editableScores[playerName])) {
+        const holeNumber = parseInt(holeStr);
+        const strokes = parseInt(strokesStr);
+        
+        if (!isNaN(strokes) && strokes > 0) {
+          try {
+            await submitScore.mutateAsync({ playerId: player.id, holeNumber, strokes });
+            successCount++;
+          } catch {
+            errorCount++;
+          }
+        }
+      }
+    }
+    
+    setShowScanModal(false);
+    setScannedScores([]);
+    setEditableScores({});
+    
+    if (successCount > 0) {
+      toast({
+        title: "Scores Saved",
+        description: `${successCount} score${successCount !== 1 ? 's' : ''} saved successfully.`,
+      });
+    }
+    if (errorCount > 0) {
+      toast({
+        variant: "destructive",
+        title: "Some Errors",
+        description: `${errorCount} score${errorCount !== 1 ? 's' : ''} failed to save.`,
+      });
+    }
+  };
+
+  const getConfidenceIcon = (confidence?: 'high' | 'medium' | 'low') => {
+    switch (confidence) {
+      case 'high': return <CheckCircle2 className="w-3 h-3 text-green-500" />;
+      case 'medium': return <AlertCircle className="w-3 h-3 text-yellow-500" />;
+      case 'low': return <AlertCircle className="w-3 h-3 text-red-500" />;
+      default: return null;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 max-w-lg mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -291,7 +396,31 @@ export default function QuickScoreEntry() {
           </div>
         </div>
         
-        {hiddenPlayers.length > 0 && (
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleFileSelect}
+            data-testid="input-scorecard-file"
+          />
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={scanScorecard.isPending}
+            data-testid="button-scan-scorecard"
+          >
+            {scanScorecard.isPending ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Camera className="w-5 h-5" />
+            )}
+          </Button>
+        
+          {hiddenPlayers.length > 0 && (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" data-testid="button-show-hidden-players">
@@ -317,7 +446,8 @@ export default function QuickScoreEntry() {
               </div>
             </PopoverContent>
           </Popover>
-        )}
+          )}
+        </div>
       </div>
 
       <Card className="mb-6">
@@ -415,6 +545,127 @@ export default function QuickScoreEntry() {
           <ChevronRight className="w-4 h-4 ml-2" />
         </Button>
       )}
+
+      <Dialog open={showScanModal} onOpenChange={setShowScanModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Review Scanned Scores</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {scannedScores.map((playerScore) => {
+              const matchedPlayer = players.find(p => p.name === playerScore.playerName);
+              return (
+                <div key={playerScore.playerName} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">{playerScore.playerName}</span>
+                    {!matchedPlayer && (
+                      <span className="text-sm text-destructive">(Not matched to a player)</span>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-9 gap-1">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(hole => {
+                      const holeData = playerScore.holes.find(h => h.holeNumber === hole);
+                      const value = editableScores[playerScore.playerName]?.[hole] || '';
+                      return (
+                        <div key={hole} className="text-center">
+                          <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={value}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setEditableScores(prev => ({
+                                  ...prev,
+                                  [playerScore.playerName]: {
+                                    ...prev[playerScore.playerName],
+                                    [hole]: val
+                                  }
+                                }));
+                              }}
+                              className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                              data-testid={`input-scan-${playerScore.playerName}-${hole}`}
+                            />
+                            <div className="absolute -top-1 -right-1">
+                              {getConfidenceIcon(holeData?.confidence)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  <div className="grid grid-cols-9 gap-1 mt-2">
+                    {[10, 11, 12, 13, 14, 15, 16, 17, 18].map(hole => {
+                      const holeData = playerScore.holes.find(h => h.holeNumber === hole);
+                      const value = editableScores[playerScore.playerName]?.[hole] || '';
+                      return (
+                        <div key={hole} className="text-center">
+                          <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={value}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                setEditableScores(prev => ({
+                                  ...prev,
+                                  [playerScore.playerName]: {
+                                    ...prev[playerScore.playerName],
+                                    [hole]: val
+                                  }
+                                }));
+                              }}
+                              className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                              data-testid={`input-scan-${playerScore.playerName}-${hole}`}
+                            />
+                            <div className="absolute -top-1 -right-1">
+                              {getConfidenceIcon(holeData?.confidence)}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            <span>High confidence</span>
+            <AlertCircle className="w-4 h-4 text-yellow-500 ml-2" />
+            <span>Medium confidence</span>
+            <AlertCircle className="w-4 h-4 text-red-500 ml-2" />
+            <span>Low confidence</span>
+          </div>
+          
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowScanModal(false);
+                setScannedScores([]);
+                setEditableScores({});
+              }}
+              data-testid="button-cancel-scan"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmScores}
+              data-testid="button-confirm-scanned-scores"
+            >
+              Save Scores
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
