@@ -96,6 +96,9 @@ export default function MatchDetail() {
   const [roundRobinGroupBIds, setRoundRobinGroupBIds] = useState<number[]>([]);
   const [roundRobinStep, setRoundRobinStep] = useState<'select' | 'preview'>('select');
   const [isCreatingRoundRobin, setIsCreatingRoundRobin] = useState(false);
+  
+  // Skins match state
+  const [skinsPlayerIds, setSkinsPlayerIds] = useState<number[]>([]);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -180,6 +183,38 @@ export default function MatchDetail() {
         setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== playerId));
       }
     }
+  };
+
+  const toggleSkinsPlayer = (playerId: number) => {
+    if (skinsPlayerIds.includes(playerId)) {
+      setSkinsPlayerIds(skinsPlayerIds.filter(id => id !== playerId));
+    } else {
+      setSkinsPlayerIds([...skinsPlayerIds, playerId]);
+    }
+  };
+
+  const handleCreateSkinsMatch = () => {
+    if (skinsPlayerIds.length < 2) return;
+    
+    const playerNames = skinsPlayerIds.map(id => players.find(p => p.id === id)?.name || '').join(', ');
+    const matchName = `Skins: ${playerNames}`;
+    
+    createEventMatch.mutate({
+      name: matchName,
+      matchType: MATCH_TYPES.SKINS,
+      unitAmount: unitAmount * 100,
+      teamA: { name: 'Skins Players', playerIds: skinsPlayerIds },
+      teamB: { name: 'Skins Players', playerIds: skinsPlayerIds },
+      autoPressOriginal: false,
+      autoPressAllPresses: false,
+    }, {
+      onSuccess: () => {
+        setShowCreateMatch(false);
+        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setUnitAmount(20);
+        setSkinsPlayerIds([]);
+      }
+    });
   };
 
   // Generate all 2-player combinations from selected players
@@ -709,8 +744,12 @@ export default function MatchDetail() {
                         setRoundRobinGroupAIds([]);
                         setRoundRobinGroupBIds([]);
                         setRoundRobinStep('select');
+                      } else if (value === MATCH_TYPES.SKINS) {
+                        setSelectedMatchType(MATCH_TYPES.SKINS);
+                        setSkinsPlayerIds(players.map(p => p.id));
                       } else {
                         setSelectedMatchType(value as MatchType);
+                        setSkinsPlayerIds([]);
                       }
                     }}
                   >
@@ -762,68 +801,114 @@ export default function MatchDetail() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
-                    <span className="font-semibold text-primary text-sm">
-                      {teamAPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamAPlayerIds) : "Select players..."}
-                    </span>
+              {/* Skins Player Selection */}
+              {selectedMatchType === MATCH_TYPES.SKINS ? (
+                <>
+                  <div>
+                    <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg">
+                      <span className="font-semibold text-primary text-sm">
+                        Players in Skins ({skinsPlayerIds.length} selected)
+                      </span>
+                    </div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {players.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={skinsPlayerIds.includes(p.id)}
+                            onChange={() => toggleSkinsPlayer(p.id)}
+                            className="w-4 h-4 rounded border-border"
+                            data-testid={`checkbox-skins-player-${p.id}`}
+                          />
+                          <span className={`text-sm ${skinsPlayerIds.includes(p.id) ? 'font-medium' : 'text-muted-foreground'}`}>
+                            {p.name}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Pool: ${unitAmount * skinsPlayerIds.length} (${unitAmount} x {skinsPlayerIds.length} players)
+                    </p>
                   </div>
-                  <div className="space-y-1">
-                    {players.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => togglePlayerInTeam(p.id, 'A')}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                          teamAPlayerIds.includes(p.id)
-                            ? "bg-primary text-primary-foreground"
-                            : teamBPlayerIds.includes(p.id)
-                            ? "bg-muted/50 text-muted-foreground line-through"
-                            : "bg-muted hover:bg-muted/80"
-                        }`}
-                        data-testid={`button-add-team-a-${p.id}`}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
-                <div>
-                  <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
-                    <span className="font-semibold text-accent text-sm">
-                      {teamBPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamBPlayerIds) : "Select players..."}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {players.map((p) => (
-                      <button
-                        key={p.id}
-                        onClick={() => togglePlayerInTeam(p.id, 'B')}
-                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                          teamBPlayerIds.includes(p.id)
-                            ? "bg-accent text-accent-foreground"
-                            : teamAPlayerIds.includes(p.id)
-                            ? "bg-muted/50 text-muted-foreground line-through"
-                            : "bg-muted hover:bg-muted/80"
-                        }`}
-                        data-testid={`button-add-team-b-${p.id}`}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+                  <Button
+                    onClick={handleCreateSkinsMatch}
+                    disabled={skinsPlayerIds.length < 2 || createEventMatch.isPending}
+                    className="w-full"
+                    data-testid="button-submit-create-skins"
+                  >
+                    {createEventMatch.isPending ? "Creating..." : "Create Skins Match"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-primary text-sm">
+                          {teamAPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamAPlayerIds) : "Select players..."}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {players.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => togglePlayerInTeam(p.id, 'A')}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                              teamAPlayerIds.includes(p.id)
+                                ? "bg-primary text-primary-foreground"
+                                : teamBPlayerIds.includes(p.id)
+                                ? "bg-muted/50 text-muted-foreground line-through"
+                                : "bg-muted hover:bg-muted/80"
+                            }`}
+                            data-testid={`button-add-team-a-${p.id}`}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              <Button
-                onClick={handleCreateEventMatch}
-                disabled={teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0 || createEventMatch.isPending}
-                className="w-full"
-                data-testid="button-submit-create-match"
-              >
-                {createEventMatch.isPending ? "Creating..." : "Create Match"}
-              </Button>
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-accent text-sm">
+                          {teamBPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamBPlayerIds) : "Select players..."}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {players.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => togglePlayerInTeam(p.id, 'B')}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                              teamBPlayerIds.includes(p.id)
+                                ? "bg-accent text-accent-foreground"
+                                : teamAPlayerIds.includes(p.id)
+                                ? "bg-muted/50 text-muted-foreground line-through"
+                                : "bg-muted hover:bg-muted/80"
+                            }`}
+                            data-testid={`button-add-team-b-${p.id}`}
+                          >
+                            {p.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleCreateEventMatch}
+                    disabled={teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0 || createEventMatch.isPending}
+                    className="w-full"
+                    data-testid="button-submit-create-match"
+                  >
+                    {createEventMatch.isPending ? "Creating..." : "Create Match"}
+                  </Button>
+                </>
+              )}
             </div>
             )}
           </motion.div>
