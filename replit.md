@@ -74,9 +74,29 @@ shared/           # Shared code between client and server
   - `ISSUER_URL`: Replit OIDC issuer (defaults to https://replit.com/oidc)
   - `REPL_ID`: Replit environment identifier
 
+### AI Integration
+- **Gemini AI**: Used for AI-powered scorecard scanning via Replit AI Integrations
+- **Environment Variables**:
+  - `AI_INTEGRATIONS_GEMINI_API_KEY`: Auto-provisioned Gemini API key
+  - `AI_INTEGRATIONS_GEMINI_BASE_URL`: Gemini API base URL
+
+### Scorecard Scanning Feature
+- **Camera Button**: Located in QuickScoreEntry page header (camera icon)
+- **Workflow**: 
+  1. User takes a photo or uploads a scorecard image (JPEG, PNG, HEIC, WebP supported)
+  2. Gemini Vision AI analyzes the image and extracts scores for each player
+  3. Review modal displays extracted scores with confidence indicators (high/medium/low)
+  4. User can edit any scores before confirming
+  5. Confirmed scores are saved via the existing score submission system
+- **Confidence Indicators**:
+  - Green checkmark: High confidence
+  - Yellow warning: Medium confidence
+  - Red warning: Low confidence
+
 ### Key NPM Packages
 - **UI**: @radix-ui/* primitives, lucide-react icons, class-variance-authority
 - **Data**: drizzle-orm, @tanstack/react-query, zod
 - **Forms**: react-hook-form, @hookform/resolvers
 - **Animation**: framer-motion
+- **AI**: @google/genai for Gemini integration
 - **Utilities**: date-fns, clsx, tailwind-merge
