@@ -40,7 +40,7 @@ export default function Landing() {
               </span>
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
-              The modern scorecard for golf enthusiasts. Track real-time matches with friends, visualize stats, and keep your history in one beautiful place.
+              Stats don't lie.
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
