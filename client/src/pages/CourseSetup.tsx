@@ -70,11 +70,11 @@ export default function CourseSetup() {
     return editingHoles[key] ?? { par: originalPar, handicap: originalHandicap };
   };
 
-  const setEditingValue = (courseId: number, holeNumber: number, field: 'par' | 'handicap', value: number | null) => {
+  const setEditingValue = (courseId: number, holeNumber: number, field: 'par' | 'handicap', value: number | null, originalPar: number, originalHandicap: number | null) => {
     const key = `${courseId}-${holeNumber}`;
     setEditingHoles(prev => ({
       ...prev,
-      [key]: { ...getEditingValue(courseId, holeNumber, 4, null), [field]: value }
+      [key]: { ...getEditingValue(courseId, holeNumber, originalPar, originalHandicap), [field]: value }
     }));
   };
 
@@ -316,7 +316,7 @@ export default function CourseSetup() {
                                 value={editing.par}
                                 onChange={(e) => {
                                   const val = parseInt(e.target.value) || 3;
-                                  setEditingValue(course.id, hole.holeNumber, 'par', Math.min(6, Math.max(3, val)));
+                                  setEditingValue(course.id, hole.holeNumber, 'par', Math.min(6, Math.max(3, val)), hole.par, hole.handicap);
                                 }}
                                 className="w-10 h-8 text-center p-0"
                                 data-testid={`input-par-${course.id}-${hole.holeNumber}`}
@@ -340,7 +340,7 @@ export default function CourseSetup() {
                                 value={editing.handicap ?? ""}
                                 onChange={(e) => {
                                   const val = e.target.value ? Math.min(18, Math.max(1, parseInt(e.target.value) || 1)) : null;
-                                  setEditingValue(course.id, hole.holeNumber, 'handicap', val);
+                                  setEditingValue(course.id, hole.holeNumber, 'handicap', val, hole.par, hole.handicap);
                                 }}
                                 className="w-10 h-8 text-center p-0"
                                 placeholder="-"
@@ -380,7 +380,7 @@ export default function CourseSetup() {
                                 value={editing.par}
                                 onChange={(e) => {
                                   const val = parseInt(e.target.value) || 3;
-                                  setEditingValue(course.id, hole.holeNumber, 'par', Math.min(6, Math.max(3, val)));
+                                  setEditingValue(course.id, hole.holeNumber, 'par', Math.min(6, Math.max(3, val)), hole.par, hole.handicap);
                                 }}
                                 className="w-10 h-8 text-center p-0"
                                 data-testid={`input-par-${course.id}-${hole.holeNumber}`}
@@ -407,7 +407,7 @@ export default function CourseSetup() {
                                 value={editing.handicap ?? ""}
                                 onChange={(e) => {
                                   const val = e.target.value ? Math.min(18, Math.max(1, parseInt(e.target.value) || 1)) : null;
-                                  setEditingValue(course.id, hole.holeNumber, 'handicap', val);
+                                  setEditingValue(course.id, hole.holeNumber, 'handicap', val, hole.par, hole.handicap);
                                 }}
                                 className="w-10 h-8 text-center p-0"
                                 placeholder="-"
