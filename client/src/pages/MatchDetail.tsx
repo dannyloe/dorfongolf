@@ -3,7 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -154,6 +154,10 @@ export default function MatchDetail() {
   
   // Skins match state
   const [skinsPlayerIds, setSkinsPlayerIds] = useState<number[]>([]);
+  
+  // Match filter state
+  const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
+  const [filterByMatchType, setFilterByMatchType] = useState<string>("all");
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -583,27 +587,70 @@ export default function MatchDetail() {
 
       {/* Matches Section */}
       <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-        <div className="flex justify-between items-center">
-          <button
-            onClick={() => setMatchesCollapsed(!matchesCollapsed)}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            data-testid="button-toggle-matches"
-          >
-            <h3 className="font-display font-bold text-lg flex items-center gap-2">
-              <Swords className="w-5 h-5 text-primary" />
-              Matches ({eventMatches.length})
-            </h3>
-            {matchesCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-          </button>
-          {isCreator && players.length >= 2 && !matchesCollapsed && (
-            <Button
-              size="sm"
-              onClick={() => setShowCreateMatch(true)}
-              data-testid="button-create-match"
+        <div className="flex flex-col gap-3">
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => setMatchesCollapsed(!matchesCollapsed)}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              data-testid="button-toggle-matches"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              New Match
-            </Button>
+              <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                <Swords className="w-5 h-5 text-primary" />
+                Matches ({eventMatches.length})
+              </h3>
+              {matchesCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
+            {isCreator && players.length >= 2 && !matchesCollapsed && (
+              <Button
+                size="sm"
+                onClick={() => setShowCreateMatch(true)}
+                data-testid="button-create-match"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Match
+              </Button>
+            )}
+          </div>
+          
+          {!matchesCollapsed && eventMatches.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <Filter className="w-4 h-4 text-muted-foreground" />
+              <Select value={filterByPlayer} onValueChange={setFilterByPlayer}>
+                <SelectTrigger className="w-32 h-8 text-xs" data-testid="select-filter-player">
+                  <SelectValue placeholder="Player" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Players</SelectItem>
+                  {players.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterByMatchType} onValueChange={setFilterByMatchType}>
+                <SelectTrigger className="w-36 h-8 text-xs" data-testid="select-filter-match-type">
+                  <SelectValue placeholder="Match Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="match_play_1_ball">Match Play - 1 Ball</SelectItem>
+                  <SelectItem value="match_play_2_ball">Match Play - 2 Ball</SelectItem>
+                  <SelectItem value="stroke_play">Stroke Play</SelectItem>
+                  <SelectItem value="nassau">Nassau</SelectItem>
+                  <SelectItem value="skins">Skins</SelectItem>
+                </SelectContent>
+              </Select>
+              {(filterByPlayer !== "all" || filterByMatchType !== "all") && (
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="h-8 text-xs"
+                  onClick={() => { setFilterByPlayer("all"); setFilterByMatchType("all"); }}
+                  data-testid="button-clear-filters"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -987,15 +1034,38 @@ export default function MatchDetail() {
         )}
 
         {/* Event Matches List */}
-        {!matchesCollapsed && (eventMatches.length === 0 ? (
+        {!matchesCollapsed && (() => {
+          const filteredMatches = eventMatches.filter(em => {
+            if (em.parentMatchId) return false;
+            
+            if (filterByMatchType !== "all" && em.matchType !== filterByMatchType) {
+              return false;
+            }
+            
+            if (filterByPlayer !== "all") {
+              const playerId = parseInt(filterByPlayer);
+              const allMembers = em.teams.flatMap(t => t.members.map(m => m.playerId));
+              if (!allMembers.includes(playerId)) {
+                return false;
+              }
+            }
+            
+            return true;
+          });
+          
+          return eventMatches.length === 0 ? (
           <p className="text-muted-foreground text-sm mt-4">
             {players.length < 2 
               ? "Add at least 2 players to create a match." 
               : "No matches yet. Create a match to track team competition!"}
           </p>
+        ) : filteredMatches.length === 0 ? (
+          <p className="text-muted-foreground text-sm mt-4">
+            No matches match the selected filters.
+          </p>
         ) : (
           <div className="space-y-3 mt-4">
-            {eventMatches.filter(em => !em.parentMatchId).map((em) => {
+            {filteredMatches.map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
               const results = calculateMatchPlayResults(em, scores);
@@ -1699,7 +1769,8 @@ export default function MatchDetail() {
               );
             })}
           </div>
-        ))}
+        );
+        })()}
       </div>
 
       {/* Player Ledger */}
