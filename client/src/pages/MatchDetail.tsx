@@ -158,6 +158,9 @@ export default function MatchDetail() {
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
   const [filterByMatchType, setFilterByMatchType] = useState<string>("all");
+  
+  // Selected player in standings (for filtering Match Results)
+  const [selectedStandingsPlayer, setSelectedStandingsPlayer] = useState<number | null>(null);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -1798,12 +1801,28 @@ export default function MatchDetail() {
             <div className="grid md:grid-cols-[auto_1fr] gap-6 mt-4">
               {/* Player Balances */}
               <div className="min-w-fit">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Player Standings</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-muted-foreground">Player Standings</h4>
+                  {selectedStandingsPlayer !== null && (
+                    <button
+                      onClick={() => setSelectedStandingsPlayer(null)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                      data-testid="button-clear-standings-filter"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <div className="space-y-2">
                   {balances.map((b) => (
-                    <div 
+                    <button 
                       key={b.playerId}
-                      className={`flex justify-between items-center gap-4 px-4 py-3 rounded-lg whitespace-nowrap ${
+                      onClick={() => setSelectedStandingsPlayer(selectedStandingsPlayer === b.playerId ? null : b.playerId)}
+                      className={`w-full flex justify-between items-center gap-4 px-4 py-3 rounded-lg whitespace-nowrap transition-all ${
+                        selectedStandingsPlayer === b.playerId
+                          ? 'ring-2 ring-primary ring-offset-2'
+                          : ''
+                      } ${
                         b.netBalance > 0 
                           ? 'bg-primary/10 border border-primary/20' 
                           : b.netBalance < 0 
@@ -1812,7 +1831,7 @@ export default function MatchDetail() {
                       }`}
                       data-testid={`ledger-balance-${b.playerId}`}
                     >
-                      <div className="whitespace-nowrap">
+                      <div className="whitespace-nowrap text-left">
                         <span className="font-semibold">{b.playerName}</span>
                         <span className="text-xs text-muted-foreground ml-2">
                           ({b.matchesPlayed} {b.matchesPlayed === 1 ? 'match' : 'matches'})
@@ -1828,50 +1847,77 @@ export default function MatchDetail() {
                           W: ${b.totalWon.toFixed(2)} / L: ${b.totalLost.toFixed(2)}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
               
               {/* Individual Bets */}
               <div className="min-w-0">
-                <h4 className="text-sm font-semibold text-muted-foreground mb-3">Match Results</h4>
+                <h4 className="text-sm font-semibold text-muted-foreground mb-3">
+                  Match Results
+                  {selectedStandingsPlayer !== null && (
+                    <span className="ml-2 text-xs text-primary font-normal">
+                      (filtered by {balances.find(b => b.playerId === selectedStandingsPlayer)?.playerName})
+                    </span>
+                  )}
+                </h4>
                 <div className="space-y-2">
-                  {Array.from(new Set(entries.filter(e => e.isComplete).map(e => e.matchId))).map((matchId) => {
-                    const matchEntries = entries.filter(e => e.matchId === matchId);
-                    const eventMatch = eventMatches.find(em => em.id === matchId);
-                    const teamA = eventMatch?.teams[0];
-                    const teamB = eventMatch?.teams[1];
-                    const matchType = eventMatch?.matchType ? (MATCH_TYPE_LABELS[eventMatch.matchType as MatchType] || eventMatch.matchType) : '';
-                    const matchTitle = teamA && teamB 
-                      ? `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`
-                      : matchEntries[0]?.matchName || 'Match';
+                  {(() => {
+                    const completedMatchIds = Array.from(new Set(entries.filter(e => e.isComplete).map(e => e.matchId)));
+                    const filteredMatchIds = selectedStandingsPlayer !== null
+                      ? completedMatchIds.filter(matchId => {
+                          const matchEntries = entries.filter(e => e.matchId === matchId);
+                          return matchEntries.some(e => e.playerId === selectedStandingsPlayer);
+                        })
+                      : completedMatchIds;
                     
-                    return (
-                      <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
-                        <div className="text-sm font-semibold mb-2">{matchTitle}</div>
-                        <div className="grid grid-cols-2 gap-1">
-                          {matchEntries.map((e) => (
-                            <div 
-                              key={e.playerId}
-                              className={`flex justify-between text-xs px-2 py-1 rounded ${
-                                e.amount > 0 
-                                  ? 'text-primary bg-primary/5' 
-                                  : e.amount < 0 
-                                  ? 'text-destructive bg-destructive/5'
-                                  : 'text-muted-foreground'
-                              }`}
-                            >
-                              <span>{e.playerName}</span>
-                              <span className="font-medium">
-                                {e.amount > 0 ? '+' : ''}{e.amount === 0 ? 'Push' : `$${e.amount.toFixed(2)}`}
-                              </span>
-                            </div>
-                          ))}
+                    if (filteredMatchIds.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground">
+                          No match results for selected player.
+                        </p>
+                      );
+                    }
+                    
+                    return filteredMatchIds.map((matchId) => {
+                      const matchEntries = entries.filter(e => e.matchId === matchId);
+                      const eventMatch = eventMatches.find(em => em.id === matchId);
+                      const teamA = eventMatch?.teams[0];
+                      const teamB = eventMatch?.teams[1];
+                      const matchType = eventMatch?.matchType ? (MATCH_TYPE_LABELS[eventMatch.matchType as MatchType] || eventMatch.matchType) : '';
+                      const matchTitle = teamA && teamB 
+                        ? `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`
+                        : matchEntries[0]?.matchName || 'Match';
+                      
+                      return (
+                        <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
+                          <div className="text-sm font-semibold mb-2">{matchTitle}</div>
+                          <div className="grid grid-cols-2 gap-1">
+                            {matchEntries.map((e) => (
+                              <div 
+                                key={e.playerId}
+                                className={`flex justify-between text-xs px-2 py-1 rounded ${
+                                  selectedStandingsPlayer === e.playerId ? 'ring-1 ring-primary' : ''
+                                } ${
+                                  e.amount > 0 
+                                    ? 'text-primary bg-primary/5' 
+                                    : e.amount < 0 
+                                    ? 'text-destructive bg-destructive/5'
+                                    : 'text-muted-foreground'
+                                }`}
+                              >
+                                <span>{e.playerName}</span>
+                                <span className="font-medium">
+                                  {e.amount > 0 ? '+' : ''}{e.amount === 0 ? 'Push' : `$${e.amount.toFixed(2)}`}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>
