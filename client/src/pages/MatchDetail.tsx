@@ -1081,21 +1081,24 @@ export default function MatchDetail() {
                   <div className="flex items-center">
                     <button
                       onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
-                      className="flex-1 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-muted/30 transition-colors"
+                      className="flex-1 p-3 sm:p-4 flex flex-col gap-1 hover:bg-muted/30 transition-colors"
                       data-testid={`button-expand-match-${em.id}`}
                     >
-                      <div className="flex items-center gap-2 sm:gap-4">
-                        <div className="flex items-center gap-1 sm:gap-2">
-                          <Users className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />
-                          <span className="font-semibold text-sm sm:text-base">{teamA?.name || "Team A"}</span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 sm:gap-4">
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <Users className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />
+                            <span className="font-semibold text-sm sm:text-base">{teamA?.name || "Team A"}</span>
+                          </div>
+                          <span className="text-muted-foreground text-xs sm:text-base">vs</span>
+                          <div className="flex items-center gap-1 sm:gap-2">
+                            <Users className="w-3 h-3 sm:w-4 sm:h-4 text-accent" />
+                            <span className="font-semibold text-sm sm:text-base">{teamB?.name || "Team B"}</span>
+                          </div>
                         </div>
-                        <span className="text-muted-foreground text-xs sm:text-base">vs</span>
-                        <div className="flex items-center gap-1 sm:gap-2">
-                          <Users className="w-3 h-3 sm:w-4 sm:h-4 text-accent" />
-                          <span className="font-semibold text-sm sm:text-base">{teamB?.name || "Team B"}</span>
-                        </div>
+                        {isExpanded ? <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />}
                       </div>
-                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 sm:gap-3">
                         <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
                           {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
                         </span>
@@ -1105,7 +1108,6 @@ export default function MatchDetail() {
                           </span>
                         )}
                         <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>
-                        {isExpanded ? <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />}
                       </div>
                     </button>
                     {isCreator && (
