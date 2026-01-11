@@ -350,7 +350,7 @@ export async function registerRoutes(
       
       const prompt = `You are analyzing a golf scorecard image. Extract the scores for each player.
 
-The players in this match are: ${input.playerNames.join(', ')}
+Known players in this match are: ${input.playerNames.join(', ')}
 ${input.courseName ? `The course is: ${input.courseName}` : ''}
 
 Please analyze this scorecard image and extract scores for each hole (1-18).
@@ -371,10 +371,14 @@ IMPORTANT: Return ONLY a valid JSON object in this exact format, with no additio
 }
 
 Rules:
-- Match player names exactly as provided: ${input.playerNames.join(', ')}
-- Use null for strokes if a hole score is unreadable or missing
+- ONLY include players whose scores are actually visible/written on the scorecard
+- Do NOT include players who have no scores on this scorecard
+- Try to match visible names to known players: ${input.playerNames.join(', ')}
+- If a name on the scorecard doesn't match any known player, use the name exactly as written
+- Use null for strokes if a specific hole score is unreadable
 - confidence should be "high", "medium", or "low" based on legibility
-- Include all 18 holes for each player, using null for missing data
+- Include all 18 holes for each player found on the card
+- Do NOT include Front 9, Back 9, or Total scores - only individual hole scores (1-18)
 - rawText can include any observations about the scorecard quality`;
 
       // Extract MIME type from data URL (supports jpeg, png, heic, webp, etc.)

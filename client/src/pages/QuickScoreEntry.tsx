@@ -4,9 +4,10 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2, ChevronDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -162,6 +163,7 @@ export default function QuickScoreEntry() {
   const [showScanModal, setShowScanModal] = useState(false);
   const [scannedScores, setScannedScores] = useState<ScannedPlayer[]>([]);
   const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
+  const [playerMappings, setPlayerMappings] = useState<Record<string, number | null>>({});
   
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -303,13 +305,21 @@ export default function QuickScoreEntry() {
         if (result.success && result.scores.length > 0) {
           setScannedScores(result.scores);
           const editable: Record<string, Record<number, string>> = {};
+          const mappings: Record<string, number | null> = {};
           result.scores.forEach(ps => {
             editable[ps.playerName] = {};
             ps.holes.forEach(h => {
-              editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
+              if (h.holeNumber >= 1 && h.holeNumber <= 18) {
+                editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
+              }
             });
+            const matchedPlayer = players.find(p => 
+              p.name.toLowerCase() === ps.playerName.toLowerCase()
+            );
+            mappings[ps.playerName] = matchedPlayer?.id || null;
           });
           setEditableScores(editable);
+          setPlayerMappings(mappings);
           setShowScanModal(true);
         } else {
           toast({
@@ -334,17 +344,17 @@ export default function QuickScoreEntry() {
     let successCount = 0;
     let errorCount = 0;
     
-    for (const playerName of Object.keys(editableScores)) {
-      const player = players.find(p => p.name === playerName);
-      if (!player) continue;
+    for (const scannedName of Object.keys(editableScores)) {
+      const playerId = playerMappings[scannedName];
+      if (!playerId) continue;
       
-      for (const [holeStr, strokesStr] of Object.entries(editableScores[playerName])) {
+      for (const [holeStr, strokesStr] of Object.entries(editableScores[scannedName])) {
         const holeNumber = parseInt(holeStr);
         const strokes = parseInt(strokesStr);
         
-        if (!isNaN(strokes) && strokes > 0) {
+        if (!isNaN(strokes) && strokes > 0 && holeNumber >= 1 && holeNumber <= 18) {
           try {
-            await submitScore.mutateAsync({ playerId: player.id, holeNumber, strokes });
+            await submitScore.mutateAsync({ playerId, holeNumber, strokes });
             successCount++;
           } catch {
             errorCount++;
@@ -356,6 +366,7 @@ export default function QuickScoreEntry() {
     setShowScanModal(false);
     setScannedScores([]);
     setEditableScores({});
+    setPlayerMappings({});
     
     if (successCount > 0) {
       toast({
@@ -370,6 +381,39 @@ export default function QuickScoreEntry() {
         description: `${errorCount} score${errorCount !== 1 ? 's' : ''} failed to save.`,
       });
     }
+  };
+  
+  const calculateTotals = (scannedName: string) => {
+    const scores = editableScores[scannedName] || {};
+    let front9 = 0;
+    let back9 = 0;
+    let front9Count = 0;
+    let back9Count = 0;
+    
+    for (let hole = 1; hole <= 9; hole++) {
+      const val = parseInt(scores[hole] || '');
+      if (!isNaN(val) && val > 0) {
+        front9 += val;
+        front9Count++;
+      }
+    }
+    for (let hole = 10; hole <= 18; hole++) {
+      const val = parseInt(scores[hole] || '');
+      if (!isNaN(val) && val > 0) {
+        back9 += val;
+        back9Count++;
+      }
+    }
+    
+    return {
+      front9: front9Count === 9 ? front9 : null,
+      back9: back9Count === 9 ? back9 : null,
+      total: front9Count === 9 && back9Count === 9 ? front9 + back9 : null,
+    };
+  };
+  
+  const getUsedPlayerIds = () => {
+    return new Set(Object.values(playerMappings).filter((id): id is number => id !== null));
   };
 
   const getConfidenceIcon = (confidence?: 'high' | 'medium' | 'low') => {
@@ -554,17 +598,53 @@ export default function QuickScoreEntry() {
           
           <div className="space-y-6">
             {scannedScores.map((playerScore) => {
-              const matchedPlayer = players.find(p => p.name === playerScore.playerName);
+              const mappedPlayerId = playerMappings[playerScore.playerName];
+              const mappedPlayer = mappedPlayerId ? players.find(p => p.id === mappedPlayerId) : null;
+              const usedPlayerIds = getUsedPlayerIds();
+              const totals = calculateTotals(playerScore.playerName);
+              
               return (
-                <div key={playerScore.playerName} className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-foreground">{playerScore.playerName}</span>
-                    {!matchedPlayer && (
-                      <span className="text-sm text-destructive">(Not matched to a player)</span>
-                    )}
+                <div key={playerScore.playerName} className="space-y-3 p-3 border rounded-lg">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Scanned:</span>
+                      <span className="font-semibold text-foreground">{playerScore.playerName}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Assign to:</span>
+                      <Select
+                        value={mappedPlayerId?.toString() || "unassigned"}
+                        onValueChange={(val) => {
+                          setPlayerMappings(prev => ({
+                            ...prev,
+                            [playerScore.playerName]: val === "unassigned" ? null : parseInt(val)
+                          }));
+                        }}
+                      >
+                        <SelectTrigger className="w-40" data-testid={`select-player-${playerScore.playerName}`}>
+                          <SelectValue placeholder="Select player" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">-- Skip --</SelectItem>
+                          {players.map(p => (
+                            <SelectItem 
+                              key={p.id} 
+                              value={p.id.toString()}
+                              disabled={usedPlayerIds.has(p.id) && p.id !== mappedPlayerId}
+                            >
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {mappedPlayer && (
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="grid grid-cols-9 gap-1">
+                  <div className="grid grid-cols-10 gap-1">
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(hole => {
                       const holeData = playerScore.holes.find(h => h.holeNumber === hole);
                       const value = editableScores[playerScore.playerName]?.[hole] || '';
@@ -596,9 +676,15 @@ export default function QuickScoreEntry() {
                         </div>
                       );
                     })}
+                    <div className="text-center">
+                      <div className="text-xs text-muted-foreground mb-1">OUT</div>
+                      <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">
+                        {totals.front9 ?? '-'}
+                      </div>
+                    </div>
                   </div>
                   
-                  <div className="grid grid-cols-9 gap-1 mt-2">
+                  <div className="grid grid-cols-10 gap-1">
                     {[10, 11, 12, 13, 14, 15, 16, 17, 18].map(hole => {
                       const holeData = playerScore.holes.find(h => h.holeNumber === hole);
                       const value = editableScores[playerScore.playerName]?.[hole] || '';
@@ -630,6 +716,21 @@ export default function QuickScoreEntry() {
                         </div>
                       );
                     })}
+                    <div className="text-center">
+                      <div className="text-xs text-muted-foreground mb-1">IN</div>
+                      <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">
+                        {totals.back9 ?? '-'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end">
+                    <div className="text-center">
+                      <div className="text-xs text-muted-foreground mb-1">TOTAL</div>
+                      <div className="h-8 w-12 flex items-center justify-center text-sm font-bold bg-primary/10 text-primary rounded">
+                        {totals.total ?? '-'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
@@ -652,6 +753,7 @@ export default function QuickScoreEntry() {
                 setShowScanModal(false);
                 setScannedScores([]);
                 setEditableScores({});
+                setPlayerMappings({});
               }}
               data-testid="button-cancel-scan"
             >
@@ -659,6 +761,7 @@ export default function QuickScoreEntry() {
             </Button>
             <Button 
               onClick={handleConfirmScores}
+              disabled={Object.values(playerMappings).every(id => id === null)}
               data-testid="button-confirm-scanned-scores"
             >
               Save Scores
