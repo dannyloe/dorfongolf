@@ -1081,31 +1081,31 @@ export default function MatchDetail() {
                   <div className="flex items-center">
                     <button
                       onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
-                      className="flex-1 p-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+                      className="flex-1 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-muted/30 transition-colors"
                       data-testid={`button-expand-match-${em.id}`}
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
                         <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-primary" />
-                          <span className="font-semibold">{teamA?.name || "Team A"}</span>
+                          <Users className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />
+                          <span className="font-semibold text-sm sm:text-base">{teamA?.name || "Team A"}</span>
                         </div>
-                        <span className="text-muted-foreground">vs</span>
+                        <span className="text-muted-foreground text-xs sm:text-base hidden sm:inline">vs</span>
                         <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-accent" />
-                          <span className="font-semibold">{teamB?.name || "Team B"}</span>
+                          <Users className="w-3 h-3 sm:w-4 sm:h-4 text-accent" />
+                          <span className="font-semibold text-sm sm:text-base">{teamB?.name || "Team B"}</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
+                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
                           {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
                         </span>
                         {em.unitAmount > 0 && (
-                          <span className="text-xs px-2 py-0.5 bg-muted rounded-full font-medium">
+                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-muted rounded-full font-medium">
                             ${(em.unitAmount / 100).toFixed(2)}
                           </span>
                         )}
-                        <span className="text-sm font-medium text-primary">{status}</span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>
+                        {isExpanded ? <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />}
                       </div>
                     </button>
                     {isCreator && (
