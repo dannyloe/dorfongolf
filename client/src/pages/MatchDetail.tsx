@@ -1886,8 +1886,15 @@ export default function MatchDetail() {
                       </td>
                     );
                   })}
-                  <td className="p-4 text-center font-bold text-lg bg-primary/5 text-primary">
-                    {getPlayerScore(p.id) || "-"}
+                  <td className="p-4 text-center font-bold text-lg bg-primary/5">
+                    {(() => {
+                      const totalScore = getPlayerScore(p.id);
+                      const coursePar = matchCourse?.totalPar ?? 72;
+                      if (!totalScore) return <span className="text-muted-foreground">-</span>;
+                      const diff = totalScore - coursePar;
+                      const colorClass = diff < 0 ? "text-red-500" : diff > 0 ? "text-blue-500" : "text-foreground";
+                      return <span className={colorClass}>{totalScore}</span>;
+                    })()}
                   </td>
                 </tr>
               );
