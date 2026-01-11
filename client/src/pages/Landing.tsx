@@ -34,9 +34,9 @@ export default function Landing() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="font-display font-bold text-5xl md:text-7xl lg:text-8xl leading-tight mb-6 text-foreground">
-              Track every stroke <br/>
+              Hardscrabble <br/>
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-emerald-400">
-                Master your game.
+                Betting App
               </span>
             </h1>
             <p className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-2xl mx-auto leading-relaxed">
