@@ -1084,13 +1084,13 @@ export default function MatchDetail() {
                       className="flex-1 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 hover:bg-muted/30 transition-colors"
                       data-testid={`button-expand-match-${em.id}`}
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 sm:gap-4">
+                        <div className="flex items-center gap-1 sm:gap-2">
                           <Users className="w-3 h-3 sm:w-4 sm:h-4 text-primary" />
                           <span className="font-semibold text-sm sm:text-base">{teamA?.name || "Team A"}</span>
                         </div>
-                        <span className="text-muted-foreground text-xs sm:text-base hidden sm:inline">vs</span>
-                        <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs sm:text-base">vs</span>
+                        <div className="flex items-center gap-1 sm:gap-2">
                           <Users className="w-3 h-3 sm:w-4 sm:h-4 text-accent" />
                           <span className="font-semibold text-sm sm:text-base">{teamB?.name || "Team B"}</span>
                         </div>
