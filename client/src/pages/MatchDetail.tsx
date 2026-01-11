@@ -506,7 +506,7 @@ export default function MatchDetail() {
                   <ChevronUp className="w-4 h-4 text-muted-foreground" />
                 )}
               </button>
-              <Link href={`/match/${matchId}/scores`}>
+              <Link href={`/match/${matchId}/scores?scan=true`}>
                 <Button 
                   size="sm" 
                   variant="outline"
@@ -1813,7 +1813,7 @@ export default function MatchDetail() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-foreground">Scorecard</h2>
         <div className="flex items-center gap-2">
-          <Link href={`/match/${matchId}/scores`}>
+          <Link href={`/match/${matchId}/scores?scan=true`}>
             <Button variant="outline" size="icon" data-testid="button-scan-scorecard">
               <Camera className="w-4 h-4" />
             </Button>

@@ -184,6 +184,14 @@ export default function QuickScoreEntry() {
       setPlayerOrder(players.map(p => p.id));
     }
   }, [players, playerOrder.length]);
+  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('scan') === 'true' && fileInputRef.current) {
+      setTimeout(() => fileInputRef.current?.click(), 100);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading...</div>;
   if (error || !match) return <div className="p-12 text-center text-destructive">Event not found</div>;
