@@ -4,8 +4,11 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface Player {
   id: number;
@@ -22,6 +25,119 @@ interface Score {
   strokes: number;
 }
 
+interface SortablePlayerRowProps {
+  player: Player;
+  score: number | null;
+  isEditing: boolean;
+  isCurrentUser: boolean;
+  canEdit: boolean;
+  holePar: number;
+  editValue: string;
+  inputRef: (el: HTMLInputElement | null) => void;
+  onHide: () => void;
+  onScoreClick: () => void;
+  onScoreChange: (value: string) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+}
+
+function SortablePlayerRow({
+  player,
+  score,
+  isEditing,
+  isCurrentUser,
+  canEdit,
+  holePar,
+  editValue,
+  inputRef,
+  onHide,
+  onScoreClick,
+  onScoreChange,
+  onBlur,
+  onKeyDown,
+}: SortablePlayerRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: player.id });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  
+  const diff = score !== null ? score - holePar : null;
+  const colorClass = diff === null ? "text-muted-foreground" : 
+    diff < 0 ? "text-red-500" : diff > 0 ? "text-blue-500" : "text-foreground";
+  
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between p-4 rounded-lg border ${
+        score !== null ? "bg-muted/30 border-border" : "bg-background border-dashed border-muted-foreground/30"
+      }`}
+      data-testid={`player-row-${player.id}`}
+    >
+      <div className="flex items-center gap-2">
+        <div 
+          {...attributes} 
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing touch-none p-1"
+          data-testid={`drag-handle-${player.id}`}
+        >
+          <GripVertical className="w-4 h-4 text-muted-foreground" />
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            onHide();
+          }}
+          data-testid={`button-hide-player-${player.id}`}
+        >
+          <EyeOff className="w-4 h-4" />
+        </Button>
+        {score !== null && (
+          <Check className="w-5 h-5 text-green-500" />
+        )}
+        <span 
+          className={`font-medium ${isCurrentUser ? "text-primary" : "text-foreground"} ${canEdit ? "cursor-pointer" : ""}`}
+          onClick={() => canEdit && !isEditing && onScoreClick()}
+        >
+          {player.name}
+        </span>
+      </div>
+      
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={2}
+          value={editValue}
+          onChange={(e) => onScoreChange(e.target.value)}
+          onBlur={onBlur}
+          onKeyDown={onKeyDown}
+          className="w-16 h-12 text-center text-2xl font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 [appearance:textfield]"
+          data-testid={`input-quick-score-${player.id}`}
+        />
+      ) : (
+        <div 
+          className={`w-16 h-12 flex items-center justify-center text-2xl font-bold rounded-lg ${
+            score !== null ? colorClass : "text-muted-foreground"
+          } ${canEdit ? "hover:bg-primary/10 cursor-pointer" : ""}`}
+          onClick={() => canEdit && onScoreClick()}
+          data-testid={`score-display-${player.id}`}
+        >
+          {score ?? "-"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function QuickScoreEntry() {
   const [, params] = useRoute("/match/:id/scores");
   const [, navigate] = useLocation();
@@ -35,7 +151,13 @@ export default function QuickScoreEntry() {
   const [editingPlayer, setEditingPlayer] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const [hiddenPlayerIds, setHiddenPlayerIds] = useState<Set<number>>(new Set());
+  const [playerOrder, setPlayerOrder] = useState<number[]>([]);
   const inputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
+  
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   useEffect(() => {
     if (editingPlayer !== null && inputRefs.current[editingPlayer]) {
@@ -44,16 +166,38 @@ export default function QuickScoreEntry() {
     }
   }, [editingPlayer]);
 
+  const players: Player[] = match?.players || [];
+  
+  useEffect(() => {
+    if (players.length > 0 && playerOrder.length === 0) {
+      setPlayerOrder(players.map(p => p.id));
+    }
+  }, [players, playerOrder.length]);
+
   if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading...</div>;
   if (error || !match) return <div className="p-12 text-center text-destructive">Event not found</div>;
 
-  const players: Player[] = match.players || [];
   const scores: Score[] = match.scores || [];
   const isCreator = user?.id === match.creatorId;
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   
-  const visiblePlayers = players.filter(p => !hiddenPlayerIds.has(p.id));
-  const hiddenPlayers = players.filter(p => hiddenPlayerIds.has(p.id));
+  const orderedPlayers = playerOrder.length > 0 
+    ? playerOrder.map(id => players.find(p => p.id === id)).filter((p): p is Player => p !== undefined)
+    : players;
+  const visiblePlayers = orderedPlayers.filter(p => !hiddenPlayerIds.has(p.id));
+  const hiddenPlayers = orderedPlayers.filter(p => hiddenPlayerIds.has(p.id));
+  
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setPlayerOrder((items) => {
+        const currentOrder = items.length > 0 ? items : players.map(p => p.id);
+        const oldIndex = currentOrder.indexOf(active.id as number);
+        const newIndex = currentOrder.indexOf(over.id as number);
+        return arrayMove(currentOrder, oldIndex, newIndex);
+      });
+    }
+  };
   
   const matchCourse = coursesList?.find(c => c.name === match.courseName);
   const getHolePar = (hole: number) => matchCourse?.holes.find(h => h.holeNumber === hole)?.par ?? 4;
@@ -64,7 +208,7 @@ export default function QuickScoreEntry() {
   };
 
   const hidePlayer = (playerId: number) => {
-    setHiddenPlayerIds(prev => new Set([...prev, playerId]));
+    setHiddenPlayerIds(prev => new Set(Array.from(prev).concat(playerId)));
   };
 
   const showPlayer = (playerId: number) => {
@@ -207,76 +351,39 @@ export default function QuickScoreEntry() {
         </CardHeader>
         
         <CardContent className="pt-4 space-y-3">
-          {visiblePlayers.map((player) => {
-            const score = getScore(player.id, currentHole);
-            const isEditing = editingPlayer === player.id;
-            const isCurrentUser = player.userId === user?.id;
-            const canEdit = isCreator || isCurrentUser;
-            
-            const diff = score !== null ? score - holePar : null;
-            const colorClass = diff === null ? "text-muted-foreground" : 
-              diff < 0 ? "text-red-500" : diff > 0 ? "text-blue-500" : "text-foreground";
-            
-            return (
-              <div 
-                key={player.id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${
-                  score !== null ? "bg-muted/30 border-border" : "bg-background border-dashed border-muted-foreground/30"
-                }`}
-                data-testid={`player-row-${player.id}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      hidePlayer(player.id);
-                    }}
-                    data-testid={`button-hide-player-${player.id}`}
-                  >
-                    <EyeOff className="w-4 h-4" />
-                  </Button>
-                  {score !== null && (
-                    <Check className="w-5 h-5 text-green-500" />
-                  )}
-                  <span 
-                    className={`font-medium ${isCurrentUser ? "text-primary" : "text-foreground"} ${canEdit ? "cursor-pointer" : ""}`}
-                    onClick={() => canEdit && !isEditing && handleScoreClick(player.id)}
-                  >
-                    {player.name}
-                  </span>
-                </div>
+          <DndContext 
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={visiblePlayers.map(p => p.id)} strategy={verticalListSortingStrategy}>
+              {visiblePlayers.map((player) => {
+                const score = getScore(player.id, currentHole);
+                const isEditing = editingPlayer === player.id;
+                const isCurrentUser = player.userId === user?.id;
+                const canEdit = isCreator || isCurrentUser;
                 
-                {isEditing ? (
-                  <input
-                    ref={(el) => { inputRefs.current[player.id] = el; }}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={2}
-                    value={editValue}
-                    onChange={(e) => handleScoreChange(player.id, e.target.value)}
+                return (
+                  <SortablePlayerRow
+                    key={player.id}
+                    player={player}
+                    score={score}
+                    isEditing={isEditing}
+                    isCurrentUser={isCurrentUser}
+                    canEdit={canEdit}
+                    holePar={holePar}
+                    editValue={editValue}
+                    inputRef={(el) => { inputRefs.current[player.id] = el; }}
+                    onHide={() => hidePlayer(player.id)}
+                    onScoreClick={() => handleScoreClick(player.id)}
+                    onScoreChange={(value) => handleScoreChange(player.id, value)}
                     onBlur={() => handleBlur(player.id)}
                     onKeyDown={(e) => handleKeyDown(e, player.id)}
-                    className="w-16 h-12 text-center text-2xl font-bold border-2 border-primary rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 [appearance:textfield]"
-                    data-testid={`input-quick-score-${player.id}`}
                   />
-                ) : (
-                  <div 
-                    className={`w-16 h-12 flex items-center justify-center text-2xl font-bold rounded-lg ${
-                      score !== null ? colorClass : "text-muted-foreground"
-                    } ${canEdit ? "hover:bg-primary/10 cursor-pointer" : ""}`}
-                    onClick={() => canEdit && handleScoreClick(player.id)}
-                    data-testid={`score-display-${player.id}`}
-                  >
-                    {score ?? "-"}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </SortableContext>
+          </DndContext>
         </CardContent>
       </Card>
 
