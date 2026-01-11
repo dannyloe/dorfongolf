@@ -1,7 +1,7 @@
 import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useCourses } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
-import { useRoute, useLocation } from "wouter";
+import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt } from "lucide-react";
 import { format } from "date-fns";
@@ -1797,6 +1797,14 @@ export default function MatchDetail() {
       })()}
 
       {/* Scorecard Table */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-foreground">Scorecard</h2>
+        <Link href={`/match/${matchId}/scores`}>
+          <Button variant="outline" size="sm" data-testid="button-quick-score-entry">
+            Quick Score Entry
+          </Button>
+        </Link>
+      </div>
       <div className="glass-card rounded-2xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

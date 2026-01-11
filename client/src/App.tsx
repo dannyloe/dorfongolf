@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import Landing from "@/pages/Landing";
 import Dashboard from "@/pages/Dashboard";
 import MatchDetail from "@/pages/MatchDetail";
+import QuickScoreEntry from "@/pages/QuickScoreEntry";
 import Ledger from "@/pages/Ledger";
 import CourseSetup from "@/pages/CourseSetup";
 import NotFound from "@/pages/not-found";
@@ -57,6 +58,9 @@ function Router() {
       </Route>
       <Route path="/match/:id">
         <PrivateRoute component={MatchDetail} />
+      </Route>
+      <Route path="/match/:id/scores">
+        <PrivateRoute component={QuickScoreEntry} />
       </Route>
       <Route path="/ledger">
         <PrivateRoute component={Ledger} />
