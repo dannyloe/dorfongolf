@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults } from "@/lib/matchplay";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1016,6 +1016,127 @@ export default function MatchDetail() {
                       className="border-t border-border"
                     >
                       <div className="p-4 space-y-4">
+                        {/* Skins Match View */}
+                        {em.matchType === 'skins' ? (() => {
+                          const includedPlayerIds = teamA?.members.map(m => m.playerId) || [];
+                          const playerNames = new Map<number, string>();
+                          teamA?.members.forEach(m => {
+                            playerNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
+                          });
+                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100);
+                          
+                          return (
+                            <div className="space-y-4">
+                              {/* Players in Skins */}
+                              <div>
+                                <p className="font-medium text-primary mb-2">Players ({includedPlayerIds.length})</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {teamA?.members.map((m) => {
+                                    const playerSkins = skinsResult.skinWinners.find(w => w.playerId === m.playerId);
+                                    return (
+                                      <span key={m.id} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                        {m.player?.name} {playerSkins?.skinsWon ? `(${playerSkins.skinsWon})` : ''}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Skins Scoreboard */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="p-2 text-left font-semibold">Hole</th>
+                                      {Array.from({ length: 9 }, (_, i) => (
+                                        <th key={i + 1} className="p-2 text-center font-medium">{i + 1}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
+                                      {Array.from({ length: 9 }, (_, i) => (
+                                        <th key={i + 10} className="p-2 text-center font-medium">{i + 10}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {/* Skin Winners Row */}
+                                    <tr className="border-b border-border/50 bg-primary/5">
+                                      <td className="p-2 font-semibold">Skin Won</td>
+                                      {skinsResult.holeResults.slice(0, 9).map((r) => (
+                                        <td 
+                                          key={r.holeNumber} 
+                                          className={`p-2 text-center ${r.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}
+                                        >
+                                          {r.isSkin ? r.winnerName?.split(' ')[0] : (r.lowestScore !== null ? '-' : '')}
+                                        </td>
+                                      ))}
+                                      <td className="p-2 text-center font-semibold bg-muted/30">
+                                        {skinsResult.holeResults.slice(0, 9).filter(r => r.isSkin).length}
+                                      </td>
+                                      {skinsResult.holeResults.slice(9, 18).map((r) => (
+                                        <td 
+                                          key={r.holeNumber} 
+                                          className={`p-2 text-center ${r.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}
+                                        >
+                                          {r.isSkin ? r.winnerName?.split(' ')[0] : (r.lowestScore !== null ? '-' : '')}
+                                        </td>
+                                      ))}
+                                      <td className="p-2 text-center font-semibold bg-muted/30">
+                                        {skinsResult.holeResults.slice(9, 18).filter(r => r.isSkin).length}
+                                      </td>
+                                      <td className="p-2 text-center font-bold bg-muted/30">
+                                        {skinsResult.totalSkins}
+                                      </td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Skins Summary */}
+                              <div className="flex justify-between items-center pt-2 border-t border-border">
+                                <div className="text-sm">
+                                  <span className="font-medium">Total Pool: </span>
+                                  <span className="font-bold">${skinsResult.totalPool.toFixed(2)}</span>
+                                  <span className="text-muted-foreground mx-2">|</span>
+                                  <span className="font-medium">Skins: </span>
+                                  <span className="font-bold">{skinsResult.totalSkins}</span>
+                                  {skinsResult.totalSkins > 0 && (
+                                    <>
+                                      <span className="text-muted-foreground mx-2">|</span>
+                                      <span className="font-medium">Value each: </span>
+                                      <span className="font-bold">${skinsResult.skinValue.toFixed(2)}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Skins Payouts */}
+                              {skinsResult.isComplete && skinsResult.settlements.length > 0 && (
+                                <div className="pt-3 border-t border-border">
+                                  <h5 className="font-semibold text-sm mb-2">Settlements</h5>
+                                  <div className="flex flex-wrap gap-2">
+                                    {skinsResult.settlements.map((s) => (
+                                      <span 
+                                        key={s.playerId}
+                                        className={`px-3 py-1 rounded-lg text-sm font-medium ${
+                                          s.amount > 0 
+                                            ? 'bg-primary/10 text-primary' 
+                                            : s.amount < 0 
+                                            ? 'bg-destructive/10 text-destructive'
+                                            : 'bg-muted text-muted-foreground'
+                                        }`}
+                                      >
+                                        {s.playerName}: {s.amount > 0 ? '+' : ''}{s.amount === 0 ? 'Even' : `$${s.amount.toFixed(2)}`}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })() : (
+                        <>
                         {/* Team Members */}
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
@@ -1496,6 +1617,8 @@ export default function MatchDetail() {
                             </div>
                           );
                         })()}
+                        </>
+                        )}
 
                       </div>
                     </motion.div>

@@ -274,7 +274,39 @@ export function calculateLedger(
 
     const shouldAutoPress = em.autoPressOriginal ?? true;
 
-    if (em.matchType === 'nassau') {
+    if (em.matchType === 'skins') {
+      // Skins match - use teamA to get the included player IDs
+      const includedPlayerIds = teamA.members.map(m => m.playerId);
+      const playerNames = new Map<number, string>();
+      for (const member of teamA.members) {
+        playerNames.set(member.playerId, member.player?.name || `Player ${member.playerId}`);
+      }
+      
+      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100);
+      
+      for (const s of skinsResult.settlements) {
+        entries.push({
+          matchId: em.id,
+          matchName: em.name,
+          playerId: s.playerId,
+          playerName: s.playerName,
+          amount: s.amount,
+          isComplete: skinsResult.isComplete,
+          createdAt: em.createdAt,
+        });
+
+        if (skinsResult.isComplete) {
+          const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+          if (s.amount > 0) {
+            existing.won += s.amount;
+          } else if (s.amount < 0) {
+            existing.lost += Math.abs(s.amount);
+          }
+          existing.matches++;
+          playerTotals.set(s.playerId, existing);
+        }
+      }
+    } else if (em.matchType === 'nassau') {
       const nassauResults = calculateNassauResults(em, scores);
       const nassauAutoPressSettings = {
         front9: em.autoPressNassauFront9 ?? true,
