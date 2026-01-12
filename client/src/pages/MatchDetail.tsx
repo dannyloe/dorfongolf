@@ -1276,28 +1276,35 @@ export default function MatchDetail() {
                             ${(em.unitAmount / 100).toFixed(2)}
                           </span>
                         )}
-                        {match.isHandicapped && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isCreator) {
-                                updateNetScoring.mutate({ 
-                                  eventMatchId: em.id, 
-                                  useNetScoring: !em.useNetScoring 
-                                });
-                              }
-                            }}
-                            className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium transition-colors ${
-                              em.useNetScoring 
-                                ? "bg-primary/20 text-primary" 
-                                : "bg-muted text-muted-foreground"
-                            } ${isCreator ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
-                            disabled={!isCreator || updateNetScoring.isPending}
-                            data-testid={`button-toggle-net-scoring-${em.id}`}
-                          >
-                            {em.useNetScoring ? "Net" : "Gross"}
-                          </button>
-                        )}
+                        {match.isHandicapped && (() => {
+                          const netContext = buildMatchNetContext(em);
+                          const isNetSkipped = em.useNetScoring && !netContext;
+                          return (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (isCreator) {
+                                  updateNetScoring.mutate({ 
+                                    eventMatchId: em.id, 
+                                    useNetScoring: !em.useNetScoring 
+                                  });
+                                }
+                              }}
+                              className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium transition-colors ${
+                                isNetSkipped
+                                  ? "bg-destructive/20 text-destructive"
+                                  : em.useNetScoring 
+                                    ? "bg-primary/20 text-primary" 
+                                    : "bg-muted text-muted-foreground"
+                              } ${isCreator ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+                              disabled={!isCreator || updateNetScoring.isPending}
+                              title={isNetSkipped ? "Net scoring skipped - missing handicap data or hole handicaps" : undefined}
+                              data-testid={`button-toggle-net-scoring-${em.id}`}
+                            >
+                              {em.useNetScoring ? "Net" : "Gross"}
+                            </button>
+                          );
+                        })()}
                         <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>
                       </div>
                     </button>
