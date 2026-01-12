@@ -106,9 +106,10 @@ function CourseImportDialog({ open, onClose }: { open: boolean; onClose: () => v
         throw new Error(err.message || "Failed to load course details");
       }
       const data = await response.json();
-      setSelectedCourse(data);
-      setCourseName(data.course_name || data.club_name);
-      const allTees = [...(data.tees?.male || []), ...(data.tees?.female || [])];
+      const courseData = data.course || data;
+      setSelectedCourse(courseData);
+      setCourseName(courseData.course_name || courseData.club_name);
+      const allTees = [...(courseData.tees?.male || []), ...(courseData.tees?.female || [])];
       if (allTees.length > 0) {
         setSelectedTee(allTees[0].tee_name);
       }
