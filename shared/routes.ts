@@ -388,6 +388,21 @@ export const api = {
         403: z.object({ message: z.string() }),
       },
     },
+    updateShowInRoster: {
+      method: 'PUT' as const,
+      path: '/api/preset-players/:name/show-in-roster',
+      input: z.object({
+        showInRoster: z.boolean(),
+      }),
+      responses: {
+        200: z.object({
+          playerName: z.string(),
+          showInRoster: z.boolean(),
+        }),
+        400: errorSchemas.validation,
+        403: z.object({ message: z.string() }),
+      },
+    },
   },
   ledger: {
     get: {

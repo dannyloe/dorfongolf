@@ -450,6 +450,30 @@ export function usePlayerHandicaps() {
   });
 }
 
+export interface FullPlayerData {
+  name: string;
+  handicapIndex: number | null;
+  defaultTeeId: number | null;
+  defaultTeeName: string | null;
+  aliases: string[];
+  claimedByUserId: string | null;
+  claimedByName: string | null;
+  isAdmin: boolean | null;
+  showInRoster: boolean;
+}
+
+export function useFullPlayerData() {
+  return useQuery({
+    queryKey: ["/api/preset-players/full"],
+    queryFn: async () => {
+      const res = await fetch("/api/preset-players/full", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch full player data");
+      const data = await res.json();
+      return data.players as FullPlayerData[];
+    },
+  });
+}
+
 export function useUpsertPlayerHandicap() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -587,6 +587,7 @@ export class DatabaseStorage implements IStorage {
       claimedByUserId: string | null;
       claimedByName: string | null;
       isAdmin: boolean | null;
+      showInRoster: boolean;
     }[];
     availableTees: {
       id: number;
@@ -607,6 +608,7 @@ export class DatabaseStorage implements IStorage {
     // Get database-stored preset players
     const dbPresetPlayers = await db.select().from(presetPlayers);
     const dbPlayerNames = dbPresetPlayers.map(p => p.name);
+    const dbPresetMap = new Map(dbPresetPlayers.map(p => [p.name, p]));
     
     // Merge hardcoded and database players (no duplicates)
     const allPlayerNames = [...PRESET_PLAYERS, ...dbPlayerNames.filter(n => !PRESET_PLAYERS.includes(n as any))];
@@ -643,6 +645,9 @@ export class DatabaseStorage implements IStorage {
       const claimed = claimedMap.get(name);
       const defaultTee = handicapData?.defaultTeeId ? teeMap.get(handicapData.defaultTeeId) : null;
       const linkedUser = claimed?.userId ? userMap.get(claimed.userId) : null;
+      const dbPreset = dbPresetMap.get(name);
+      // Hardcoded players default to showing in roster, db players use their stored value
+      const showInRoster = dbPreset?.showInRoster ?? true;
       
       return {
         name,
@@ -653,6 +658,7 @@ export class DatabaseStorage implements IStorage {
         claimedByUserId: claimed?.userId ?? null,
         claimedByName: claimed?.userName ?? null,
         isAdmin: linkedUser?.isAdmin ?? null,
+        showInRoster,
       };
     });
     
@@ -1011,6 +1017,21 @@ export class DatabaseStorage implements IStorage {
           canonicalName,
         }))
       );
+    }
+  }
+
+  async updatePresetPlayerShowInRoster(name: string, showInRoster: boolean): Promise<void> {
+    // Check if player exists in database
+    const [existing] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, name));
+    
+    if (existing) {
+      // Update existing record
+      await db.update(presetPlayers)
+        .set({ showInRoster })
+        .where(eq(presetPlayers.name, name));
+    } else {
+      // Create new record for hardcoded player
+      await db.insert(presetPlayers).values({ name, showInRoster });
     }
   }
 }

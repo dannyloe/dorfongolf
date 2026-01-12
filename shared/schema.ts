@@ -126,6 +126,7 @@ export const teamMembers = pgTable("team_members", {
 export const presetPlayers = pgTable("preset_players", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
+  showInRoster: boolean("show_in_roster").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, type MatchPlayerHandicap } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, type MatchPlayerHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, type NetScoringContext } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
-import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Player {
@@ -156,6 +155,7 @@ export default function MatchDetail() {
   const updateHandicapped = useUpdateHandicapped(matchId);
   const updateMatchDetails = useUpdateMatchDetails(matchId);
   const { data: playerHandicaps } = usePlayerHandicaps();
+  const { data: fullPlayerData } = useFullPlayerData();
   const upsertPlayerHandicap = useUpsertPlayerHandicap();
   const updatePlayerMatchHandicap = useUpdatePlayerMatchHandicap(matchId);
   const updatePlayerTee = useUpdatePlayerTee(matchId);
@@ -1033,10 +1033,14 @@ export default function MatchDetail() {
                 <div className="mb-3">
                   <p className="text-xs text-muted-foreground mb-2">Quick add from roster (with default handicaps):</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                    {[...PRESET_PLAYERS].sort((a, b) => a.localeCompare(b)).map((name) => {
+                    {(fullPlayerData || [])
+                      .filter(p => p.showInRoster)
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((playerInfo) => {
+                      const name = playerInfo.name;
                       const isAdded = existingPlayerNames.includes(name.toLowerCase());
                       const defaultHandicap = playerHandicaps?.find(h => h.presetPlayerName.toLowerCase() === name.toLowerCase());
-                      const handicapValue = defaultHandicap?.handicapIndex;
+                      const handicapValue = defaultHandicap?.handicapIndex ?? playerInfo.handicapIndex;
                       const displayHandicap = handicapValue !== null && handicapValue !== undefined 
                         ? (handicapValue / 10).toFixed(1) 
                         : '';

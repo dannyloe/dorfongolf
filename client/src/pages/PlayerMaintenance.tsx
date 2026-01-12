@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Users, Search, Hash, Flag, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus } from "lucide-react";
+import { Users, Search, Hash, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -22,6 +22,7 @@ interface PlayerData {
   claimedByUserId: string | null;
   claimedByName: string | null;
   isAdmin: boolean | null;
+  showInRoster: boolean;
 }
 
 interface AvailableTee {
@@ -116,58 +117,6 @@ function EditableHandicapCell({
       autoFocus
       data-testid={`input-handicap-${player.name}`}
     />
-  );
-}
-
-function EditableTeeCell({ 
-  player, 
-  tees,
-  onSave 
-}: { 
-  player: PlayerData;
-  tees: AvailableTee[];
-  onSave: (defaultTeeId: number | null) => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const currentValue = player.defaultTeeId?.toString() || "none";
-
-  const handleChange = (newValue: string) => {
-    const teeId = newValue === "none" ? null : parseInt(newValue);
-    if (teeId !== player.defaultTeeId) {
-      onSave(teeId);
-    }
-    setIsEditing(false);
-  };
-
-  if (!isEditing) {
-    return (
-      <div 
-        className="cursor-pointer hover:bg-muted/50 rounded px-2 py-1 min-w-[120px]"
-        onClick={() => setIsEditing(true)}
-        data-testid={`cell-tee-${player.name}`}
-      >
-        {player.defaultTeeName || <span className="text-muted-foreground">-</span>}
-      </div>
-    );
-  }
-
-  return (
-    <Select value={currentValue} onValueChange={handleChange} open={true} onOpenChange={(open) => !open && setIsEditing(false)}>
-      <SelectTrigger 
-        className="w-[200px] h-8"
-        data-testid={`select-tee-${player.name}`}
-      >
-        <SelectValue placeholder="Select tee" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="none">No default</SelectItem>
-        {tees.map((tee) => (
-          <SelectItem key={tee.id} value={tee.id.toString()}>
-            {tee.courseName} - {tee.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }
 
@@ -294,10 +243,6 @@ export default function PlayerMaintenance() {
     updateMutation.mutate({ playerName, data: { handicapIndex } });
   };
 
-  const handleUpdateTee = (playerName: string, defaultTeeId: number | null) => {
-    updateMutation.mutate({ playerName, data: { defaultTeeId } });
-  };
-
   const updateAliasesMutation = useMutation({
     mutationFn: async ({ playerName, aliases }: { playerName: string; aliases: string[] }) => {
       return apiRequest("PUT", `/api/preset-players/${encodeURIComponent(playerName)}/aliases`, { aliases });
@@ -313,6 +258,23 @@ export default function PlayerMaintenance() {
 
   const handleUpdateAliases = (playerName: string, aliases: string[]) => {
     updateAliasesMutation.mutate({ playerName, aliases });
+  };
+
+  const showInRosterMutation = useMutation({
+    mutationFn: async ({ playerName, showInRoster }: { playerName: string; showInRoster: boolean }) => {
+      return apiRequest("PUT", `/api/preset-players/${encodeURIComponent(playerName)}/show-in-roster`, { showInRoster });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      toast({ title: "Roster visibility updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleUpdateShowInRoster = (playerName: string, showInRoster: boolean) => {
+    showInRosterMutation.mutate({ playerName, showInRoster });
   };
 
   const adminMutation = useMutation({
@@ -458,13 +420,13 @@ export default function PlayerMaintenance() {
                           Handicap
                         </div>
                       </TableHead>
-                      <TableHead className="w-[220px]">
+                      <TableHead>Aliases</TableHead>
+                      <TableHead className="w-[100px]">
                         <div className="flex items-center gap-1">
-                          <Flag className="h-3 w-3" />
-                          Default Tee
+                          <Users className="h-3 w-3" />
+                          Show in Roster
                         </div>
                       </TableHead>
-                      <TableHead>Aliases</TableHead>
                       <TableHead className="w-[150px]">
                         <div className="flex items-center gap-1">
                           <Link2 className="h-3 w-3" />
@@ -508,16 +470,17 @@ export default function PlayerMaintenance() {
                               />
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
-                              <EditableTeeCell 
-                                player={player} 
-                                tees={allTees}
-                                onSave={(val) => handleUpdateTee(player.name, val)}
-                              />
-                            </TableCell>
-                            <TableCell onClick={(e) => e.stopPropagation()}>
                               <EditableAliasesCell 
                                 player={player}
                                 onSave={(val) => handleUpdateAliases(player.name, val)}
+                              />
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Switch
+                                checked={player.showInRoster}
+                                onCheckedChange={(checked) => handleUpdateShowInRoster(player.name, checked)}
+                                disabled={showInRosterMutation.isPending}
+                                data-testid={`switch-roster-${player.name}`}
                               />
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
