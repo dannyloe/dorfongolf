@@ -712,6 +712,154 @@ export class DatabaseStorage implements IStorage {
   async getAllPlayerCourseDefaults(): Promise<PlayerCourseDefault[]> {
     return db.select().from(playerCourseDefaults);
   }
+
+  async cloneEvent(sourceEventId: number, creatorId: string): Promise<Match> {
+    const sourceMatch = await this.getMatch(sourceEventId);
+    if (!sourceMatch) {
+      throw new Error("Source event not found");
+    }
+
+    const today = new Date();
+    const newName = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    const [newMatch] = await db.insert(matches).values({
+      name: newName,
+      courseName: sourceMatch.courseName,
+      courseId: sourceMatch.courseId,
+      creatorId: creatorId,
+      isHandicapped: sourceMatch.isHandicapped,
+    }).returning();
+
+    const sourcePlayers = await this.getMatchPlayers(sourceEventId);
+    const playerIdMap = new Map<number, number>();
+
+    for (const player of sourcePlayers) {
+      const [newPlayer] = await db.insert(players).values({
+        matchId: newMatch.id,
+        userId: player.userId,
+        name: player.name,
+        handicapIndex: player.handicapIndex,
+        teeId: player.teeId,
+      }).returning();
+      playerIdMap.set(player.id, newPlayer.id);
+    }
+
+    const sourceEventMatches = await this.getEventMatches(sourceEventId);
+    const eventMatchIdMap = new Map<number, number>();
+
+    const parentMatches = sourceEventMatches.filter(em => !em.parentMatchId);
+    const childMatches = sourceEventMatches.filter(em => em.parentMatchId);
+
+    for (const em of [...parentMatches, ...childMatches]) {
+      const sourceWithTeams = await this.getEventMatchWithTeams(em.id);
+      
+      const [newEventMatch] = await db.insert(eventMatches).values({
+        eventId: newMatch.id,
+        name: em.name,
+        matchType: em.matchType,
+        unitAmount: em.unitAmount,
+        parentMatchId: em.parentMatchId ? eventMatchIdMap.get(em.parentMatchId) ?? null : null,
+        startHole: em.startHole,
+        autoPressOriginal: em.autoPressOriginal,
+        autoPressAllPresses: em.autoPressAllPresses,
+        autoPressNassauFront9: em.autoPressNassauFront9,
+        autoPressNassauBack9: em.autoPressNassauBack9,
+        autoPressNassauOverall: em.autoPressNassauOverall,
+        useNetScoring: em.useNetScoring,
+      }).returning();
+      eventMatchIdMap.set(em.id, newEventMatch.id);
+
+      if (sourceWithTeams?.teams) {
+        for (const team of sourceWithTeams.teams) {
+          const [newTeam] = await db.insert(teams).values({
+            eventMatchId: newEventMatch.id,
+            name: team.name,
+          }).returning();
+
+          for (const member of team.members) {
+            const newPlayerId = playerIdMap.get(member.playerId);
+            if (newPlayerId) {
+              await db.insert(teamMembers).values({
+                teamId: newTeam.id,
+                playerId: newPlayerId,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return newMatch;
+  }
+
+  async copyBetsFromEvent(targetEventId: number, sourceEventId: number): Promise<void> {
+    const targetMatch = await this.getMatch(targetEventId);
+    const sourceMatch = await this.getMatch(sourceEventId);
+    if (!targetMatch || !sourceMatch) {
+      throw new Error("Target or source event not found");
+    }
+
+    const targetPlayers = await this.getMatchPlayers(targetEventId);
+    const sourcePlayers = await this.getMatchPlayers(sourceEventId);
+
+    const playerNameToTargetId = new Map<string, number>();
+    for (const player of targetPlayers) {
+      playerNameToTargetId.set(player.name, player.id);
+    }
+
+    const sourcePlayerIdToName = new Map<number, string>();
+    for (const player of sourcePlayers) {
+      sourcePlayerIdToName.set(player.id, player.name);
+    }
+
+    const sourceEventMatches = await this.getEventMatches(sourceEventId);
+    const eventMatchIdMap = new Map<number, number>();
+
+    const parentMatches = sourceEventMatches.filter(em => !em.parentMatchId);
+    const childMatches = sourceEventMatches.filter(em => em.parentMatchId);
+
+    for (const em of [...parentMatches, ...childMatches]) {
+      const sourceWithTeams = await this.getEventMatchWithTeams(em.id);
+      
+      const [newEventMatch] = await db.insert(eventMatches).values({
+        eventId: targetEventId,
+        name: em.name,
+        matchType: em.matchType,
+        unitAmount: em.unitAmount,
+        parentMatchId: em.parentMatchId ? eventMatchIdMap.get(em.parentMatchId) ?? null : null,
+        startHole: em.startHole,
+        autoPressOriginal: em.autoPressOriginal,
+        autoPressAllPresses: em.autoPressAllPresses,
+        autoPressNassauFront9: em.autoPressNassauFront9,
+        autoPressNassauBack9: em.autoPressNassauBack9,
+        autoPressNassauOverall: em.autoPressNassauOverall,
+        useNetScoring: em.useNetScoring,
+      }).returning();
+      eventMatchIdMap.set(em.id, newEventMatch.id);
+
+      if (sourceWithTeams?.teams) {
+        for (const team of sourceWithTeams.teams) {
+          const [newTeam] = await db.insert(teams).values({
+            eventMatchId: newEventMatch.id,
+            name: team.name,
+          }).returning();
+
+          for (const member of team.members) {
+            const sourceName = sourcePlayerIdToName.get(member.playerId);
+            if (sourceName) {
+              const targetPlayerId = playerNameToTargetId.get(sourceName);
+              if (targetPlayerId) {
+                await db.insert(teamMembers).values({
+                  teamId: newTeam.id,
+                  playerId: targetPlayerId,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();

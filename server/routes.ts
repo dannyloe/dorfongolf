@@ -763,6 +763,40 @@ export async function registerRoutes(
     }
   });
 
+  app.post(api.matches.clone.path, isAuthenticated, async (req, res) => {
+    try {
+      const sourceEventId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const newMatch = await storage.cloneEvent(sourceEventId, userId);
+      res.status(201).json(newMatch);
+    } catch (err: any) {
+      if (err?.message === "Source event not found") {
+        return res.status(404).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.matches.copyBets.path, isAuthenticated, async (req, res) => {
+    try {
+      const targetEventId = parseInt(req.params.id);
+      const input = api.matches.copyBets.input.parse(req.body);
+      
+      await storage.copyBetsFromEvent(targetEventId, input.sourceEventId);
+      res.json({ message: "Bets copied successfully" });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err?.message?.includes("not found")) {
+        return res.status(404).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Get course tees
   app.get(api.courses.getTees.path, async (req, res) => {
     try {

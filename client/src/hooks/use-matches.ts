@@ -635,3 +635,47 @@ export function useUpsertMatchPlayerHandicap(matchId: number) {
     },
   });
 }
+
+export function useCloneEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (eventId: number) => {
+      const url = buildUrl(api.matches.clone.path, { id: eventId });
+      const res = await fetch(url, {
+        method: api.matches.clone.method,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to clone event");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
+    },
+  });
+}
+
+export function useCopyBetsFromEvent(targetEventId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (sourceEventId: number) => {
+      const url = buildUrl(api.matches.copyBets.path, { id: targetEventId });
+      const res = await fetch(url, {
+        method: api.matches.copyBets.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceEventId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to copy bets");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, targetEventId] });
+    },
+  });
+}

@@ -138,6 +138,27 @@ export const api = {
         403: z.object({ message: z.string() }),
       },
     },
+    clone: {
+      method: 'POST' as const,
+      path: '/api/matches/:id/clone',
+      responses: {
+        201: z.custom<typeof matches.$inferSelect>(),
+        404: errorSchemas.notFound,
+        500: errorSchemas.internal,
+      },
+    },
+    copyBets: {
+      method: 'POST' as const,
+      path: '/api/matches/:id/copy-bets',
+      input: z.object({
+        sourceEventId: z.number(),
+      }),
+      responses: {
+        200: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+        500: errorSchemas.internal,
+      },
+    },
   },
   eventMatches: {
     list: {

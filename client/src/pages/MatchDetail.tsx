@@ -1,9 +1,9 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, type MatchPlayerHandicap } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, type MatchPlayerHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -164,6 +164,12 @@ export default function MatchDetail() {
   // Get match-specific player handicap overrides
   const { data: matchHandicapOverrides } = useMatchPlayerHandicaps(matchId);
   const upsertMatchHandicap = useUpsertMatchPlayerHandicap(matchId);
+  
+  // Copy bets from another event
+  const copyBetsFromEvent = useCopyBetsFromEvent(matchId);
+  const { data: allMatches } = useMatches();
+  const [showCopyBetsDialog, setShowCopyBetsDialog] = useState(false);
+  const [selectedSourceEventId, setSelectedSourceEventId] = useState<number | null>(null);
   
   const [newPlayerName, setNewPlayerName] = useState("");
   const [editingHandicap, setEditingHandicap] = useState<string | null>(null);
@@ -821,14 +827,25 @@ export default function MatchDetail() {
               {matchesCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
             </button>
             {isCreator && players.length >= 2 && !matchesCollapsed && (
-              <Button
-                size="sm"
-                onClick={() => setShowCreateMatch(true)}
-                data-testid="button-create-match"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                New Match
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowCopyBetsDialog(true)}
+                  data-testid="button-copy-bets"
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy From Event
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setShowCreateMatch(true)}
+                  data-testid="button-create-match"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Match
+                </Button>
+              </div>
             )}
           </div>
           
@@ -2605,6 +2622,66 @@ export default function MatchDetail() {
           </tbody>
         </table>
       </div>
+
+      {showCopyBetsDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCopyBetsDialog(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-6 shadow-xl max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-display font-bold text-lg">Copy Bets From Event</h3>
+              <Button size="icon" variant="ghost" onClick={() => setShowCopyBetsDialog(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Select an event to copy all matches/bets from. Teams will be matched by player name.
+            </p>
+            <Select 
+              value={selectedSourceEventId?.toString() || ""} 
+              onValueChange={(val) => setSelectedSourceEventId(val ? parseInt(val) : null)}
+            >
+              <SelectTrigger className="w-full mb-4" data-testid="select-source-event">
+                <SelectValue placeholder="Select an event..." />
+              </SelectTrigger>
+              <SelectContent>
+                {allMatches
+                  ?.filter(m => m.id !== matchId)
+                  .map(m => (
+                    <SelectItem key={m.id} value={m.id.toString()}>
+                      {m.name} - {m.courseName}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowCopyBetsDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (selectedSourceEventId) {
+                    try {
+                      await copyBetsFromEvent.mutateAsync(selectedSourceEventId);
+                      setShowCopyBetsDialog(false);
+                      setSelectedSourceEventId(null);
+                    } catch (err) {
+                      console.error("Failed to copy bets:", err);
+                    }
+                  }
+                }}
+                disabled={!selectedSourceEventId || copyBetsFromEvent.isPending}
+                data-testid="button-confirm-copy-bets"
+              >
+                {copyBetsFromEvent.isPending ? "Copying..." : "Copy Bets"}
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

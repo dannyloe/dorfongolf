@@ -1,12 +1,13 @@
-import { useMatches, useDeleteMatch, useUpdateMatchStatus } from "@/hooks/use-matches";
+import { useMatches, useDeleteMatch, useUpdateMatchStatus, useCloneEvent } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, Trash2, DollarSign } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { ClaimPresetPlayerModal } from "@/components/ClaimPresetPlayerModal";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: matches, isLoading } = useMatches();
@@ -105,10 +106,32 @@ export default function Dashboard() {
 function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory?: boolean, userId?: string }) {
   const deleteMatch = useDeleteMatch();
   const updateStatus = useUpdateMatchStatus();
+  const cloneEvent = useCloneEvent();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
   const ADMIN_USER_ID = "52861828";
   const isAdmin = userId === ADMIN_USER_ID;
   const isCreator = userId === match.creatorId || isAdmin;
+
+  const handleClone = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      const newMatch = await cloneEvent.mutateAsync(match.id);
+      toast({
+        title: "Event cloned",
+        description: "A new event has been created with today's date.",
+      });
+      navigate(`/match/${newMatch.id}`);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Failed to clone event",
+        description: error.message,
+      });
+    }
+  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -162,15 +185,28 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
                 </Button>
               </div>
             ) : (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleDelete}
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                data-testid={`button-delete-${match.id}`}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+              <>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleClone}
+                  disabled={cloneEvent.isPending}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
+                  title="Clone Event"
+                  data-testid={`button-clone-${match.id}`}
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleDelete}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                  data-testid={`button-delete-${match.id}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </>
             )
           )}
           {!isHistory ? (
