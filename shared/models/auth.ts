@@ -48,6 +48,7 @@ export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
   "gigerich": "Spikey",
   "brandon": "Zimm",
   "hutchy": "Hutch",
+  "hutchy bear": "Hutch",
 };
 
 // Helper function to resolve a name to its canonical preset player name
