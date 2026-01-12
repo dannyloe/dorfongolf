@@ -933,37 +933,5 @@ Rules:
     }
   });
 
-  // Seed courses on startup
-  seedCourses();
-
   return httpServer;
-}
-
-// Seed the three courses with default par values
-async function seedCourses() {
-  // Default par 72 layout: 4,4,3,5,4,4,4,3,5 (out: 36) | 4,4,3,5,4,4,4,3,5 (in: 36)
-  const defaultPars = [4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 3, 5];
-  
-  // Default tees for courses (slope, course rating stored as tenths)
-  const hardscrabbleTees = [
-    { name: "Blue", slopeRating: 131, courseRating: 721, color: "#1e40af" },
-    { name: "White", slopeRating: 126, courseRating: 698, color: "#ffffff" },
-    { name: "Gold", slopeRating: 120, courseRating: 675, color: "#eab308" },
-    { name: "Red", slopeRating: 115, courseRating: 652, color: "#dc2626" },
-  ];
-  
-  try {
-    const hardscrabble = await storage.seedCourseIfNotExists("Hardscrabble", defaultPars);
-    await storage.seedCourseTeesIfNotExist(hardscrabble.id, hardscrabbleTees);
-    
-    const blessings = await storage.seedCourseIfNotExists("Blessings", defaultPars);
-    await storage.seedCourseTeesIfNotExist(blessings.id, hardscrabbleTees);
-    
-    const fayettevilleCC = await storage.seedCourseIfNotExists("Fayetteville CC", defaultPars);
-    await storage.seedCourseTeesIfNotExist(fayettevilleCC.id, hardscrabbleTees);
-    
-    console.log("Courses seeded successfully");
-  } catch (err) {
-    console.error("Error seeding courses:", err);
-  }
 }
