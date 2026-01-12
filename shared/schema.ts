@@ -37,7 +37,8 @@ export const players = pgTable("players", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
   userId: text("user_id"), 
-  name: text("name").notNull(), 
+  name: text("name").notNull(),
+  handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4), copied from player_handicaps on add
 });
 
 export const scores = pgTable("scores", {

@@ -53,8 +53,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addPlayer(player: InsertPlayer): Promise<Player> {
-    const [newPlayer] = await db.insert(players).values(player).returning();
+    // Copy default handicap from player_handicaps if available
+    let handicapIndex: number | null = null;
+    if (player.name) {
+      const defaultHandicap = await this.getPlayerHandicap(player.name);
+      if (defaultHandicap?.handicapIndex !== undefined) {
+        handicapIndex = defaultHandicap.handicapIndex;
+      }
+    }
+    
+    const [newPlayer] = await db.insert(players).values({
+      ...player,
+      handicapIndex,
+    }).returning();
     return newPlayer;
+  }
+
+  async updatePlayerHandicapIndex(playerId: number, handicapIndex: number | null): Promise<Player> {
+    const [updated] = await db.update(players)
+      .set({ handicapIndex })
+      .where(eq(players.id, playerId))
+      .returning();
+    return updated;
   }
 
   async getMatchScores(matchId: number): Promise<Score[]> {
