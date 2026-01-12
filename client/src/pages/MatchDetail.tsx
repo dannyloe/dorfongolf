@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
@@ -18,6 +18,7 @@ interface Player {
   matchId: number;
   userId: string | null;
   name: string;
+  handicapIndex: number | null;
 }
 
 interface Score {
@@ -129,8 +130,15 @@ export default function MatchDetail() {
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
   const updateHandicapped = useUpdateHandicapped(matchId);
+  const { data: playerHandicaps } = usePlayerHandicaps();
+  const upsertPlayerHandicap = useUpsertPlayerHandicap();
+  const updatePlayerMatchHandicap = useUpdatePlayerMatchHandicap(matchId);
   
   const [newPlayerName, setNewPlayerName] = useState("");
+  const [editingHandicap, setEditingHandicap] = useState<string | null>(null);
+  const [handicapEditValue, setHandicapEditValue] = useState("");
+  const [editingPlayerHandicap, setEditingPlayerHandicap] = useState<number | null>(null);
+  const [playerHandicapEditValue, setPlayerHandicapEditValue] = useState("");
   const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
   const [pressStartHole, setPressStartHole] = useState<number>(2);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -565,35 +573,89 @@ export default function MatchDetail() {
             
             {!addPlayerCollapsed && (
               <div className="px-4 pb-4 pt-2 border-t border-border/50">
-                {/* Preset Players Grid */}
+                {/* Preset Players Grid with Handicaps */}
                 <div className="mb-3">
-                  <p className="text-xs text-muted-foreground mb-2">Quick add from roster:</p>
-                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
+                  <p className="text-xs text-muted-foreground mb-2">Quick add from roster (with default handicaps):</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                     {PRESET_PLAYERS.map((name) => {
                       const isAdded = existingPlayerNames.includes(name.toLowerCase());
+                      const defaultHandicap = playerHandicaps?.find(h => h.presetPlayerName.toLowerCase() === name.toLowerCase());
+                      const handicapValue = defaultHandicap?.handicapIndex;
+                      const displayHandicap = handicapValue !== null && handicapValue !== undefined 
+                        ? (handicapValue / 10).toFixed(1) 
+                        : '';
+                      const isEditingThis = editingHandicap === name;
+                      
                       return (
-                        <label
+                        <div
                           key={name}
-                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                          className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
                             isAdded 
                               ? 'bg-primary/10 text-primary border border-primary/20' 
                               : 'bg-muted/50 hover:bg-muted border border-transparent'
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={isAdded}
-                            onChange={() => {
-                              if (!isAdded) {
-                                addPlayer.mutate({ name });
-                              }
-                            }}
-                            disabled={isAdded || addPlayer.isPending}
-                            className="w-3 h-3 rounded"
-                            data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
-                          />
-                          <span className="truncate">{name}</span>
-                        </label>
+                          <label className="flex items-center gap-1 flex-1 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isAdded}
+                              onChange={() => {
+                                if (!isAdded) {
+                                  addPlayer.mutate({ name });
+                                }
+                              }}
+                              disabled={isAdded || addPlayer.isPending}
+                              className="w-3 h-3 rounded"
+                              data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                            />
+                            <span className="truncate">{name}</span>
+                          </label>
+                          {isEditingThis ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={handicapEditValue}
+                              onChange={(e) => setHandicapEditValue(e.target.value)}
+                              onBlur={() => {
+                                const parsed = parseFloat(handicapEditValue);
+                                if (!isNaN(parsed) && parsed >= -10 && parsed <= 54) {
+                                  upsertPlayerHandicap.mutate({ 
+                                    presetPlayerName: name, 
+                                    handicapIndex: Math.round(parsed * 10) 
+                                  });
+                                } else if (handicapEditValue === '') {
+                                  upsertPlayerHandicap.mutate({ 
+                                    presetPlayerName: name, 
+                                    handicapIndex: null 
+                                  });
+                                }
+                                setEditingHandicap(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.currentTarget.blur();
+                                } else if (e.key === 'Escape') {
+                                  setEditingHandicap(null);
+                                }
+                              }}
+                              autoFocus
+                              className="w-12 h-5 text-center text-xs border rounded px-1"
+                              placeholder="HCP"
+                              data-testid={`input-handicap-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingHandicap(name);
+                                setHandicapEditValue(displayHandicap);
+                              }}
+                              className="w-12 h-5 text-center text-xs bg-background border rounded hover:bg-muted/50 text-muted-foreground"
+                              data-testid={`button-handicap-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                            >
+                              {displayHandicap || '-'}
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -2051,9 +2113,68 @@ export default function MatchDetail() {
               return (
                 <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isCurrentUser ? "bg-accent/5" : ""}`}>
                   <td className={`p-4 font-semibold sticky left-0 bg-white/95 backdrop-blur z-10 ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
-                      {p.name} {isCurrentUser && "(You)"}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
+                        {p.name} {isCurrentUser && "(You)"}
+                      </div>
+                      {/* Editable handicap for this match */}
+                      {isCreator ? (
+                        editingPlayerHandicap === p.id ? (
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={playerHandicapEditValue}
+                            onChange={(e) => setPlayerHandicapEditValue(e.target.value)}
+                            onBlur={() => {
+                              const parsed = parseFloat(playerHandicapEditValue);
+                              if (!isNaN(parsed) && parsed >= -10 && parsed <= 54) {
+                                updatePlayerMatchHandicap.mutate({ 
+                                  playerId: p.id, 
+                                  handicapIndex: Math.round(parsed * 10) 
+                                });
+                              } else if (playerHandicapEditValue === '') {
+                                updatePlayerMatchHandicap.mutate({ 
+                                  playerId: p.id, 
+                                  handicapIndex: null 
+                                });
+                              }
+                              setEditingPlayerHandicap(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.currentTarget.blur();
+                              } else if (e.key === 'Escape') {
+                                setEditingPlayerHandicap(null);
+                              }
+                            }}
+                            autoFocus
+                            className="w-12 h-5 text-center text-xs border rounded px-1 font-normal"
+                            placeholder="HCP"
+                            data-testid={`input-player-handicap-${p.id}`}
+                          />
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEditingPlayerHandicap(p.id);
+                              const hcp = p.handicapIndex;
+                              setPlayerHandicapEditValue(hcp !== null && hcp !== undefined ? (hcp / 10).toFixed(1) : '');
+                            }}
+                            className="w-12 h-5 text-center text-xs bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal"
+                            data-testid={`button-player-handicap-${p.id}`}
+                          >
+                            {p.handicapIndex !== null && p.handicapIndex !== undefined 
+                              ? (p.handicapIndex / 10).toFixed(1) 
+                              : '-'}
+                          </button>
+                        )
+                      ) : (
+                        p.handicapIndex !== null && p.handicapIndex !== undefined && (
+                          <span className="text-xs text-muted-foreground font-normal">
+                            HCP: {(p.handicapIndex / 10).toFixed(1)}
+                          </span>
+                        )
+                      )}
                     </div>
                   </td>
                   {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => {
