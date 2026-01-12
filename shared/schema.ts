@@ -77,11 +77,12 @@ export const eventMatches = pgTable("event_matches", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Player handicaps - stores handicap index for preset players
+// Player handicaps - stores handicap index and default settings for preset players
 export const playerHandicaps = pgTable("player_handicaps", {
   id: serial("id").primaryKey(),
   presetPlayerName: text("preset_player_name").notNull().unique(),
   handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4)
+  defaultTeeId: integer("default_tee_id"), // Default tee for this player
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
