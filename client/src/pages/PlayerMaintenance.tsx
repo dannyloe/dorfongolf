@@ -111,6 +111,7 @@ function EditableTeeCell({
   tees: AvailableTee[];
   onSave: (defaultTeeId: number | null) => void;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
   const currentValue = player.defaultTeeId?.toString() || "none";
 
   const handleChange = (newValue: string) => {
@@ -118,10 +119,23 @@ function EditableTeeCell({
     if (teeId !== player.defaultTeeId) {
       onSave(teeId);
     }
+    setIsEditing(false);
   };
 
+  if (!isEditing) {
+    return (
+      <div 
+        className="cursor-pointer hover:bg-muted/50 rounded px-2 py-1 min-w-[120px]"
+        onClick={() => setIsEditing(true)}
+        data-testid={`cell-tee-${player.name}`}
+      >
+        {player.defaultTeeName || <span className="text-muted-foreground">-</span>}
+      </div>
+    );
+  }
+
   return (
-    <Select value={currentValue} onValueChange={handleChange}>
+    <Select value={currentValue} onValueChange={handleChange} open={true} onOpenChange={(open) => !open && setIsEditing(false)}>
       <SelectTrigger 
         className="w-[200px] h-8"
         data-testid={`select-tee-${player.name}`}
