@@ -334,6 +334,14 @@ export async function registerRoutes(
 
   app.put(api.presetPlayers.update.path, isAuthenticated, async (req, res) => {
     try {
+      // Admin-only endpoint
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const ADMIN_USER_ID = "52861828";
+      if (userId !== ADMIN_USER_ID) {
+        return res.status(403).json({ message: "Only administrators can update player settings" });
+      }
+      
       const playerName = decodeURIComponent(req.params.name);
       const { PRESET_PLAYERS } = await import("@shared/models/auth");
       if (!PRESET_PLAYERS.includes(playerName as any)) {
