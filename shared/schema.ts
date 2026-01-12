@@ -129,6 +129,14 @@ export const presetPlayers = pgTable("preset_players", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Dynamic player aliases - supplements the hardcoded PLAYER_ALIASES
+export const playerAliases = pgTable("player_aliases", {
+  id: serial("id").primaryKey(),
+  alias: text("alias").notNull(),
+  canonicalName: text("canonical_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const coursesRelations = relations(courses, ({ many }) => ({
@@ -288,6 +296,11 @@ export const insertPresetPlayerSchema = createInsertSchema(presetPlayers).omit({
   createdAt: true,
 });
 
+export const insertPlayerAliasSchema = createInsertSchema(playerAliases).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -331,6 +344,9 @@ export type InsertPlayerCourseDefault = z.infer<typeof insertPlayerCourseDefault
 
 export type PresetPlayer = typeof presetPlayers.$inferSelect;
 export type InsertPresetPlayer = z.infer<typeof insertPresetPlayerSchema>;
+
+export type PlayerAlias = typeof playerAliases.$inferSelect;
+export type InsertPlayerAlias = z.infer<typeof insertPlayerAliasSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -9,7 +9,8 @@ import {
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
   type PlayerCourseDefault, type InsertPlayerCourseDefault,
   type Group, type InsertGroup,
-  type PresetPlayer, type InsertPresetPlayer
+  type PresetPlayer, type InsertPresetPlayer,
+  type PlayerAlias, type InsertPlayerAlias
 } from "@shared/schema";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -614,11 +615,21 @@ export class DatabaseStorage implements IStorage {
     const allUsers = await db.select().from(users);
     const userMap = new Map(allUsers.map(u => [u.id, u]));
     
-    // Build reverse alias map
+    // Build reverse alias map from hardcoded aliases
     const aliasesMap: Record<string, string[]> = {};
     for (const [alias, canonical] of Object.entries(PLAYER_ALIASES)) {
       if (!aliasesMap[canonical]) aliasesMap[canonical] = [];
       aliasesMap[canonical].push(alias);
+    }
+    
+    // Merge database aliases
+    const dbAliases = await db.select().from(playerAliases);
+    for (const dbAlias of dbAliases) {
+      if (!aliasesMap[dbAlias.canonicalName]) aliasesMap[dbAlias.canonicalName] = [];
+      // Avoid duplicates
+      if (!aliasesMap[dbAlias.canonicalName].includes(dbAlias.alias.toLowerCase())) {
+        aliasesMap[dbAlias.canonicalName].push(dbAlias.alias.toLowerCase());
+      }
     }
     
     // Get all tees and courses for default tee name lookup
@@ -980,6 +991,27 @@ export class DatabaseStorage implements IStorage {
     // Check database
     const [existing] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, name));
     return !!existing;
+  }
+
+  // Player aliases
+  async getPlayerAliases(canonicalName: string): Promise<PlayerAlias[]> {
+    return db.select().from(playerAliases).where(eq(playerAliases.canonicalName, canonicalName));
+  }
+
+  async setPlayerAliases(canonicalName: string, aliases: string[]): Promise<void> {
+    // Delete existing database aliases for this player
+    await db.delete(playerAliases).where(eq(playerAliases.canonicalName, canonicalName));
+    
+    // Insert new aliases (excluding empty strings)
+    const validAliases = aliases.filter(a => a.trim().length > 0);
+    if (validAliases.length > 0) {
+      await db.insert(playerAliases).values(
+        validAliases.map(alias => ({
+          alias: alias.toLowerCase().trim(),
+          canonicalName,
+        }))
+      );
+    }
   }
 }
 

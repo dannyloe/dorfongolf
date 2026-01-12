@@ -373,6 +373,21 @@ export const api = {
         409: z.object({ message: z.string() }),
       },
     },
+    updateAliases: {
+      method: 'PUT' as const,
+      path: '/api/preset-players/:name/aliases',
+      input: z.object({
+        aliases: z.array(z.string()),
+      }),
+      responses: {
+        200: z.object({
+          playerName: z.string(),
+          aliases: z.array(z.string()),
+        }),
+        400: errorSchemas.validation,
+        403: z.object({ message: z.string() }),
+      },
+    },
   },
   ledger: {
     get: {

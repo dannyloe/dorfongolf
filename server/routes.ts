@@ -462,6 +462,41 @@ export async function registerRoutes(
     }
   });
 
+  app.put(api.presetPlayers.updateAliases.path, isAuthenticated, async (req, res) => {
+    try {
+      // Admin-only endpoint
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only administrators can update player aliases" });
+      }
+      
+      const playerName = decodeURIComponent(req.params.name);
+      const input = api.presetPlayers.updateAliases.input.parse(req.body);
+      
+      // Verify player exists
+      const exists = await storage.presetPlayerExists(playerName);
+      if (!exists) {
+        return res.status(404).json({ message: `Player "${playerName}" not found` });
+      }
+      
+      await storage.setPlayerAliases(playerName, input.aliases);
+      
+      // Return updated aliases
+      const updatedAliases = await storage.getPlayerAliases(playerName);
+      res.json({ 
+        playerName, 
+        aliases: updatedAliases.map(a => a.alias) 
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Courses Routes
   app.get(api.courses.list.path, isAuthenticated, async (req, res) => {
     try {

@@ -298,11 +298,21 @@ export default function PlayerMaintenance() {
     updateMutation.mutate({ playerName, data: { defaultTeeId } });
   };
 
+  const updateAliasesMutation = useMutation({
+    mutationFn: async ({ playerName, aliases }: { playerName: string; aliases: string[] }) => {
+      return apiRequest("PUT", `/api/preset-players/${encodeURIComponent(playerName)}/aliases`, { aliases });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      toast({ title: "Aliases updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const handleUpdateAliases = (playerName: string, aliases: string[]) => {
-    toast({ 
-      title: "Note", 
-      description: "Alias editing requires code changes. Contact developer to update aliases." 
-    });
+    updateAliasesMutation.mutate({ playerName, aliases });
   };
 
   const adminMutation = useMutation({
