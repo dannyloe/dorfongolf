@@ -1,9 +1,19 @@
+import { type NetScoringContext, getNetStrokes } from './handicap';
+export type { NetScoringContext } from './handicap';
+
 interface Score {
   id: number;
   matchId: number;
   playerId: number;
   holeNumber: number;
   strokes: number;
+}
+
+function getScoreValue(
+  score: Score,
+  netContext: NetScoringContext | null
+): number {
+  return getNetStrokes(score.strokes, score.playerId, score.holeNumber, netContext);
 }
 
 interface TeamMember {
@@ -68,7 +78,8 @@ function getTeamHoleScore(
 
 export function calculateMatchPlayResults(
   eventMatch: EventMatch,
-  scores: Score[]
+  scores: Score[],
+  netContext: NetScoringContext | null = null
 ): HoleResult[] {
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
@@ -89,11 +100,11 @@ export function calculateMatchPlayResults(
   for (let hole = startHole; hole <= 18; hole++) {
     const teamAScores = scores
       .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
-      .map((s) => s.strokes);
+      .map((s) => getScoreValue(s, netContext));
     
     const teamBScores = scores
       .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
-      .map((s) => s.strokes);
+      .map((s) => getScoreValue(s, netContext));
 
     const teamAHoleScore = getTeamHoleScore(teamAScores, matchType);
     const teamBHoleScore = getTeamHoleScore(teamBScores, matchType);
@@ -262,7 +273,8 @@ interface EventMatchWithUnit extends EventMatch {
 
 export function calculateLedger(
   eventMatches: EventMatchWithUnit[],
-  scores: Score[]
+  scores: Score[],
+  netContext: NetScoringContext | null = null
 ): { entries: LedgerEntry[]; balances: PlayerBalance[] } {
   const entries: LedgerEntry[] = [];
   // Use stable key (userId or "guest:name") for aggregation instead of playerId
@@ -302,7 +314,7 @@ export function calculateLedger(
         playerNames.set(member.playerId, member.player?.name || `Player ${member.playerId}`);
       }
       
-      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100);
+      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext);
       
       for (const s of skinsResult.settlements) {
         entries.push({
@@ -328,7 +340,7 @@ export function calculateLedger(
         }
       }
     } else if (em.matchType === 'nassau') {
-      const nassauResults = calculateNassauResults(em, scores);
+      const nassauResults = calculateNassauResults(em, scores, netContext);
       const nassauAutoPressSettings = {
         front9: em.autoPressNassauFront9 ?? true,
         back9: em.autoPressNassauBack9 ?? true,
@@ -362,7 +374,7 @@ export function calculateLedger(
         }
       }
     } else {
-      const results = calculateMatchPlayResults(em, scores);
+      const results = calculateMatchPlayResults(em, scores, netContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
 
       for (const s of settlement.settlements) {
@@ -570,7 +582,8 @@ export interface CombinedSettlement {
 export function calculateCombinedMatchSettlements(
   parentMatch: EventMatchWithUnit,
   pressMatches: EventMatchWithUnit[],
-  scores: Score[]
+  scores: Score[],
+  netContext: NetScoringContext | null = null
 ): CombinedSettlement {
   const allMatches = [parentMatch, ...pressMatches];
   const playerAmounts: Map<number, { name: string; amount: number }> = new Map();
@@ -586,7 +599,7 @@ export function calculateCombinedMatchSettlements(
     if (match.matchType === 'nassau') {
       // Nassau has 3 bets
       totalBets += 3;
-      const nassauResults = calculateNassauResults(match, scores);
+      const nassauResults = calculateNassauResults(match, scores, netContext);
       const nassauAutoPressSettings = {
         front9: match.autoPressNassauFront9 ?? true,
         back9: match.autoPressNassauBack9 ?? true,
@@ -614,7 +627,7 @@ export function calculateCombinedMatchSettlements(
     } else {
       // Regular match play or stroke play - 1 bet
       totalBets += 1;
-      const results = calculateMatchPlayResults(match, scores);
+      const results = calculateMatchPlayResults(match, scores, netContext);
       const settlement = calculateBetSettlements(
         match.unitAmount || 0,
         teamA,
@@ -671,7 +684,8 @@ export interface NassauBetResult {
 
 export function calculateNassauResults(
   eventMatch: EventMatch,
-  scores: Score[]
+  scores: Score[],
+  netContext: NetScoringContext | null = null
 ): NassauResults {
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
@@ -689,11 +703,11 @@ export function calculateNassauResults(
     for (let hole = startHole; hole <= endHole; hole++) {
       const teamAScores = scores
         .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
-        .map((s) => s.strokes);
+        .map((s) => getScoreValue(s, netContext));
       
       const teamBScores = scores
         .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
-        .map((s) => s.strokes);
+        .map((s) => getScoreValue(s, netContext));
 
       const teamAHoleScore = getTeamHoleScore(teamAScores, 'match_play_1_ball');
       const teamBHoleScore = getTeamHoleScore(teamBScores, 'match_play_1_ball');
@@ -978,7 +992,8 @@ export function calculateSkinsResults(
   includedPlayerIds: number[],
   playerNames: Map<number, string>,
   scores: Score[],
-  unitAmount: number
+  unitAmount: number,
+  netContext: NetScoringContext | null = null
 ): SkinsMatchResult {
   const holeResults: SkinResult[] = [];
   const skinCounts = new Map<number, number>();
@@ -1004,7 +1019,11 @@ export function calculateSkinsResults(
   for (let hole = 1; hole <= 18; hole++) {
     const holeScores = includedPlayerIds.map(playerId => {
       const score = scores.find(s => s.playerId === playerId && s.holeNumber === hole);
-      return { playerId, strokes: score?.strokes ?? null };
+      const grossStrokes = score?.strokes ?? null;
+      const netStrokes = grossStrokes !== null && score 
+        ? getScoreValue(score, netContext) 
+        : null;
+      return { playerId, strokes: netStrokes };
     }).filter(s => s.strokes !== null) as { playerId: number; strokes: number }[];
     
     if (holeScores.length === 0) {
@@ -1040,7 +1059,11 @@ export function calculateSkinsResults(
     if (hole < 18) {
       const nextHoleScores = includedPlayerIds.map(playerId => {
         const score = scores.find(s => s.playerId === playerId && s.holeNumber === hole + 1);
-        return { playerId, strokes: score?.strokes ?? null };
+        const grossStrokes = score?.strokes ?? null;
+        const netStrokes = grossStrokes !== null && score 
+          ? getScoreValue(score, netContext) 
+          : null;
+        return { playerId, strokes: netStrokes };
       }).filter(s => s.strokes !== null) as { playerId: number; strokes: number }[];
       
       if (nextHoleScores.length === 0) {

@@ -8,7 +8,8 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, type NetScoringContext } from "@/lib/matchplay";
+import { buildNetScoringContext, type PlayerHandicapInfo } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,6 +20,7 @@ interface Player {
   userId: string | null;
   name: string;
   handicapIndex: number | null;
+  teeId: number | null;
 }
 
 interface Score {
@@ -211,6 +213,49 @@ export default function MatchDetail() {
   // Find course par data for this match
   const matchCourse = coursesList?.find(c => c.name === match.courseName);
   const getHolePar = (hole: number) => matchCourse?.holes.find(h => h.holeNumber === hole)?.par ?? 4;
+
+  // Build net scoring context for handicapped matches
+  const buildMatchNetContext = (eventMatch: EventMatch): NetScoringContext | null => {
+    if (!eventMatch.useNetScoring || !matchCourse || !courseTees) {
+      return null;
+    }
+    
+    // Check if course has hole handicaps configured
+    const hasHoleHandicaps = matchCourse.holes.some(h => h.handicap !== null);
+    if (!hasHoleHandicaps) {
+      return null; // Can't calculate net scores without hole handicaps
+    }
+    
+    // Get all players involved in this match
+    const matchPlayerIds = new Set<number>();
+    for (const team of eventMatch.teams) {
+      for (const member of team.members) {
+        matchPlayerIds.add(member.playerId);
+      }
+    }
+    
+    // Build player handicap info from players in the match
+    const playerHandicapInfo: PlayerHandicapInfo[] = players
+      .filter(p => matchPlayerIds.has(p.id))
+      .map(p => ({
+        playerId: p.id,
+        playerName: p.name,
+        handicapIndex: p.handicapIndex,
+        teeId: p.teeId,
+      }));
+    
+    // Check if at least some players have handicap data
+    const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null);
+    if (!hasAnyHandicapData) {
+      return null; // Can't calculate net scores if no players have handicaps and tees
+    }
+    
+    return buildNetScoringContext(
+      playerHandicapInfo,
+      courseTees,
+      matchCourse.holes
+    );
+  };
 
   const getPlayerScore = (playerId: number) => {
     return scores.filter((s: Score) => s.playerId === playerId).reduce((acc, curr) => acc + curr.strokes, 0) || 0;
@@ -1194,7 +1239,8 @@ export default function MatchDetail() {
             {filteredMatches.map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
-              const results = calculateMatchPlayResults(em, scores);
+              const netContext = buildMatchNetContext(em);
+              const results = calculateMatchPlayResults(em, scores, netContext);
               const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
               const isExpanded = expandedMatch === em.id;
               const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
@@ -1278,7 +1324,8 @@ export default function MatchDetail() {
                   {!isExpanded && pressMatches.length > 0 && (
                     <div className="px-4 pb-3 space-y-1">
                       {pressMatches.map((pm) => {
-                        const pressResults = calculateMatchPlayResults(pm, scores);
+                        const pressNetContext = buildMatchNetContext(pm);
+                        const pressResults = calculateMatchPlayResults(pm, scores, pressNetContext);
                         const pressTeamA = pm.teams[0];
                         const pressTeamB = pm.teams[1];
                         const pressStatus = pressTeamA && pressTeamB ? getMatchStatus(pressResults, pressTeamA, pressTeamB, pm.matchType) : 'Not started';
@@ -1315,7 +1362,7 @@ export default function MatchDetail() {
                           teamA?.members.forEach(m => {
                             playerNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
                           });
-                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100);
+                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext);
                           
                           return (
                             <div className="space-y-4">
@@ -1557,7 +1604,7 @@ export default function MatchDetail() {
                                 <>
                                   {/* Nassau: 3 status rows for Front 9, Back 9, Overall */}
                                   {(() => {
-                                    const nassauResults = calculateNassauResults(em, scores);
+                                    const nassauResults = calculateNassauResults(em, scores, netContext);
                                     return (
                                       <>
                                         {/* Front 9 Status */}
@@ -1713,7 +1760,8 @@ export default function MatchDetail() {
                               )}
                               {/* Press Match Rows */}
                               {pressMatches.map((pm) => {
-                                const pressResults = calculateMatchPlayResults(pm, scores);
+                                const pressNetContext = buildMatchNetContext(pm);
+                                const pressResults = calculateMatchPlayResults(pm, scores, pressNetContext);
                                 const pressStartHole = pm.startHole || 1;
                                 return (
                                   <tr key={pm.id} className="border-t border-border/50 bg-muted/20">
