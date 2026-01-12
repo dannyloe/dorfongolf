@@ -78,14 +78,22 @@ export async function registerRoutes(
     const matchId = parseInt(req.params.id);
     try {
       const input = api.matches.addPlayer.input.parse(req.body);
+      const existingPlayers = await storage.getMatchPlayers(matchId);
       
-      // If userId is provided, check if they are already in the match
+      // Check if user is already in the match (by userId or by name for guests)
       if (input.userId) {
-        const existingPlayers = await storage.getMatchPlayers(matchId);
         const alreadyJoined = existingPlayers.find(p => p.userId === input.userId);
         if (alreadyJoined) {
           return res.status(200).json(alreadyJoined);
         }
+      }
+      
+      // Also check by name (case-insensitive) to prevent duplicate guest players
+      const sameNamePlayer = existingPlayers.find(p => 
+        p.name.toLowerCase() === input.name.toLowerCase()
+      );
+      if (sameNamePlayer) {
+        return res.status(200).json(sameNamePlayer);
       }
 
       const player = await storage.addPlayer({
