@@ -59,6 +59,7 @@ export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
   "chris": "Dooly",
   "junior": "JR",
   "john paul": "JP",
+  "cock lover": "JP",
   "sammy": "Sub4 Seeger",
 };
 
