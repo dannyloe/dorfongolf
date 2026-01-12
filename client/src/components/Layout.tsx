@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, User, Trophy, Plus, BookOpen, MapPin } from "lucide-react";
+import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users } from "lucide-react";
 import { CreateMatchModal } from "./CreateMatchModal";
 import { useState } from "react";
 
@@ -50,6 +50,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 >
                   <MapPin className="w-4 h-4" />
                   Courses
+                </Link>
+                <Link 
+                  href="/players" 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${isActive('/players') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  data-testid="link-players"
+                >
+                  <Users className="w-4 h-4" />
+                  Players
                 </Link>
               </nav>
 

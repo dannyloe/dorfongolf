@@ -241,6 +241,49 @@ export const api = {
         })),
       },
     },
+    full: {
+      method: 'GET' as const,
+      path: '/api/preset-players/full',
+      responses: {
+        200: z.object({
+          players: z.array(z.object({
+            name: z.string(),
+            handicapIndex: z.number().nullable(),
+            defaultTeeId: z.number().nullable(),
+            defaultTeeName: z.string().nullable(),
+            aliases: z.array(z.string()),
+            claimedByUserId: z.string().nullable(),
+            claimedByName: z.string().nullable(),
+          })),
+          availableTees: z.array(z.object({
+            id: z.number(),
+            courseId: z.number(),
+            name: z.string(),
+            color: z.string().nullable(),
+            slopeRating: z.number().nullable(),
+            courseRating: z.number().nullable(),
+            courseName: z.string(),
+          })),
+        }),
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/preset-players/:name',
+      input: z.object({
+        handicapIndex: z.number().nullable().optional(),
+        defaultTeeId: z.number().nullable().optional(),
+      }),
+      responses: {
+        200: z.object({
+          presetPlayerName: z.string(),
+          handicapIndex: z.number().nullable(),
+          defaultTeeId: z.number().nullable(),
+        }),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
     claim: {
       method: 'POST' as const,
       path: '/api/preset-players/claim',

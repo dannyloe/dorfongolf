@@ -323,6 +323,52 @@ export async function registerRoutes(
     res.json(result);
   });
 
+  app.get(api.presetPlayers.full.path, isAuthenticated, async (req, res) => {
+    try {
+      const fullData = await storage.getFullPlayerData();
+      res.json(fullData);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.presetPlayers.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const playerName = decodeURIComponent(req.params.name);
+      const { PRESET_PLAYERS } = await import("@shared/models/auth");
+      if (!PRESET_PLAYERS.includes(playerName as any)) {
+        return res.status(404).json({ message: `Player "${playerName}" not found` });
+      }
+      
+      const input = api.presetPlayers.update.input.parse(req.body);
+      
+      // Validate defaultTeeId exists if provided
+      if (input.defaultTeeId !== null && input.defaultTeeId !== undefined) {
+        const tee = await storage.getTeeById(input.defaultTeeId);
+        if (!tee) {
+          return res.status(400).json({ message: `Tee with ID ${input.defaultTeeId} not found` });
+        }
+      }
+      
+      const updated = await storage.upsertPlayerHandicap({
+        presetPlayerName: playerName,
+        handicapIndex: input.handicapIndex ?? undefined,
+        defaultTeeId: input.defaultTeeId ?? undefined,
+      });
+      
+      res.json({
+        presetPlayerName: updated.presetPlayerName,
+        handicapIndex: updated.handicapIndex,
+        defaultTeeId: updated.defaultTeeId,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.presetPlayers.claim.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.presetPlayers.claim.input.parse(req.body);

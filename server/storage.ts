@@ -483,14 +483,90 @@ export class DatabaseStorage implements IStorage {
   async upsertPlayerHandicap(data: InsertPlayerHandicap): Promise<PlayerHandicap> {
     const existing = await this.getPlayerHandicap(data.presetPlayerName);
     if (existing) {
+      const updateData: Partial<{ handicapIndex: number | null; defaultTeeId: number | null; updatedAt: Date }> = { updatedAt: new Date() };
+      if (data.handicapIndex !== undefined) updateData.handicapIndex = data.handicapIndex;
+      if (data.defaultTeeId !== undefined) updateData.defaultTeeId = data.defaultTeeId;
       const [updated] = await db.update(playerHandicaps)
-        .set({ handicapIndex: data.handicapIndex, updatedAt: new Date() })
+        .set(updateData)
         .where(eq(playerHandicaps.presetPlayerName, data.presetPlayerName))
         .returning();
       return updated;
     }
     const [inserted] = await db.insert(playerHandicaps).values(data).returning();
     return inserted;
+  }
+
+  async getFullPlayerData(): Promise<{
+    players: {
+      name: string;
+      handicapIndex: number | null;
+      defaultTeeId: number | null;
+      defaultTeeName: string | null;
+      aliases: string[];
+      claimedByUserId: string | null;
+      claimedByName: string | null;
+    }[];
+    availableTees: {
+      id: number;
+      courseId: number;
+      name: string;
+      color: string | null;
+      slopeRating: number | null;
+      courseRating: number | null;
+      courseName: string;
+    }[];
+  }> {
+    const { PRESET_PLAYERS, PLAYER_ALIASES } = await import("@shared/models/auth");
+    const allHandicaps = await this.getPlayerHandicaps();
+    const handicapMap = new Map(allHandicaps.map(h => [h.presetPlayerName, h]));
+    const claimedList = await this.getPresetPlayersClaimed();
+    const claimedMap = new Map(claimedList.map(c => [c.presetPlayerName, c]));
+    
+    // Build reverse alias map
+    const aliasesMap: Record<string, string[]> = {};
+    for (const [alias, canonical] of Object.entries(PLAYER_ALIASES)) {
+      if (!aliasesMap[canonical]) aliasesMap[canonical] = [];
+      aliasesMap[canonical].push(alias);
+    }
+    
+    // Get all tees and courses for default tee name lookup
+    const allTees = await db.select().from(courseTees);
+    const allCourses = await db.select().from(courses);
+    const courseMap = new Map(allCourses.map(c => [c.id, c]));
+    const teeMap = new Map(allTees.map(t => [t.id, t]));
+    
+    const playerList = PRESET_PLAYERS.map(name => {
+      const handicapData = handicapMap.get(name);
+      const claimed = claimedMap.get(name);
+      const defaultTee = handicapData?.defaultTeeId ? teeMap.get(handicapData.defaultTeeId) : null;
+      
+      return {
+        name,
+        handicapIndex: handicapData?.handicapIndex ?? null,
+        defaultTeeId: handicapData?.defaultTeeId ?? null,
+        defaultTeeName: defaultTee?.name ?? null,
+        aliases: aliasesMap[name] || [],
+        claimedByUserId: claimed?.userId ?? null,
+        claimedByName: claimed?.userName ?? null,
+      };
+    });
+    
+    const availableTees = allTees.map(tee => ({
+      id: tee.id,
+      courseId: tee.courseId,
+      name: tee.name,
+      color: tee.color,
+      slopeRating: tee.slopeRating,
+      courseRating: tee.courseRating,
+      courseName: courseMap.get(tee.courseId)?.name ?? "Unknown",
+    }));
+    
+    return { players: playerList, availableTees };
+  }
+
+  async getTeeById(teeId: number): Promise<CourseTee | undefined> {
+    const [tee] = await db.select().from(courseTees).where(eq(courseTees.id, teeId));
+    return tee;
   }
 
   async deletePlayerHandicap(presetPlayerName: string): Promise<void> {

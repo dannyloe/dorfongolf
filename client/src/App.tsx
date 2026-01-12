@@ -13,6 +13,7 @@ import MatchDetail from "@/pages/MatchDetail";
 import QuickScoreEntry from "@/pages/QuickScoreEntry";
 import Ledger from "@/pages/Ledger";
 import CourseSetup from "@/pages/CourseSetup";
+import PlayerMaintenance from "@/pages/PlayerMaintenance";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -67,6 +68,9 @@ function Router() {
       </Route>
       <Route path="/courses">
         <PrivateRoute component={CourseSetup} />
+      </Route>
+      <Route path="/players">
+        <PrivateRoute component={PlayerMaintenance} />
       </Route>
       <Route component={NotFound} />
     </Switch>
