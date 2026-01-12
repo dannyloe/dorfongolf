@@ -35,7 +35,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
       onSuccess: (newMatch) => {
         reset();
         onClose();
-        setLocation(`/matches/${newMatch.id}`);
+        setLocation(`/match/${newMatch.id}`);
       },
     });
   };
