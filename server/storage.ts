@@ -362,6 +362,7 @@ export class DatabaseStorage implements IStorage {
     // Get all event matches with teams for these matches
     const allEventMatches: any[] = [];
     const allScores: Score[] = [];
+    const courseDataMap: Map<number, { holes: CourseHole[]; tees: CourseTee[] }> = new Map();
 
     for (const match of allMatches) {
       const eventMatchesList = await this.getEventMatches(match.id);
@@ -373,12 +374,26 @@ export class DatabaseStorage implements IStorage {
       }
       const matchScores = await this.getMatchScores(match.id);
       allScores.push(...matchScores);
+      
+      // Get course data for net scoring
+      if (match.courseId && !courseDataMap.has(match.courseId)) {
+        const holes = await this.getCourseHoles(match.courseId);
+        const tees = await this.getCourseTees(match.courseId);
+        courseDataMap.set(match.courseId, { holes, tees });
+      }
     }
+
+    // Convert courseDataMap to serializable object
+    const courseData: Record<number, { holes: CourseHole[]; tees: CourseTee[] }> = {};
+    courseDataMap.forEach((data, courseId) => {
+      courseData[courseId] = data;
+    });
 
     return {
       matches: allMatches,
       eventMatches: allEventMatches,
       scores: allScores,
+      courseData,
     };
   }
 

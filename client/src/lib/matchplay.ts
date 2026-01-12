@@ -275,7 +275,7 @@ interface EventMatchWithUnit extends EventMatch {
 export function calculateLedger(
   eventMatches: EventMatchWithUnit[],
   scores: Score[],
-  netContext: NetScoringContext | null = null
+  netContextMap: Map<number, NetScoringContext> | null = null
 ): { entries: LedgerEntry[]; balances: PlayerBalance[] } {
   const entries: LedgerEntry[] = [];
   // Use stable key (userId or "guest:name") for aggregation instead of playerId
@@ -316,7 +316,7 @@ export function calculateLedger(
       }
       
       // Only use netContext if this specific event match has useNetScoring enabled
-      const skinsNetContext = em.useNetScoring ? netContext : null;
+      const skinsNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, skinsNetContext);
       
       for (const s of skinsResult.settlements) {
@@ -343,7 +343,7 @@ export function calculateLedger(
         }
       }
     } else if (em.matchType === 'nassau') {
-      const nassauNetContext = em.useNetScoring ? netContext : null;
+      const nassauNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       const nassauResults = calculateNassauResults(em, scores, nassauNetContext);
       const nassauAutoPressSettings = {
         front9: em.autoPressNassauFront9 ?? true,
@@ -378,7 +378,7 @@ export function calculateLedger(
         }
       }
     } else {
-      const matchPlayNetContext = em.useNetScoring ? netContext : null;
+      const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
 

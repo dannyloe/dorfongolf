@@ -17,8 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { calculateLedger } from "@/lib/matchplay";
+import { calculateLedger, NetScoringContext } from "@/lib/matchplay";
 import { useCourses, useGroups, useMatches } from "@/hooks/use-matches";
+import { calculateCourseHandicap } from "@/lib/handicap";
 
 type DateRange = {
   from: Date | undefined;
@@ -46,9 +47,10 @@ export default function Ledger() {
   }, [dateRange]);
 
   const { data, isLoading } = useQuery<{
-    matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; groupId: number | null }>;
-    eventMatches: Array<{ eventId: number; [key: string]: any }>;
+    matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; groupId: number | null; isHandicapped?: boolean }>;
+    eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null } }> }>; [key: string]: any }>;
     scores: Array<any>;
+    courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
   }>({
     queryKey: [`/api/ledger?${queryParams}`],
   });
@@ -94,12 +96,92 @@ export default function Ledger() {
     );
   }, [data?.eventMatches, filteredMatchIds]);
 
+  // Build net context map for each match (keyed by matchId/eventId)
+  const netContextMap = useMemo(() => {
+    if (!data?.matches || !data?.courseData || !data?.eventMatches) return null;
+    
+    const contextMap = new Map<number, NetScoringContext>();
+    
+    // Build a lookup from matchId to courseId
+    const matchToCourse = new Map<number, number>();
+    for (const match of data.matches) {
+      if (match.courseId && match.isHandicapped) {
+        matchToCourse.set(match.id, match.courseId);
+      }
+    }
+    
+    // For each match, build a netContext from its players and course data
+    for (const match of data.matches) {
+      if (!match.courseId || !match.isHandicapped) continue;
+      
+      const courseInfo = data.courseData[match.courseId];
+      if (!courseInfo) continue;
+      
+      // Build hole handicaps map
+      const holeHandicaps = new Map<number, number>();
+      for (const hole of courseInfo.holes) {
+        if (hole.handicap !== null) {
+          holeHandicaps.set(hole.holeNumber, hole.handicap);
+        }
+      }
+      
+      // Build tee lookup
+      const teeLookup = new Map<number, { slopeRating: number; courseRating: number }>();
+      for (const tee of courseInfo.tees) {
+        teeLookup.set(tee.id, { slopeRating: tee.slopeRating, courseRating: tee.courseRating });
+      }
+      
+      // Get all players from event matches for this match and build player handicaps
+      const courseHandicaps = new Map<number, number>();
+      for (const em of data.eventMatches) {
+        if (em.eventId !== match.id) continue;
+        
+        for (const team of em.teams || []) {
+          for (const member of team.members || []) {
+            if (courseHandicaps.has(member.playerId)) continue;
+            
+            const player = member.player;
+            if (!player || player.handicapIndex === null) continue;
+            
+            const teeId = player.teeId;
+            
+            if (teeId && teeLookup.has(teeId)) {
+              const teeInfo = teeLookup.get(teeId)!;
+              // calculateCourseHandicap expects handicapIndex in stored format (already * 10)
+              const courseHandicap = calculateCourseHandicap(
+                player.handicapIndex,
+                teeInfo.slopeRating
+              );
+              courseHandicaps.set(member.playerId, courseHandicap);
+            } else {
+              // Fall back to handicap index as course handicap
+              courseHandicaps.set(member.playerId, Math.round(player.handicapIndex / 10));
+            }
+          }
+        }
+      }
+      
+      if (courseHandicaps.size > 0 && holeHandicaps.size > 0) {
+        // Calculate relative handicaps (playerHandicaps) based on courseHandicaps
+        const minHandicap = Math.min(...Array.from(courseHandicaps.values()));
+        const playerHandicaps = new Map<number, number>();
+        courseHandicaps.forEach((ch, playerId) => {
+          playerHandicaps.set(playerId, ch - minHandicap);
+        });
+        
+        contextMap.set(match.id, { playerHandicaps, holeHandicaps, courseHandicaps });
+      }
+    }
+    
+    return contextMap.size > 0 ? contextMap : null;
+  }, [data?.matches, data?.courseData, data?.eventMatches]);
+
   const ledgerResults = useMemo(() => {
     if (!filteredEventMatches || filteredEventMatches.length === 0 || !data?.scores) {
       return { balances: [], entries: [] };
     }
-    return calculateLedger(filteredEventMatches as any, data.scores);
-  }, [filteredEventMatches, data?.scores]);
+    return calculateLedger(filteredEventMatches as any, data.scores, netContextMap);
+  }, [filteredEventMatches, data?.scores, netContextMap]);
 
   const quickFilters = [
     { label: "Last 30 Days", days: 30 },
