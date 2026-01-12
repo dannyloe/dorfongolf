@@ -5,10 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Save, User, Users, Search, Pencil, Hash, Flag, Link2 } from "lucide-react";
+import { Users, Search, Hash, Flag, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -37,150 +35,193 @@ interface PlayerDataResponse {
   availableTees: AvailableTee[];
 }
 
-function EditPlayerDialog({ 
+function EditableHandicapCell({ 
   player, 
-  tees,
-  open, 
-  onClose 
+  onSave 
 }: { 
-  player: PlayerData | null; 
-  tees: AvailableTee[];
-  open: boolean; 
-  onClose: () => void;
+  player: PlayerData;
+  onSave: (handicapIndex: number | null) => void;
 }) {
-  const { toast } = useToast();
-  const [handicapIndex, setHandicapIndex] = useState("");
-  const [defaultTeeId, setDefaultTeeId] = useState<string>("none");
-  
-  const updateMutation = useMutation({
-    mutationFn: async (data: { handicapIndex: number | null; defaultTeeId: number | null }) => {
-      return apiRequest("PUT", `/api/preset-players/${encodeURIComponent(player!.name)}`, data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
-      toast({ title: "Player updated", description: `${player?.name} settings saved successfully` });
-      onClose();
-    },
-    onError: (err: Error) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    },
-  });
+  const [value, setValue] = useState(
+    player.handicapIndex !== null ? (player.handicapIndex / 10).toString() : ""
+  );
+  const [isEditing, setIsEditing] = useState(false);
 
-  const handleOpen = () => {
-    if (player) {
-      setHandicapIndex(player.handicapIndex !== null ? (player.handicapIndex / 10).toString() : "");
-      setDefaultTeeId(player.defaultTeeId?.toString() || "none");
-    }
-  };
-
-  const handleSave = () => {
-    const parsedHandicap = handicapIndex.trim() === "" ? null : parseFloat(handicapIndex);
-    if (parsedHandicap !== null && (isNaN(parsedHandicap) || parsedHandicap < -10 || parsedHandicap > 54)) {
-      toast({ title: "Invalid handicap", description: "Please enter a valid handicap index (e.g., 12.4)", variant: "destructive" });
+  const handleBlur = () => {
+    setIsEditing(false);
+    const parsed = value.trim() === "" ? null : parseFloat(value);
+    if (parsed !== null && (isNaN(parsed) || parsed < -10 || parsed > 54)) {
+      setValue(player.handicapIndex !== null ? (player.handicapIndex / 10).toString() : "");
       return;
     }
-    
-    updateMutation.mutate({
-      handicapIndex: parsedHandicap !== null ? Math.round(parsedHandicap * 10) : null,
-      defaultTeeId: defaultTeeId === "none" ? null : parseInt(defaultTeeId),
-    });
+    const newValue = parsed !== null ? Math.round(parsed * 10) : null;
+    if (newValue !== player.handicapIndex) {
+      onSave(newValue);
+    }
   };
 
-  if (!player) return null;
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === "Escape") {
+      setValue(player.handicapIndex !== null ? (player.handicapIndex / 10).toString() : "");
+      setIsEditing(false);
+    }
+  };
+
+  const formatDisplay = (val: number | null) => {
+    if (val === null) return "-";
+    const hcp = val / 10;
+    return hcp >= 0 ? hcp.toFixed(1) : `+${Math.abs(hcp).toFixed(1)}`;
+  };
+
+  if (!isEditing) {
+    return (
+      <div 
+        className="cursor-pointer hover:bg-muted/50 rounded px-2 py-1 min-w-[60px] text-center"
+        onClick={() => setIsEditing(true)}
+        data-testid={`cell-handicap-${player.name}`}
+      >
+        {formatDisplay(player.handicapIndex)}
+      </div>
+    );
+  }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (isOpen) handleOpen(); else onClose(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Edit {player.name}
-          </DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="handicap">Handicap Index</Label>
-            <Input
-              id="handicap"
-              type="number"
-              step="0.1"
-              placeholder="e.g., 12.4"
-              value={handicapIndex}
-              onChange={(e) => setHandicapIndex(e.target.value)}
-              data-testid="input-handicap"
-            />
-            <p className="text-xs text-muted-foreground">
-              Enter the player&apos;s USGA Handicap Index (e.g., 12.4)
-            </p>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="defaultTee">Default Tee</Label>
-            <Select value={defaultTeeId} onValueChange={setDefaultTeeId}>
-              <SelectTrigger data-testid="select-default-tee">
-                <SelectValue placeholder="Select default tee" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No default</SelectItem>
-                {tees.map((tee) => (
-                  <SelectItem key={tee.id} value={tee.id.toString()}>
-                    {tee.courseName} - {tee.name} {tee.slopeRating ? `(${tee.slopeRating / 10}/${(tee.courseRating || 0) / 10})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Default tee used for net scoring calculations
-            </p>
-          </div>
-          
-          {player.aliases.length > 0 && (
-            <div className="space-y-2">
-              <Label>Known Aliases</Label>
-              <div className="flex flex-wrap gap-1">
-                {player.aliases.map((alias) => (
-                  <Badge key={alias} variant="secondary">
-                    {alias}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {player.claimedByName && (
-            <div className="space-y-2">
-              <Label>Linked User</Label>
-              <div className="flex items-center gap-2">
-                <Link2 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{player.claimedByName}</span>
-              </div>
-            </div>
+    <Input
+      type="text"
+      inputMode="decimal"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+      autoFocus
+      data-testid={`input-handicap-${player.name}`}
+    />
+  );
+}
+
+function EditableTeeCell({ 
+  player, 
+  tees,
+  onSave 
+}: { 
+  player: PlayerData;
+  tees: AvailableTee[];
+  onSave: (defaultTeeId: number | null) => void;
+}) {
+  const currentValue = player.defaultTeeId?.toString() || "none";
+
+  const handleChange = (newValue: string) => {
+    const teeId = newValue === "none" ? null : parseInt(newValue);
+    if (teeId !== player.defaultTeeId) {
+      onSave(teeId);
+    }
+  };
+
+  return (
+    <Select value={currentValue} onValueChange={handleChange}>
+      <SelectTrigger 
+        className="w-[200px] h-8"
+        data-testid={`select-tee-${player.name}`}
+      >
+        <SelectValue placeholder="Select tee" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">No default</SelectItem>
+        {tees.map((tee) => (
+          <SelectItem key={tee.id} value={tee.id.toString()}>
+            {tee.courseName} - {tee.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function EditableAliasesCell({ 
+  player,
+  onSave 
+}: { 
+  player: PlayerData;
+  onSave: (aliases: string[]) => void;
+}) {
+  const [value, setValue] = useState(player.aliases.join(", "));
+  const [isEditing, setIsEditing] = useState(false);
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    const newAliases = value.split(",").map(a => a.trim()).filter(a => a.length > 0);
+    const currentAliases = player.aliases;
+    if (JSON.stringify(newAliases) !== JSON.stringify(currentAliases)) {
+      onSave(newAliases);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === "Escape") {
+      setValue(player.aliases.join(", "));
+      setIsEditing(false);
+    }
+  };
+
+  if (!isEditing) {
+    return (
+      <div 
+        className="cursor-pointer hover:bg-muted/50 rounded px-2 py-1 min-h-[28px]"
+        onClick={() => setIsEditing(true)}
+        data-testid={`cell-aliases-${player.name}`}
+      >
+        <div className="flex flex-wrap gap-1">
+          {player.aliases.length > 0 ? (
+            player.aliases.map((alias) => (
+              <Badge key={alias} variant="outline" className="text-xs">
+                {alias}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-muted-foreground text-sm">-</span>
           )}
         </div>
-        
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} data-testid="button-cancel-edit">
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSave} 
-            disabled={updateMutation.isPending}
-            data-testid="button-save-player"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {updateMutation.isPending ? "Saving..." : "Save"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    );
+  }
+
+  return (
+    <Input
+      type="text"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      placeholder="comma separated"
+      className="w-full"
+      autoFocus
+      data-testid={`input-aliases-${player.name}`}
+    />
+  );
+}
+
+function EditableLinkedUserCell({ 
+  player 
+}: { 
+  player: PlayerData;
+}) {
+  return (
+    <div className="text-sm">
+      {player.claimedByName || (
+        <span className="text-muted-foreground">-</span>
+      )}
+    </div>
   );
 }
 
 export default function PlayerMaintenance() {
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [editingPlayer, setEditingPlayer] = useState<PlayerData | null>(null);
-  const [showEditDialog, setShowEditDialog] = useState(false);
 
   const { data, isLoading: isLoadingPlayers } = useQuery<PlayerDataResponse>({
     queryKey: ["/api/preset-players/full"],
@@ -188,6 +229,33 @@ export default function PlayerMaintenance() {
 
   const players = data?.players || [];
   const allTees = data?.availableTees || [];
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ playerName, data }: { playerName: string; data: { handicapIndex?: number | null; defaultTeeId?: number | null } }) => {
+      return apiRequest("PUT", `/api/preset-players/${encodeURIComponent(playerName)}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleUpdateHandicap = (playerName: string, handicapIndex: number | null) => {
+    updateMutation.mutate({ playerName, data: { handicapIndex } });
+  };
+
+  const handleUpdateTee = (playerName: string, defaultTeeId: number | null) => {
+    updateMutation.mutate({ playerName, data: { defaultTeeId } });
+  };
+
+  const handleUpdateAliases = (playerName: string, aliases: string[]) => {
+    toast({ 
+      title: "Note", 
+      description: "Alias editing requires code changes. Contact developer to update aliases." 
+    });
+  };
 
   const filteredPlayers = players.filter(player => {
     const query = searchQuery.toLowerCase();
@@ -197,17 +265,6 @@ export default function PlayerMaintenance() {
       (player.claimedByName?.toLowerCase().includes(query))
     );
   });
-
-  const handleEditPlayer = (player: PlayerData) => {
-    setEditingPlayer(player);
-    setShowEditDialog(true);
-  };
-
-  const formatHandicap = (value: number | null) => {
-    if (value === null) return "-";
-    const hcp = value / 10;
-    return hcp >= 0 ? hcp.toFixed(1) : `+${Math.abs(hcp).toFixed(1)}`;
-  };
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
@@ -245,85 +302,59 @@ export default function PlayerMaintenance() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[180px]">Player</TableHead>
-                      <TableHead className="w-[100px] text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <TableHead className="w-[140px]">Player</TableHead>
+                      <TableHead className="w-[100px]">
+                        <div className="flex items-center gap-1">
                           <Hash className="h-3 w-3" />
                           Handicap
                         </div>
                       </TableHead>
-                      <TableHead className="w-[150px]">
+                      <TableHead className="w-[220px]">
                         <div className="flex items-center gap-1">
                           <Flag className="h-3 w-3" />
                           Default Tee
                         </div>
                       </TableHead>
                       <TableHead>Aliases</TableHead>
-                      <TableHead>
+                      <TableHead className="w-[150px]">
                         <div className="flex items-center gap-1">
                           <Link2 className="h-3 w-3" />
                           Linked User
                         </div>
                       </TableHead>
-                      <TableHead className="w-[80px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredPlayers.map((player) => (
                       <TableRow key={player.name} data-testid={`row-player-${player.name}`}>
                         <TableCell className="font-medium">{player.name}</TableCell>
-                        <TableCell className="text-center">
-                          {player.handicapIndex !== null ? (
-                            <Badge variant="secondary">
-                              {formatHandicap(player.handicapIndex)}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                        <TableCell>
+                          <EditableHandicapCell 
+                            player={player} 
+                            onSave={(val) => handleUpdateHandicap(player.name, val)}
+                          />
                         </TableCell>
                         <TableCell>
-                          {player.defaultTeeName || (
-                            <span className="text-muted-foreground">-</span>
-                          )}
+                          <EditableTeeCell 
+                            player={player} 
+                            tees={allTees}
+                            onSave={(val) => handleUpdateTee(player.name, val)}
+                          />
                         </TableCell>
                         <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {player.aliases.length > 0 ? (
-                              player.aliases.slice(0, 3).map((alias) => (
-                                <Badge key={alias} variant="outline" className="text-xs">
-                                  {alias}
-                                </Badge>
-                              ))
-                            ) : (
-                              <span className="text-muted-foreground text-sm">-</span>
-                            )}
-                            {player.aliases.length > 3 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{player.aliases.length - 3}
-                              </Badge>
-                            )}
-                          </div>
+                          <EditableAliasesCell 
+                            player={player}
+                            onSave={(val) => handleUpdateAliases(player.name, val)}
+                          />
                         </TableCell>
                         <TableCell>
-                          {player.claimedByName || (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleEditPlayer(player)}
-                            data-testid={`button-edit-${player.name}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
+                          <EditableLinkedUserCell player={player} />
                         </TableCell>
                       </TableRow>
                     ))}
                     {filteredPlayers.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                           No players found
                         </TableCell>
                       </TableRow>
@@ -335,16 +366,6 @@ export default function PlayerMaintenance() {
           </div>
         </CardContent>
       </Card>
-
-      <EditPlayerDialog
-        player={editingPlayer}
-        tees={allTees}
-        open={showEditDialog}
-        onClose={() => {
-          setShowEditDialog(false);
-          setEditingPlayer(null);
-        }}
-      />
     </div>
   );
 }
