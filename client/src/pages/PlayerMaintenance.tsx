@@ -205,17 +205,22 @@ function EditableAliasesCell({
   }
 
   return (
-    <Input
-      type="text"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
-      placeholder="comma separated"
-      className="w-full"
-      autoFocus
-      data-testid={`input-aliases-${player.name}`}
-    />
+    <div className="space-y-1">
+      <Input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder="Enter aliases..."
+        className="w-full"
+        autoFocus
+        data-testid={`input-aliases-${player.name}`}
+      />
+      <p className="text-xs text-muted-foreground bg-muted/50 px-2 py-0.5 rounded">
+        Separate aliases with commas
+      </p>
+    </div>
   );
 }
 
