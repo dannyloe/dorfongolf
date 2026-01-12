@@ -118,7 +118,7 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/matches/:id/details',
       input: z.object({
-        name: z.string().min(1).optional(),
+        name: z.string().nullable().optional(),
         courseId: z.number().optional(),
         courseName: z.string().optional(),
         createdAt: z.string().optional(),

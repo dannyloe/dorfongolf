@@ -13,8 +13,10 @@ interface CreateMatchModalProps {
   onClose: () => void;
 }
 
-// Frontend validation schema
-const formSchema = insertMatchSchema.pick({ name: true, courseName: true });
+// Frontend validation schema - name is optional
+const formSchema = insertMatchSchema.pick({ name: true, courseName: true }).extend({
+  name: z.string().optional(),
+});
 type FormData = z.infer<typeof formSchema>;
 
 export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
@@ -22,7 +24,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: format(new Date(), "MMMM d, yyyy"),
+      name: "",
       courseName: "",
     },
   });

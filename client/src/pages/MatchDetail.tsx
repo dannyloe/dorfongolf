@@ -598,8 +598,8 @@ export default function MatchDetail() {
                 data-testid="input-edit-event-name"
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && headerNameValue.trim()) {
-                    updateMatchDetails.mutate({ name: headerNameValue.trim() });
+                  if (e.key === "Enter") {
+                    updateMatchDetails.mutate({ name: headerNameValue.trim() || undefined });
                     setEditingName(false);
                   } else if (e.key === "Escape") {
                     setEditingName(false);
@@ -610,9 +610,7 @@ export default function MatchDetail() {
                 size="icon"
                 variant="ghost"
                 onClick={() => {
-                  if (headerNameValue.trim()) {
-                    updateMatchDetails.mutate({ name: headerNameValue.trim() });
-                  }
+                  updateMatchDetails.mutate({ name: headerNameValue.trim() || undefined });
                   setEditingName(false);
                 }}
                 data-testid="button-save-event-name"
@@ -625,13 +623,13 @@ export default function MatchDetail() {
               className={`text-xl font-display font-bold text-foreground ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
               onClick={() => {
                 if (isCreator) {
-                  setHeaderNameValue(match.name);
+                  setHeaderNameValue(match.name || "");
                   setEditingName(true);
                 }
               }}
               data-testid="text-event-name"
             >
-              {match.name}
+              {match.name || (match.createdAt ? format(new Date(match.createdAt), "MMMM d, yyyy") : "Untitled Event")}
               {isCreator && <Pencil className="w-3 h-3 inline ml-1 text-muted-foreground" />}
             </h1>
           )}

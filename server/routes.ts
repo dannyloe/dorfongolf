@@ -23,7 +23,7 @@ export async function registerRoutes(
       const input = api.matches.create.input.parse(req.body);
       const user = req.user as any;
       const match = await storage.createMatch({
-        name: input.name,
+        name: input.name || null,
         courseName: input.courseName,
         creatorId: user.claims.sub,
       });
@@ -723,8 +723,8 @@ export async function registerRoutes(
       }
       
       const input = api.matches.updateDetails.input.parse(req.body);
-      const updateData: { name?: string; courseId?: number; courseName?: string; createdAt?: Date } = {};
-      if (input.name) updateData.name = input.name;
+      const updateData: { name?: string | null; courseId?: number; courseName?: string; createdAt?: Date } = {};
+      if (input.name !== undefined) updateData.name = input.name || null;
       if (input.courseId !== undefined) updateData.courseId = input.courseId;
       if (input.courseName) updateData.courseName = input.courseName;
       if (input.createdAt) updateData.createdAt = new Date(input.createdAt);

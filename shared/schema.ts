@@ -33,7 +33,7 @@ export const courseTees = pgTable("course_tees", {
 
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull(),
+  name: text("name"),
   courseName: text("course_name").notNull(),
   courseId: integer("course_id"),
   creatorId: text("creator_id").notNull(),

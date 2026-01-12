@@ -246,7 +246,7 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
             </div>
             
             <h3 className="text-xl font-bold font-display text-foreground group-hover:text-primary transition-colors">
-              {match.name}
+              {match.name || format(new Date(match.createdAt), "MMMM d, yyyy")}
             </h3>
             
             <div className="flex items-center text-muted-foreground font-medium">
