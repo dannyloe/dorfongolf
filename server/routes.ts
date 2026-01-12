@@ -798,7 +798,8 @@ Rules:
         return res.status(500).json({ message: "Failed to fetch course data for import" });
       }
 
-      const courseData = await response.json();
+      const responseData = await response.json();
+      const courseData = responseData.course || responseData;
       
       // Find the selected tee data (prefer male tees, fall back to female)
       const allTees = [...(courseData.tees?.male || []), ...(courseData.tees?.female || [])];
