@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useCreateMatch } from "@/hooks/use-matches";
+import { useCreateMatch, useCourses } from "@/hooks/use-matches";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trophy, MapPin } from "lucide-react";
 import { insertMatchSchema } from "@shared/schema";
@@ -26,6 +26,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
   });
 
   const createMatch = useCreateMatch();
+  const { data: courses } = useCourses();
 
   const onSubmit = (data: FormData) => {
     createMatch.mutate(data, {
@@ -92,9 +93,9 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
                       data-testid="select-course-name"
                     >
                       <option value="">Select a course...</option>
-                      <option value="Hardscrabble">Hardscrabble</option>
-                      <option value="Blessings">Blessings</option>
-                      <option value="Fayetteville CC">Fayetteville CC</option>
+                      {courses?.map((course) => (
+                        <option key={course.id} value={course.name}>{course.name}</option>
+                      ))}
                     </select>
                   </div>
                   {errors.courseName && (
