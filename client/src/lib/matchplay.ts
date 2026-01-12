@@ -10,7 +10,7 @@ interface TeamMember {
   id: number;
   teamId: number;
   playerId: number;
-  player?: { id: number; name: string };
+  player?: { id: number; name: string; userId?: string | null };
 }
 
 interface Team {
@@ -265,7 +265,25 @@ export function calculateLedger(
   scores: Score[]
 ): { entries: LedgerEntry[]; balances: PlayerBalance[] } {
   const entries: LedgerEntry[] = [];
-  const playerTotals: Map<number, { name: string; won: number; lost: number; matches: number }> = new Map();
+  // Use stable key (userId or "guest:name") for aggregation instead of playerId
+  const playerTotals: Map<string, { name: string; won: number; lost: number; matches: Set<number>; anyPlayerId: number }> = new Map();
+  
+  // Build mapping from playerId to stable key and name
+  const playerIdToStableKey = new Map<number, string>();
+  const playerIdToName = new Map<number, string>();
+  
+  for (const em of eventMatches) {
+    for (const team of em.teams || []) {
+      for (const member of team.members || []) {
+        const player = member.player;
+        if (player) {
+          const stableKey = player.userId || `guest:${player.name}`;
+          playerIdToStableKey.set(member.playerId, stableKey);
+          playerIdToName.set(member.playerId, player.name);
+        }
+      }
+    }
+  }
 
   for (const em of eventMatches) {
     const teamA = em.teams[0];
@@ -296,14 +314,15 @@ export function calculateLedger(
         });
 
         if (skinsResult.isComplete) {
-          const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+          const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName}`;
+          const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
           if (s.amount > 0) {
             existing.won += s.amount;
           } else if (s.amount < 0) {
             existing.lost += Math.abs(s.amount);
           }
-          existing.matches++;
-          playerTotals.set(s.playerId, existing);
+          existing.matches.add(em.id);
+          playerTotals.set(stableKey, existing);
         }
       }
     } else if (em.matchType === 'nassau') {
@@ -328,14 +347,15 @@ export function calculateLedger(
           });
 
           if (ns.settlement.isComplete) {
-            const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+            const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName}`;
+            const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
             if (s.amount > 0) {
               existing.won += s.amount;
             } else if (s.amount < 0) {
               existing.lost += Math.abs(s.amount);
             }
-            existing.matches++;
-            playerTotals.set(s.playerId, existing);
+            existing.matches.add(em.id);
+            playerTotals.set(stableKey, existing);
           }
         }
       }
@@ -355,26 +375,27 @@ export function calculateLedger(
         });
 
         if (settlement.isComplete) {
-          const existing = playerTotals.get(s.playerId) || { name: s.playerName, won: 0, lost: 0, matches: 0 };
+          const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName}`;
+          const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
           if (s.amount > 0) {
             existing.won += s.amount;
           } else if (s.amount < 0) {
             existing.lost += Math.abs(s.amount);
           }
-          existing.matches++;
-          playerTotals.set(s.playerId, existing);
+          existing.matches.add(em.id);
+          playerTotals.set(stableKey, existing);
         }
       }
     }
   }
 
-  const balances: PlayerBalance[] = Array.from(playerTotals.entries()).map(([playerId, data]) => ({
-    playerId,
+  const balances: PlayerBalance[] = Array.from(playerTotals.entries()).map(([_stableKey, data]) => ({
+    playerId: data.anyPlayerId,
     playerName: data.name,
     totalWon: Math.round(data.won * 100) / 100,
     totalLost: Math.round(data.lost * 100) / 100,
     netBalance: Math.round((data.won - data.lost) * 100) / 100,
-    matchesPlayed: data.matches,
+    matchesPlayed: data.matches.size,
   }));
 
   balances.sort((a, b) => b.netBalance - a.netBalance);
