@@ -91,7 +91,8 @@ function TeeManagement({ courseId }: { courseId: number }) {
           <div className="w-20">
             <label className="text-xs text-muted-foreground">Slope</label>
             <Input
-              type="number"
+              type="text"
+              inputMode="numeric"
               value={newTee.slopeRating}
               onChange={(e) => setNewTee(prev => ({ ...prev, slopeRating: parseInt(e.target.value) || 113 }))}
               className="h-8"
@@ -102,8 +103,8 @@ function TeeManagement({ courseId }: { courseId: number }) {
           <div className="w-20">
             <label className="text-xs text-muted-foreground">Rating</label>
             <Input
-              type="number"
-              step="0.1"
+              type="text"
+              inputMode="decimal"
               value={(newTee.courseRating / 10).toFixed(1)}
               onChange={(e) => {
                 const val = parseFloat(e.target.value);
@@ -158,15 +159,16 @@ function TeeManagement({ courseId }: { courseId: number }) {
                     data-testid={`input-edit-tee-name-${tee.id}`}
                   />
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={editingTee.slopeRating}
                     onChange={(e) => setEditingTee(prev => prev ? { ...prev, slopeRating: parseInt(e.target.value) || 113 } : null)}
                     className="h-7 w-16"
                     data-testid={`input-edit-tee-slope-${tee.id}`}
                   />
                   <Input
-                    type="number"
-                    step="0.1"
+                    type="text"
+                    inputMode="decimal"
                     value={(editingTee.courseRating / 10).toFixed(1)}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value);
