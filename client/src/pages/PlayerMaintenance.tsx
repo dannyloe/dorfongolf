@@ -395,7 +395,7 @@ export default function PlayerMaintenance() {
       player.aliases.some(a => a.toLowerCase().includes(query)) ||
       (player.claimedByName?.toLowerCase().includes(query))
     );
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">

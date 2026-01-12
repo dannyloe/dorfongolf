@@ -1033,7 +1033,7 @@ export default function MatchDetail() {
                 <div className="mb-3">
                   <p className="text-xs text-muted-foreground mb-2">Quick add from roster (with default handicaps):</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                    {PRESET_PLAYERS.map((name) => {
+                    {[...PRESET_PLAYERS].sort((a, b) => a.localeCompare(b)).map((name) => {
                       const isAdded = existingPlayerNames.includes(name.toLowerCase());
                       const defaultHandicap = playerHandicaps?.find(h => h.presetPlayerName.toLowerCase() === name.toLowerCase());
                       const handicapValue = defaultHandicap?.handicapIndex;
