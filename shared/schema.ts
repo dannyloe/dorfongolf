@@ -22,6 +22,15 @@ export const courseHoles = pgTable("course_holes", {
   handicap: integer("handicap"),
 });
 
+export const courseTees = pgTable("course_tees", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull(),
+  name: text("name").notNull(), // e.g., "Blue", "White", "Gold", "Red"
+  slopeRating: integer("slope_rating").notNull(), // e.g., 131
+  courseRating: integer("course_rating").notNull(), // Stored as tenths (e.g., 721 = 72.1)
+  color: text("color"), // Optional hex color for display
+});
+
 export const matches = pgTable("matches", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -39,6 +48,7 @@ export const players = pgTable("players", {
   userId: text("user_id"), 
   name: text("name").notNull(),
   handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4), copied from player_handicaps on add
+  teeId: integer("tee_id"), // References courseTees for handicap calculations
 });
 
 export const scores = pgTable("scores", {
@@ -91,12 +101,20 @@ export const teamMembers = pgTable("team_members", {
 
 export const coursesRelations = relations(courses, ({ many }) => ({
   holes: many(courseHoles),
+  tees: many(courseTees),
   matches: many(matches),
 }));
 
 export const courseHolesRelations = relations(courseHoles, ({ one }) => ({
   course: one(courses, {
     fields: [courseHoles.courseId],
+    references: [courses.id],
+  }),
+}));
+
+export const courseTeesRelations = relations(courseTees, ({ one }) => ({
+  course: one(courses, {
+    fields: [courseTees.courseId],
     references: [courses.id],
   }),
 }));
@@ -174,6 +192,10 @@ export const insertCourseHoleSchema = createInsertSchema(courseHoles).omit({
   id: true,
 });
 
+export const insertCourseTeeSchema = createInsertSchema(courseTees).omit({
+  id: true,
+});
+
 export const insertMatchSchema = createInsertSchema(matches).omit({ 
   id: true, 
   createdAt: true, 
@@ -214,6 +236,9 @@ export type InsertCourse = z.infer<typeof insertCourseSchema>;
 
 export type CourseHole = typeof courseHoles.$inferSelect;
 export type InsertCourseHole = z.infer<typeof insertCourseHoleSchema>;
+
+export type CourseTee = typeof courseTees.$inferSelect;
+export type InsertCourseTee = z.infer<typeof insertCourseTeeSchema>;
 
 export type Match = typeof matches.$inferSelect;
 export type InsertMatch = z.infer<typeof insertMatchSchema>;

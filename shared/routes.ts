@@ -124,6 +124,18 @@ export const api = {
         403: z.object({ message: z.string() }),
       },
     },
+    updatePlayerTee: {
+      method: 'PATCH' as const,
+      path: '/api/matches/:matchId/players/:playerId/tee',
+      input: z.object({
+        teeId: z.number().nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof players.$inferSelect>(),
+        404: errorSchemas.notFound,
+        403: z.object({ message: z.string() }),
+      },
+    },
   },
   eventMatches: {
     list: {
@@ -336,6 +348,21 @@ export const api = {
       }),
       responses: {
         200: z.object({ id: z.number(), name: z.string(), slopeRating: z.number().nullable(), courseRating: z.number().nullable() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    getTees: {
+      method: 'GET' as const,
+      path: '/api/courses/:id/tees',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          courseId: z.number(),
+          name: z.string(),
+          slopeRating: z.number(),
+          courseRating: z.number(),
+          color: z.string().nullable(),
+        })),
         404: errorSchemas.notFound,
       },
     },

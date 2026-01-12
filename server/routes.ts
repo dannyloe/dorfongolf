@@ -518,6 +518,47 @@ export async function registerRoutes(
     }
   });
 
+  // Update player tee for a match (creator only)
+  app.patch(api.matches.updatePlayerTee.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.matchId);
+      const playerId = parseInt(req.params.playerId);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const match = await storage.getMatch(matchId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      // Only match creator or admin can update player tees
+      const isAdmin = userId === ADMIN_USER_ID;
+      if (match.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only the match creator can update player tees" });
+      }
+      
+      const input = api.matches.updatePlayerTee.input.parse(req.body);
+      const updated = await storage.updatePlayerTee(playerId, input.teeId);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get course tees
+  app.get(api.courses.getTees.path, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const tees = await storage.getCourseTees(courseId);
+      res.json(tees);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Scorecard OCR Scanning
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
@@ -618,10 +659,24 @@ async function seedCourses() {
   // Default par 72 layout: 4,4,3,5,4,4,4,3,5 (out: 36) | 4,4,3,5,4,4,4,3,5 (in: 36)
   const defaultPars = [4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 3, 5];
   
+  // Default tees for courses (slope, course rating stored as tenths)
+  const hardscrabbleTees = [
+    { name: "Blue", slopeRating: 131, courseRating: 721, color: "#1e40af" },
+    { name: "White", slopeRating: 126, courseRating: 698, color: "#ffffff" },
+    { name: "Gold", slopeRating: 120, courseRating: 675, color: "#eab308" },
+    { name: "Red", slopeRating: 115, courseRating: 652, color: "#dc2626" },
+  ];
+  
   try {
-    await storage.seedCourseIfNotExists("Hardscrabble", defaultPars);
-    await storage.seedCourseIfNotExists("Blessings", defaultPars);
-    await storage.seedCourseIfNotExists("Fayetteville CC", defaultPars);
+    const hardscrabble = await storage.seedCourseIfNotExists("Hardscrabble", defaultPars);
+    await storage.seedCourseTeesIfNotExist(hardscrabble.id, hardscrabbleTees);
+    
+    const blessings = await storage.seedCourseIfNotExists("Blessings", defaultPars);
+    await storage.seedCourseTeesIfNotExist(blessings.id, hardscrabbleTees);
+    
+    const fayettevilleCC = await storage.seedCourseIfNotExists("Fayetteville CC", defaultPars);
+    await storage.seedCourseTeesIfNotExist(fayettevilleCC.id, hardscrabbleTees);
+    
     console.log("Courses seeded successfully");
   } catch (err) {
     console.error("Error seeding courses:", err);

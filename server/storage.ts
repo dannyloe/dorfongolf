@@ -1,10 +1,11 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
-  type PlayerHandicap, type InsertPlayerHandicap
+  type PlayerHandicap, type InsertPlayerHandicap,
+  type CourseTee, type InsertCourseTee
 } from "@shared/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -376,6 +377,38 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return course;
+  }
+
+  async getCourseTees(courseId: number): Promise<CourseTee[]> {
+    return db.select().from(courseTees).where(eq(courseTees.courseId, courseId));
+  }
+
+  async createCourseTee(tee: InsertCourseTee): Promise<CourseTee> {
+    const [newTee] = await db.insert(courseTees).values(tee).returning();
+    return newTee;
+  }
+
+  async seedCourseTeesIfNotExist(courseId: number, tees: { name: string; slopeRating: number; courseRating: number; color?: string }[]): Promise<void> {
+    const existingTees = await this.getCourseTees(courseId);
+    if (existingTees.length === 0) {
+      for (const tee of tees) {
+        await this.createCourseTee({
+          courseId,
+          name: tee.name,
+          slopeRating: tee.slopeRating,
+          courseRating: tee.courseRating,
+          color: tee.color || null,
+        });
+      }
+    }
+  }
+
+  async updatePlayerTee(playerId: number, teeId: number | null): Promise<Player> {
+    const [updated] = await db.update(players)
+      .set({ teeId })
+      .where(eq(players.id, playerId))
+      .returning();
+    return updated;
   }
 
   async updateCourse(id: number, data: { name?: string }): Promise<Course | undefined> {
