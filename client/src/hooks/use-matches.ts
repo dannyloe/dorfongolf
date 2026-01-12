@@ -168,6 +168,30 @@ export function useUpdateHandicapped(matchId: number) {
   });
 }
 
+type UpdateDetailsInput = { name?: string; courseId?: number; courseName?: string; createdAt?: string };
+
+export function useUpdateMatchDetails(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: UpdateDetailsInput) => {
+      const url = buildUrl(api.matches.updateDetails.path, { id: matchId });
+      const res = await fetch(url, {
+        method: api.matches.updateDetails.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update match details");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+      queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
+    },
+  });
+}
+
 type CreateEventMatchInput = z.infer<typeof api.eventMatches.create.input>;
 
 export function useCreateEventMatch(matchId: number) {

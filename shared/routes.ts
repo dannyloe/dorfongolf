@@ -114,6 +114,21 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateDetails: {
+      method: 'PATCH' as const,
+      path: '/api/matches/:id/details',
+      input: z.object({
+        name: z.string().min(1).optional(),
+        courseId: z.number().optional(),
+        courseName: z.string().optional(),
+        createdAt: z.string().optional(),
+      }),
+      responses: {
+        200: z.custom<typeof matches.$inferSelect>(),
+        404: errorSchemas.notFound,
+        403: z.object({ message: z.string() }),
+      },
+    },
     updatePlayerHandicap: {
       method: 'PATCH' as const,
       path: '/api/matches/:matchId/players/:playerId/handicap',

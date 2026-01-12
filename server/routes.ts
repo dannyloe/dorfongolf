@@ -705,6 +705,40 @@ export async function registerRoutes(
     }
   });
 
+  // Update match details (name, course, date)
+  app.patch(api.matches.updateDetails.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      
+      if (!isAdmin && !isCreator) {
+        return res.status(403).json({ message: "Only the event creator can update event details" });
+      }
+      
+      const input = api.matches.updateDetails.input.parse(req.body);
+      const updateData: { name?: string; courseId?: number; courseName?: string; createdAt?: Date } = {};
+      if (input.name) updateData.name = input.name;
+      if (input.courseId !== undefined) updateData.courseId = input.courseId;
+      if (input.courseName) updateData.courseName = input.courseName;
+      if (input.createdAt) updateData.createdAt = new Date(input.createdAt);
+      
+      const updated = await storage.updateMatchDetails(matchId, updateData);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.patch(api.matches.updatePlayerHandicap.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.matchId);
     const playerId = parseInt(req.params.playerId);

@@ -634,6 +634,20 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateMatchDetails(matchId: number, data: { name?: string; courseId?: number; courseName?: string; createdAt?: Date }): Promise<Match> {
+    const updateData: Partial<{ name: string; courseId: number; courseName: string; createdAt: Date }> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.courseId !== undefined) updateData.courseId = data.courseId;
+    if (data.courseName !== undefined) updateData.courseName = data.courseName;
+    if (data.createdAt !== undefined) updateData.createdAt = data.createdAt;
+    
+    const [updated] = await db.update(matches)
+      .set(updateData)
+      .where(eq(matches.id, matchId))
+      .returning();
+    return updated;
+  }
+
   // Match-specific player handicap overrides
   async getMatchPlayerHandicaps(eventMatchId: number): Promise<MatchPlayerHandicap[]> {
     return db.select().from(matchPlayerHandicaps).where(eq(matchPlayerHandicaps.eventMatchId, eventMatchId));

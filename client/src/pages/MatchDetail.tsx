@@ -1,9 +1,9 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, type MatchPlayerHandicap } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, type MatchPlayerHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -152,6 +152,7 @@ export default function MatchDetail() {
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
   const updateHandicapped = useUpdateHandicapped(matchId);
+  const updateMatchDetails = useUpdateMatchDetails(matchId);
   const { data: playerHandicaps } = usePlayerHandicaps();
   const upsertPlayerHandicap = useUpsertPlayerHandicap();
   const updatePlayerMatchHandicap = useUpdatePlayerMatchHandicap(matchId);
@@ -214,6 +215,13 @@ export default function MatchDetail() {
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
   const [filterByMatchType, setFilterByMatchType] = useState<string>("all");
+  
+  // Header editing state
+  const [editingName, setEditingName] = useState(false);
+  const [editingCourse, setEditingCourse] = useState(false);
+  const [editingDate, setEditingDate] = useState(false);
+  const [headerNameValue, setHeaderNameValue] = useState("");
+  const [headerDateValue, setHeaderDateValue] = useState("");
   
   // Selected player in standings (for filtering Match Results)
   const [selectedStandingsPlayer, setSelectedStandingsPlayer] = useState<number | null>(null);
@@ -579,18 +587,145 @@ export default function MatchDetail() {
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
       {/* Header - Compact */}
-      <div className="bg-white rounded-xl px-4 py-3 shadow-md border border-border/50 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white dark:bg-card rounded-xl px-4 py-3 shadow-md border border-border/50 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4 flex-wrap">
-          <h1 className="text-xl font-display font-bold text-foreground">{match.name}</h1>
+          {editingName && isCreator ? (
+            <div className="flex items-center gap-1">
+              <Input
+                value={headerNameValue}
+                onChange={(e) => setHeaderNameValue(e.target.value)}
+                className="h-8 w-48 text-lg font-bold"
+                data-testid="input-edit-event-name"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && headerNameValue.trim()) {
+                    updateMatchDetails.mutate({ name: headerNameValue.trim() });
+                    setEditingName(false);
+                  } else if (e.key === "Escape") {
+                    setEditingName(false);
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => {
+                  if (headerNameValue.trim()) {
+                    updateMatchDetails.mutate({ name: headerNameValue.trim() });
+                  }
+                  setEditingName(false);
+                }}
+                data-testid="button-save-event-name"
+              >
+                <Check className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : (
+            <h1 
+              className={`text-xl font-display font-bold text-foreground ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+              onClick={() => {
+                if (isCreator) {
+                  setHeaderNameValue(match.name);
+                  setEditingName(true);
+                }
+              }}
+              data-testid="text-event-name"
+            >
+              {match.name}
+              {isCreator && <Pencil className="w-3 h-3 inline ml-1 text-muted-foreground" />}
+            </h1>
+          )}
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <MapPin className="w-4 h-4 text-accent" />
-              {match.courseName}
-            </span>
-            <span className="flex items-center gap-1">
-              <Calendar className="w-4 h-4 text-primary" />
-              {match.createdAt && format(new Date(match.createdAt), "MMM d, yyyy")}
-            </span>
+            {editingCourse && isCreator ? (
+              <div className="flex items-center gap-1">
+                <Select
+                  value={match.courseId?.toString() || ""}
+                  onValueChange={(val) => {
+                    const course = coursesList?.find(c => c.id === parseInt(val));
+                    if (course) {
+                      updateMatchDetails.mutate({ courseId: course.id, courseName: course.name });
+                    }
+                    setEditingCourse(false);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-48" data-testid="select-edit-course">
+                    <SelectValue placeholder="Select course" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {coursesList?.map((course) => (
+                      <SelectItem key={course.id} value={course.id.toString()}>
+                        {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setEditingCourse(false)}
+                  data-testid="button-cancel-edit-course"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <span 
+                className={`flex items-center gap-1 ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+                onClick={() => isCreator && setEditingCourse(true)}
+                data-testid="text-event-course"
+              >
+                <MapPin className="w-4 h-4 text-accent" />
+                {match.courseName}
+                {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
+              </span>
+            )}
+            {editingDate && isCreator ? (
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={headerDateValue}
+                  onChange={(e) => setHeaderDateValue(e.target.value)}
+                  className="h-8 w-36"
+                  data-testid="input-edit-event-date"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && headerDateValue) {
+                      updateMatchDetails.mutate({ createdAt: new Date(headerDateValue).toISOString() });
+                      setEditingDate(false);
+                    } else if (e.key === "Escape") {
+                      setEditingDate(false);
+                    }
+                  }}
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (headerDateValue) {
+                      updateMatchDetails.mutate({ createdAt: new Date(headerDateValue).toISOString() });
+                    }
+                    setEditingDate(false);
+                  }}
+                  data-testid="button-save-event-date"
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <span 
+                className={`flex items-center gap-1 ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+                onClick={() => {
+                  if (isCreator && match.createdAt) {
+                    setHeaderDateValue(format(new Date(match.createdAt), "yyyy-MM-dd"));
+                    setEditingDate(true);
+                  }
+                }}
+                data-testid="text-event-date"
+              >
+                <Calendar className="w-4 h-4 text-primary" />
+                {match.createdAt && format(new Date(match.createdAt), "MMM d, yyyy")}
+                {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
+              </span>
+            )}
             {isCreator ? (
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <Checkbox
