@@ -64,6 +64,7 @@ export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
   "jj": "Jordan",
   "matt": "Wait",
   "jason": "MeerKat",
+  "myers": "MeerKat",
 };
 
 // Helper function to resolve a name to its canonical preset player name
