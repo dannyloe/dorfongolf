@@ -255,6 +255,27 @@ export function useUpdateAutoPress(matchId: number) {
   });
 }
 
+export function useUpdateNetScoring(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, useNetScoring }: { eventMatchId: number; useNetScoring: boolean }) => {
+      const url = buildUrl(api.eventMatches.updateNetScoring.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.updateNetScoring.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ useNetScoring }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update net scoring");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
 // Course types
 export interface CourseHole {
   id: number;

@@ -260,6 +260,41 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.eventMatches.updateNetScoring.path, isAuthenticated, async (req, res) => {
+    const eventMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
+    const eventMatch = await storage.getEventMatchWithTeams(eventMatchId);
+    if (!eventMatch) {
+      return res.status(404).json({ message: "Event match not found" });
+    }
+    
+    const match = await storage.getMatch(eventMatch.eventId);
+    if (!match) {
+      return res.status(404).json({ message: "Match not found" });
+    }
+    
+    const isAdmin = userId === ADMIN_USER_ID;
+    const isCreator = match.creatorId === userId;
+    
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ message: "Only the match creator can change net scoring" });
+    }
+    
+    try {
+      const input = api.eventMatches.updateNetScoring.input.parse(req.body);
+      const updated = await storage.updateEventMatchNetScoring(eventMatchId, input.useNetScoring);
+      const withTeams = await storage.getEventMatchWithTeams(updated.id);
+      res.json(withTeams);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Ledger Route
   app.get(api.ledger.get.path, isAuthenticated, async (req, res) => {
     try {

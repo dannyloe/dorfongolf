@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useCourses, useUpdateHandicapped } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
@@ -127,6 +127,7 @@ export default function MatchDetail() {
   const deleteEventMatch = useDeleteEventMatch(matchId);
   const createPress = useCreatePress(matchId);
   const updateAutoPress = useUpdateAutoPress(matchId);
+  const updateNetScoring = useUpdateNetScoring(matchId);
   const updateHandicapped = useUpdateHandicapped(matchId);
   
   const [newPlayerName, setNewPlayerName] = useState("");
@@ -1163,13 +1164,26 @@ export default function MatchDetail() {
                           </span>
                         )}
                         {match.isHandicapped && (
-                          <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium ${
-                            em.useNetScoring 
-                              ? "bg-primary/20 text-primary" 
-                              : "bg-muted text-muted-foreground"
-                          }`}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isCreator) {
+                                updateNetScoring.mutate({ 
+                                  eventMatchId: em.id, 
+                                  useNetScoring: !em.useNetScoring 
+                                });
+                              }
+                            }}
+                            className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium transition-colors ${
+                              em.useNetScoring 
+                                ? "bg-primary/20 text-primary" 
+                                : "bg-muted text-muted-foreground"
+                            } ${isCreator ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+                            disabled={!isCreator || updateNetScoring.isPending}
+                            data-testid={`button-toggle-net-scoring-${em.id}`}
+                          >
                             {em.useNetScoring ? "Net" : "Gross"}
-                          </span>
+                          </button>
                         )}
                         <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>
                       </div>
@@ -1960,9 +1974,9 @@ export default function MatchDetail() {
                         <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
                           <div className="text-sm font-semibold mb-2">{matchTitle}</div>
                           <div className="grid grid-cols-2 gap-1">
-                            {matchEntries.map((e) => (
+                            {matchEntries.map((e, idx) => (
                               <div 
-                                key={e.playerId}
+                                key={`${e.playerId}-${idx}`}
                                 className={`flex justify-between text-xs px-2 py-1 rounded ${
                                   selectedStandingsPlayer === e.playerId ? 'ring-1 ring-primary' : ''
                                 } ${

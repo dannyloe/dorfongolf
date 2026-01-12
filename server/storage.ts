@@ -210,6 +210,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateEventMatchNetScoring(eventMatchId: number, useNetScoring: boolean): Promise<EventMatch> {
+    const [updated] = await db.update(eventMatches)
+      .set({ useNetScoring })
+      .where(eq(eventMatches.id, eventMatchId))
+      .returning();
+    return updated;
+  }
+
   async createPressMatch(parentMatchId: number, startHole: number): Promise<EventMatch> {
     const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
     if (!parentMatch) throw new Error("Parent match not found");

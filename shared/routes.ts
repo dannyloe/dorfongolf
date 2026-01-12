@@ -192,6 +192,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateNetScoring: {
+      method: 'PATCH' as const,
+      path: '/api/event-matches/:id/net-scoring',
+      input: z.object({
+        useNetScoring: z.boolean(),
+      }),
+      responses: {
+        200: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
   },
   presetPlayers: {
     list: {
