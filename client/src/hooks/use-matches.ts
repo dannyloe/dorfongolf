@@ -591,24 +591,25 @@ export type MatchPlayerHandicap = {
 export function useMatchPlayerHandicaps(matchId: number | undefined) {
   return useQuery({
     queryKey: ['/api/matches', matchId, 'match-player-handicaps'],
-    queryFn: async () => {
+    queryFn: async (): Promise<Map<number, MatchPlayerHandicap[]>> => {
       if (!matchId) return new Map<number, MatchPlayerHandicap[]>();
       const res = await fetch(`/api/matches/${matchId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch match');
       const match = await res.json();
       const eventMatches = match.eventMatches || [];
       
-      const allHandicaps = new Map<number, MatchPlayerHandicap[]>();
+      const allHandicaps: Array<[number, MatchPlayerHandicap[]]> = [];
       for (const em of eventMatches) {
         const hcpRes = await fetch(`/api/event-matches/${em.id}/player-handicaps`, { credentials: 'include' });
         if (hcpRes.ok) {
           const handicaps = await hcpRes.json() as MatchPlayerHandicap[];
-          allHandicaps.set(em.id, handicaps);
+          allHandicaps.push([em.id, handicaps]);
         }
       }
-      return allHandicaps;
+      return new Map(allHandicaps);
     },
     enabled: !!matchId,
+    structuralSharing: false, // Maps don't work well with structural sharing
   });
 }
 
