@@ -1,11 +1,12 @@
 import { useMatch, useSubmitScore, useCourses, useScanScorecard, ScannedPlayer, ScannedHole } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
+import { useVoiceInput, VoiceCommand } from "@/hooks/use-voice-input";
 import { resolvePlayerAlias } from "@shared/models/auth";
 import { useRoute, useLocation, Link } from "wouter";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2, ChevronDown, Mic, MicOff } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -154,6 +155,7 @@ export default function QuickScoreEntry() {
   const { toast } = useToast();
   
   const [currentHole, setCurrentHole] = useState(1);
+  const [voiceFeedback, setVoiceFeedback] = useState<string | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const [hiddenPlayerIds, setHiddenPlayerIds] = useState<Set<number>>(new Set());
@@ -193,6 +195,70 @@ export default function QuickScoreEntry() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  const playerNames = useMemo(() => players.map(p => p.name), [players]);
+  
+  const handleVoiceCommand = useCallback((command: VoiceCommand) => {
+    if (command.type === "score" && command.score !== undefined) {
+      let targetPlayerId: number | undefined;
+      
+      if (command.playerName) {
+        const matchedPlayer = players.find(p => 
+          p.name.toLowerCase().includes(command.playerName!.toLowerCase()) ||
+          command.playerName!.toLowerCase().includes(p.name.split(/[\s\/]/)[0].toLowerCase())
+        );
+        targetPlayerId = matchedPlayer?.id;
+      }
+      
+      if (!targetPlayerId && players.length > 0) {
+        targetPlayerId = players[0].id;
+      }
+      
+      if (targetPlayerId) {
+        let actualScore = command.score;
+        if (command.score <= 0) {
+          const holePar = coursesList?.find(c => c.name === match?.courseName)?.holes.find(h => h.holeNumber === currentHole)?.par ?? 4;
+          actualScore = holePar + command.score;
+        }
+        
+        if (actualScore >= 1 && actualScore <= 15) {
+          const targetHole = command.hole || currentHole;
+          submitScore.mutate({ playerId: targetPlayerId, holeNumber: targetHole, strokes: actualScore });
+          
+          const playerName = players.find(p => p.id === targetPlayerId)?.name || "Player";
+          setVoiceFeedback(`${playerName}: ${actualScore} on hole ${targetHole}`);
+          setTimeout(() => setVoiceFeedback(null), 3000);
+          
+          toast({
+            title: "Score Recorded",
+            description: `${playerName} scored ${actualScore} on hole ${targetHole}`,
+          });
+        }
+      }
+    }
+  }, [players, currentHole, coursesList, match?.courseName, submitScore, toast]);
+
+  const { 
+    isListening, 
+    isSupported: voiceSupported, 
+    transcript, 
+    error: voiceError,
+    toggleListening 
+  } = useVoiceInput({
+    onCommand: handleVoiceCommand,
+    playerNames,
+    continuous: false,
+  });
+
+  useEffect(() => {
+    if (voiceError) {
+      toast({
+        variant: "destructive",
+        title: "Voice Error",
+        description: voiceError,
+      });
+    }
+  }, [voiceError, toast]);
 
   if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading...</div>;
   if (error || !match) return <div className="p-12 text-center text-destructive">Event not found</div>;
@@ -461,6 +527,23 @@ export default function QuickScoreEntry() {
             onChange={handleFileSelect}
             data-testid="input-scorecard-file"
           />
+          
+          {voiceSupported && (
+            <Button
+              variant={isListening ? "default" : "outline"}
+              size="icon"
+              onClick={toggleListening}
+              className={isListening ? "bg-red-500 hover:bg-red-600 animate-pulse" : ""}
+              data-testid="button-voice-input"
+            >
+              {isListening ? (
+                <MicOff className="w-5 h-5" />
+              ) : (
+                <Mic className="w-5 h-5" />
+              )}
+            </Button>
+          )}
+          
           <Button
             variant="outline"
             size="icon"
@@ -504,6 +587,35 @@ export default function QuickScoreEntry() {
           )}
         </div>
       </div>
+
+      {(isListening || voiceFeedback || transcript) && (
+        <div className={`mb-4 p-3 rounded-lg border ${
+          isListening ? "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800" : "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800"
+        }`}>
+          <div className="flex items-center gap-2">
+            {isListening ? (
+              <>
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-sm font-medium text-red-700 dark:text-red-300">
+                  Listening... {transcript && `"${transcript}"`}
+                </span>
+              </>
+            ) : voiceFeedback ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                  {voiceFeedback}
+                </span>
+              </>
+            ) : null}
+          </div>
+          {isListening && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Say: "[Player name] scored [number]" or "birdie", "par", "bogey"
+            </p>
+          )}
+        </div>
+      )}
 
       <Card className="mb-6">
         <CardHeader className="pb-2">
