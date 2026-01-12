@@ -3,8 +3,10 @@ import { useCourses, useCreateCourse, useUpdateCourseHole, useDeleteCourse, useC
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, Trash2, ChevronDown, ChevronUp, MapPin, X } from "lucide-react";
+import { Plus, Save, Trash2, ChevronDown, ChevronUp, MapPin, X, Search, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 const TEE_COLORS = [
   { name: "Blue", value: "#1e40af" },
@@ -14,6 +16,320 @@ const TEE_COLORS = [
   { name: "Black", value: "#1f2937" },
   { name: "Green", value: "#16a34a" },
 ];
+
+interface ApiCourseResult {
+  id: number;
+  club_name: string;
+  course_name: string;
+  location?: {
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+}
+
+interface ApiCourseDetails {
+  id: number;
+  club_name: string;
+  course_name: string;
+  location?: {
+    address?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+  };
+  tees?: {
+    male?: Array<{
+      tee_name: string;
+      course_rating: number;
+      slope_rating: number;
+      par_total: number;
+      total_yards?: number;
+      holes: Array<{ par: number; yardage?: number; handicap: number }>;
+    }>;
+    female?: Array<{
+      tee_name: string;
+      course_rating: number;
+      slope_rating: number;
+      par_total: number;
+      total_yards?: number;
+      holes: Array<{ par: number; yardage?: number; handicap: number }>;
+    }>;
+  };
+}
+
+function CourseImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<ApiCourseResult[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<ApiCourseDetails | null>(null);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [selectedTee, setSelectedTee] = useState<string>("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [courseName, setCourseName] = useState("");
+
+  const handleSearch = async () => {
+    if (searchQuery.length < 2) {
+      toast({ title: "Error", description: "Enter at least 2 characters to search", variant: "destructive" });
+      return;
+    }
+    setIsSearching(true);
+    setSearchResults([]);
+    setSelectedCourse(null);
+    try {
+      const response = await fetch(`/api/golf-course-api/search?q=${encodeURIComponent(searchQuery)}`);
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Search failed");
+      }
+      const data = await response.json();
+      setSearchResults(data.courses || []);
+      if (data.courses?.length === 0) {
+        toast({ title: "No results", description: "No courses found. Try a different search term." });
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSelectCourse = async (course: ApiCourseResult) => {
+    setIsLoadingDetails(true);
+    setSelectedCourse(null);
+    try {
+      const response = await fetch(`/api/golf-course-api/courses/${course.id}`);
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || "Failed to load course details");
+      }
+      const data = await response.json();
+      setSelectedCourse(data);
+      setCourseName(data.course_name || data.club_name);
+      const allTees = [...(data.tees?.male || []), ...(data.tees?.female || [])];
+      if (allTees.length > 0) {
+        setSelectedTee(allTees[0].tee_name);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!selectedCourse || !selectedTee || !courseName.trim()) {
+      toast({ title: "Error", description: "Please select a tee and enter a course name", variant: "destructive" });
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const response = await apiRequest("POST", "/api/golf-course-api/import", {
+        externalId: selectedCourse.id,
+        courseName: courseName.trim(),
+        selectedTee: selectedTee,
+      });
+      const result = await response.json();
+      toast({ 
+        title: "Course imported", 
+        description: `${courseName} imported with ${result.holesImported} holes and ${result.teesImported} tees` 
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/courses"] });
+      onClose();
+      setSearchQuery("");
+      setSearchResults([]);
+      setSelectedCourse(null);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const allTees = selectedCourse ? [...(selectedCourse.tees?.male || []), ...(selectedCourse.tees?.female || [])] : [];
+  const currentTee = allTees.find(t => t.tee_name === selectedTee);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Search className="w-5 h-5" />
+            Search Golf Course Database
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search by course or club name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              data-testid="input-course-search"
+            />
+            <Button onClick={handleSearch} disabled={isSearching} data-testid="button-search-courses">
+              {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            </Button>
+          </div>
+
+          {searchResults.length > 0 && !selectedCourse && (
+            <div className="border rounded-md max-h-60 overflow-y-auto">
+              {searchResults.map((course) => (
+                <button
+                  key={course.id}
+                  onClick={() => handleSelectCourse(course)}
+                  className="w-full text-left p-3 hover-elevate border-b last:border-b-0"
+                  data-testid={`button-select-course-${course.id}`}
+                >
+                  <div className="font-medium">{course.course_name}</div>
+                  <div className="text-sm text-muted-foreground">{course.club_name}</div>
+                  {course.location && (
+                    <div className="text-xs text-muted-foreground">
+                      {[course.location.city, course.location.state, course.location.country].filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {isLoadingDetails && (
+            <div className="text-center py-8 text-muted-foreground">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+              Loading course details...
+            </div>
+          )}
+
+          {selectedCourse && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">{selectedCourse.course_name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedCourse.club_name}</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedCourse(null)}>
+                  <X className="w-4 h-4 mr-1" /> Change
+                </Button>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Course Name (in your app)</label>
+                <Input
+                  value={courseName}
+                  onChange={(e) => setCourseName(e.target.value)}
+                  placeholder="Enter course name"
+                  data-testid="input-import-course-name"
+                />
+              </div>
+
+              {allTees.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium">Select Tee for Hole Data</label>
+                  <select
+                    value={selectedTee}
+                    onChange={(e) => setSelectedTee(e.target.value)}
+                    className="w-full h-9 px-3 border rounded-md bg-background"
+                    data-testid="select-import-tee"
+                  >
+                    {allTees.map((tee, idx) => (
+                      <option key={`${tee.tee_name}-${idx}`} value={tee.tee_name}>
+                        {tee.tee_name} (Rating: {tee.course_rating.toFixed(1)}, Slope: {tee.slope_rating}, Par: {tee.par_total})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {currentTee && currentTee.holes && currentTee.holes.length > 0 && (
+                <div className="border rounded-md p-3 bg-muted/30">
+                  <div className="text-sm font-medium mb-2">Hole Data Preview ({currentTee.tee_name})</div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="p-1 text-left">Hole</th>
+                          {currentTee.holes.slice(0, 9).map((_, i) => (
+                            <th key={i} className="p-1 text-center">{i + 1}</th>
+                          ))}
+                          <th className="p-1 text-center bg-muted">Out</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b">
+                          <td className="p-1 font-medium">Par</td>
+                          {currentTee.holes.slice(0, 9).map((h, i) => (
+                            <td key={i} className="p-1 text-center">{h.par}</td>
+                          ))}
+                          <td className="p-1 text-center bg-muted font-medium">
+                            {currentTee.holes.slice(0, 9).reduce((s, h) => s + h.par, 0)}
+                          </td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-medium">Hdcp</td>
+                          {currentTee.holes.slice(0, 9).map((h, i) => (
+                            <td key={i} className="p-1 text-center">{h.handicap}</td>
+                          ))}
+                          <td className="p-1 text-center bg-muted">-</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    {currentTee.holes.length > 9 && (
+                      <table className="w-full text-xs mt-2">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="p-1 text-left">Hole</th>
+                            {currentTee.holes.slice(9, 18).map((_, i) => (
+                              <th key={i} className="p-1 text-center">{i + 10}</th>
+                            ))}
+                            <th className="p-1 text-center bg-muted">In</th>
+                            <th className="p-1 text-center bg-primary/10">Tot</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b">
+                            <td className="p-1 font-medium">Par</td>
+                            {currentTee.holes.slice(9, 18).map((h, i) => (
+                              <td key={i} className="p-1 text-center">{h.par}</td>
+                            ))}
+                            <td className="p-1 text-center bg-muted font-medium">
+                              {currentTee.holes.slice(9, 18).reduce((s, h) => s + h.par, 0)}
+                            </td>
+                            <td className="p-1 text-center bg-primary/10 font-medium">
+                              {currentTee.holes.reduce((s, h) => s + h.par, 0)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="p-1 font-medium">Hdcp</td>
+                            {currentTee.holes.slice(9, 18).map((h, i) => (
+                              <td key={i} className="p-1 text-center">{h.handicap}</td>
+                            ))}
+                            <td className="p-1 text-center bg-muted">-</td>
+                            <td className="p-1 text-center bg-primary/10">-</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleImport} disabled={isImporting || !selectedTee || !courseName.trim()} data-testid="button-import-course">
+                  {isImporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                  Import Course
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function TeeManagement({ courseId }: { courseId: number }) {
   const { data: tees, isLoading } = useCourseTees(courseId);
@@ -240,6 +556,7 @@ export default function CourseSetup() {
     Array.from({ length: 18 }, (_, i) => ({ holeNumber: i + 1, par: 4, handicap: null }))
   );
   const [editingHoles, setEditingHoles] = useState<Record<string, { par: number; handicap: number | null }>>({});
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
 
   const handleCreateCourse = async () => {
     if (!newCourseName.trim()) {
@@ -317,12 +634,23 @@ export default function CourseSetup() {
           <p className="text-muted-foreground">Manage courses, par values, and hole handicaps</p>
         </div>
         {!isAddingCourse && (
-          <Button onClick={() => setIsAddingCourse(true)} data-testid="button-add-course">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Course
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsImportDialogOpen(true)} data-testid="button-search-database">
+              <Search className="w-4 h-4 mr-2" />
+              Search Database
+            </Button>
+            <Button onClick={() => setIsAddingCourse(true)} data-testid="button-add-course">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Course
+            </Button>
+          </div>
         )}
       </div>
+
+      <CourseImportDialog 
+        open={isImportDialogOpen} 
+        onClose={() => setIsImportDialogOpen(false)} 
+      />
 
       {isAddingCourse && (
         <Card className="border-primary/30">

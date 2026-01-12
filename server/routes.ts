@@ -823,7 +823,8 @@ Rules:
       let teesImported = 0;
       for (const tee of allTees) {
         if (tee.slope_rating && tee.course_rating) {
-          await storage.createCourseTee(course.id, {
+          await storage.createCourseTee({
+            courseId: course.id,
             name: tee.tee_name,
             slopeRating: Math.round(tee.slope_rating),
             courseRating: Math.round(tee.course_rating * 10), // Store as tenths
