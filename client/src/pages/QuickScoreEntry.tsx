@@ -800,50 +800,80 @@ export default function QuickScoreEntry() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">Scanned:</span>
                       <span className="font-semibold text-foreground">{playerScore.playerName}</span>
-                      {willAutoAdd && (
-                        <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                          <UserPlus className="w-3 h-3" />
-                          Will add {suggestedPreset}
-                        </span>
-                      )}
                     </div>
                     
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">Assign to:</span>
                       <Select
-                        value={mappedPlayerId?.toString() || "unassigned"}
+                        value={
+                          mappedPlayerId 
+                            ? `id:${mappedPlayerId}` 
+                            : suggestedPreset 
+                              ? `preset:${suggestedPreset}` 
+                              : "unassigned"
+                        }
                         onValueChange={(val) => {
-                          setPlayerMappings(prev => ({
-                            ...prev,
-                            [playerScore.playerName]: val === "unassigned" ? null : parseInt(val)
-                          }));
-                          // Clear suggested preset if user manually assigns
-                          if (val !== "unassigned") {
-                            setSuggestedPresets(prev => ({
-                              ...prev,
-                              [playerScore.playerName]: null
-                            }));
+                          if (val === "unassigned") {
+                            setPlayerMappings(prev => ({ ...prev, [playerScore.playerName]: null }));
+                            setSuggestedPresets(prev => ({ ...prev, [playerScore.playerName]: null }));
+                          } else if (val.startsWith("id:")) {
+                            const playerId = parseInt(val.substring(3));
+                            setPlayerMappings(prev => ({ ...prev, [playerScore.playerName]: playerId }));
+                            setSuggestedPresets(prev => ({ ...prev, [playerScore.playerName]: null }));
+                          } else if (val.startsWith("preset:")) {
+                            const presetName = val.substring(7);
+                            setPlayerMappings(prev => ({ ...prev, [playerScore.playerName]: null }));
+                            setSuggestedPresets(prev => ({ ...prev, [playerScore.playerName]: presetName }));
                           }
                         }}
                       >
-                        <SelectTrigger className="w-40" data-testid={`select-player-${playerScore.playerName}`}>
+                        <SelectTrigger className="w-48" data-testid={`select-player-${playerScore.playerName}`}>
                           <SelectValue placeholder="Select player" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="unassigned">{willAutoAdd ? `-- Auto-add ${suggestedPreset} --` : "-- Skip --"}</SelectItem>
-                          {players.map(p => (
-                            <SelectItem 
-                              key={p.id} 
-                              value={p.id.toString()}
-                              disabled={usedPlayerIds.has(p.id) && p.id !== mappedPlayerId}
-                            >
-                              {p.name}
-                            </SelectItem>
-                          ))}
+                          <SelectItem value="unassigned">-- Skip --</SelectItem>
+                          {players.length > 0 && (
+                            <>
+                              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">In Match</div>
+                              {players.map(p => (
+                                <SelectItem 
+                                  key={`id:${p.id}`} 
+                                  value={`id:${p.id}`}
+                                  disabled={usedPlayerIds.has(p.id) && p.id !== mappedPlayerId}
+                                >
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Add from Roster</div>
+                          {PRESET_PLAYERS
+                            .filter(preset => !players.some(p => p.name === preset))
+                            .map(preset => {
+                              const alreadySelected = Object.entries(suggestedPresets)
+                                .some(([name, p]) => p === preset && name !== playerScore.playerName);
+                              return (
+                                <SelectItem 
+                                  key={`preset:${preset}`} 
+                                  value={`preset:${preset}`}
+                                  disabled={alreadySelected}
+                                >
+                                  <span className="flex items-center gap-1">
+                                    <UserPlus className="w-3 h-3 text-emerald-600" />
+                                    {preset}
+                                  </span>
+                                </SelectItem>
+                              );
+                            })}
                         </SelectContent>
                       </Select>
                       {mappedPlayer && (
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      )}
+                      {willAutoAdd && (
+                        <span className="flex items-center gap-1 text-emerald-600">
+                          <UserPlus className="w-4 h-4" />
+                        </span>
                       )}
                     </div>
                   </div>
