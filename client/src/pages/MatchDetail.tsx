@@ -2679,7 +2679,7 @@ export default function MatchDetail() {
               {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => (
                 <th key={hole} className="p-3 text-center w-12 font-semibold text-muted-foreground">{hole}</th>
               ))}
-              <th className="p-4 text-center font-bold text-foreground bg-primary/10">Total</th>
+              <th className="p-4 text-center font-bold text-foreground bg-primary/10 sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Total</th>
             </tr>
             {/* Par Row */}
             {matchCourse && (
@@ -2688,7 +2688,7 @@ export default function MatchDetail() {
                 {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => (
                   <td key={hole} className="p-2 text-center font-medium text-muted-foreground">{getHolePar(hole)}</td>
                 ))}
-                <td className="p-2 text-center font-bold text-muted-foreground bg-primary/5">{matchCourse.totalPar}</td>
+                <td className="p-2 text-center font-bold text-muted-foreground bg-primary/5 sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">{matchCourse.totalPar}</td>
               </tr>
             )}
           </thead>
@@ -2850,7 +2850,7 @@ export default function MatchDetail() {
                       </td>
                     );
                   })}
-                  <td className="p-4 text-center font-bold text-lg bg-primary/5">
+                  <td className="p-4 text-center font-bold text-lg bg-primary/5 sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
                     {(() => {
                       const totalScore = getPlayerScore(p.id);
                       const coursePar = matchCourse?.totalPar ?? 72;
