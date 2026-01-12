@@ -467,3 +467,44 @@ export function useUpdatePlayerMatchHandicap(matchId: number) {
     },
   });
 }
+
+export function useCourseTees(courseId: number | null | undefined) {
+  return useQuery({
+    queryKey: ['/api/courses', courseId, 'tees'],
+    queryFn: async () => {
+      if (!courseId) return [];
+      const res = await fetch(`/api/courses/${courseId}/tees`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch course tees');
+      return res.json() as Promise<Array<{
+        id: number;
+        courseId: number;
+        name: string;
+        slopeRating: number;
+        courseRating: number;
+        color: string | null;
+      }>>;
+    },
+    enabled: !!courseId,
+  });
+}
+
+export function useUpdatePlayerTee(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ playerId, teeId }: { playerId: number; teeId: number | null }) => {
+      const url = buildUrl(api.matches.updatePlayerTee.path, { matchId, playerId });
+      const res = await fetch(url, {
+        method: api.matches.updatePlayerTee.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teeId }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update player tee");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
