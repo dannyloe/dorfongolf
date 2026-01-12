@@ -68,6 +68,7 @@ export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
   "kat": "MeerKat",
   "michael": "Chaney",
   "bird": "Neal",
+  "partridge": "Neal",
   "mark": "Mark Patrick",
 };
 
