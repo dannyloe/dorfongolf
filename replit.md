@@ -1,8 +1,8 @@
-# Dorf on Golf - Golf Scorecard Application
+# Dog Trip - Golf Scorecard Application
 
 ## Overview
 
-Dorf on Golf is a modern golf scorecard web application that allows users to track real-time matches with friends, visualize stats, and maintain game history. The application features user authentication via Replit Auth, match creation and management, player tracking, and hole-by-hole score entry.
+Dog Trip is a modern golf scorecard web application that allows users to track real-time matches with friends, visualize stats, and maintain game history. The application features user authentication via Replit Auth, match creation and management, player tracking, and hole-by-hole score entry.
 
 ## User Preferences
 

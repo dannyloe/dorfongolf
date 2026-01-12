@@ -15,7 +15,7 @@ export default function Landing() {
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20">
             <Trophy className="w-5 h-5" />
           </div>
-          <span className="font-display font-bold text-2xl text-primary">Dorf on Golf</span>
+          <span className="font-display font-bold text-2xl text-primary">Dog Trip</span>
         </div>
         {/* Sign In button moved to hero section */}
       </nav>
@@ -76,7 +76,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-primary/5 py-12 bg-white/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 text-center text-muted-foreground">
-          <p>© 2024 Dorf on Golf. Built with Replit.</p>
+          <p>© 2024 Dog Trip. Built with Replit.</p>
         </div>
       </footer>
     </div>
