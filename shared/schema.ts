@@ -343,6 +343,8 @@ export type CreateEventMatchRequest = {
   useNetScoring?: boolean;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
+  // Optional: For 5-5-5-3 matches that support multiple teams
+  teams?: { name: string; playerIds: number[] }[];
 };
 
 export type MatchResponse = Match & {
@@ -387,6 +389,7 @@ export const MATCH_TYPES = {
   STROKE_PLAY: "stroke_play",
   NASSAU: "nassau",
   SKINS: "skins",
+  FIVE_FIVE_FIVE_THREE: "five_five_five_three",
 } as const;
 
 export type MatchType = typeof MATCH_TYPES[keyof typeof MATCH_TYPES];
@@ -397,6 +400,7 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.STROKE_PLAY]: "Stroke Play",
   [MATCH_TYPES.NASSAU]: "Nassau",
   [MATCH_TYPES.SKINS]: "Skins",
+  [MATCH_TYPES.FIVE_FIVE_FIVE_THREE]: "5-5-5-3",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({

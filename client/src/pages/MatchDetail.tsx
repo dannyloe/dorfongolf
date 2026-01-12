@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, type NetScoringContext } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, type NetScoringContext } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { PRESET_PLAYERS } from "@shared/models/auth";
@@ -210,6 +210,13 @@ export default function MatchDetail() {
   
   // Skins match state
   const [skinsPlayerIds, setSkinsPlayerIds] = useState<number[]>([]);
+  
+  // 5-5-5-3 match state
+  const [fiveTeamCount, setFiveTeamCount] = useState<number>(2);
+  const [fiveTeams, setFiveTeams] = useState<{name: string; playerIds: number[]}[]>([
+    { name: "Team 1", playerIds: [] },
+    { name: "Team 2", playerIds: [] },
+  ]);
   
   // Net scoring state (for handicapped events)
   const [useNetScoring, setUseNetScoring] = useState(false);
@@ -441,6 +448,79 @@ export default function MatchDetail() {
         setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
         setUnitAmount(20);
         setSkinsPlayerIds([]);
+        setUseNetScoring(false);
+      }
+    });
+  };
+
+  // Helper to update team count for 5-5-5-3
+  const updateFiveTeamCount = (count: number) => {
+    setFiveTeamCount(count);
+    const newTeams: {name: string; playerIds: number[]}[] = [];
+    for (let i = 0; i < count; i++) {
+      if (fiveTeams[i]) {
+        newTeams.push(fiveTeams[i]);
+      } else {
+        newTeams.push({ name: `Team ${i + 1}`, playerIds: [] });
+      }
+    }
+    setFiveTeams(newTeams);
+  };
+
+  // Toggle player in a 5-5-5-3 team
+  const toggleFiveTeamPlayer = (teamIndex: number, playerId: number) => {
+    setFiveTeams(prevTeams => {
+      const newTeams = [...prevTeams];
+      const currentTeam = { ...newTeams[teamIndex] };
+      
+      // Check if player is in any other team and remove them
+      newTeams.forEach((team, idx) => {
+        if (team.playerIds.includes(playerId)) {
+          newTeams[idx] = { ...team, playerIds: team.playerIds.filter(id => id !== playerId) };
+        }
+      });
+      
+      // Add player to this team if they weren't already in it
+      if (!currentTeam.playerIds.includes(playerId)) {
+        newTeams[teamIndex] = { ...newTeams[teamIndex], playerIds: [...newTeams[teamIndex].playerIds, playerId] };
+      }
+      
+      return newTeams;
+    });
+  };
+
+  // Create 5-5-5-3 match
+  const handleCreateFiveMatch = () => {
+    // Validate all teams have at least 1 player
+    if (fiveTeams.some(t => t.playerIds.length === 0)) return;
+    if (fiveTeams.length < 2) return;
+    
+    const teamNames = fiveTeams.map(t => {
+      const names = t.playerIds.map(id => players.find(p => p.id === id)?.name || '').join('/');
+      return names;
+    });
+    const matchName = `5-5-5-3: ${teamNames.join(' vs ')}`;
+    
+    createEventMatch.mutate({
+      name: matchName,
+      matchType: MATCH_TYPES.FIVE_FIVE_FIVE_THREE,
+      unitAmount: unitAmount * 100, // Default $1 wager (100 cents)
+      teamA: fiveTeams[0] ? { name: teamNames[0], playerIds: fiveTeams[0].playerIds } : { name: 'Team 1', playerIds: [] },
+      teamB: fiveTeams[1] ? { name: teamNames[1], playerIds: fiveTeams[1].playerIds } : { name: 'Team 2', playerIds: [] },
+      teams: fiveTeams.map((t, i) => ({ name: teamNames[i], playerIds: t.playerIds })),
+      autoPressOriginal: false,
+      autoPressAllPresses: false,
+      autoPressNassauFront9: false,
+      autoPressNassauBack9: false,
+      autoPressNassauOverall: false,
+      useNetScoring: match.isHandicapped ? useNetScoring : false,
+    }, {
+      onSuccess: () => {
+        setShowCreateMatch(false);
+        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setUnitAmount(1); // Reset to $1 default
+        setFiveTeamCount(2);
+        setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
         setUseNetScoring(false);
       }
     });
@@ -1355,6 +1435,11 @@ export default function MatchDetail() {
                       } else if (value === MATCH_TYPES.SKINS) {
                         setSelectedMatchType(MATCH_TYPES.SKINS);
                         setSkinsPlayerIds(players.map(p => p.id));
+                      } else if (value === MATCH_TYPES.FIVE_FIVE_FIVE_THREE) {
+                        setSelectedMatchType(MATCH_TYPES.FIVE_FIVE_FIVE_THREE);
+                        setUnitAmount(1); // Default $1 wager for 5-5-5-3
+                        setFiveTeamCount(2);
+                        setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
                       } else {
                         setSelectedMatchType(value as MatchType);
                         setSkinsPlayerIds([]);
@@ -1468,6 +1553,91 @@ export default function MatchDetail() {
                     data-testid="button-submit-create-skins"
                   >
                     {createEventMatch.isPending ? "Creating..." : "Create Skins Match"}
+                  </Button>
+                </>
+              ) : selectedMatchType === MATCH_TYPES.FIVE_FIVE_FIVE_THREE ? (
+                <>
+                  {/* 5-5-5-3 Team Selection */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-muted-foreground">Number of Teams:</label>
+                      <Select
+                        value={fiveTeamCount.toString()}
+                        onValueChange={(val) => updateFiveTeamCount(parseInt(val))}
+                      >
+                        <SelectTrigger className="w-20" data-testid="select-five-team-count">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="2">2</SelectItem>
+                          <SelectItem value="3">3</SelectItem>
+                          <SelectItem value="4">4</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                      <p className="font-medium mb-1">Scoring:</p>
+                      <ul className="list-disc list-inside space-y-0.5">
+                        <li>Holes 1-5: Best 1 ball</li>
+                        <li>Holes 6-10: Best 2 balls</li>
+                        <li>Holes 11-15: Best 3 balls</li>
+                        <li>Holes 16-18: Best N balls (N = smallest team size)</li>
+                      </ul>
+                    </div>
+                    
+                    <div className={`grid gap-3 ${fiveTeamCount === 2 ? 'grid-cols-2' : fiveTeamCount === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      {fiveTeams.slice(0, fiveTeamCount).map((team, teamIdx) => {
+                        const teamColors = ['bg-primary/10 text-primary', 'bg-accent/10 text-accent', 'bg-orange-100 text-orange-700', 'bg-purple-100 text-purple-700'];
+                        const bgColors = ['bg-primary text-primary-foreground', 'bg-accent text-accent-foreground', 'bg-orange-500 text-white', 'bg-purple-500 text-white'];
+                        return (
+                          <div key={teamIdx}>
+                            <div className={`mb-2 px-3 py-2 rounded-lg min-h-[40px] flex items-center ${teamColors[teamIdx]}`}>
+                              <span className="font-semibold text-sm">
+                                {team.playerIds.length > 0 
+                                  ? team.playerIds.map(id => players.find(p => p.id === id)?.name || '').join('/')
+                                  : `Team ${teamIdx + 1}`}
+                              </span>
+                            </div>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                              {players.map((p) => {
+                                const isInThisTeam = team.playerIds.includes(p.id);
+                                const isInOtherTeam = fiveTeams.some((t, idx) => idx !== teamIdx && t.playerIds.includes(p.id));
+                                return (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => toggleFiveTeamPlayer(teamIdx, p.id)}
+                                    className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                      isInThisTeam
+                                        ? bgColors[teamIdx]
+                                        : isInOtherTeam
+                                        ? "bg-muted/50 text-muted-foreground line-through"
+                                        : "bg-muted hover:bg-muted/80"
+                                    }`}
+                                    data-testid={`button-five-team-${teamIdx}-${p.id}`}
+                                  >
+                                    {p.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    <p className="text-xs text-muted-foreground">
+                      Each team pays each other team the stroke difference x ${unitAmount} wager
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={handleCreateFiveMatch}
+                    disabled={fiveTeams.slice(0, fiveTeamCount).some(t => t.playerIds.length === 0) || createEventMatch.isPending}
+                    className="w-full"
+                    data-testid="button-submit-create-five"
+                  >
+                    {createEventMatch.isPending ? "Creating..." : "Create 5-5-5-3 Match"}
                   </Button>
                 </>
               ) : (
@@ -1811,6 +1981,101 @@ export default function MatchDetail() {
                                         }`}
                                       >
                                         {s.playerName}: {s.amount > 0 ? '+' : ''}{s.amount === 0 ? 'Even' : `$${s.amount.toFixed(2)}`}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })() : em.matchType === 'five_five_five_three' ? (() => {
+                          // 5-5-5-3 Match View
+                          const fiveResult = calculateFiveMatchResults(em, scores, netContext);
+                          const unitAmt = (em.unitAmount || 100) / 100; // Convert cents to dollars
+                          const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete);
+                          const teamColors = ['text-primary bg-primary/10', 'text-accent bg-accent/10', 'text-orange-700 bg-orange-100', 'text-purple-700 bg-purple-100'];
+                          
+                          return (
+                            <div className="space-y-4">
+                              {/* Teams */}
+                              <div>
+                                <p className="font-medium text-muted-foreground mb-2">Teams ({em.teams.length})</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {em.teams.map((team, idx) => (
+                                    <div key={team.id} className={`px-3 py-1.5 rounded-lg ${teamColors[idx] || 'bg-muted text-foreground'}`}>
+                                      <span className="font-semibold text-sm">{team.name}</span>
+                                      <span className="text-xs ml-2">({team.members.length} players)</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              
+                              {/* Scoring Info */}
+                              <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                                <p className="font-medium mb-1">Best Ball Format:</p>
+                                <div className="flex flex-wrap gap-3">
+                                  <span>Holes 1-5: 1 ball</span>
+                                  <span>Holes 6-10: 2 balls</span>
+                                  <span>Holes 11-15: 3 balls</span>
+                                  <span>Holes 16-18: {fiveResult.smallestTeamSize} ball{fiveResult.smallestTeamSize !== 1 ? 's' : ''}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Team Totals Table */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="p-2 text-left font-semibold">Team</th>
+                                      <th className="p-2 text-center font-medium">Front 9</th>
+                                      <th className="p-2 text-center font-medium">Back 9</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {fiveResult.teamTotals.map((teamTotal, idx) => {
+                                      const front9 = fiveResult.holeResults.slice(0, 9).reduce((sum, hr) => {
+                                        const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                        return sum + (teamScore || 0);
+                                      }, 0);
+                                      const back9 = fiveResult.holeResults.slice(9, 18).reduce((sum, hr) => {
+                                        const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                        return sum + (teamScore || 0);
+                                      }, 0);
+                                      return (
+                                        <tr key={teamTotal.teamIndex} className="border-b border-border/50">
+                                          <td className={`p-2 font-semibold ${teamColors[idx]?.split(' ')[0] || ''}`}>
+                                            {teamTotal.teamName}
+                                          </td>
+                                          <td className="p-2 text-center">{front9 || '-'}</td>
+                                          <td className="p-2 text-center">{back9 || '-'}</td>
+                                          <td className="p-2 text-center font-bold bg-muted/30">
+                                            {teamTotal.totalScore || '-'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                              
+                              {/* Settlements */}
+                              {fiveResult.isComplete && (
+                                <div className="pt-3 border-t border-border">
+                                  <h5 className="font-semibold text-sm mb-2">Team Settlements (${unitAmt}/stroke)</h5>
+                                  <div className="flex flex-wrap gap-2">
+                                    {fiveSettlements.map((s) => (
+                                      <span 
+                                        key={s.teamIndex}
+                                        className={`px-3 py-1 rounded-lg text-sm font-medium ${
+                                          s.amount > 0 
+                                            ? 'bg-primary/10 text-primary' 
+                                            : s.amount < 0 
+                                            ? 'bg-destructive/10 text-destructive'
+                                            : 'bg-muted text-muted-foreground'
+                                        }`}
+                                      >
+                                        {s.teamName}: {s.amount > 0 ? '+' : ''}{s.amount === 0 ? 'Even' : `$${s.amount.toFixed(2)}`}
                                       </span>
                                     ))}
                                   </div>

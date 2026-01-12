@@ -234,24 +234,39 @@ export class DatabaseStorage implements IStorage {
       useNetScoring: data.useNetScoring ?? false,
     }).returning();
 
-    // Create Team A
-    const [teamA] = await db.insert(teams).values({
-      eventMatchId: newEventMatch.id,
-      name: data.teamA.name,
-    }).returning();
+    // Check if using multiple teams (for 5-5-5-3)
+    if (data.teams && data.teams.length > 0) {
+      // Create all teams from the teams array
+      for (const teamData of data.teams) {
+        const [team] = await db.insert(teams).values({
+          eventMatchId: newEventMatch.id,
+          name: teamData.name,
+        }).returning();
 
-    for (const playerId of data.teamA.playerIds) {
-      await db.insert(teamMembers).values({ teamId: teamA.id, playerId });
-    }
+        for (const playerId of teamData.playerIds) {
+          await db.insert(teamMembers).values({ teamId: team.id, playerId });
+        }
+      }
+    } else {
+      // Create Team A
+      const [teamA] = await db.insert(teams).values({
+        eventMatchId: newEventMatch.id,
+        name: data.teamA.name,
+      }).returning();
 
-    // Create Team B
-    const [teamB] = await db.insert(teams).values({
-      eventMatchId: newEventMatch.id,
-      name: data.teamB.name,
-    }).returning();
+      for (const playerId of data.teamA.playerIds) {
+        await db.insert(teamMembers).values({ teamId: teamA.id, playerId });
+      }
 
-    for (const playerId of data.teamB.playerIds) {
-      await db.insert(teamMembers).values({ teamId: teamB.id, playerId });
+      // Create Team B
+      const [teamB] = await db.insert(teams).values({
+        eventMatchId: newEventMatch.id,
+        name: data.teamB.name,
+      }).returning();
+
+      for (const playerId of data.teamB.playerIds) {
+        await db.insert(teamMembers).values({ teamId: teamB.id, playerId });
+      }
     }
 
     return newEventMatch;

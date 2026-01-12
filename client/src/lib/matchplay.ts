@@ -377,6 +377,50 @@ export function calculateLedger(
           }
         }
       }
+    } else if (em.matchType === 'five_five_five_three') {
+      // 5-5-5-3 match - only process if complete to avoid $0 entries
+      const fiveNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const fiveResult = calculateFiveMatchResults(em, scores, fiveNetContext);
+      
+      // Skip incomplete matches entirely to avoid $0 ledger entries
+      if (!fiveResult.isComplete) continue;
+      
+      const unitAmt = (em.unitAmount || 100) / 100;
+      const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete);
+      
+      // For 5-5-5-3, we need to distribute team settlements to individual players
+      // Each player on a team gets an equal share of their team's settlement
+      for (const teamSettlement of fiveSettlements) {
+        const team = em.teams.find((_, idx) => idx === teamSettlement.teamIndex);
+        if (!team) continue;
+        
+        const teamSize = team.members.length;
+        const perPlayerAmount = teamSize > 0 ? teamSettlement.amount / teamSize : 0;
+        
+        for (const member of team.members) {
+          const playerName = member.player?.name || `Player ${member.playerId}`;
+          
+          entries.push({
+            matchId: em.id,
+            matchName: em.name,
+            playerId: member.playerId,
+            playerName: playerName,
+            amount: Math.round(perPlayerAmount * 100) / 100,
+            isComplete: true,
+            createdAt: em.createdAt,
+          });
+
+          const stableKey = playerIdToStableKey.get(member.playerId) || `guest:${playerName.toLowerCase().trim()}`;
+          const existing = playerTotals.get(stableKey) || { name: playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: member.playerId };
+          if (perPlayerAmount > 0) {
+            existing.won += perPlayerAmount;
+          } else if (perPlayerAmount < 0) {
+            existing.lost += Math.abs(perPlayerAmount);
+          }
+          existing.matches.add(em.id);
+          playerTotals.set(stableKey, existing);
+        }
+      }
     } else {
       const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
@@ -1167,4 +1211,177 @@ export function calculateSkinsResults(
     isComplete: allHolesComplete,
     settlements,
   };
+}
+
+// ===== 5-5-5-3 SCORING =====
+
+export interface FiveTeamHoleResult {
+  holeNumber: number;
+  bestBallCount: number;
+  teamScores: { teamIndex: number; teamName: string; score: number | null }[];
+}
+
+export interface FiveTeamTotalResult {
+  teamIndex: number;
+  teamName: string;
+  totalScore: number;
+  holesCompleted: number;
+}
+
+export interface FiveSettlement {
+  teamIndex: number;
+  teamName: string;
+  amount: number;
+}
+
+export interface FiveMatchResult {
+  holeResults: FiveTeamHoleResult[];
+  teamTotals: FiveTeamTotalResult[];
+  settlements: FiveSettlement[];
+  isComplete: boolean;
+  smallestTeamSize: number;
+}
+
+function getBestBallCount(holeNumber: number, smallestTeamSize: number): number {
+  if (holeNumber >= 1 && holeNumber <= 5) return 1;
+  if (holeNumber >= 6 && holeNumber <= 10) return 2;
+  if (holeNumber >= 11 && holeNumber <= 15) return 3;
+  // Holes 16-18: use smallest team size
+  return smallestTeamSize;
+}
+
+function getTeamBestBallScore(
+  teamScores: number[],
+  bestBallCount: number
+): number | null {
+  if (teamScores.length === 0) return null;
+  
+  const sorted = [...teamScores].sort((a, b) => a - b);
+  // Take the lowest N scores and sum them
+  const scoresToUse = sorted.slice(0, Math.min(bestBallCount, sorted.length));
+  return scoresToUse.reduce((sum, s) => sum + s, 0);
+}
+
+export function calculateFiveMatchResults(
+  eventMatch: EventMatch,
+  scores: Score[],
+  netContext: NetScoringContext | null = null
+): FiveMatchResult {
+  const teams = eventMatch.teams;
+  
+  if (!teams || teams.length < 2) {
+    return {
+      holeResults: [],
+      teamTotals: [],
+      settlements: [],
+      isComplete: false,
+      smallestTeamSize: 0,
+    };
+  }
+  
+  // Find the smallest team size
+  const smallestTeamSize = Math.min(...teams.map(t => t.members.length));
+  
+  // Build player ID sets for each team
+  const teamPlayerIds = teams.map(team => 
+    new Set(team.members.map(m => m.playerId))
+  );
+  
+  const holeResults: FiveTeamHoleResult[] = [];
+  const teamCumulativeScores = teams.map(() => 0);
+  const teamHolesCompleted = teams.map(() => 0);
+  let allComplete = true;
+  
+  for (let hole = 1; hole <= 18; hole++) {
+    const bestBallCount = getBestBallCount(hole, smallestTeamSize);
+    
+    const teamScoresForHole = teams.map((team, teamIdx) => {
+      const playerScores = scores
+        .filter(s => s.holeNumber === hole && teamPlayerIds[teamIdx].has(s.playerId))
+        .map(s => getScoreValue(s, netContext));
+      
+      const bestScore = getTeamBestBallScore(playerScores, bestBallCount);
+      
+      if (bestScore !== null) {
+        teamCumulativeScores[teamIdx] += bestScore;
+        teamHolesCompleted[teamIdx]++;
+      } else {
+        allComplete = false;
+      }
+      
+      return {
+        teamIndex: teamIdx,
+        teamName: team.name,
+        score: bestScore,
+      };
+    });
+    
+    holeResults.push({
+      holeNumber: hole,
+      bestBallCount,
+      teamScores: teamScoresForHole,
+    });
+  }
+  
+  // Build team totals
+  const teamTotals: FiveTeamTotalResult[] = teams.map((team, idx) => ({
+    teamIndex: idx,
+    teamName: team.name,
+    totalScore: teamCumulativeScores[idx],
+    holesCompleted: teamHolesCompleted[idx],
+  }));
+  
+  // Check if all teams have completed all 18 holes
+  const isComplete = allComplete && teamHolesCompleted.every(h => h === 18);
+  
+  return {
+    holeResults,
+    teamTotals,
+    settlements: [], // Settlements calculated separately with wager amount
+    isComplete,
+    smallestTeamSize,
+  };
+}
+
+export function calculateFiveSettlements(
+  teamTotals: FiveTeamTotalResult[],
+  unitAmount: number, // Amount in dollars (e.g. 1 = $1)
+  isComplete: boolean
+): FiveSettlement[] {
+  if (!isComplete || teamTotals.length < 2) {
+    return teamTotals.map(t => ({
+      teamIndex: t.teamIndex,
+      teamName: t.teamName,
+      amount: 0,
+    }));
+  }
+  
+  // Round-robin settlement: each team pays each other team the stroke difference × wager
+  const settlements: FiveSettlement[] = teamTotals.map(t => ({
+    teamIndex: t.teamIndex,
+    teamName: t.teamName,
+    amount: 0,
+  }));
+  
+  for (let i = 0; i < teamTotals.length; i++) {
+    for (let j = i + 1; j < teamTotals.length; j++) {
+      const teamI = teamTotals[i];
+      const teamJ = teamTotals[j];
+      const strokeDiff = teamI.totalScore - teamJ.totalScore;
+      // Lower score is better in golf
+      // If Team I has lower score, Team J pays Team I
+      // strokeDiff < 0 means Team I wins
+      const payment = strokeDiff * unitAmount; // Negative means Team I wins
+      
+      settlements[i].amount -= payment; // Team I gets paid if strokeDiff < 0
+      settlements[j].amount += payment; // Team J pays if strokeDiff < 0
+    }
+  }
+  
+  // Round to 2 decimal places
+  settlements.forEach(s => {
+    s.amount = Math.round(s.amount * 100) / 100;
+  });
+  
+  return settlements;
 }

@@ -206,6 +206,11 @@ export const api = {
           name: z.string().min(1),
           playerIds: z.array(z.number()).min(1),
         }),
+        // Optional: For 5-5-5-3 matches that support multiple teams
+        teams: z.array(z.object({
+          name: z.string().min(1),
+          playerIds: z.array(z.number()).min(1),
+        })).optional(),
       }),
       responses: {
         201: z.custom<typeof eventMatches.$inferSelect>(),
