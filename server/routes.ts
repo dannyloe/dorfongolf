@@ -803,7 +803,10 @@ Rules:
       
       // Find the selected tee data (prefer male tees, fall back to female)
       const allTees = [...(courseData.tees?.male || []), ...(courseData.tees?.female || [])];
+      console.log("Looking for tee:", input.selectedTee);
+      console.log("Available tees:", allTees.map((t: any) => t.tee_name));
       const selectedTeeData = allTees.find((t: any) => t.tee_name === input.selectedTee);
+      console.log("Selected tee data:", selectedTeeData ? `found with ${selectedTeeData.holes?.length} holes` : "not found");
       
       if (!selectedTeeData || !selectedTeeData.holes || selectedTeeData.holes.length < 9) {
         return res.status(400).json({ message: "Selected tee does not have valid hole data" });
