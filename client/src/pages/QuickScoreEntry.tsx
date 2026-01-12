@@ -1,12 +1,13 @@
-import { useMatch, useSubmitScore, useCourses, useScanScorecard, ScannedPlayer, ScannedHole } from "@/hooks/use-matches";
+import { useMatch, useSubmitScore, useCourses, useScanScorecard, ScannedPlayer, ScannedHole, useAddPlayer } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useVoiceInput, VoiceCommand } from "@/hooks/use-voice-input";
-import { resolvePlayerAlias } from "@shared/models/auth";
+import { resolvePlayerAlias, PRESET_PLAYERS } from "@shared/models/auth";
+import { queryClient } from "@/lib/queryClient";
 import { useRoute, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2, ChevronDown, Mic, MicOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Check, EyeOff, Users, GripVertical, Camera, Loader2, AlertCircle, CheckCircle2, ChevronDown, Mic, MicOff, UserPlus } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -152,6 +153,7 @@ export default function QuickScoreEntry() {
   const { user } = useAuth();
   const submitScore = useSubmitScore(matchId);
   const scanScorecard = useScanScorecard();
+  const addPlayer = useAddPlayer(matchId);
   const { toast } = useToast();
   
   const [currentHole, setCurrentHole] = useState(1);
@@ -167,6 +169,8 @@ export default function QuickScoreEntry() {
   const [scannedScores, setScannedScores] = useState<ScannedPlayer[]>([]);
   const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
   const [playerMappings, setPlayerMappings] = useState<Record<string, number | null>>({});
+  const [suggestedPresets, setSuggestedPresets] = useState<Record<string, string | null>>({});
+  const [isAddingPlayers, setIsAddingPlayers] = useState(false);
   
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -381,6 +385,8 @@ export default function QuickScoreEntry() {
           setScannedScores(result.scores);
           const editable: Record<string, Record<number, string>> = {};
           const mappings: Record<string, number | null> = {};
+          const presets: Record<string, string | null> = {};
+          
           result.scores.forEach(ps => {
             editable[ps.playerName] = {};
             ps.holes.forEach(h => {
@@ -394,9 +400,21 @@ export default function QuickScoreEntry() {
               p.name.toLowerCase() === resolvedName.toLowerCase()
             );
             mappings[ps.playerName] = matchedPlayer?.id || null;
+            
+            // If no match found, check if scanned name matches a preset player
+            if (!matchedPlayer) {
+              const presetMatch = PRESET_PLAYERS.find(preset => 
+                preset.toLowerCase() === ps.playerName.toLowerCase() ||
+                preset.toLowerCase() === resolvedName.toLowerCase()
+              );
+              presets[ps.playerName] = presetMatch || null;
+            } else {
+              presets[ps.playerName] = null;
+            }
           });
           setEditableScores(editable);
           setPlayerMappings(mappings);
+          setSuggestedPresets(presets);
           setShowScanModal(true);
         } else {
           toast({
@@ -418,11 +436,50 @@ export default function QuickScoreEntry() {
   };
 
   const handleConfirmScores = async () => {
+    setIsAddingPlayers(true);
     let successCount = 0;
     let errorCount = 0;
+    let addedPlayerCount = 0;
+    let addPlayerErrors: string[] = [];
     
+    // First, add any suggested preset players
+    const updatedMappings = { ...playerMappings };
+    const addedPresets = new Set<string>(); // Track already-added presets to prevent duplicates
+    
+    for (const [scannedName, presetName] of Object.entries(suggestedPresets)) {
+      if (presetName && !updatedMappings[scannedName] && !addedPresets.has(presetName)) {
+        try {
+          const newPlayer = await addPlayer.mutateAsync({ name: presetName });
+          updatedMappings[scannedName] = newPlayer.id;
+          addedPresets.add(presetName);
+          addedPlayerCount++;
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : "Unknown error";
+          addPlayerErrors.push(`Failed to add ${presetName}: ${errMsg}`);
+        }
+      } else if (presetName && addedPresets.has(presetName)) {
+        // Same preset was already added for another scanned name - find and reuse the ID
+        for (const [otherName, id] of Object.entries(updatedMappings)) {
+          if (suggestedPresets[otherName] === presetName && id !== null) {
+            updatedMappings[scannedName] = id;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Show errors if any player additions failed
+    if (addPlayerErrors.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Player Addition Errors",
+        description: addPlayerErrors.join("; "),
+      });
+    }
+    
+    // Now save scores using the updated mappings
     for (const scannedName of Object.keys(editableScores)) {
-      const playerId = playerMappings[scannedName];
+      const playerId = updatedMappings[scannedName];
       if (!playerId) continue;
       
       for (const [holeStr, strokesStr] of Object.entries(editableScores[scannedName])) {
@@ -440,15 +497,24 @@ export default function QuickScoreEntry() {
       }
     }
     
+    setIsAddingPlayers(false);
     setShowScanModal(false);
     setScannedScores([]);
     setEditableScores({});
+    setSuggestedPresets({});
     setPlayerMappings({});
     
-    if (successCount > 0) {
+    if (addedPlayerCount > 0 || successCount > 0) {
+      const parts = [];
+      if (addedPlayerCount > 0) {
+        parts.push(`${addedPlayerCount} player${addedPlayerCount !== 1 ? 's' : ''} added`);
+      }
+      if (successCount > 0) {
+        parts.push(`${successCount} score${successCount !== 1 ? 's' : ''} saved`);
+      }
       toast({
-        title: "Scores Saved",
-        description: `${successCount} score${successCount !== 1 ? 's' : ''} saved successfully.`,
+        title: "Success",
+        description: parts.join(", ") + ".",
       });
     }
     if (errorCount > 0) {
@@ -723,15 +789,23 @@ export default function QuickScoreEntry() {
             {scannedScores.map((playerScore) => {
               const mappedPlayerId = playerMappings[playerScore.playerName];
               const mappedPlayer = mappedPlayerId ? players.find(p => p.id === mappedPlayerId) : null;
+              const suggestedPreset = suggestedPresets[playerScore.playerName];
               const usedPlayerIds = getUsedPlayerIds();
               const totals = calculateTotals(playerScore.playerName);
+              const willAutoAdd = !mappedPlayerId && suggestedPreset;
               
               return (
-                <div key={playerScore.playerName} className="space-y-3 p-3 border rounded-lg">
+                <div key={playerScore.playerName} className={`space-y-3 p-3 border rounded-lg ${willAutoAdd ? 'border-emerald-500 bg-emerald-50/50' : ''}`}>
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">Scanned:</span>
                       <span className="font-semibold text-foreground">{playerScore.playerName}</span>
+                      {willAutoAdd && (
+                        <span className="flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                          <UserPlus className="w-3 h-3" />
+                          Will add {suggestedPreset}
+                        </span>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -743,13 +817,20 @@ export default function QuickScoreEntry() {
                             ...prev,
                             [playerScore.playerName]: val === "unassigned" ? null : parseInt(val)
                           }));
+                          // Clear suggested preset if user manually assigns
+                          if (val !== "unassigned") {
+                            setSuggestedPresets(prev => ({
+                              ...prev,
+                              [playerScore.playerName]: null
+                            }));
+                          }
                         }}
                       >
                         <SelectTrigger className="w-40" data-testid={`select-player-${playerScore.playerName}`}>
                           <SelectValue placeholder="Select player" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="unassigned">-- Skip --</SelectItem>
+                          <SelectItem value="unassigned">{willAutoAdd ? `-- Auto-add ${suggestedPreset} --` : "-- Skip --"}</SelectItem>
                           {players.map(p => (
                             <SelectItem 
                               key={p.id} 
@@ -877,17 +958,32 @@ export default function QuickScoreEntry() {
                 setScannedScores([]);
                 setEditableScores({});
                 setPlayerMappings({});
+                setSuggestedPresets({});
               }}
+              disabled={isAddingPlayers}
               data-testid="button-cancel-scan"
             >
               Cancel
             </Button>
             <Button 
               onClick={handleConfirmScores}
-              disabled={Object.values(playerMappings).every(id => id === null)}
+              disabled={
+                isAddingPlayers ||
+                (Object.values(playerMappings).every(id => id === null) && 
+                 Object.values(suggestedPresets).every(p => p === null))
+              }
               data-testid="button-confirm-scanned-scores"
             >
-              Save Scores
+              {isAddingPlayers ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Adding Players...
+                </>
+              ) : (
+                Object.values(suggestedPresets).some(p => p !== null) 
+                  ? "Add Players & Save Scores" 
+                  : "Save Scores"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
