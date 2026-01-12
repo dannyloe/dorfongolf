@@ -151,7 +151,7 @@ function TeeManagement({ courseId }: { courseId: number }) {
         <p className="text-sm text-muted-foreground">No tees configured. Add tees to enable handicap-adjusted scoring.</p>
       ) : (
         <div className="space-y-2">
-          {tees?.map((tee) => (
+          {[...(tees || [])].sort((a, b) => b.courseRating - a.courseRating).map((tee) => (
             <div key={tee.id} className="flex items-center gap-2 p-2 bg-muted/20 rounded-md">
               <div
                 className="w-4 h-4 rounded-full border"
