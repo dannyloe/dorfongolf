@@ -490,6 +490,34 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.matches.updatePlayerHandicap.path, isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.matchId);
+    const playerId = parseInt(req.params.playerId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
+    try {
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      
+      if (!isAdmin && !isCreator) {
+        return res.status(403).json({ message: "Only the event creator can update handicaps" });
+      }
+      
+      const input = api.matches.updatePlayerHandicap.input.parse(req.body);
+      const updated = await storage.updatePlayerHandicapIndex(playerId, input.handicapIndex);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Scorecard OCR Scanning
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {

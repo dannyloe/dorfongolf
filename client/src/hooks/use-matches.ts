@@ -406,3 +406,64 @@ export function useScanScorecard() {
     },
   });
 }
+
+// Player Handicap types and hooks
+export interface PlayerHandicap {
+  id: number;
+  presetPlayerName: string;
+  handicapIndex: number | null;
+  updatedAt: string | null;
+}
+
+export function usePlayerHandicaps() {
+  return useQuery({
+    queryKey: [api.playerHandicaps.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.playerHandicaps.list.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch player handicaps");
+      return res.json() as Promise<PlayerHandicap[]>;
+    },
+  });
+}
+
+export function useUpsertPlayerHandicap() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ presetPlayerName, handicapIndex }: { presetPlayerName: string; handicapIndex: number | null }) => {
+      const url = buildUrl(api.playerHandicaps.upsert.path, { presetPlayerName });
+      const res = await fetch(url, {
+        method: api.playerHandicaps.upsert.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handicapIndex }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update player handicap");
+      return res.json() as Promise<PlayerHandicap>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.playerHandicaps.list.path] });
+    },
+  });
+}
+
+export function useUpdatePlayerMatchHandicap(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ playerId, handicapIndex }: { playerId: number; handicapIndex: number | null }) => {
+      const url = buildUrl(api.matches.updatePlayerHandicap.path, { matchId, playerId });
+      const res = await fetch(url, {
+        method: api.matches.updatePlayerHandicap.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handicapIndex }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update player handicap");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}

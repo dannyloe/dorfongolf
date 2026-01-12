@@ -112,6 +112,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updatePlayerHandicap: {
+      method: 'PATCH' as const,
+      path: '/api/matches/:matchId/players/:playerId/handicap',
+      input: z.object({
+        handicapIndex: z.number().min(-100).max(540).nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof players.$inferSelect>(),
+        404: errorSchemas.notFound,
+        403: z.object({ message: z.string() }),
+      },
+    },
   },
   eventMatches: {
     list: {
