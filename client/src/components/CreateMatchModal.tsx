@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useCreateMatch, useCourses } from "@/hooks/use-matches";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trophy, MapPin } from "lucide-react";
 import { insertMatchSchema } from "@shared/schema";
@@ -17,6 +18,7 @@ const formSchema = insertMatchSchema.pick({ name: true, courseName: true });
 type FormData = z.infer<typeof formSchema>;
 
 export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
+  const [, setLocation] = useLocation();
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -30,9 +32,10 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
 
   const onSubmit = (data: FormData) => {
     createMatch.mutate(data, {
-      onSuccess: () => {
+      onSuccess: (newMatch) => {
         reset();
         onClose();
+        setLocation(`/matches/${newMatch.id}`);
       },
     });
   };
