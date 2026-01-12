@@ -9,7 +9,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, type NetScoringContext } from "@/lib/matchplay";
-import { buildNetScoringContext, type PlayerHandicapInfo } from "@/lib/handicap";
+import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -62,15 +62,33 @@ interface EventMatch {
   teams: Team[];
 }
 
-function ScoreCell({ score, par, testId }: { score: number | null; par: number; testId: string }) {
+function ScoreCell({ score, par, testId, strokesReceived = 0 }: { score: number | null; par: number; testId: string; strokesReceived?: number }) {
+  const strokeDots = strokesReceived > 0 ? (
+    <span className="absolute -top-0.5 -right-0.5 flex gap-0.5">
+      {Array.from({ length: Math.min(strokesReceived, 3) }, (_, i) => (
+        <span key={i} className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+      ))}
+    </span>
+  ) : null;
+
   if (score === null) {
-    return <span className="font-mono font-medium inline-block w-10 h-8 leading-8 text-muted-foreground" data-testid={testId}>-</span>;
+    return (
+      <span className="font-mono font-medium inline-block w-10 h-8 leading-8 text-muted-foreground relative" data-testid={testId}>
+        -
+        {strokeDots}
+      </span>
+    );
   }
   
   const diff = score - par;
   
   if (diff === 0) {
-    return <span className="font-mono font-medium inline-block w-10 h-8 leading-8 text-foreground" data-testid={testId}>{score}</span>;
+    return (
+      <span className="font-mono font-medium inline-block w-10 h-8 leading-8 text-foreground relative" data-testid={testId}>
+        {score}
+        {strokeDots}
+      </span>
+    );
   }
   
   if (diff < 0) {
@@ -91,6 +109,7 @@ function ScoreCell({ score, par, testId }: { score: number | null; par: number; 
       <span className="font-mono font-bold inline-flex items-center justify-center w-10 h-8 text-red-500 relative" data-testid={testId}>
         {circles}
         <span className="relative z-10">{score}</span>
+        {strokeDots}
       </span>
     );
   }
@@ -112,6 +131,7 @@ function ScoreCell({ score, par, testId }: { score: number | null; par: number; 
     <span className="font-mono font-bold inline-flex items-center justify-center w-10 h-8 text-blue-500 relative" data-testid={testId}>
       {squares}
       <span className="relative z-10">{score}</span>
+      {strokeDots}
     </span>
   );
 }
@@ -255,6 +275,40 @@ export default function MatchDetail() {
       courseTees,
       matchCourse.holes
     );
+  };
+
+  // Build match-level net context for scorecard stroke indicators
+  const scorecardNetContext: NetScoringContext | null = (() => {
+    if (!match?.isHandicapped || !matchCourse || !courseTees) {
+      return null;
+    }
+    
+    const hasHoleHandicaps = matchCourse.holes.some(h => h.handicap !== null);
+    if (!hasHoleHandicaps) {
+      return null;
+    }
+    
+    const playerHandicapInfo: PlayerHandicapInfo[] = players.map(p => ({
+      playerId: p.id,
+      playerName: p.name,
+      handicapIndex: p.handicapIndex,
+      teeId: p.teeId,
+    }));
+    
+    const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null);
+    if (!hasAnyHandicapData) {
+      return null;
+    }
+    
+    return buildNetScoringContext(playerHandicapInfo, courseTees, matchCourse.holes);
+  })();
+  
+  // Get strokes received for a player on a specific hole
+  const getPlayerStrokesForHole = (playerId: number, holeNumber: number): number => {
+    if (!scorecardNetContext) return 0;
+    const relativeHandicap = scorecardNetContext.playerHandicaps.get(playerId) ?? 0;
+    const holeHandicapRank = scorecardNetContext.holeHandicaps.get(holeNumber) ?? 18;
+    return getStrokesForHole(relativeHandicap, holeHandicapRank);
   };
 
   const getPlayerScore = (playerId: number) => {
@@ -2316,6 +2370,7 @@ export default function MatchDetail() {
                               score={score} 
                               par={getHolePar(hole)} 
                               testId={`score-cell-${p.id}-${hole}`}
+                              strokesReceived={getPlayerStrokesForHole(p.id, hole)}
                             />
                           </div>
                         )}
