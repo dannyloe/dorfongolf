@@ -366,6 +366,56 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    createTee: {
+      method: 'POST' as const,
+      path: '/api/courses/:id/tees',
+      input: z.object({
+        name: z.string().min(1),
+        slopeRating: z.number().min(55).max(155),
+        courseRating: z.number().min(550).max(800), // Stored as tenths (e.g., 721 = 72.1)
+        color: z.string().nullable().optional(),
+      }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          courseId: z.number(),
+          name: z.string(),
+          slopeRating: z.number(),
+          courseRating: z.number(),
+          color: z.string().nullable(),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
+    updateTee: {
+      method: 'PUT' as const,
+      path: '/api/courses/:courseId/tees/:teeId',
+      input: z.object({
+        name: z.string().min(1).optional(),
+        slopeRating: z.number().min(55).max(155).optional(),
+        courseRating: z.number().min(550).max(800).optional(),
+        color: z.string().nullable().optional(),
+      }),
+      responses: {
+        200: z.object({
+          id: z.number(),
+          courseId: z.number(),
+          name: z.string(),
+          slopeRating: z.number(),
+          courseRating: z.number(),
+          color: z.string().nullable(),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
+    deleteTee: {
+      method: 'DELETE' as const,
+      path: '/api/courses/:courseId/tees/:teeId',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   playerHandicaps: {
     list: {

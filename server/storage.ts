@@ -411,6 +411,19 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateCourseTee(courseId: number, teeId: number, data: { name?: string; slopeRating?: number; courseRating?: number; color?: string | null }): Promise<CourseTee | undefined> {
+    const [updated] = await db.update(courseTees)
+      .set(data)
+      .where(and(eq(courseTees.id, teeId), eq(courseTees.courseId, courseId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteCourseTee(courseId: number, teeId: number): Promise<boolean> {
+    const result = await db.delete(courseTees).where(and(eq(courseTees.id, teeId), eq(courseTees.courseId, courseId))).returning();
+    return result.length > 0;
+  }
+
   async updateCourse(id: number, data: { name?: string }): Promise<Course | undefined> {
     const [updated] = await db.update(courses)
       .set(data)

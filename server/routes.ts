@@ -559,6 +559,61 @@ export async function registerRoutes(
     }
   });
 
+  // Create course tee
+  app.post(api.courses.createTee.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const input = api.courses.createTee.input.parse(req.body);
+      const tee = await storage.createCourseTee({
+        courseId,
+        name: input.name,
+        slopeRating: input.slopeRating,
+        courseRating: input.courseRating,
+        color: input.color || null,
+      });
+      res.status(201).json(tee);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update course tee
+  app.put(api.courses.updateTee.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.courseId);
+      const teeId = parseInt(req.params.teeId);
+      const input = api.courses.updateTee.input.parse(req.body);
+      const updated = await storage.updateCourseTee(courseId, teeId, input);
+      if (!updated) {
+        return res.status(404).json({ message: "Tee not found for this course" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete course tee
+  app.delete(api.courses.deleteTee.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.courseId);
+      const teeId = parseInt(req.params.teeId);
+      const deleted = await storage.deleteCourseTee(courseId, teeId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Tee not found for this course" });
+      }
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Scorecard OCR Scanning
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {

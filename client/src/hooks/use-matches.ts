@@ -508,3 +508,66 @@ export function useUpdatePlayerTee(matchId: number) {
     },
   });
 }
+
+export type CourseTee = {
+  id: number;
+  courseId: number;
+  name: string;
+  slopeRating: number;
+  courseRating: number;
+  color: string | null;
+};
+
+export function useCreateCourseTee(courseId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (tee: { name: string; slopeRating: number; courseRating: number; color?: string | null }) => {
+      const res = await fetch(`/api/courses/${courseId}/tees`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tee),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to create tee");
+      return res.json() as Promise<CourseTee>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'tees'] });
+    },
+  });
+}
+
+export function useUpdateCourseTee(courseId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ teeId, ...data }: { teeId: number; name?: string; slopeRating?: number; courseRating?: number; color?: string | null }) => {
+      const res = await fetch(`/api/courses/${courseId}/tees/${teeId}`, {
+        method: 'PUT',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to update tee");
+      return res.json() as Promise<CourseTee>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'tees'] });
+    },
+  });
+}
+
+export function useDeleteCourseTee(courseId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (teeId: number) => {
+      const res = await fetch(`/api/courses/${courseId}/tees/${teeId}`, {
+        method: 'DELETE',
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete tee");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'tees'] });
+    },
+  });
+}

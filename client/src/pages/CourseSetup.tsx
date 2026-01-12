@@ -1,10 +1,213 @@
 import { useState } from "react";
-import { useCourses, useCreateCourse, useUpdateCourseHole, useDeleteCourse, type Course } from "@/hooks/use-matches";
+import { useCourses, useCreateCourse, useUpdateCourseHole, useDeleteCourse, useCourseTees, useCreateCourseTee, useUpdateCourseTee, useDeleteCourseTee, type Course, type CourseTee } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, Trash2, ChevronDown, ChevronUp, MapPin } from "lucide-react";
+import { Plus, Save, Trash2, ChevronDown, ChevronUp, MapPin, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+const TEE_COLORS = [
+  { name: "Blue", value: "#1e40af" },
+  { name: "White", value: "#ffffff" },
+  { name: "Gold", value: "#eab308" },
+  { name: "Red", value: "#dc2626" },
+  { name: "Black", value: "#1f2937" },
+  { name: "Green", value: "#16a34a" },
+];
+
+function TeeManagement({ courseId }: { courseId: number }) {
+  const { data: tees, isLoading } = useCourseTees(courseId);
+  const createTee = useCreateCourseTee(courseId);
+  const updateTee = useUpdateCourseTee(courseId);
+  const deleteTee = useDeleteCourseTee(courseId);
+  const { toast } = useToast();
+
+  const [isAddingTee, setIsAddingTee] = useState(false);
+  const [newTee, setNewTee] = useState({ name: "", slopeRating: 113, courseRating: 720, color: "#ffffff" });
+  const [editingTee, setEditingTee] = useState<{ id: number; name: string; slopeRating: number; courseRating: number; color: string } | null>(null);
+
+  const handleCreateTee = async () => {
+    if (!newTee.name.trim()) {
+      toast({ title: "Error", description: "Please enter a tee name", variant: "destructive" });
+      return;
+    }
+    try {
+      await createTee.mutateAsync(newTee);
+      toast({ title: "Success", description: `${newTee.name} tee created` });
+      setNewTee({ name: "", slopeRating: 113, courseRating: 720, color: "#ffffff" });
+      setIsAddingTee(false);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleUpdateTee = async () => {
+    if (!editingTee) return;
+    try {
+      await updateTee.mutateAsync({ teeId: editingTee.id, name: editingTee.name, slopeRating: editingTee.slopeRating, courseRating: editingTee.courseRating, color: editingTee.color });
+      toast({ title: "Success", description: "Tee updated" });
+      setEditingTee(null);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTee = async (tee: CourseTee) => {
+    if (!confirm(`Delete ${tee.name} tee?`)) return;
+    try {
+      await deleteTee.mutateAsync(tee.id);
+      toast({ title: "Success", description: `${tee.name} tee deleted` });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  };
+
+  if (isLoading) return <div className="text-sm text-muted-foreground">Loading tees...</div>;
+
+  return (
+    <div className="border-t pt-4 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-medium text-sm">Tee Sets</h4>
+        {!isAddingTee && (
+          <Button size="sm" variant="outline" onClick={() => setIsAddingTee(true)} data-testid="button-add-tee">
+            <Plus className="w-3 h-3 mr-1" />
+            Add Tee
+          </Button>
+        )}
+      </div>
+
+      {isAddingTee && (
+        <div className="flex flex-wrap items-end gap-2 mb-3 p-3 bg-muted/30 rounded-md">
+          <div className="flex-1 min-w-[100px]">
+            <label className="text-xs text-muted-foreground">Name</label>
+            <Input
+              value={newTee.name}
+              onChange={(e) => setNewTee(prev => ({ ...prev, name: e.target.value }))}
+              placeholder="e.g., Blue"
+              className="h-8"
+              data-testid="input-new-tee-name"
+            />
+          </div>
+          <div className="w-20">
+            <label className="text-xs text-muted-foreground">Slope</label>
+            <Input
+              type="number"
+              value={newTee.slopeRating}
+              onChange={(e) => setNewTee(prev => ({ ...prev, slopeRating: parseInt(e.target.value) || 113 }))}
+              className="h-8"
+              data-testid="input-new-tee-slope"
+            />
+          </div>
+          <div className="w-20">
+            <label className="text-xs text-muted-foreground">Rating</label>
+            <Input
+              type="number"
+              step="0.1"
+              value={(newTee.courseRating / 10).toFixed(1)}
+              onChange={(e) => setNewTee(prev => ({ ...prev, courseRating: Math.round(parseFloat(e.target.value) * 10) || 720 }))}
+              className="h-8"
+              data-testid="input-new-tee-rating"
+            />
+          </div>
+          <div className="w-24">
+            <label className="text-xs text-muted-foreground">Color</label>
+            <select
+              value={newTee.color}
+              onChange={(e) => setNewTee(prev => ({ ...prev, color: e.target.value }))}
+              className="w-full h-8 px-2 border rounded-md text-sm bg-background"
+              data-testid="select-new-tee-color"
+            >
+              {TEE_COLORS.map(c => (
+                <option key={c.value} value={c.value}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <Button size="sm" onClick={handleCreateTee} disabled={createTee.isPending} data-testid="button-save-new-tee">
+            <Save className="w-3 h-3 mr-1" />
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setIsAddingTee(false)} data-testid="button-cancel-add-tee">
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      )}
+
+      {(!tees || tees.length === 0) && !isAddingTee ? (
+        <p className="text-sm text-muted-foreground">No tees configured. Add tees to enable handicap-adjusted scoring.</p>
+      ) : (
+        <div className="space-y-2">
+          {tees?.map((tee) => (
+            <div key={tee.id} className="flex items-center gap-2 p-2 bg-muted/20 rounded-md">
+              <div
+                className="w-4 h-4 rounded-full border"
+                style={{ backgroundColor: tee.color || '#ffffff' }}
+              />
+              {editingTee?.id === tee.id ? (
+                <>
+                  <Input
+                    value={editingTee.name}
+                    onChange={(e) => setEditingTee(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    className="h-7 w-24"
+                    data-testid={`input-edit-tee-name-${tee.id}`}
+                  />
+                  <Input
+                    type="number"
+                    value={editingTee.slopeRating}
+                    onChange={(e) => setEditingTee(prev => prev ? { ...prev, slopeRating: parseInt(e.target.value) || 113 } : null)}
+                    className="h-7 w-16"
+                    data-testid={`input-edit-tee-slope-${tee.id}`}
+                  />
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={(editingTee.courseRating / 10).toFixed(1)}
+                    onChange={(e) => setEditingTee(prev => prev ? { ...prev, courseRating: Math.round(parseFloat(e.target.value) * 10) || 720 } : null)}
+                    className="h-7 w-16"
+                    data-testid={`input-edit-tee-rating-${tee.id}`}
+                  />
+                  <select
+                    value={editingTee.color}
+                    onChange={(e) => setEditingTee(prev => prev ? { ...prev, color: e.target.value } : null)}
+                    className="h-7 px-1 border rounded-md text-xs bg-background"
+                    data-testid={`select-edit-tee-color-${tee.id}`}
+                  >
+                    {TEE_COLORS.map(c => (
+                      <option key={c.value} value={c.value}>{c.name}</option>
+                    ))}
+                  </select>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleUpdateTee} disabled={updateTee.isPending} data-testid={`button-save-tee-${tee.id}`}>
+                    <Save className="w-3 h-3" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditingTee(null)} data-testid={`button-cancel-edit-tee-${tee.id}`}>
+                    <X className="w-3 h-3" />
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-sm flex-1">{tee.name}</span>
+                  <span className="text-xs text-muted-foreground">Slope: {tee.slopeRating}</span>
+                  <span className="text-xs text-muted-foreground">Rating: {(tee.courseRating / 10).toFixed(1)}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => setEditingTee({ id: tee.id, name: tee.name, slopeRating: tee.slopeRating, courseRating: tee.courseRating, color: tee.color || '#ffffff' })}
+                    data-testid={`button-edit-tee-${tee.id}`}
+                  >
+                    <Save className="w-3 h-3" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleDeleteTee(tee)} data-testid={`button-delete-tee-${tee.id}`}>
+                    <Trash2 className="w-3 h-3 text-destructive" />
+                  </Button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CourseSetup() {
   const { data: courses, isLoading } = useCourses();
@@ -443,6 +646,8 @@ export default function CourseSetup() {
                     </Button>
                   </div>
                 )}
+
+                <TeeManagement courseId={course.id} />
               </CardContent>
             )}
           </Card>
