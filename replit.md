@@ -38,6 +38,14 @@ Preferred communication style: Simple, everyday language.
 - **Matches**: Golf matches with name, course, creator, and completion status
 - **Players**: Participants in matches (can be registered users or guests)
 - **Scores**: Hole-by-hole stroke counts for each player
+- **MatchPlayerHandicaps**: Per-match course handicap overrides for individual players
+
+### Match-Specific Course Handicap Overrides
+- In expanded match view for net matches, course handicaps are displayed for each player
+- Creators can click on any player's course handicap to override it for that specific match
+- Overrides are highlighted with a colored border to distinguish from calculated values
+- Overrides only affect the specific match, not the player's default handicap settings
+- Relative handicaps are recalculated based on overridden course handicaps
 
 ### Project Structure
 ```
