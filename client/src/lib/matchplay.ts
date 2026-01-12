@@ -277,7 +277,9 @@ export function calculateLedger(
       for (const member of team.members || []) {
         const player = member.player;
         if (player) {
-          const stableKey = player.userId || `guest:${player.name}`;
+          // Normalize guest names: lowercase and trim for consistent matching
+          const normalizedName = player.name.toLowerCase().trim();
+          const stableKey = player.userId || `guest:${normalizedName}`;
           playerIdToStableKey.set(member.playerId, stableKey);
           playerIdToName.set(member.playerId, player.name);
         }
@@ -314,7 +316,7 @@ export function calculateLedger(
         });
 
         if (skinsResult.isComplete) {
-          const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName}`;
+          const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName.toLowerCase().trim()}`;
           const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
           if (s.amount > 0) {
             existing.won += s.amount;
@@ -347,7 +349,7 @@ export function calculateLedger(
           });
 
           if (ns.settlement.isComplete) {
-            const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName}`;
+            const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName.toLowerCase().trim()}`;
             const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
             if (s.amount > 0) {
               existing.won += s.amount;
@@ -375,7 +377,7 @@ export function calculateLedger(
         });
 
         if (settlement.isComplete) {
-          const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName}`;
+          const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName.toLowerCase().trim()}`;
           const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
           if (s.amount > 0) {
             existing.won += s.amount;
