@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Search, Hash, Flag, Link2 } from "lucide-react";
+import { Users, Search, Hash, Flag, Link2, Shield, ShieldCheck } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -18,6 +19,7 @@ interface PlayerData {
   aliases: string[];
   claimedByUserId: string | null;
   claimedByName: string | null;
+  isAdmin: boolean | null;
 }
 
 interface AvailableTee {
@@ -276,6 +278,23 @@ export default function PlayerMaintenance() {
     });
   };
 
+  const adminMutation = useMutation({
+    mutationFn: async ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) => {
+      return apiRequest("PUT", `/api/users/${userId}/admin`, { isAdmin });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      toast({ title: "Admin status updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleToggleAdmin = (userId: string, isAdmin: boolean) => {
+    adminMutation.mutate({ userId, isAdmin });
+  };
+
   const filteredPlayers = players.filter(player => {
     const query = searchQuery.toLowerCase();
     return (
@@ -341,6 +360,12 @@ export default function PlayerMaintenance() {
                           Linked User
                         </div>
                       </TableHead>
+                      <TableHead className="w-[80px]">
+                        <div className="flex items-center gap-1">
+                          <Shield className="h-3 w-3" />
+                          Admin
+                        </div>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -369,11 +394,28 @@ export default function PlayerMaintenance() {
                         <TableCell>
                           <EditableLinkedUserCell player={player} />
                         </TableCell>
+                        <TableCell>
+                          {player.claimedByUserId ? (
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={player.isAdmin ?? false}
+                                onCheckedChange={(checked) => handleToggleAdmin(player.claimedByUserId!, checked)}
+                                disabled={adminMutation.isPending}
+                                data-testid={`switch-admin-${player.name}`}
+                              />
+                              {player.isAdmin && (
+                                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                     {filteredPlayers.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                           No players found
                         </TableCell>
                       </TableRow>

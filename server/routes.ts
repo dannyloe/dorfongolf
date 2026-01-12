@@ -337,8 +337,8 @@ export async function registerRoutes(
       // Admin-only endpoint
       const user = req.user as any;
       const userId = user.claims.sub;
-      const ADMIN_USER_ID = "52861828";
-      if (userId !== ADMIN_USER_ID) {
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) {
         return res.status(403).json({ message: "Only administrators can update player settings" });
       }
       
@@ -399,6 +399,33 @@ export async function registerRoutes(
       }
       if (err instanceof Error && err.message.includes("already claimed")) {
         return res.status(409).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.presetPlayers.setAdmin.path, isAuthenticated, async (req, res) => {
+    try {
+      // Only admins can set admin status
+      const user = req.user as any;
+      const currentUserId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(currentUserId);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only administrators can modify admin status" });
+      }
+      
+      const targetUserId = req.params.userId;
+      const input = api.presetPlayers.setAdmin.input.parse(req.body);
+      
+      const result = await storage.setUserAdmin(targetUserId, input.isAdmin);
+      if (!result) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Internal server error" });
     }

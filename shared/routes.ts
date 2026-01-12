@@ -254,6 +254,7 @@ export const api = {
             aliases: z.array(z.string()),
             claimedByUserId: z.string().nullable(),
             claimedByName: z.string().nullable(),
+            isAdmin: z.boolean().nullable(),
           })),
           availableTees: z.array(z.object({
             id: z.number(),
@@ -294,6 +295,22 @@ export const api = {
         200: z.custom<typeof users.$inferSelect>(),
         400: errorSchemas.validation,
         409: z.object({ message: z.string() }),
+      },
+    },
+    setAdmin: {
+      method: 'PUT' as const,
+      path: '/api/users/:userId/admin',
+      input: z.object({
+        isAdmin: z.boolean(),
+      }),
+      responses: {
+        200: z.object({
+          userId: z.string(),
+          isAdmin: z.boolean(),
+        }),
+        400: errorSchemas.validation,
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
       },
     },
   },

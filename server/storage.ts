@@ -505,6 +505,7 @@ export class DatabaseStorage implements IStorage {
       aliases: string[];
       claimedByUserId: string | null;
       claimedByName: string | null;
+      isAdmin: boolean | null;
     }[];
     availableTees: {
       id: number;
@@ -521,6 +522,10 @@ export class DatabaseStorage implements IStorage {
     const handicapMap = new Map(allHandicaps.map(h => [h.presetPlayerName, h]));
     const claimedList = await this.getPresetPlayersClaimed();
     const claimedMap = new Map(claimedList.map(c => [c.presetPlayerName, c]));
+    
+    // Get all users to fetch isAdmin status
+    const allUsers = await db.select().from(users);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
     
     // Build reverse alias map
     const aliasesMap: Record<string, string[]> = {};
@@ -539,6 +544,7 @@ export class DatabaseStorage implements IStorage {
       const handicapData = handicapMap.get(name);
       const claimed = claimedMap.get(name);
       const defaultTee = handicapData?.defaultTeeId ? teeMap.get(handicapData.defaultTeeId) : null;
+      const linkedUser = claimed?.userId ? userMap.get(claimed.userId) : null;
       
       return {
         name,
@@ -548,6 +554,7 @@ export class DatabaseStorage implements IStorage {
         aliases: aliasesMap[name] || [],
         claimedByUserId: claimed?.userId ?? null,
         claimedByName: claimed?.userName ?? null,
+        isAdmin: linkedUser?.isAdmin ?? null,
       };
     });
     
@@ -562,6 +569,20 @@ export class DatabaseStorage implements IStorage {
     }));
     
     return { players: playerList, availableTees };
+  }
+
+  async setUserAdmin(userId: string, isAdmin: boolean): Promise<{ userId: string; isAdmin: boolean } | null> {
+    const [updated] = await db.update(users)
+      .set({ isAdmin })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updated) return null;
+    return { userId: updated.id, isAdmin: updated.isAdmin ?? false };
+  }
+
+  async isUserAdmin(userId: string): Promise<boolean> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    return user?.isAdmin ?? false;
   }
 
   async getTeeById(teeId: number): Promise<CourseTee | undefined> {
