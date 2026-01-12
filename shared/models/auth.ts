@@ -60,6 +60,8 @@ export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
   "junior": "JR",
   "john paul": "JP",
   "sammy": "Sub4 Seeger",
+  "sam": "Sub4 Seeger",
+  "seeger": "Sub4 Seeger",
   "jay": "Jordan",
   "jj": "Jordan",
   "matt": "Wait",
