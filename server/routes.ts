@@ -129,15 +129,20 @@ export async function registerRoutes(
     }
   });
 
+  const ADMIN_USER_ID = "52861828";
+
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
+    const userId = user.claims.sub;
     
     const match = await storage.getMatch(matchId);
     if (!match) return res.status(404).json({ message: "Match not found" });
     
-    // Only the creator can delete
-    if (match.creatorId !== user.claims.sub) {
+    const isAdmin = userId === ADMIN_USER_ID;
+    const isCreator = match.creatorId === userId;
+    
+    if (!isAdmin && !isCreator) {
       return res.status(403).json({ message: "Only the match creator can delete this match" });
     }
     
@@ -202,6 +207,22 @@ export async function registerRoutes(
 
   app.delete(api.eventMatches.delete.path, isAuthenticated, async (req, res) => {
     const eventMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
+    const eventMatch = await storage.getEventMatch(eventMatchId);
+    if (!eventMatch) return res.status(404).json({ message: "Event match not found" });
+    
+    const match = await storage.getMatch(eventMatch.eventId);
+    if (!match) return res.status(404).json({ message: "Match not found" });
+    
+    const isAdmin = userId === ADMIN_USER_ID;
+    const isCreator = match.creatorId === userId;
+    
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ message: "Only the match creator can delete this event" });
+    }
+    
     await storage.deleteEventMatch(eventMatchId);
     res.status(204).send();
   });

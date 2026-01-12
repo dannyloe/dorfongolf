@@ -123,6 +123,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(eventMatches).where(eq(eventMatches.eventId, eventId));
   }
 
+  async getEventMatch(eventMatchId: number): Promise<EventMatch | undefined> {
+    const [eventMatch] = await db.select().from(eventMatches).where(eq(eventMatches.id, eventMatchId));
+    return eventMatch;
+  }
+
   async getEventMatchWithTeams(eventMatchId: number) {
     const [eventMatch] = await db.select().from(eventMatches).where(eq(eventMatches.id, eventMatchId));
     if (!eventMatch) return undefined;

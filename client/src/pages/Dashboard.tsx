@@ -106,7 +106,9 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
   const deleteMatch = useDeleteMatch();
   const updateStatus = useUpdateMatchStatus();
   const [showConfirm, setShowConfirm] = useState(false);
-  const isCreator = userId === match.creatorId;
+  const ADMIN_USER_ID = "52861828";
+  const isAdmin = userId === ADMIN_USER_ID;
+  const isCreator = userId === match.creatorId || isAdmin;
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();

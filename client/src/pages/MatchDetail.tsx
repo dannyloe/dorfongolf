@@ -180,7 +180,9 @@ export default function MatchDetail() {
   const players: Player[] = match.players || [];
   const scores: Score[] = match.scores || [];
   const eventMatches: EventMatch[] = match.eventMatches || [];
-  const isCreator = user?.id === match.creatorId;
+  const ADMIN_USER_ID = "52861828";
+  const isAdmin = user?.id === ADMIN_USER_ID;
+  const isCreator = user?.id === match.creatorId || isAdmin;
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   const currentPlayer = players.find((p: Player) => p.userId === user?.id);
   
