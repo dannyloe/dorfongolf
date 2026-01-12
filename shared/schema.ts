@@ -122,6 +122,13 @@ export const teamMembers = pgTable("team_members", {
   playerId: integer("player_id").notNull(),
 });
 
+// Dynamic preset players - supplements the hardcoded PRESET_PLAYERS list
+export const presetPlayers = pgTable("preset_players", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const coursesRelations = relations(courses, ({ many }) => ({
@@ -276,6 +283,11 @@ export const insertPlayerCourseDefaultSchema = createInsertSchema(playerCourseDe
   updatedAt: true,
 });
 
+export const insertPresetPlayerSchema = createInsertSchema(presetPlayers).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -316,6 +328,9 @@ export type InsertMatchPlayerHandicap = z.infer<typeof insertMatchPlayerHandicap
 
 export type PlayerCourseDefault = typeof playerCourseDefaults.$inferSelect;
 export type InsertPlayerCourseDefault = z.infer<typeof insertPlayerCourseDefaultSchema>;
+
+export type PresetPlayer = typeof presetPlayers.$inferSelect;
+export type InsertPresetPlayer = z.infer<typeof insertPresetPlayerSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

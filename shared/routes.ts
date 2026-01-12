@@ -358,6 +358,21 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    create: {
+      method: 'POST' as const,
+      path: '/api/preset-players',
+      input: z.object({
+        name: z.string().min(1).max(100),
+      }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          name: z.string(),
+        }),
+        400: errorSchemas.validation,
+        409: z.object({ message: z.string() }),
+      },
+    },
   },
   ledger: {
     get: {

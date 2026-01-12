@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -8,7 +8,8 @@ import {
   type CourseTee, type InsertCourseTee,
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
   type PlayerCourseDefault, type InsertPlayerCourseDefault,
-  type Group, type InsertGroup
+  type Group, type InsertGroup,
+  type PresetPlayer, type InsertPresetPlayer
 } from "@shared/schema";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -602,6 +603,13 @@ export class DatabaseStorage implements IStorage {
     const claimedList = await this.getPresetPlayersClaimed();
     const claimedMap = new Map(claimedList.map(c => [c.presetPlayerName, c]));
     
+    // Get database-stored preset players
+    const dbPresetPlayers = await db.select().from(presetPlayers);
+    const dbPlayerNames = dbPresetPlayers.map(p => p.name);
+    
+    // Merge hardcoded and database players (no duplicates)
+    const allPlayerNames = [...PRESET_PLAYERS, ...dbPlayerNames.filter(n => !PRESET_PLAYERS.includes(n as any))];
+    
     // Get all users to fetch isAdmin status
     const allUsers = await db.select().from(users);
     const userMap = new Map(allUsers.map(u => [u.id, u]));
@@ -619,7 +627,7 @@ export class DatabaseStorage implements IStorage {
     const courseMap = new Map(allCourses.map(c => [c.id, c]));
     const teeMap = new Map(allTees.map(t => [t.id, t]));
     
-    const playerList = PRESET_PLAYERS.map(name => {
+    const playerList = allPlayerNames.map(name => {
       const handicapData = handicapMap.get(name);
       const claimed = claimedMap.get(name);
       const defaultTee = handicapData?.defaultTeeId ? teeMap.get(handicapData.defaultTeeId) : null;
@@ -953,6 +961,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(matches.id, matchId))
       .returning();
     return updated;
+  }
+
+  // Dynamic preset players
+  async getDynamicPresetPlayers(): Promise<PresetPlayer[]> {
+    return db.select().from(presetPlayers).orderBy(presetPlayers.name);
+  }
+
+  async createPresetPlayer(name: string): Promise<PresetPlayer> {
+    const [newPlayer] = await db.insert(presetPlayers).values({ name }).returning();
+    return newPlayer;
+  }
+
+  async presetPlayerExists(name: string): Promise<boolean> {
+    const { PRESET_PLAYERS } = await import("@shared/models/auth");
+    // Check hardcoded list
+    if (PRESET_PLAYERS.includes(name as any)) return true;
+    // Check database
+    const [existing] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, name));
+    return !!existing;
   }
 }
 

@@ -433,6 +433,35 @@ export async function registerRoutes(
     }
   });
 
+  app.post(api.presetPlayers.create.path, isAuthenticated, async (req, res) => {
+    try {
+      // Admin-only endpoint
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only administrators can add players to the roster" });
+      }
+      
+      const input = api.presetPlayers.create.input.parse(req.body);
+      const name = input.name.trim();
+      
+      // Check if player already exists
+      const exists = await storage.presetPlayerExists(name);
+      if (exists) {
+        return res.status(409).json({ message: `Player "${name}" already exists in the roster` });
+      }
+      
+      const newPlayer = await storage.createPresetPlayer(name);
+      res.status(201).json({ id: newPlayer.id, name: newPlayer.name });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Courses Routes
   app.get(api.courses.list.path, isAuthenticated, async (req, res) => {
     try {
