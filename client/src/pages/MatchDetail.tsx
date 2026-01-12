@@ -2675,20 +2675,20 @@ export default function MatchDetail() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-primary/5 text-primary">
-              <th className="p-4 text-left font-bold w-48 sticky left-0 bg-white/95 backdrop-blur shadow-sm z-10">Player</th>
+              <th className="p-2 text-left font-bold w-32 sticky left-0 bg-white/95 backdrop-blur shadow-sm z-10">Player</th>
               {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => (
                 <th key={hole} className="p-3 text-center w-12 font-semibold text-muted-foreground">{hole}</th>
               ))}
-              <th className="p-4 text-center font-bold text-foreground bg-primary/10 sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">Total</th>
+              <th className="p-4 text-center font-bold text-foreground bg-primary/10">Total</th>
             </tr>
             {/* Par Row */}
             {matchCourse && (
               <tr className="bg-muted/30 text-xs">
-                <td className="p-2 text-left font-medium sticky left-0 bg-muted/30 backdrop-blur z-10 text-muted-foreground">Par</td>
+                <td className="p-2 text-left text-xs font-medium sticky left-0 bg-muted/30 backdrop-blur z-10 text-muted-foreground">Par</td>
                 {Array.from({ length: 18 }, (_, i) => i + 1).map(hole => (
                   <td key={hole} className="p-2 text-center font-medium text-muted-foreground">{getHolePar(hole)}</td>
                 ))}
-                <td className="p-2 text-center font-bold text-muted-foreground bg-primary/5 sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">{matchCourse.totalPar}</td>
+                <td className="p-2 text-center font-bold text-muted-foreground bg-primary/5">{matchCourse.totalPar}</td>
               </tr>
             )}
           </thead>
@@ -2699,41 +2699,13 @@ export default function MatchDetail() {
               
               return (
                 <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isCurrentUser ? "bg-accent/5" : ""}`}>
-                  <td className={`p-4 font-semibold sticky left-0 bg-white/95 backdrop-blur z-10 ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
-                        {p.name} {isCurrentUser && "(You)"}
-                      </div>
-                      {/* Tee and Handicap row - only show when handicapped */}
+                  <td className={`p-2 font-semibold sticky left-0 bg-white/95 backdrop-blur z-10 ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
+                    <div className="flex items-center gap-1">
+                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
+                      <span className="truncate text-xs">{p.name}{isCurrentUser && " (You)"}</span>
+                      {/* Handicap inline - only show when handicapped */}
                       {match?.isHandicapped && (
-                        <div className="flex items-center gap-2 ml-4">
-                          {/* Tee selector */}
-                          {isCreator && courseTees && courseTees.length > 0 ? (
-                            <select
-                              value={p.teeId || ''}
-                              onChange={(e) => {
-                                const teeId = e.target.value ? parseInt(e.target.value) : null;
-                                updatePlayerTee.mutate({ playerId: p.id, teeId });
-                              }}
-                              className="h-5 text-xs border rounded px-1 font-normal bg-white"
-                              data-testid={`select-player-tee-${p.id}`}
-                            >
-                              <option value="">Tee</option>
-                              {courseTees.map(tee => (
-                                <option key={tee.id} value={tee.id}>
-                                  {tee.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            p.teeId && courseTees && (
-                              <span className="text-xs text-muted-foreground font-normal">
-                                {courseTees.find(t => t.id === p.teeId)?.name || ''}
-                              </span>
-                            )
-                          )}
-                          {/* Editable handicap for this match */}
+                        <>
                           {isCreator ? (
                             editingPlayerHandicap === p.id ? (
                               <input
@@ -2764,7 +2736,7 @@ export default function MatchDetail() {
                                   }
                                 }}
                                 autoFocus
-                                className="w-12 h-5 text-center text-xs border rounded px-1 font-normal"
+                                className="w-10 h-4 text-center text-[10px] border rounded px-0.5 font-normal flex-shrink-0"
                                 placeholder="HCP"
                                 data-testid={`input-player-handicap-${p.id}`}
                               />
@@ -2775,7 +2747,7 @@ export default function MatchDetail() {
                                   const hcp = p.handicapIndex;
                                   setPlayerHandicapEditValue(hcp !== null && hcp !== undefined ? (hcp / 10).toFixed(1) : '');
                                 }}
-                                className="w-12 h-5 text-center text-xs bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal cursor-pointer inline-flex items-center justify-center"
+                                className="w-8 h-4 text-center text-[10px] bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal cursor-pointer inline-flex items-center justify-center flex-shrink-0"
                                 data-testid={`button-player-handicap-${p.id}`}
                               >
                                 {p.handicapIndex !== null && p.handicapIndex !== undefined 
@@ -2785,12 +2757,12 @@ export default function MatchDetail() {
                             )
                           ) : (
                             p.handicapIndex !== null && p.handicapIndex !== undefined && (
-                              <span className="text-xs text-muted-foreground font-normal">
-                                HCP: {(p.handicapIndex / 10).toFixed(1)}
+                              <span className="text-[10px] text-muted-foreground font-normal flex-shrink-0">
+                                ({(p.handicapIndex / 10).toFixed(1)})
                               </span>
                             )
                           )}
-                        </div>
+                        </>
                       )}
                     </div>
                   </td>
@@ -2850,7 +2822,7 @@ export default function MatchDetail() {
                       </td>
                     );
                   })}
-                  <td className="p-4 text-center font-bold text-lg bg-primary/5 sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]">
+                  <td className="p-4 text-center font-bold text-lg bg-primary/5">
                     {(() => {
                       const totalScore = getPlayerScore(p.id);
                       const coursePar = matchCourse?.totalPar ?? 72;
