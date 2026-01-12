@@ -45,6 +45,7 @@ export type PresetPlayerName = typeof PRESET_PLAYERS[number];
 export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
   "danny": "DLoe",
   "craig": "Spikey",
+  "gigerich": "Spikey",
 };
 
 // Helper function to resolve a name to its canonical preset player name
