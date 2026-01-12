@@ -26,6 +26,7 @@ export async function registerRoutes(
         name: input.name || null,
         courseName: input.courseName,
         creatorId: user.claims.sub,
+        groupId: input.groupId ?? null,
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
@@ -723,11 +724,12 @@ export async function registerRoutes(
       }
       
       const input = api.matches.updateDetails.input.parse(req.body);
-      const updateData: { name?: string | null; courseId?: number; courseName?: string; createdAt?: Date } = {};
+      const updateData: { name?: string | null; courseId?: number; courseName?: string; createdAt?: Date; groupId?: number | null } = {};
       if (input.name !== undefined) updateData.name = input.name || null;
       if (input.courseId !== undefined) updateData.courseId = input.courseId;
       if (input.courseName) updateData.courseName = input.courseName;
       if (input.createdAt) updateData.createdAt = new Date(input.createdAt);
+      if (input.groupId !== undefined) updateData.groupId = input.groupId;
       
       const updated = await storage.updateMatchDetails(matchId, updateData);
       res.json(updated);
@@ -1132,6 +1134,25 @@ Rules:
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Failed to import course" });
+    }
+  });
+
+  // Groups endpoints
+  app.get(api.groups.list.path, isAuthenticated, async (req, res) => {
+    const groups = await storage.getGroups();
+    res.json(groups);
+  });
+
+  app.post(api.groups.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.groups.create.input.parse(req.body);
+      const group = await storage.createGroup(input.name);
+      res.status(201).json(group);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

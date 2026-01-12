@@ -7,6 +7,12 @@ import { users } from "./models/auth";
 
 // === TABLE DEFINITIONS ===
 
+export const groups = pgTable("groups", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const courses = pgTable("courses", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
@@ -36,6 +42,7 @@ export const matches = pgTable("matches", {
   name: text("name"),
   courseName: text("course_name").notNull(),
   courseId: integer("course_id"),
+  groupId: integer("group_id"),
   creatorId: text("creator_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),
@@ -137,6 +144,10 @@ export const courseTeesRelations = relations(courseTees, ({ one }) => ({
   }),
 }));
 
+export const groupsRelations = relations(groups, ({ many }) => ({
+  matches: many(matches),
+}));
+
 export const matchesRelations = relations(matches, ({ one, many }) => ({
   creator: one(users, {
     fields: [matches.creatorId],
@@ -145,6 +156,10 @@ export const matchesRelations = relations(matches, ({ one, many }) => ({
   course: one(courses, {
     fields: [matches.courseId],
     references: [courses.id],
+  }),
+  group: one(groups, {
+    fields: [matches.groupId],
+    references: [groups.id],
   }),
   players: many(players),
   scores: many(scores),
@@ -202,6 +217,11 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
 
 // === BASE SCHEMAS ===
 
+export const insertGroupSchema = createInsertSchema(groups).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCourseSchema = createInsertSchema(courses).omit({
   id: true,
 });
@@ -257,6 +277,9 @@ export const insertPlayerCourseDefaultSchema = createInsertSchema(playerCourseDe
 });
 
 // === EXPLICIT API CONTRACT TYPES ===
+
+export type Group = typeof groups.$inferSelect;
+export type InsertGroup = z.infer<typeof insertGroupSchema>;
 
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
@@ -327,6 +350,7 @@ export type MatchResponse = Match & {
   players?: Player[];
   scores?: Score[];
   eventMatches?: EventMatchResponse[];
+  group?: Group;
 };
 
 export type TeamResponse = Team & {

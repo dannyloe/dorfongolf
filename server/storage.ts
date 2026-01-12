@@ -1,13 +1,14 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
   type PlayerHandicap, type InsertPlayerHandicap,
   type CourseTee, type InsertCourseTee,
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
-  type PlayerCourseDefault, type InsertPlayerCourseDefault
+  type PlayerCourseDefault, type InsertPlayerCourseDefault,
+  type Group, type InsertGroup
 } from "@shared/schema";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -18,7 +19,7 @@ export interface IStorage {
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
 
   // App methods
-  createMatch(match: { name: string | null; courseName: string; creatorId: string }): Promise<Match>;
+  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null }): Promise<Match>;
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
   getMatchPlayers(matchId: number): Promise<Player[]>;
@@ -35,7 +36,7 @@ export class DatabaseStorage implements IStorage {
     return authStorage.upsertUser(user);
   }
 
-  async createMatch(match: { name: string | null; courseName: string; creatorId: string }): Promise<Match> {
+  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null }): Promise<Match> {
     // Look up courseId from courseName
     let courseId: number | null = null;
     if (match.courseName) {
@@ -44,7 +45,13 @@ export class DatabaseStorage implements IStorage {
         courseId = course.id;
       }
     }
-    const [newMatch] = await db.insert(matches).values({ ...match, courseId }).returning();
+    const [newMatch] = await db.insert(matches).values({ 
+      name: match.name,
+      courseName: match.courseName,
+      creatorId: match.creatorId,
+      courseId,
+      groupId: match.groupId ?? null,
+    }).returning();
     return newMatch;
   }
 
@@ -653,12 +660,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateMatchDetails(matchId: number, data: { name?: string | null; courseId?: number; courseName?: string; createdAt?: Date }): Promise<Match> {
-    const updateData: Partial<{ name: string | null; courseId: number; courseName: string; createdAt: Date }> = {};
+  async updateMatchDetails(matchId: number, data: { name?: string | null; courseId?: number; courseName?: string; createdAt?: Date; groupId?: number | null }): Promise<Match> {
+    const updateData: Partial<{ name: string | null; courseId: number; courseName: string; createdAt: Date; groupId: number | null }> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.courseId !== undefined) updateData.courseId = data.courseId;
     if (data.courseName !== undefined) updateData.courseName = data.courseName;
     if (data.createdAt !== undefined) updateData.createdAt = data.createdAt;
+    if (data.groupId !== undefined) updateData.groupId = data.groupId;
     
     const [updated] = await db.update(matches)
       .set(updateData)
@@ -892,6 +900,29 @@ export class DatabaseStorage implements IStorage {
         }
       }
     }
+  }
+
+  // Groups
+  async getGroups(): Promise<Group[]> {
+    return db.select().from(groups).orderBy(groups.name);
+  }
+
+  async createGroup(name: string): Promise<Group> {
+    const [newGroup] = await db.insert(groups).values({ name }).returning();
+    return newGroup;
+  }
+
+  async getGroupById(id: number): Promise<Group | undefined> {
+    const [group] = await db.select().from(groups).where(eq(groups.id, id));
+    return group;
+  }
+
+  async updateMatchGroup(matchId: number, groupId: number | null): Promise<Match> {
+    const [updated] = await db.update(matches)
+      .set({ groupId })
+      .where(eq(matches.id, matchId))
+      .returning();
+    return updated;
   }
 }
 

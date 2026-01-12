@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, type MatchPlayerHandicap } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, type MatchPlayerHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
@@ -142,6 +142,8 @@ export default function MatchDetail() {
   const matchId = parseInt(params?.id || "0");
   const { data: match, isLoading, error } = useMatch(matchId);
   const { data: coursesList } = useCourses();
+  const { data: groups } = useGroups();
+  const createGroup = useCreateGroup();
   const { user } = useAuth();
   const addPlayer = useAddPlayer(matchId);
   const submitScore = useSubmitScore(matchId);
@@ -220,8 +222,11 @@ export default function MatchDetail() {
   const [editingName, setEditingName] = useState(false);
   const [editingCourse, setEditingCourse] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
+  const [editingGroup, setEditingGroup] = useState(false);
   const [headerNameValue, setHeaderNameValue] = useState("");
   const [headerDateValue, setHeaderDateValue] = useState("");
+  const [showNewGroupInput, setShowNewGroupInput] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   
   // Selected player in standings (for filtering Match Results)
   const [selectedStandingsPlayer, setSelectedStandingsPlayer] = useState<number | null>(null);
@@ -721,6 +726,120 @@ export default function MatchDetail() {
               >
                 <Calendar className="w-4 h-4 text-primary" />
                 {match.createdAt && format(new Date(match.createdAt), "MMM d, yyyy")}
+                {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
+              </span>
+            )}
+            {editingGroup && isCreator ? (
+              showNewGroupInput ? (
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="text"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    placeholder="New group name..."
+                    className="h-8 w-32"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" && newGroupName.trim()) {
+                        try {
+                          const newGroup = await createGroup.mutateAsync(newGroupName.trim());
+                          updateMatchDetails.mutate({ groupId: newGroup.id });
+                          setNewGroupName("");
+                          setShowNewGroupInput(false);
+                          setEditingGroup(false);
+                        } catch (err) {
+                          console.error("Failed to create group:", err);
+                        }
+                      } else if (e.key === "Escape") {
+                        setShowNewGroupInput(false);
+                        setNewGroupName("");
+                      }
+                    }}
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={async () => {
+                      if (newGroupName.trim()) {
+                        try {
+                          const newGroup = await createGroup.mutateAsync(newGroupName.trim());
+                          updateMatchDetails.mutate({ groupId: newGroup.id });
+                          setNewGroupName("");
+                          setShowNewGroupInput(false);
+                          setEditingGroup(false);
+                        } catch (err) {
+                          console.error("Failed to create group:", err);
+                        }
+                      }
+                    }}
+                    disabled={!newGroupName.trim() || createGroup.isPending}
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowNewGroupInput(false);
+                      setNewGroupName("");
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <Select
+                    value={match.groupId?.toString() || "none"}
+                    onValueChange={(val) => {
+                      if (val === "add_new") {
+                        setShowNewGroupInput(true);
+                      } else {
+                        updateMatchDetails.mutate({ groupId: val === "none" ? null : parseInt(val) });
+                        setEditingGroup(false);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-36">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No Group</SelectItem>
+                      {groups?.map((group: { id: number; name: string }) => (
+                        <SelectItem key={group.id} value={group.id.toString()}>
+                          {group.name}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="add_new" className="text-primary font-medium">
+                        + Add New Group
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setEditingGroup(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              )
+            ) : (
+              <span 
+                className={`flex items-center gap-1 ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+                onClick={() => {
+                  if (isCreator) {
+                    setEditingGroup(true);
+                  }
+                }}
+                data-testid="text-event-group"
+              >
+                <Users className="w-4 h-4 text-muted-foreground" />
+                {match.groupId && groups ? (
+                  groups.find((g: { id: number; name: string }) => g.id === match.groupId)?.name || "No Group"
+                ) : (
+                  <span className="text-muted-foreground italic">No Group</span>
+                )}
                 {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
               </span>
             )}

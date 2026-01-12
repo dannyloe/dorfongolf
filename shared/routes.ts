@@ -10,7 +10,8 @@ import {
   courseHoles,
   playerHandicaps,
   matchPlayerHandicaps,
-  playerCourseDefaults
+  playerCourseDefaults,
+  groups
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -122,6 +123,7 @@ export const api = {
         courseId: z.number().optional(),
         courseName: z.string().optional(),
         createdAt: z.string().optional(),
+        groupId: z.number().nullable().optional(),
       }),
       responses: {
         200: z.custom<typeof matches.$inferSelect>(),
@@ -633,6 +635,26 @@ export const api = {
         }),
         400: errorSchemas.validation,
         500: errorSchemas.internal,
+      },
+    },
+  },
+  groups: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/groups',
+      responses: {
+        200: z.array(z.custom<typeof groups.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/groups',
+      input: z.object({
+        name: z.string().min(1),
+      }),
+      responses: {
+        201: z.custom<typeof groups.$inferSelect>(),
+        400: errorSchemas.validation,
       },
     },
   },

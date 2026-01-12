@@ -2,12 +2,13 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format, subDays, startOfYear } from "date-fns";
-import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft } from "lucide-react";
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -17,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { calculateLedger } from "@/lib/matchplay";
+import { useCourses, useGroups, useMatches } from "@/hooks/use-matches";
 
 type DateRange = {
   from: Date | undefined;
@@ -28,6 +30,13 @@ export default function Ledger() {
     from: subDays(new Date(), 90),
     to: new Date(),
   });
+  const [selectedEventId, setSelectedEventId] = useState<string>("all");
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("all");
+
+  const { data: courses } = useCourses();
+  const { data: groups } = useGroups();
+  const { data: matches } = useMatches();
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -36,14 +45,59 @@ export default function Ledger() {
     return params.toString();
   }, [dateRange]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<{
+    matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; groupId: number | null }>;
+    eventMatches: Array<{ eventId: number; [key: string]: any }>;
+    scores: Array<any>;
+  }>({
     queryKey: [`/api/ledger?${queryParams}`],
   });
 
+  // Filter event matches based on selected filters
+  const filteredEventMatches = useMemo(() => {
+    if (!data?.eventMatches || !data?.matches) return [];
+    
+    let filtered = data.eventMatches;
+    
+    // Create a map of event IDs to match data for quick lookup
+    const matchById = new Map();
+    for (const match of data.matches) {
+      matchById.set(match.id, match);
+    }
+    
+    // Filter by event
+    if (selectedEventId !== "all") {
+      const eventId = parseInt(selectedEventId);
+      filtered = filtered.filter((em: { eventId: number }) => em.eventId === eventId);
+    }
+    
+    // Filter by group
+    if (selectedGroupId !== "all") {
+      const groupId = parseInt(selectedGroupId);
+      filtered = filtered.filter((em: { eventId: number }) => {
+        const match = matchById.get(em.eventId);
+        return match?.groupId === groupId;
+      });
+    }
+    
+    // Filter by course
+    if (selectedCourseId !== "all") {
+      const courseId = parseInt(selectedCourseId);
+      filtered = filtered.filter((em: { eventId: number }) => {
+        const match = matchById.get(em.eventId);
+        return match?.courseId === courseId;
+      });
+    }
+    
+    return filtered;
+  }, [data, selectedEventId, selectedGroupId, selectedCourseId]);
+
   const ledgerResults = useMemo(() => {
-    if (!data?.eventMatches || !data?.scores) return null;
-    return calculateLedger(data.eventMatches, data.scores);
-  }, [data]);
+    if (!filteredEventMatches || filteredEventMatches.length === 0 || !data?.scores) {
+      return { balances: [], entries: [] };
+    }
+    return calculateLedger(filteredEventMatches as any, data.scores);
+  }, [filteredEventMatches, data?.scores]);
 
   const quickFilters = [
     { label: "Last 30 Days", days: 30 },
@@ -52,9 +106,9 @@ export default function Ledger() {
     { label: "All Time", action: () => setDateRange({ from: undefined, to: undefined }) },
   ];
 
-  const totalPot = ledgerResults?.balances.reduce((sum, b) => sum + Math.abs(b.netBalance), 0) || 0;
-  const topWinner = ledgerResults?.balances[0];
-  const topLoser = ledgerResults?.balances[ledgerResults.balances.length - 1];
+  const totalPot = ledgerResults.balances.reduce((sum, b) => sum + Math.abs(b.netBalance), 0);
+  const topWinner = ledgerResults.balances[0];
+  const topLoser = ledgerResults.balances[ledgerResults.balances.length - 1];
 
   if (isLoading) {
     return (
@@ -132,6 +186,74 @@ export default function Ledger() {
           <span className="text-sm text-muted-foreground ml-4">
             {format(dateRange.from, "MMM d, yyyy")} - {dateRange.to ? format(dateRange.to, "MMM d, yyyy") : "Present"}
           </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Trophy className="w-4 h-4 text-muted-foreground" />
+          <Select value={selectedEventId} onValueChange={setSelectedEventId}>
+            <SelectTrigger className="w-44" data-testid="select-filter-event">
+              <SelectValue placeholder="All Events" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Events</SelectItem>
+              {data?.matches?.map((match: { id: number; name: string | null; createdAt: string }) => (
+                <SelectItem key={match.id} value={match.id.toString()}>
+                  {match.name || format(new Date(match.createdAt), "MMM d, yyyy")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-muted-foreground" />
+          <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
+            <SelectTrigger className="w-36" data-testid="select-filter-group">
+              <SelectValue placeholder="All Groups" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Groups</SelectItem>
+              {groups?.map((group: { id: number; name: string }) => (
+                <SelectItem key={group.id} value={group.id.toString()}>
+                  {group.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-muted-foreground" />
+          <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+            <SelectTrigger className="w-44" data-testid="select-filter-course">
+              <SelectValue placeholder="All Courses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Courses</SelectItem>
+              {courses?.map((course: { id: number; name: string }) => (
+                <SelectItem key={course.id} value={course.id.toString()}>
+                  {course.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {(selectedEventId !== "all" || selectedGroupId !== "all" || selectedCourseId !== "all") && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSelectedEventId("all");
+              setSelectedGroupId("all");
+              setSelectedCourseId("all");
+            }}
+            data-testid="button-clear-filters"
+          >
+            Clear Filters
+          </Button>
         )}
       </div>
 

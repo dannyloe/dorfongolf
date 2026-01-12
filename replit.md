@@ -47,6 +47,20 @@ Preferred communication style: Simple, everyday language.
 - Overrides only affect the specific match, not the player's default handicap settings
 - Relative handicaps are recalculated based on overridden course handicaps
 
+### Event Groups
+- **Groups Table**: Stored in `groups` table with name field
+- **Match Association**: Matches have optional `groupId` foreign key to groups table
+- **Group Management**: Groups can be selected or created when creating/editing events
+- **Use Cases**: Organize events into leagues, tournament series, or custom categories (e.g., "Sunday League", "Tournament Series")
+- **Inline Editing**: Groups can be edited inline in MatchDetail header alongside name/course/date
+
+### Ledger Filtering
+- **Date Range**: Quick filters (30 days, 90 days, This Year, All Time) plus custom date range picker
+- **Event Filter**: Filter by specific event
+- **Group Filter**: Filter by event group to see stats for a specific league/series
+- **Course Filter**: Filter by course to see performance at specific courses
+- **Clear Filters**: Button appears when any filter is active to reset all filters
+
 ### Project Structure
 ```
 client/           # React frontend application

@@ -168,7 +168,7 @@ export function useUpdateHandicapped(matchId: number) {
   });
 }
 
-type UpdateDetailsInput = { name?: string; courseId?: number; courseName?: string; createdAt?: string };
+type UpdateDetailsInput = { name?: string | null; courseId?: number; courseName?: string; createdAt?: string; groupId?: number | null };
 
 export function useUpdateMatchDetails(matchId: number) {
   const queryClient = useQueryClient();
@@ -700,6 +700,40 @@ export function useCopyBetsFromEvent(targetEventId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.matches.get.path, targetEventId] });
+    },
+  });
+}
+
+// Groups hooks
+export function useGroups() {
+  return useQuery({
+    queryKey: [api.groups.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.groups.list.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch groups");
+      return res.json();
+    },
+  });
+}
+
+export function useCreateGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch(api.groups.create.path, {
+        method: api.groups.create.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to create group");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.groups.list.path] });
     },
   });
 }
