@@ -9,7 +9,8 @@ import {
   courses,
   courseHoles,
   playerHandicaps,
-  matchPlayerHandicaps
+  matchPlayerHandicaps,
+  playerCourseDefaults
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -533,6 +534,41 @@ export const api = {
       responses: {
         204: z.void(),
         403: errorSchemas.internal,
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  playerCourseDefaults: {
+    listAll: {
+      method: 'GET' as const,
+      path: '/api/player-course-defaults',
+      responses: {
+        200: z.array(z.custom<typeof playerCourseDefaults.$inferSelect>()),
+      },
+    },
+    listForPlayer: {
+      method: 'GET' as const,
+      path: '/api/player-course-defaults/:presetPlayerName',
+      responses: {
+        200: z.array(z.custom<typeof playerCourseDefaults.$inferSelect>()),
+      },
+    },
+    upsert: {
+      method: 'PUT' as const,
+      path: '/api/player-course-defaults/:presetPlayerName/:courseId',
+      input: z.object({
+        teeId: z.number(),
+      }),
+      responses: {
+        200: z.custom<typeof playerCourseDefaults.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/player-course-defaults/:presetPlayerName/:courseId',
+      responses: {
+        204: z.void(),
         404: errorSchemas.notFound,
       },
     },

@@ -39,7 +39,7 @@ export async function registerRoutes(
         matchId: match.id,
         userId: user.claims.sub,
         name: name,
-      });
+      }, match.courseId ?? undefined);
 
       res.status(201).json(match);
     } catch (err) {
@@ -78,6 +78,7 @@ export async function registerRoutes(
     const matchId = parseInt(req.params.id);
     try {
       const input = api.matches.addPlayer.input.parse(req.body);
+      const match = await storage.getMatch(matchId);
       const existingPlayers = await storage.getMatchPlayers(matchId);
       
       // Check if user is already in the match (by userId or by name for guests)
@@ -100,7 +101,7 @@ export async function registerRoutes(
         matchId,
         name: input.name,
         userId: input.userId,
-      });
+      }, match?.courseId ?? undefined);
       res.status(201).json(player);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -631,6 +632,56 @@ export async function registerRoutes(
       }
       
       await storage.deleteMatchPlayerHandicap(eventMatchId, playerId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Per-course default tees for players
+  app.get(api.playerCourseDefaults.listAll.path, isAuthenticated, async (req, res) => {
+    try {
+      const defaults = await storage.getAllPlayerCourseDefaults();
+      res.json(defaults);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.playerCourseDefaults.listForPlayer.path, isAuthenticated, async (req, res) => {
+    try {
+      const presetPlayerName = decodeURIComponent(req.params.presetPlayerName);
+      const defaults = await storage.getPlayerCourseDefaults(presetPlayerName);
+      res.json(defaults);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.playerCourseDefaults.upsert.path, isAuthenticated, async (req, res) => {
+    try {
+      const presetPlayerName = decodeURIComponent(req.params.presetPlayerName);
+      const courseId = parseInt(req.params.courseId);
+      const input = api.playerCourseDefaults.upsert.input.parse(req.body);
+      const result = await storage.upsertPlayerCourseDefault({
+        presetPlayerName,
+        courseId,
+        teeId: input.teeId,
+      });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.playerCourseDefaults.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const presetPlayerName = decodeURIComponent(req.params.presetPlayerName);
+      const courseId = parseInt(req.params.courseId);
+      await storage.deletePlayerCourseDefault(presetPlayerName, courseId);
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Internal server error" });

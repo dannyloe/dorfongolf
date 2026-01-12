@@ -94,6 +94,15 @@ export const matchPlayerHandicaps = pgTable("match_player_handicaps", {
   courseHandicap: integer("course_handicap").notNull(), // Override course handicap for this specific match
 });
 
+// Per-course default tees for preset players
+export const playerCourseDefaults = pgTable("player_course_defaults", {
+  id: serial("id").primaryKey(),
+  presetPlayerName: text("preset_player_name").notNull(),
+  courseId: integer("course_id").notNull(),
+  teeId: integer("tee_id").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   eventMatchId: integer("event_match_id").notNull(),
@@ -242,6 +251,11 @@ export const insertMatchPlayerHandicapSchema = createInsertSchema(matchPlayerHan
   id: true,
 });
 
+export const insertPlayerCourseDefaultSchema = createInsertSchema(playerCourseDefaults).omit({
+  id: true,
+  updatedAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Course = typeof courses.$inferSelect;
@@ -276,6 +290,9 @@ export type InsertPlayerHandicap = z.infer<typeof insertPlayerHandicapSchema>;
 
 export type MatchPlayerHandicap = typeof matchPlayerHandicaps.$inferSelect;
 export type InsertMatchPlayerHandicap = z.infer<typeof insertMatchPlayerHandicapSchema>;
+
+export type PlayerCourseDefault = typeof playerCourseDefaults.$inferSelect;
+export type InsertPlayerCourseDefault = z.infer<typeof insertPlayerCourseDefaultSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

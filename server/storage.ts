@@ -1,12 +1,13 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
   type PlayerHandicap, type InsertPlayerHandicap,
   type CourseTee, type InsertCourseTee,
-  type MatchPlayerHandicap, type InsertMatchPlayerHandicap
+  type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
+  type PlayerCourseDefault, type InsertPlayerCourseDefault
 } from "@shared/schema";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -54,7 +55,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(players).where(eq(players.matchId, matchId));
   }
 
-  async addPlayer(player: InsertPlayer): Promise<Player> {
+  async addPlayer(player: InsertPlayer, courseId?: number): Promise<Player> {
     // Copy default handicap and tee from player_handicaps if not already provided
     let handicapIndex: number | null = player.handicapIndex ?? null;
     let teeId: number | null = player.teeId ?? null;
@@ -63,6 +64,13 @@ export class DatabaseStorage implements IStorage {
       // Only use defaults if not explicitly provided
       if (handicapIndex === null && defaultHandicap?.handicapIndex !== undefined) {
         handicapIndex = defaultHandicap.handicapIndex;
+      }
+      // Check for course-specific tee default first, then fall back to general default
+      if (teeId === null && courseId) {
+        const courseDefault = await this.getPlayerCourseDefaultForCourse(player.name, courseId);
+        if (courseDefault?.teeId !== undefined) {
+          teeId = courseDefault.teeId;
+        }
       }
       if (teeId === null && defaultHandicap?.defaultTeeId !== undefined) {
         teeId = defaultHandicap.defaultTeeId;
@@ -649,6 +657,52 @@ export class DatabaseStorage implements IStorage {
         eq(matchPlayerHandicaps.eventMatchId, eventMatchId),
         eq(matchPlayerHandicaps.playerId, playerId)
       ));
+  }
+
+  // Per-course default tees for players
+  async getPlayerCourseDefaults(presetPlayerName: string): Promise<PlayerCourseDefault[]> {
+    return db.select().from(playerCourseDefaults).where(eq(playerCourseDefaults.presetPlayerName, presetPlayerName));
+  }
+
+  async getPlayerCourseDefaultForCourse(presetPlayerName: string, courseId: number): Promise<PlayerCourseDefault | undefined> {
+    const [result] = await db.select().from(playerCourseDefaults)
+      .where(and(
+        eq(playerCourseDefaults.presetPlayerName, presetPlayerName),
+        eq(playerCourseDefaults.courseId, courseId)
+      ));
+    return result;
+  }
+
+  async upsertPlayerCourseDefault(data: InsertPlayerCourseDefault): Promise<PlayerCourseDefault> {
+    const existing = await db.select().from(playerCourseDefaults)
+      .where(and(
+        eq(playerCourseDefaults.presetPlayerName, data.presetPlayerName),
+        eq(playerCourseDefaults.courseId, data.courseId)
+      ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(playerCourseDefaults)
+        .set({ teeId: data.teeId, updatedAt: new Date() })
+        .where(and(
+          eq(playerCourseDefaults.presetPlayerName, data.presetPlayerName),
+          eq(playerCourseDefaults.courseId, data.courseId)
+        ))
+        .returning();
+      return updated;
+    }
+    const [inserted] = await db.insert(playerCourseDefaults).values(data).returning();
+    return inserted;
+  }
+
+  async deletePlayerCourseDefault(presetPlayerName: string, courseId: number): Promise<void> {
+    await db.delete(playerCourseDefaults)
+      .where(and(
+        eq(playerCourseDefaults.presetPlayerName, presetPlayerName),
+        eq(playerCourseDefaults.courseId, courseId)
+      ));
+  }
+
+  async getAllPlayerCourseDefaults(): Promise<PlayerCourseDefault[]> {
+    return db.select().from(playerCourseDefaults);
   }
 }
 
