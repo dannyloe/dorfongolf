@@ -1,19 +1,26 @@
-import { useMatches, useDeleteMatch, useUpdateMatchStatus, useCloneEvent } from "@/hooks/use-matches";
+import { useMatches, useDeleteMatch, useUpdateMatchStatus, useCloneEvent, useGroups } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ClaimPresetPlayerModal } from "@/components/ClaimPresetPlayerModal";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: matches, isLoading } = useMatches();
+  const { data: groups } = useGroups();
   const { user } = useAuth();
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [hasShownModal, setHasShownModal] = useState(false);
+
+  const groupsById = useMemo(() => {
+    const map = new Map<number, string>();
+    groups?.forEach((g: { id: number; name: string }) => map.set(g.id, g.name));
+    return map;
+  }, [groups]);
 
   useEffect(() => {
     // Only show modal once per session if user hasn't claimed a preset
@@ -70,7 +77,7 @@ export default function Dashboard() {
         ) : (
           <div className="grid gap-4">
             {activeMatches.map((match) => (
-              <MatchCard key={match.id} match={match} userId={user?.id} />
+              <MatchCard key={match.id} match={match} userId={user?.id} groupsById={groupsById} />
             ))}
           </div>
         )}
@@ -85,7 +92,7 @@ export default function Dashboard() {
           </h2>
           <div className="grid gap-4 opacity-80 hover:opacity-100 transition-opacity">
             {pastMatches.map((match) => (
-              <MatchCard key={match.id} match={match} isHistory userId={user?.id} />
+              <MatchCard key={match.id} match={match} isHistory userId={user?.id} groupsById={groupsById} />
             ))}
           </div>
         </section>
@@ -103,7 +110,7 @@ export default function Dashboard() {
   );
 }
 
-function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory?: boolean, userId?: string }) {
+function MatchCard({ match, isHistory = false, userId, groupsById }: { match: any, isHistory?: boolean, userId?: string, groupsById: Map<number, string> }) {
   const deleteMatch = useDeleteMatch();
   const updateStatus = useUpdateMatchStatus();
   const cloneEvent = useCloneEvent();
@@ -249,9 +256,17 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
               {match.name || format(new Date(match.createdAt), "MMMM d, yyyy")}
             </h3>
             
-            <div className="flex items-center text-muted-foreground font-medium">
-              <MapPin className="w-4 h-4 mr-1.5 text-accent" />
-              {match.courseName}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center text-muted-foreground font-medium">
+                <MapPin className="w-4 h-4 mr-1.5 text-accent" />
+                {match.courseName}
+              </div>
+              {match.groupId && groupsById.get(match.groupId) && (
+                <div className="flex items-center text-muted-foreground text-sm">
+                  <Tag className="w-3.5 h-3.5 mr-1 text-primary" />
+                  {groupsById.get(match.groupId)}
+                </div>
+              )}
             </div>
             
             {match.players && match.players.length > 0 && (
