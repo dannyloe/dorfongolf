@@ -8,7 +8,7 @@ import {
   type CourseTee, type InsertCourseTee,
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap
 } from "@shared/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { eq, and, lt, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -55,18 +55,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addPlayer(player: InsertPlayer): Promise<Player> {
-    // Copy default handicap from player_handicaps if available
-    let handicapIndex: number | null = null;
+    // Copy default handicap and tee from player_handicaps if not already provided
+    let handicapIndex: number | null = player.handicapIndex ?? null;
+    let teeId: number | null = player.teeId ?? null;
     if (player.name) {
       const defaultHandicap = await this.getPlayerHandicap(player.name);
-      if (defaultHandicap?.handicapIndex !== undefined) {
+      // Only use defaults if not explicitly provided
+      if (handicapIndex === null && defaultHandicap?.handicapIndex !== undefined) {
         handicapIndex = defaultHandicap.handicapIndex;
+      }
+      if (teeId === null && defaultHandicap?.defaultTeeId !== undefined) {
+        teeId = defaultHandicap.defaultTeeId;
       }
     }
     
     const [newPlayer] = await db.insert(players).values({
       ...player,
       handicapIndex,
+      teeId,
     }).returning();
     return newPlayer;
   }
@@ -559,15 +565,24 @@ export class DatabaseStorage implements IStorage {
       };
     });
     
-    const availableTees = allTees.map(tee => ({
-      id: tee.id,
-      courseId: tee.courseId,
-      name: tee.name,
-      color: tee.color,
-      slopeRating: tee.slopeRating,
-      courseRating: tee.courseRating,
-      courseName: courseMap.get(tee.courseId)?.name ?? "Unknown",
-    }));
+    // Clean up orphaned tees (tees whose course no longer exists) and only include valid tees
+    const orphanedTeeIds = allTees.filter(tee => !courseMap.has(tee.courseId)).map(tee => tee.id);
+    if (orphanedTeeIds.length > 0) {
+      // Delete orphaned tees in the background
+      db.delete(courseTees).where(inArray(courseTees.id, orphanedTeeIds)).execute().catch(() => {});
+    }
+    
+    const availableTees = allTees
+      .filter(tee => courseMap.has(tee.courseId))
+      .map(tee => ({
+        id: tee.id,
+        courseId: tee.courseId,
+        name: tee.name,
+        color: tee.color,
+        slopeRating: tee.slopeRating,
+        courseRating: tee.courseRating,
+        courseName: courseMap.get(tee.courseId)!.name,
+      }));
     
     return { players: playerList, availableTees };
   }
