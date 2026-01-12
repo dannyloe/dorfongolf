@@ -236,7 +236,7 @@ function CourseImportDialog({ open, onClose }: { open: boolean; onClose: () => v
                   >
                     {allTees.map((tee, idx) => (
                       <option key={`${tee.tee_name}-${idx}`} value={tee.tee_name}>
-                        {tee.tee_name} (Rating: {tee.course_rating.toFixed(1)}, Slope: {tee.slope_rating}, Par: {tee.par_total})
+                        {tee.tee_name} (Rating: {tee.course_rating?.toFixed(1) ?? 'N/A'}, Slope: {tee.slope_rating ?? 'N/A'}, Par: {tee.par_total})
                       </option>
                     ))}
                   </select>
