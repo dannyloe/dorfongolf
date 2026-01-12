@@ -42,6 +42,7 @@ interface EventMatch {
   autoPressNassauFront9?: boolean;
   autoPressNassauBack9?: boolean;
   autoPressNassauOverall?: boolean;
+  useNetScoring?: boolean;
   teams: Team[];
 }
 
@@ -314,7 +315,9 @@ export function calculateLedger(
         playerNames.set(member.playerId, member.player?.name || `Player ${member.playerId}`);
       }
       
-      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext);
+      // Only use netContext if this specific event match has useNetScoring enabled
+      const skinsNetContext = em.useNetScoring ? netContext : null;
+      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, skinsNetContext);
       
       for (const s of skinsResult.settlements) {
         entries.push({
@@ -340,7 +343,8 @@ export function calculateLedger(
         }
       }
     } else if (em.matchType === 'nassau') {
-      const nassauResults = calculateNassauResults(em, scores, netContext);
+      const nassauNetContext = em.useNetScoring ? netContext : null;
+      const nassauResults = calculateNassauResults(em, scores, nassauNetContext);
       const nassauAutoPressSettings = {
         front9: em.autoPressNassauFront9 ?? true,
         back9: em.autoPressNassauBack9 ?? true,
@@ -374,7 +378,8 @@ export function calculateLedger(
         }
       }
     } else {
-      const results = calculateMatchPlayResults(em, scores, netContext);
+      const matchPlayNetContext = em.useNetScoring ? netContext : null;
+      const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
 
       for (const s of settlement.settlements) {
