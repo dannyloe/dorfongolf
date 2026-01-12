@@ -413,6 +413,12 @@ export default function PlayerMaintenance() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[60px]">
+                        <div className="flex items-center gap-1">
+                          <Users className="h-3 w-3" />
+                          Roster
+                        </div>
+                      </TableHead>
                       <TableHead className="w-[140px]">Player</TableHead>
                       <TableHead className="w-[100px]">
                         <div className="flex items-center gap-1">
@@ -421,12 +427,6 @@ export default function PlayerMaintenance() {
                         </div>
                       </TableHead>
                       <TableHead>Aliases</TableHead>
-                      <TableHead className="w-[100px]">
-                        <div className="flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          Show in Roster
-                        </div>
-                      </TableHead>
                       <TableHead className="w-[150px]">
                         <div className="flex items-center gap-1">
                           <Link2 className="h-3 w-3" />
@@ -451,6 +451,14 @@ export default function PlayerMaintenance() {
                       return (
                         <>
                           <TableRow key={player.name} data-testid={`row-player-${player.name}`} className="cursor-pointer" onClick={() => setExpandedPlayer(isExpanded ? null : player.name)}>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Switch
+                                checked={player.showInRoster}
+                                onCheckedChange={(checked) => handleUpdateShowInRoster(player.name, checked)}
+                                disabled={showInRosterMutation.isPending}
+                                data-testid={`switch-roster-${player.name}`}
+                              />
+                            </TableCell>
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
                                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -473,14 +481,6 @@ export default function PlayerMaintenance() {
                               <EditableAliasesCell 
                                 player={player}
                                 onSave={(val) => handleUpdateAliases(player.name, val)}
-                              />
-                            </TableCell>
-                            <TableCell onClick={(e) => e.stopPropagation()}>
-                              <Switch
-                                checked={player.showInRoster}
-                                onCheckedChange={(checked) => handleUpdateShowInRoster(player.name, checked)}
-                                disabled={showInRosterMutation.isPending}
-                                data-testid={`switch-roster-${player.name}`}
                               />
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
