@@ -39,3 +39,15 @@ export const PRESET_PLAYERS = [
 ] as const;
 
 export type PresetPlayerName = typeof PRESET_PLAYERS[number];
+
+// Player aliases - maps alternative names to canonical preset player names
+// Keys are lowercase for case-insensitive matching
+export const PLAYER_ALIASES: Record<string, PresetPlayerName> = {
+  "danny": "DLoe",
+};
+
+// Helper function to resolve a name to its canonical preset player name
+export function resolvePlayerAlias(name: string): string {
+  const normalized = name.toLowerCase().trim();
+  return PLAYER_ALIASES[normalized] || name;
+}

@@ -1,5 +1,6 @@
 import { useMatch, useSubmitScore, useCourses, useScanScorecard, ScannedPlayer, ScannedHole } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
+import { resolvePlayerAlias } from "@shared/models/auth";
 import { useRoute, useLocation, Link } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -321,8 +322,10 @@ export default function QuickScoreEntry() {
                 editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
               }
             });
+            const resolvedName = resolvePlayerAlias(ps.playerName);
             const matchedPlayer = players.find(p => 
-              p.name.toLowerCase() === ps.playerName.toLowerCase()
+              p.name.toLowerCase() === ps.playerName.toLowerCase() ||
+              p.name.toLowerCase() === resolvedName.toLowerCase()
             );
             mappings[ps.playerName] = matchedPlayer?.id || null;
           });
