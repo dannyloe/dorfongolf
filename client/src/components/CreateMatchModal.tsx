@@ -100,10 +100,12 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
 
               <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-semibold text-foreground/80">Event Name</label>
+                  <label className="text-sm font-semibold text-foreground/80">
+                    Event Name <span className="font-normal text-muted-foreground">(optional)</span>
+                  </label>
                   <input
                     {...register("name")}
-                    placeholder="e.g. Sunday Morning Round"
+                    placeholder="Leave blank to use date only"
                     className="input-field"
                   />
                   {errors.name && (
