@@ -1581,6 +1581,118 @@ export default function MatchDetail() {
                               </tr>
                             </thead>
                             <tbody>
+                              {/* Individual Player Rows for Team A (with stroke indicators) */}
+                              {netContext && teamA?.members.map((m) => {
+                                const relativeHandicap = netContext.playerHandicaps.get(m.playerId) ?? 0;
+                                return (
+                                  <tr key={`player-${m.playerId}`} className="border-b border-border/30 bg-primary/5">
+                                    <td className="p-2 pl-4 text-xs text-primary/70">{m.player?.name}</td>
+                                    {Array.from({ length: 9 }, (_, i) => i + 1).map((holeNum) => {
+                                      const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
+                                      const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
+                                      const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
+                                      return (
+                                        <td key={holeNum} className="p-1 text-center relative">
+                                          <span className="text-xs relative inline-block">
+                                            {score?.strokes ?? '-'}
+                                            {strokesReceived > 0 && (
+                                              <span className="absolute -top-0.5 -right-1.5 flex gap-0.5">
+                                                {Array.from({ length: Math.min(strokesReceived, 3) }, (_, i) => (
+                                                  <span key={i} className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                ))}
+                                              </span>
+                                            )}
+                                          </span>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="p-1 text-center bg-muted/30 text-xs">
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber <= 9).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                    </td>
+                                    {Array.from({ length: 9 }, (_, i) => i + 10).map((holeNum) => {
+                                      const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
+                                      const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
+                                      const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
+                                      return (
+                                        <td key={holeNum} className="p-1 text-center relative">
+                                          <span className="text-xs relative inline-block">
+                                            {score?.strokes ?? '-'}
+                                            {strokesReceived > 0 && (
+                                              <span className="absolute -top-0.5 -right-1.5 flex gap-0.5">
+                                                {Array.from({ length: Math.min(strokesReceived, 3) }, (_, i) => (
+                                                  <span key={i} className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                ))}
+                                              </span>
+                                            )}
+                                          </span>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="p-1 text-center bg-muted/30 text-xs">
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber >= 10).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                    </td>
+                                    {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
+                                      <td></td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                              {/* Individual Player Rows for Team B (with stroke indicators) */}
+                              {netContext && teamB?.members.map((m) => {
+                                const relativeHandicap = netContext.playerHandicaps.get(m.playerId) ?? 0;
+                                return (
+                                  <tr key={`player-${m.playerId}`} className="border-b border-border/30 bg-accent/5">
+                                    <td className="p-2 pl-4 text-xs text-accent/70">{m.player?.name}</td>
+                                    {Array.from({ length: 9 }, (_, i) => i + 1).map((holeNum) => {
+                                      const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
+                                      const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
+                                      const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
+                                      return (
+                                        <td key={holeNum} className="p-1 text-center relative">
+                                          <span className="text-xs relative inline-block">
+                                            {score?.strokes ?? '-'}
+                                            {strokesReceived > 0 && (
+                                              <span className="absolute -top-0.5 -right-1.5 flex gap-0.5">
+                                                {Array.from({ length: Math.min(strokesReceived, 3) }, (_, i) => (
+                                                  <span key={i} className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                ))}
+                                              </span>
+                                            )}
+                                          </span>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="p-1 text-center bg-muted/30 text-xs">
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber <= 9).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                    </td>
+                                    {Array.from({ length: 9 }, (_, i) => i + 10).map((holeNum) => {
+                                      const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
+                                      const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
+                                      const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
+                                      return (
+                                        <td key={holeNum} className="p-1 text-center relative">
+                                          <span className="text-xs relative inline-block">
+                                            {score?.strokes ?? '-'}
+                                            {strokesReceived > 0 && (
+                                              <span className="absolute -top-0.5 -right-1.5 flex gap-0.5">
+                                                {Array.from({ length: Math.min(strokesReceived, 3) }, (_, i) => (
+                                                  <span key={i} className="w-1 h-1 rounded-full bg-emerald-500" />
+                                                ))}
+                                              </span>
+                                            )}
+                                          </span>
+                                        </td>
+                                      );
+                                    })}
+                                    <td className="p-1 text-center bg-muted/30 text-xs">
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber >= 10).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                    </td>
+                                    {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
+                                      <td></td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-primary">{teamA?.name}</td>
                                 {results.slice(0, 9).map((r) => (
