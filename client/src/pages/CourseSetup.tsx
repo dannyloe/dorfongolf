@@ -95,6 +95,7 @@ function TeeManagement({ courseId }: { courseId: number }) {
               value={newTee.slopeRating}
               onChange={(e) => setNewTee(prev => ({ ...prev, slopeRating: parseInt(e.target.value) || 113 }))}
               className="h-8"
+              placeholder="113"
               data-testid="input-new-tee-slope"
             />
           </div>
@@ -104,8 +105,14 @@ function TeeManagement({ courseId }: { courseId: number }) {
               type="number"
               step="0.1"
               value={(newTee.courseRating / 10).toFixed(1)}
-              onChange={(e) => setNewTee(prev => ({ ...prev, courseRating: Math.round(parseFloat(e.target.value) * 10) || 720 }))}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val >= 55 && val <= 80) {
+                  setNewTee(prev => ({ ...prev, courseRating: Math.round(val * 10) }));
+                }
+              }}
               className="h-8"
+              placeholder="72.0"
               data-testid="input-new-tee-rating"
             />
           </div>
@@ -161,8 +168,14 @@ function TeeManagement({ courseId }: { courseId: number }) {
                     type="number"
                     step="0.1"
                     value={(editingTee.courseRating / 10).toFixed(1)}
-                    onChange={(e) => setEditingTee(prev => prev ? { ...prev, courseRating: Math.round(parseFloat(e.target.value) * 10) || 720 } : null)}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val) && val >= 55 && val <= 80) {
+                        setEditingTee(prev => prev ? { ...prev, courseRating: Math.round(val * 10) } : null);
+                      }
+                    }}
                     className="h-7 w-16"
+                    placeholder="72.0"
                     data-testid={`input-edit-tee-rating-${tee.id}`}
                   />
                   <select

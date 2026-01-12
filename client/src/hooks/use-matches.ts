@@ -528,7 +528,10 @@ export function useCreateCourseTee(courseId: number) {
         body: JSON.stringify(tee),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to create tee");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to create tee");
+      }
       return res.json() as Promise<CourseTee>;
     },
     onSuccess: () => {
@@ -547,7 +550,10 @@ export function useUpdateCourseTee(courseId: number) {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to update tee");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update tee");
+      }
       return res.json() as Promise<CourseTee>;
     },
     onSuccess: () => {
@@ -564,7 +570,10 @@ export function useDeleteCourseTee(courseId: number) {
         method: 'DELETE',
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to delete tee");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete tee");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/courses', courseId, 'tees'] });
