@@ -2507,7 +2507,17 @@ export default function MatchDetail() {
 
       {/* Player Ledger */}
       {eventMatches.length > 0 && (() => {
-        const { entries, balances } = calculateLedger(eventMatches, scores);
+        // Build netContextMap for proper net scoring in ledger
+        const netContextMap = new Map<number, NetScoringContext>();
+        for (const em of eventMatches) {
+          if (em.useNetScoring) {
+            const ctx = buildMatchNetContext(em);
+            if (ctx) {
+              netContextMap.set(em.eventId, ctx);
+            }
+          }
+        }
+        const { entries, balances } = calculateLedger(eventMatches, scores, netContextMap.size > 0 ? netContextMap : null);
         const hasCompletedMatches = entries.some(e => e.isComplete);
         
         if (!hasCompletedMatches) return null;
