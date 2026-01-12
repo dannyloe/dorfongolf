@@ -1,11 +1,12 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
   type PlayerHandicap, type InsertPlayerHandicap,
-  type CourseTee, type InsertCourseTee
+  type CourseTee, type InsertCourseTee,
+  type MatchPlayerHandicap, type InsertMatchPlayerHandicap
 } from "@shared/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -600,6 +601,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(matches.id, matchId))
       .returning();
     return updated;
+  }
+
+  // Match-specific player handicap overrides
+  async getMatchPlayerHandicaps(eventMatchId: number): Promise<MatchPlayerHandicap[]> {
+    return db.select().from(matchPlayerHandicaps).where(eq(matchPlayerHandicaps.eventMatchId, eventMatchId));
+  }
+
+  async upsertMatchPlayerHandicap(data: InsertMatchPlayerHandicap): Promise<MatchPlayerHandicap> {
+    const existing = await db.select().from(matchPlayerHandicaps)
+      .where(and(
+        eq(matchPlayerHandicaps.eventMatchId, data.eventMatchId),
+        eq(matchPlayerHandicaps.playerId, data.playerId)
+      ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(matchPlayerHandicaps)
+        .set({ courseHandicap: data.courseHandicap })
+        .where(and(
+          eq(matchPlayerHandicaps.eventMatchId, data.eventMatchId),
+          eq(matchPlayerHandicaps.playerId, data.playerId)
+        ))
+        .returning();
+      return updated;
+    }
+    const [inserted] = await db.insert(matchPlayerHandicaps).values(data).returning();
+    return inserted;
+  }
+
+  async deleteMatchPlayerHandicap(eventMatchId: number, playerId: number): Promise<void> {
+    await db.delete(matchPlayerHandicaps)
+      .where(and(
+        eq(matchPlayerHandicaps.eventMatchId, eventMatchId),
+        eq(matchPlayerHandicaps.playerId, playerId)
+      ));
   }
 }
 

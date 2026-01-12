@@ -8,7 +8,8 @@ import {
   eventMatches,
   courses,
   courseHoles,
-  playerHandicaps
+  playerHandicaps,
+  matchPlayerHandicaps
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -501,6 +502,37 @@ export const api = {
       path: '/api/player-handicaps/:presetPlayerName',
       responses: {
         204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  matchPlayerHandicaps: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/event-matches/:eventMatchId/player-handicaps',
+      responses: {
+        200: z.array(z.custom<typeof matchPlayerHandicaps.$inferSelect>()),
+      },
+    },
+    upsert: {
+      method: 'PUT' as const,
+      path: '/api/event-matches/:eventMatchId/player-handicaps/:playerId',
+      input: z.object({
+        courseHandicap: z.number().min(-50).max(54),
+      }),
+      responses: {
+        200: z.custom<typeof matchPlayerHandicaps.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.internal,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/event-matches/:eventMatchId/player-handicaps/:playerId',
+      responses: {
+        204: z.void(),
+        403: errorSchemas.internal,
         404: errorSchemas.notFound,
       },
     },

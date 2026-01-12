@@ -554,6 +554,89 @@ export async function registerRoutes(
     }
   });
 
+  // Match-specific player handicap overrides
+  app.get(api.matchPlayerHandicaps.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const eventMatchId = parseInt(req.params.eventMatchId);
+      const handicaps = await storage.getMatchPlayerHandicaps(eventMatchId);
+      res.json(handicaps);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.matchPlayerHandicaps.upsert.path, isAuthenticated, async (req, res) => {
+    try {
+      const eventMatchId = parseInt(req.params.eventMatchId);
+      const playerId = parseInt(req.params.playerId);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      // Get the event match to find its parent match
+      const eventMatch = await storage.getEventMatch(eventMatchId);
+      if (!eventMatch) {
+        return res.status(404).json({ message: "Event match not found" });
+      }
+      
+      // Get the parent match to check permissions
+      const match = await storage.getMatch(eventMatch.eventId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      
+      if (!isAdmin && !isCreator) {
+        return res.status(403).json({ message: "Only the event creator can update match handicaps" });
+      }
+      
+      const input = api.matchPlayerHandicaps.upsert.input.parse(req.body);
+      const handicap = await storage.upsertMatchPlayerHandicap({
+        eventMatchId,
+        playerId,
+        courseHandicap: input.courseHandicap,
+      });
+      res.json(handicap);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.matchPlayerHandicaps.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const eventMatchId = parseInt(req.params.eventMatchId);
+      const playerId = parseInt(req.params.playerId);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const eventMatch = await storage.getEventMatch(eventMatchId);
+      if (!eventMatch) {
+        return res.status(404).json({ message: "Event match not found" });
+      }
+      
+      const match = await storage.getMatch(eventMatch.eventId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      
+      if (!isAdmin && !isCreator) {
+        return res.status(403).json({ message: "Only the event creator can update match handicaps" });
+      }
+      
+      await storage.deleteMatchPlayerHandicap(eventMatchId, playerId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Match Handicapped Status
   app.patch(api.matches.updateHandicapped.path, isAuthenticated, async (req, res) => {
     try {
