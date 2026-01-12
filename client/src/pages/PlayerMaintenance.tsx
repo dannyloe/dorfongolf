@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Search, Hash, Flag, Link2, Shield, ShieldCheck } from "lucide-react";
+import { Users, Search, Hash, Flag, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useCourses } from "@/hooks/use-matches";
 
 interface PlayerData {
   name: string;
@@ -35,6 +36,19 @@ interface AvailableTee {
 interface PlayerDataResponse {
   players: PlayerData[];
   availableTees: AvailableTee[];
+}
+
+interface PlayerCourseDefault {
+  id: number;
+  presetPlayerName: string;
+  courseId: number;
+  teeId: number;
+  updatedAt: string | null;
+}
+
+interface Course {
+  id: number;
+  name: string;
 }
 
 function EditableHandicapCell({ 
@@ -243,9 +257,19 @@ function EditableLinkedUserCell({
 export default function PlayerMaintenance() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+  const [addingCourseForPlayer, setAddingCourseForPlayer] = useState<string | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+  const [selectedTeeId, setSelectedTeeId] = useState<string>("");
 
   const { data, isLoading: isLoadingPlayers } = useQuery<PlayerDataResponse>({
     queryKey: ["/api/preset-players/full"],
+  });
+
+  const { data: courses } = useCourses();
+
+  const { data: allCourseDefaults } = useQuery<PlayerCourseDefault[]>({
+    queryKey: ["/api/player-course-defaults"],
   });
 
   const players = data?.players || [];
@@ -293,6 +317,51 @@ export default function PlayerMaintenance() {
 
   const handleToggleAdmin = (userId: string, isAdmin: boolean) => {
     adminMutation.mutate({ userId, isAdmin });
+  };
+
+  const upsertCourseDefaultMutation = useMutation({
+    mutationFn: async ({ playerName, courseId, teeId }: { playerName: string; courseId: number; teeId: number }) => {
+      return apiRequest("PUT", `/api/player-course-defaults/${encodeURIComponent(playerName)}/${courseId}`, { teeId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/player-course-defaults"] });
+      setAddingCourseForPlayer(null);
+      setSelectedCourseId("");
+      setSelectedTeeId("");
+      toast({ title: "Course default saved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteCourseDefaultMutation = useMutation({
+    mutationFn: async ({ playerName, courseId }: { playerName: string; courseId: number }) => {
+      return apiRequest("DELETE", `/api/player-course-defaults/${encodeURIComponent(playerName)}/${courseId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/player-course-defaults"] });
+      toast({ title: "Course default removed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const getPlayerCourseDefaults = (playerName: string) => {
+    return (allCourseDefaults || []).filter(d => d.presetPlayerName === playerName);
+  };
+
+  const getTeesForCourse = (courseId: number) => {
+    return allTees.filter(t => t.courseId === courseId);
+  };
+
+  const getTeeInfo = (teeId: number) => {
+    return allTees.find(t => t.id === teeId);
+  };
+
+  const getCourseInfo = (courseId: number) => {
+    return courses?.find(c => c.id === courseId);
   };
 
   const filteredPlayers = players.filter(player => {
@@ -369,50 +438,214 @@ export default function PlayerMaintenance() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredPlayers.map((player) => (
-                      <TableRow key={player.name} data-testid={`row-player-${player.name}`}>
-                        <TableCell className="font-medium">{player.name}</TableCell>
-                        <TableCell>
-                          <EditableHandicapCell 
-                            player={player} 
-                            onSave={(val) => handleUpdateHandicap(player.name, val)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <EditableTeeCell 
-                            player={player} 
-                            tees={allTees}
-                            onSave={(val) => handleUpdateTee(player.name, val)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <EditableAliasesCell 
-                            player={player}
-                            onSave={(val) => handleUpdateAliases(player.name, val)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <EditableLinkedUserCell player={player} />
-                        </TableCell>
-                        <TableCell>
-                          {player.claimedByUserId ? (
-                            <div className="flex items-center gap-2">
-                              <Switch
-                                checked={player.isAdmin ?? false}
-                                onCheckedChange={(checked) => handleToggleAdmin(player.claimedByUserId!, checked)}
-                                disabled={adminMutation.isPending}
-                                data-testid={`switch-admin-${player.name}`}
+                    {filteredPlayers.map((player) => {
+                      const isExpanded = expandedPlayer === player.name;
+                      const courseDefaults = getPlayerCourseDefaults(player.name);
+                      const coursesWithDefaults = courseDefaults.map(d => d.courseId);
+                      const availableCoursesToAdd = (courses || []).filter(c => !coursesWithDefaults.includes(c.id));
+                      
+                      return (
+                        <>
+                          <TableRow key={player.name} data-testid={`row-player-${player.name}`} className="cursor-pointer" onClick={() => setExpandedPlayer(isExpanded ? null : player.name)}>
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                {player.name}
+                                {courseDefaults.length > 0 && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <MapPin className="h-3 w-3 mr-1" />
+                                    {courseDefaults.length}
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <EditableHandicapCell 
+                                player={player} 
+                                onSave={(val) => handleUpdateHandicap(player.name, val)}
                               />
-                              {player.isAdmin && (
-                                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <EditableTeeCell 
+                                player={player} 
+                                tees={allTees}
+                                onSave={(val) => handleUpdateTee(player.name, val)}
+                              />
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <EditableAliasesCell 
+                                player={player}
+                                onSave={(val) => handleUpdateAliases(player.name, val)}
+                              />
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <EditableLinkedUserCell player={player} />
+                            </TableCell>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              {player.claimedByUserId ? (
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={player.isAdmin ?? false}
+                                    onCheckedChange={(checked) => handleToggleAdmin(player.claimedByUserId!, checked)}
+                                    disabled={adminMutation.isPending}
+                                    data-testid={`switch-admin-${player.name}`}
+                                  />
+                                  {player.isAdmin && (
+                                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
                               )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
+                            </TableCell>
+                          </TableRow>
+                          {isExpanded && (
+                            <TableRow key={`${player.name}-expanded`}>
+                              <TableCell colSpan={6} className="bg-muted/30 p-4">
+                                <div className="space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-sm font-semibold flex items-center gap-2">
+                                      <MapPin className="h-4 w-4" />
+                                      Course-Specific Tees
+                                    </h4>
+                                    {addingCourseForPlayer !== player.name && availableCoursesToAdd.length > 0 && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                          setAddingCourseForPlayer(player.name);
+                                          setSelectedCourseId("");
+                                          setSelectedTeeId("");
+                                        }}
+                                        data-testid={`button-add-course-${player.name}`}
+                                      >
+                                        <Plus className="h-3 w-3 mr-1" />
+                                        Add Course
+                                      </Button>
+                                    )}
+                                  </div>
+                                  
+                                  {courseDefaults.length === 0 && addingCourseForPlayer !== player.name && (
+                                    <p className="text-sm text-muted-foreground">
+                                      No course-specific tees configured. Click "Add Course" to set a preferred tee for each course.
+                                    </p>
+                                  )}
+                                  
+                                  {courseDefaults.length > 0 && (
+                                    <div className="space-y-2">
+                                      {courseDefaults.map((cd) => {
+                                        const course = getCourseInfo(cd.courseId);
+                                        const tee = getTeeInfo(cd.teeId);
+                                        const teesForCourse = getTeesForCourse(cd.courseId);
+                                        return (
+                                          <div key={cd.id} className="flex items-center justify-between bg-background rounded-md p-2 border">
+                                            <div className="flex items-center gap-3">
+                                              <span className="font-medium text-sm">{course?.name || "Unknown"}</span>
+                                              <Select
+                                                value={cd.teeId.toString()}
+                                                onValueChange={(newTeeId) => {
+                                                  upsertCourseDefaultMutation.mutate({
+                                                    playerName: player.name,
+                                                    courseId: cd.courseId,
+                                                    teeId: parseInt(newTeeId),
+                                                  });
+                                                }}
+                                              >
+                                                <SelectTrigger className="w-[140px] h-8" data-testid={`select-course-tee-${player.name}-${cd.courseId}`}>
+                                                  <SelectValue>{tee?.name || "Select tee"}</SelectValue>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  {teesForCourse.map((t) => (
+                                                    <SelectItem key={t.id} value={t.id.toString()}>
+                                                      {t.name}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+                                            <Button
+                                              size="icon"
+                                              variant="ghost"
+                                              onClick={() => deleteCourseDefaultMutation.mutate({
+                                                playerName: player.name,
+                                                courseId: cd.courseId,
+                                              })}
+                                              data-testid={`button-delete-course-${player.name}-${cd.courseId}`}
+                                            >
+                                              <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  
+                                  {addingCourseForPlayer === player.name && (
+                                    <div className="flex items-center gap-2 bg-background rounded-md p-2 border">
+                                      <Select value={selectedCourseId} onValueChange={(val) => {
+                                        setSelectedCourseId(val);
+                                        setSelectedTeeId("");
+                                      }}>
+                                        <SelectTrigger className="w-[180px]" data-testid={`select-new-course-${player.name}`}>
+                                          <SelectValue placeholder="Select course" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {availableCoursesToAdd.map((c) => (
+                                            <SelectItem key={c.id} value={c.id.toString()}>
+                                              {c.name}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      {selectedCourseId && (
+                                        <Select value={selectedTeeId} onValueChange={setSelectedTeeId}>
+                                          <SelectTrigger className="w-[140px]" data-testid={`select-new-tee-${player.name}`}>
+                                            <SelectValue placeholder="Select tee" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {getTeesForCourse(parseInt(selectedCourseId)).map((t) => (
+                                              <SelectItem key={t.id} value={t.id.toString()}>
+                                                {t.name}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      )}
+                                      <Button
+                                        size="sm"
+                                        disabled={!selectedCourseId || !selectedTeeId || upsertCourseDefaultMutation.isPending}
+                                        onClick={() => {
+                                          upsertCourseDefaultMutation.mutate({
+                                            playerName: player.name,
+                                            courseId: parseInt(selectedCourseId),
+                                            teeId: parseInt(selectedTeeId),
+                                          });
+                                        }}
+                                        data-testid={`button-save-course-${player.name}`}
+                                      >
+                                        Save
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => {
+                                          setAddingCourseForPlayer(null);
+                                          setSelectedCourseId("");
+                                          setSelectedTeeId("");
+                                        }}
+                                        data-testid={`button-cancel-course-${player.name}`}
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </>
+                      );
+                    })}
                     {filteredPlayers.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">

@@ -36,7 +36,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMatch(match: { name: string; courseName: string; creatorId: string }): Promise<Match> {
-    const [newMatch] = await db.insert(matches).values(match).returning();
+    // Look up courseId from courseName
+    let courseId: number | null = null;
+    if (match.courseName) {
+      const [course] = await db.select().from(courses).where(eq(courses.name, match.courseName));
+      if (course) {
+        courseId = course.id;
+      }
+    }
+    const [newMatch] = await db.insert(matches).values({ ...match, courseId }).returning();
     return newMatch;
   }
 
