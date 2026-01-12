@@ -53,44 +53,46 @@ export default function Ledger() {
     queryKey: [`/api/ledger?${queryParams}`],
   });
 
-  // Filter event matches based on selected filters
-  const filteredEventMatches = useMemo(() => {
-    if (!data?.eventMatches || !data?.matches) return [];
+  // Filter matches based on selected filters
+  const filteredMatches = useMemo(() => {
+    if (!data?.matches) return [];
     
-    let filtered = data.eventMatches;
-    
-    // Create a map of event IDs to match data for quick lookup
-    const matchById = new Map();
-    for (const match of data.matches) {
-      matchById.set(match.id, match);
-    }
+    let filtered = data.matches;
     
     // Filter by event
     if (selectedEventId !== "all") {
       const eventId = parseInt(selectedEventId);
-      filtered = filtered.filter((em: { eventId: number }) => em.eventId === eventId);
+      filtered = filtered.filter((m) => m.id === eventId);
     }
     
     // Filter by group
     if (selectedGroupId !== "all") {
       const groupId = parseInt(selectedGroupId);
-      filtered = filtered.filter((em: { eventId: number }) => {
-        const match = matchById.get(em.eventId);
-        return match?.groupId === groupId;
-      });
+      filtered = filtered.filter((m) => m.groupId === groupId);
     }
     
     // Filter by course
     if (selectedCourseId !== "all") {
       const courseId = parseInt(selectedCourseId);
-      filtered = filtered.filter((em: { eventId: number }) => {
-        const match = matchById.get(em.eventId);
-        return match?.courseId === courseId;
-      });
+      filtered = filtered.filter((m) => m.courseId === courseId);
     }
     
     return filtered;
-  }, [data, selectedEventId, selectedGroupId, selectedCourseId]);
+  }, [data?.matches, selectedEventId, selectedGroupId, selectedCourseId]);
+
+  // Get filtered match IDs for event match filtering
+  const filteredMatchIds = useMemo(() => {
+    return new Set(filteredMatches.map(m => m.id));
+  }, [filteredMatches]);
+
+  // Filter event matches based on filtered matches
+  const filteredEventMatches = useMemo(() => {
+    if (!data?.eventMatches) return [];
+    
+    return data.eventMatches.filter((em: { eventId: number }) => 
+      filteredMatchIds.has(em.eventId)
+    );
+  }, [data?.eventMatches, filteredMatchIds]);
 
   const ledgerResults = useMemo(() => {
     if (!filteredEventMatches || filteredEventMatches.length === 0 || !data?.scores) {
@@ -264,7 +266,7 @@ export default function Ledger() {
             <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-events-count">{data?.matches?.length || 0}</div>
+            <div className="text-2xl font-bold" data-testid="text-events-count">{filteredMatches.length}</div>
           </CardContent>
         </Card>
 
