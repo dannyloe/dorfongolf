@@ -1137,7 +1137,16 @@ export function calculateSkinsResults(
     }));
   
   // Calculate settlements
+  // If no skins were won, everyone breaks even (gets their money back)
   const settlements = includedPlayerIds.map(playerId => {
+    if (totalSkins === 0) {
+      return {
+        playerId,
+        playerName: playerNames.get(playerId) || 'Unknown',
+        amount: 0,
+      };
+    }
+    
     const skinsWon = skinCounts.get(playerId) || 0;
     const winnings = skinsWon * skinValue;
     const netAmount = winnings - unitAmount; // Everyone pays in, winners get paid
