@@ -2021,15 +2021,21 @@ export default function MatchDetail() {
                                 </div>
                               </div>
                               
-                              {/* Team Totals Table */}
+                              {/* Hole-by-Hole Scoreboard */}
                               <div className="overflow-x-auto">
                                 <table className="w-full text-xs">
                                   <thead>
                                     <tr className="border-b border-border">
-                                      <th className="p-2 text-left font-semibold">Team</th>
-                                      <th className="p-2 text-center font-medium">Front 9</th>
-                                      <th className="p-2 text-center font-medium">Back 9</th>
-                                      <th className="p-2 text-center font-semibold bg-muted/30">Total</th>
+                                      <th className="p-2 text-left font-semibold sticky left-0 bg-background">Team</th>
+                                      {Array.from({ length: 9 }, (_, i) => (
+                                        <th key={i + 1} className="p-2 text-center font-medium min-w-[28px]">{i + 1}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
+                                      {Array.from({ length: 9 }, (_, i) => (
+                                        <th key={i + 10} className="p-2 text-center font-medium min-w-[28px]">{i + 10}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Tot</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -2042,13 +2048,30 @@ export default function MatchDetail() {
                                         const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
                                         return sum + (teamScore || 0);
                                       }, 0);
+                                      const teamTextColor = teamColors[idx]?.split(' ')[0] || '';
                                       return (
                                         <tr key={teamTotal.teamIndex} className="border-b border-border/50">
-                                          <td className={`p-2 font-semibold ${teamColors[idx]?.split(' ')[0] || ''}`}>
-                                            {teamTotal.teamName}
+                                          <td className={`p-2 font-semibold sticky left-0 bg-background ${teamTextColor}`}>
+                                            {teamTotal.teamName.length > 15 ? teamTotal.teamName.substring(0, 15) + '...' : teamTotal.teamName}
                                           </td>
-                                          <td className="p-2 text-center">{front9 || '-'}</td>
-                                          <td className="p-2 text-center">{back9 || '-'}</td>
+                                          {fiveResult.holeResults.slice(0, 9).map((hr) => {
+                                            const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                            return (
+                                              <td key={hr.holeNumber} className="p-2 text-center">
+                                                {teamScore || '-'}
+                                              </td>
+                                            );
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{front9 || '-'}</td>
+                                          {fiveResult.holeResults.slice(9, 18).map((hr) => {
+                                            const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                            return (
+                                              <td key={hr.holeNumber} className="p-2 text-center">
+                                                {teamScore || '-'}
+                                              </td>
+                                            );
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{back9 || '-'}</td>
                                           <td className="p-2 text-center font-bold bg-muted/30">
                                             {teamTotal.totalScore || '-'}
                                           </td>
