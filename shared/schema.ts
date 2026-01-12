@@ -86,6 +86,14 @@ export const playerHandicaps = pgTable("player_handicaps", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Match-specific player handicap overrides - overrides the calculated course handicap for a specific match
+export const matchPlayerHandicaps = pgTable("match_player_handicaps", {
+  id: serial("id").primaryKey(),
+  eventMatchId: integer("event_match_id").notNull(),
+  playerId: integer("player_id").notNull(),
+  courseHandicap: integer("course_handicap").notNull(), // Override course handicap for this specific match
+});
+
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   eventMatchId: integer("event_match_id").notNull(),
@@ -230,6 +238,10 @@ export const insertPlayerHandicapSchema = createInsertSchema(playerHandicaps).om
   updatedAt: true,
 });
 
+export const insertMatchPlayerHandicapSchema = createInsertSchema(matchPlayerHandicaps).omit({
+  id: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Course = typeof courses.$inferSelect;
@@ -261,6 +273,9 @@ export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 
 export type PlayerHandicap = typeof playerHandicaps.$inferSelect;
 export type InsertPlayerHandicap = z.infer<typeof insertPlayerHandicapSchema>;
+
+export type MatchPlayerHandicap = typeof matchPlayerHandicaps.$inferSelect;
+export type InsertMatchPlayerHandicap = z.infer<typeof insertMatchPlayerHandicapSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
