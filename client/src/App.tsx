@@ -14,6 +14,9 @@ import QuickScoreEntry from "@/pages/QuickScoreEntry";
 import Ledger from "@/pages/Ledger";
 import CourseSetup from "@/pages/CourseSetup";
 import PlayerMaintenance from "@/pages/PlayerMaintenance";
+import RyderCupList from "@/pages/RyderCupList";
+import RyderCupCreate from "@/pages/RyderCupCreate";
+import RyderCupEvent from "@/pages/RyderCupEvent";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -71,6 +74,15 @@ function Router() {
       </Route>
       <Route path="/players">
         <PrivateRoute component={PlayerMaintenance} />
+      </Route>
+      <Route path="/ryder-cup">
+        <PrivateRoute component={RyderCupList} />
+      </Route>
+      <Route path="/ryder-cup/new">
+        <PrivateRoute component={RyderCupCreate} />
+      </Route>
+      <Route path="/ryder-cup/:id">
+        <PrivateRoute component={RyderCupEvent} />
       </Route>
       <Route component={NotFound} />
     </Switch>

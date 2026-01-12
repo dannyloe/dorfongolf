@@ -1250,5 +1250,136 @@ Rules:
     }
   });
 
+  // === RYDER CUP ROUTES ===
+
+  app.get(api.ryderCup.list.path, isAuthenticated, async (req, res) => {
+    const events = await storage.getRyderCupEvents();
+    res.json(events);
+  });
+
+  app.get(api.ryderCup.get.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const event = await storage.getRyderCupEventFull(id);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    res.json(event);
+  });
+
+  app.post(api.ryderCup.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.ryderCup.create.input.parse(req.body);
+      const user = req.user as any;
+      const event = await storage.createRyderCupEvent(input, user.claims.sub);
+      res.status(201).json(event);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.ryderCup.generateSchedule.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      await storage.generateRyderCupSchedule(id);
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.ryderCup.delete.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
+    const event = await storage.getRyderCupEvent(id);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+    
+    const isAdmin = userId === ADMIN_USER_ID || await storage.isUserAdmin(userId);
+    const isCreator = event.creatorId === userId;
+    
+    if (!isAdmin && !isCreator) {
+      return res.status(403).json({ message: "Only the event creator can delete this event" });
+    }
+    
+    await storage.deleteRyderCupEvent(id);
+    res.status(204).send();
+  });
+
+  app.patch(api.ryderCup.updateHandicaps.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.updateHandicaps.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      
+      const updated = await storage.updateRyderCupEventHandicaps(id, input.useHandicaps);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.ryderCup.addSideMatch.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.addSideMatch.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      
+      const pairing = await storage.addRyderCupSideMatch(input, eventId);
+      res.status(201).json(pairing);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.ryderCup.recordResult.path, isAuthenticated, async (req, res) => {
+    const pairingId = parseInt(req.params.pairingId);
+    try {
+      const input = api.ryderCup.recordResult.input.parse(req.body);
+      const result = await storage.recordPairingResult(pairingId, input);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof Error && err.message === "Pairing not found") {
+        return res.status(404).json({ message: err.message });
+      }
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.ryderCup.recordSkin.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    try {
+      const input = api.ryderCup.recordSkin.input.parse(req.body);
+      const skin = await storage.recordRyderCupSkin(dayId, input.holeNumber, input.winnerName);
+      res.json(skin);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.ryderCup.getDaySkins.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    const skins = await storage.getRyderCupDaySkins(dayId);
+    res.json(skins);
+  });
+
   return httpServer;
 }

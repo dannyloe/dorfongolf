@@ -440,6 +440,312 @@ export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value,
   label,
 }));
 
+// === RYDER CUP EVENT TABLES ===
+
+export const ryderCupEvents = pgTable("ryder_cup_events", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  courseId: integer("course_id"),
+  courseName: text("course_name").notNull(),
+  creatorId: text("creator_id").notNull(),
+  buyInAmount: integer("buy_in_amount").notNull().default(30000), // in cents ($300)
+  teamWinBonus: integer("team_win_bonus").notNull().default(12500), // in cents ($125)
+  matchWinBonus: integer("match_win_bonus").notNull().default(2500), // in cents ($25)
+  matchTieBonus: integer("match_tie_bonus").notNull().default(1250), // in cents ($12.50)
+  dailySkinsPot: integer("daily_skins_pot").notNull().default(21250), // in cents ($212.50)
+  targetPoints: integer("target_points").notNull().default(65), // 6.5 * 10 for precision
+  useHandicaps: boolean("use_handicaps").notNull().default(false),
+  status: text("status").notNull().default("setup"), // setup, active, completed
+  winningTeamId: integer("winning_team_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const ryderCupTeams = pgTable("ryder_cup_teams", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull(),
+  name: text("name").notNull(),
+  color: text("color"), // hex color for UI
+  totalPoints: integer("total_points").notNull().default(0), // stored as tenths (65 = 6.5)
+});
+
+export const ryderCupTeamMembers = pgTable("ryder_cup_team_members", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  playerName: text("player_name").notNull(),
+  handicapIndex: integer("handicap_index"), // stored as tenths
+  courseHandicap: integer("course_handicap"), // calculated from index + course
+});
+
+export const ryderCupDays = pgTable("ryder_cup_days", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull(),
+  dayNumber: integer("day_number").notNull(), // 1-4
+  date: timestamp("date"),
+  skinsCarryover: integer("skins_carryover").notNull().default(0), // carried from previous day
+  skinsDistributed: boolean("skins_distributed").notNull().default(false),
+  status: text("status").notNull().default("pending"), // pending, active, completed
+});
+
+export const ryderCupPairings = pgTable("ryder_cup_pairings", {
+  id: serial("id").primaryKey(),
+  dayId: integer("day_id").notNull(),
+  matchNumber: integer("match_number").notNull(), // 1-3 for core matches
+  isPrimary: boolean("is_primary").notNull().default(true), // true = counts toward cup, false = side match
+  matchFormat: text("match_format").notNull().default("match_play_1_ball"),
+  useNetScoring: boolean("use_net_scoring").notNull().default(false),
+  pointValue: integer("point_value").notNull().default(10), // 10 = 1.0 point, stored as tenths
+  purseAmount: integer("purse_amount"), // optional separate purse for side matches
+  status: text("status").notNull().default("pending"), // pending, active, completed
+});
+
+export const ryderCupPairingSides = pgTable("ryder_cup_pairing_sides", {
+  id: serial("id").primaryKey(),
+  pairingId: integer("pairing_id").notNull(),
+  teamId: integer("team_id").notNull(), // which ryder cup team this side belongs to
+  player1Name: text("player1_name").notNull(),
+  player2Name: text("player2_name"),
+});
+
+export const ryderCupPairingResults = pgTable("ryder_cup_pairing_results", {
+  id: serial("id").primaryKey(),
+  pairingId: integer("pairing_id").notNull(),
+  winningSideId: integer("winning_side_id"), // null = tie/halved
+  winningMargin: text("winning_margin"), // e.g., "2&1", "3&2", or null for tie
+  pointsAwarded: integer("points_awarded").notNull().default(0), // tenths: 10 = 1 point, 5 = 0.5 for tie
+  recordedAt: timestamp("recorded_at").defaultNow(),
+});
+
+export const ryderCupSkins = pgTable("ryder_cup_skins", {
+  id: serial("id").primaryKey(),
+  dayId: integer("day_id").notNull(),
+  holeNumber: integer("hole_number").notNull(),
+  winnerName: text("winner_name"), // null if no winner (skin carries)
+  skinValue: integer("skin_value").notNull().default(1), // base value, multiplied by carryover
+  useNetScoring: boolean("use_net_scoring").notNull().default(false),
+});
+
+// === RYDER CUP RELATIONS ===
+
+export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many }) => ({
+  course: one(courses, {
+    fields: [ryderCupEvents.courseId],
+    references: [courses.id],
+  }),
+  creator: one(users, {
+    fields: [ryderCupEvents.creatorId],
+    references: [users.id],
+  }),
+  teams: many(ryderCupTeams),
+  days: many(ryderCupDays),
+}));
+
+export const ryderCupTeamsRelations = relations(ryderCupTeams, ({ one, many }) => ({
+  event: one(ryderCupEvents, {
+    fields: [ryderCupTeams.eventId],
+    references: [ryderCupEvents.id],
+  }),
+  members: many(ryderCupTeamMembers),
+  pairingSides: many(ryderCupPairingSides),
+}));
+
+export const ryderCupTeamMembersRelations = relations(ryderCupTeamMembers, ({ one }) => ({
+  team: one(ryderCupTeams, {
+    fields: [ryderCupTeamMembers.teamId],
+    references: [ryderCupTeams.id],
+  }),
+}));
+
+export const ryderCupDaysRelations = relations(ryderCupDays, ({ one, many }) => ({
+  event: one(ryderCupEvents, {
+    fields: [ryderCupDays.eventId],
+    references: [ryderCupEvents.id],
+  }),
+  pairings: many(ryderCupPairings),
+  skins: many(ryderCupSkins),
+}));
+
+export const ryderCupPairingsRelations = relations(ryderCupPairings, ({ one, many }) => ({
+  day: one(ryderCupDays, {
+    fields: [ryderCupPairings.dayId],
+    references: [ryderCupDays.id],
+  }),
+  sides: many(ryderCupPairingSides),
+  result: one(ryderCupPairingResults, {
+    fields: [ryderCupPairings.id],
+    references: [ryderCupPairingResults.pairingId],
+  }),
+}));
+
+export const ryderCupPairingSidesRelations = relations(ryderCupPairingSides, ({ one }) => ({
+  pairing: one(ryderCupPairings, {
+    fields: [ryderCupPairingSides.pairingId],
+    references: [ryderCupPairings.id],
+  }),
+  team: one(ryderCupTeams, {
+    fields: [ryderCupPairingSides.teamId],
+    references: [ryderCupTeams.id],
+  }),
+}));
+
+export const ryderCupPairingResultsRelations = relations(ryderCupPairingResults, ({ one }) => ({
+  pairing: one(ryderCupPairings, {
+    fields: [ryderCupPairingResults.pairingId],
+    references: [ryderCupPairings.id],
+  }),
+  winningSide: one(ryderCupPairingSides, {
+    fields: [ryderCupPairingResults.winningSideId],
+    references: [ryderCupPairingSides.id],
+  }),
+}));
+
+export const ryderCupSkinsRelations = relations(ryderCupSkins, ({ one }) => ({
+  day: one(ryderCupDays, {
+    fields: [ryderCupSkins.dayId],
+    references: [ryderCupDays.id],
+  }),
+}));
+
+// === RYDER CUP SCHEMAS ===
+
+export const insertRyderCupEventSchema = createInsertSchema(ryderCupEvents).omit({
+  id: true,
+  createdAt: true,
+  creatorId: true,
+  winningTeamId: true,
+  status: true,
+});
+
+export const insertRyderCupTeamSchema = createInsertSchema(ryderCupTeams).omit({
+  id: true,
+  totalPoints: true,
+});
+
+export const insertRyderCupTeamMemberSchema = createInsertSchema(ryderCupTeamMembers).omit({
+  id: true,
+});
+
+export const insertRyderCupDaySchema = createInsertSchema(ryderCupDays).omit({
+  id: true,
+  skinsCarryover: true,
+  skinsDistributed: true,
+  status: true,
+});
+
+export const insertRyderCupPairingSchema = createInsertSchema(ryderCupPairings).omit({
+  id: true,
+  status: true,
+});
+
+export const insertRyderCupPairingSideSchema = createInsertSchema(ryderCupPairingSides).omit({
+  id: true,
+});
+
+export const insertRyderCupPairingResultSchema = createInsertSchema(ryderCupPairingResults).omit({
+  id: true,
+  recordedAt: true,
+});
+
+export const insertRyderCupSkinSchema = createInsertSchema(ryderCupSkins).omit({
+  id: true,
+});
+
+// === RYDER CUP TYPES ===
+
+export type RyderCupEvent = typeof ryderCupEvents.$inferSelect;
+export type InsertRyderCupEvent = z.infer<typeof insertRyderCupEventSchema>;
+
+export type RyderCupTeam = typeof ryderCupTeams.$inferSelect;
+export type InsertRyderCupTeam = z.infer<typeof insertRyderCupTeamSchema>;
+
+export type RyderCupTeamMember = typeof ryderCupTeamMembers.$inferSelect;
+export type InsertRyderCupTeamMember = z.infer<typeof insertRyderCupTeamMemberSchema>;
+
+export type RyderCupDay = typeof ryderCupDays.$inferSelect;
+export type InsertRyderCupDay = z.infer<typeof insertRyderCupDaySchema>;
+
+export type RyderCupPairing = typeof ryderCupPairings.$inferSelect;
+export type InsertRyderCupPairing = z.infer<typeof insertRyderCupPairingSchema>;
+
+export type RyderCupPairingSide = typeof ryderCupPairingSides.$inferSelect;
+export type InsertRyderCupPairingSide = z.infer<typeof insertRyderCupPairingSideSchema>;
+
+export type RyderCupPairingResult = typeof ryderCupPairingResults.$inferSelect;
+export type InsertRyderCupPairingResult = z.infer<typeof insertRyderCupPairingResultSchema>;
+
+export type RyderCupSkin = typeof ryderCupSkins.$inferSelect;
+export type InsertRyderCupSkin = z.infer<typeof insertRyderCupSkinSchema>;
+
+// === RYDER CUP API TYPES ===
+
+export type CreateRyderCupEventRequest = {
+  name: string;
+  courseName: string;
+  courseId?: number;
+  buyInAmount?: number;
+  teamWinBonus?: number;
+  matchWinBonus?: number;
+  matchTieBonus?: number;
+  dailySkinsPot?: number;
+  targetPoints?: number;
+  useHandicaps?: boolean;
+  teamA: {
+    name: string;
+    color?: string;
+    members: { playerName: string; handicapIndex?: number }[];
+  };
+  teamB: {
+    name: string;
+    color?: string;
+    members: { playerName: string; handicapIndex?: number }[];
+  };
+};
+
+export type RyderCupEventResponse = RyderCupEvent & {
+  teams: (RyderCupTeam & { members: RyderCupTeamMember[] })[];
+  days: (RyderCupDay & { 
+    pairings: (RyderCupPairing & { 
+      sides: RyderCupPairingSide[];
+      result?: RyderCupPairingResult;
+    })[];
+  })[];
+};
+
+export type RyderCupStandings = {
+  teamA: {
+    id: number;
+    name: string;
+    points: number;
+    matchesWon: number;
+    matchesTied: number;
+    matchesLost: number;
+  };
+  teamB: {
+    id: number;
+    name: string;
+    points: number;
+    matchesWon: number;
+    matchesTied: number;
+    matchesLost: number;
+  };
+  targetPoints: number;
+  isComplete: boolean;
+  winnerId: number | null;
+};
+
+export type AddSideMatchRequest = {
+  dayId: number;
+  matchFormat: string;
+  useNetScoring?: boolean;
+  purseAmount?: number;
+  sideA: { playerNames: string[] };
+  sideB: { playerNames: string[] };
+};
+
+export type RecordPairingResultRequest = {
+  winningSideId?: number; // null for tie
+  winningMargin?: string;
+};
+
 // UI-only wizard types (not stored in DB)
 export const WIZARD_TYPES = {
   ROUND_ROBIN_2_MAN: "round_robin_2_man",

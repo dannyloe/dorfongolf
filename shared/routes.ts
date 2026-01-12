@@ -11,7 +11,11 @@ import {
   playerHandicaps,
   matchPlayerHandicaps,
   playerCourseDefaults,
-  groups
+  groups,
+  ryderCupEvents,
+  ryderCupTeams,
+  ryderCupPairings,
+  ryderCupSkins,
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -791,6 +795,143 @@ export const api = {
         }),
         400: errorSchemas.validation,
         500: errorSchemas.internal,
+      },
+    },
+  },
+  ryderCup: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup',
+      responses: {
+        200: z.array(z.custom<typeof ryderCupEvents.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/:id',
+      responses: {
+        200: z.any(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup',
+      input: z.object({
+        name: z.string().min(1),
+        courseName: z.string().min(1),
+        courseId: z.number().optional(),
+        buyInAmount: z.number().optional(),
+        teamWinBonus: z.number().optional(),
+        matchWinBonus: z.number().optional(),
+        matchTieBonus: z.number().optional(),
+        dailySkinsPot: z.number().optional(),
+        targetPoints: z.number().optional(),
+        useHandicaps: z.boolean().optional(),
+        teamA: z.object({
+          name: z.string().min(1),
+          color: z.string().optional(),
+          members: z.array(z.object({
+            playerName: z.string().min(1),
+            handicapIndex: z.number().optional(),
+          })).length(6),
+        }),
+        teamB: z.object({
+          name: z.string().min(1),
+          color: z.string().optional(),
+          members: z.array(z.object({
+            playerName: z.string().min(1),
+            handicapIndex: z.number().optional(),
+          })).length(6),
+        }),
+      }),
+      responses: {
+        201: z.custom<typeof ryderCupEvents.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    generateSchedule: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/:id/generate-schedule',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/ryder-cup/:id',
+      responses: {
+        204: z.void(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateHandicaps: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/:id/handicaps',
+      input: z.object({
+        useHandicaps: z.boolean(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupEvents.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    addSideMatch: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/:id/side-matches',
+      input: z.object({
+        dayId: z.number(),
+        matchFormat: z.string(),
+        useNetScoring: z.boolean().optional(),
+        purseAmount: z.number().optional(),
+        sideA: z.object({
+          playerNames: z.array(z.string().min(1)),
+        }),
+        sideB: z.object({
+          playerNames: z.array(z.string().min(1)),
+        }),
+      }),
+      responses: {
+        201: z.custom<typeof ryderCupPairings.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    recordResult: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/pairings/:pairingId/result',
+      input: z.object({
+        winningSideId: z.number().optional(),
+        winningMargin: z.string().optional(),
+      }),
+      responses: {
+        200: z.any(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    recordSkin: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/days/:dayId/skins',
+      input: z.object({
+        holeNumber: z.number().min(1).max(18),
+        winnerName: z.string().nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupSkins.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    getDaySkins: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/days/:dayId/skins',
+      responses: {
+        200: z.array(z.custom<typeof ryderCupSkins.$inferSelect>()),
+        404: errorSchemas.notFound,
       },
     },
   },

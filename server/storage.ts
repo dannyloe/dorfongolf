@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { 
   matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases,
+  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -10,7 +11,10 @@ import {
   type PlayerCourseDefault, type InsertPlayerCourseDefault,
   type Group, type InsertGroup,
   type PresetPlayer, type InsertPresetPlayer,
-  type PlayerAlias, type InsertPlayerAlias
+  type PlayerAlias, type InsertPlayerAlias,
+  type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
+  type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin,
+  type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -1033,6 +1037,399 @@ export class DatabaseStorage implements IStorage {
       // Create new record for hardcoded player
       await db.insert(presetPlayers).values({ name, showInRoster });
     }
+  }
+
+  // === RYDER CUP EVENT METHODS ===
+
+  async getRyderCupEvents(): Promise<RyderCupEvent[]> {
+    return db.select().from(ryderCupEvents).orderBy(ryderCupEvents.createdAt);
+  }
+
+  async getRyderCupEvent(id: number): Promise<RyderCupEvent | undefined> {
+    const [event] = await db.select().from(ryderCupEvents).where(eq(ryderCupEvents.id, id));
+    return event;
+  }
+
+  async getRyderCupEventFull(id: number): Promise<RyderCupEventResponse | undefined> {
+    const event = await this.getRyderCupEvent(id);
+    if (!event) return undefined;
+
+    const teamsList = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, id));
+    const teamsWithMembers = await Promise.all(
+      teamsList.map(async (team) => {
+        const members = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, team.id));
+        return { ...team, members };
+      })
+    );
+
+    const daysList = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, id)).orderBy(ryderCupDays.dayNumber);
+    const daysWithPairings = await Promise.all(
+      daysList.map(async (day) => {
+        const pairingsList = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id)).orderBy(ryderCupPairings.matchNumber);
+        const pairingsWithDetails = await Promise.all(
+          pairingsList.map(async (pairing) => {
+            const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
+            const [result] = await db.select().from(ryderCupPairingResults).where(eq(ryderCupPairingResults.pairingId, pairing.id));
+            return { ...pairing, sides, result };
+          })
+        );
+        return { ...day, pairings: pairingsWithDetails };
+      })
+    );
+
+    return { ...event, teams: teamsWithMembers, days: daysWithPairings };
+  }
+
+  async createRyderCupEvent(data: CreateRyderCupEventRequest, creatorId: string): Promise<RyderCupEvent> {
+    // Look up courseId from courseName if not provided
+    let courseId = data.courseId || null;
+    if (!courseId && data.courseName) {
+      const course = await this.getCourseByName(data.courseName);
+      if (course) courseId = course.id;
+    }
+
+    const [event] = await db.insert(ryderCupEvents).values({
+      name: data.name,
+      courseName: data.courseName,
+      courseId,
+      creatorId,
+      buyInAmount: data.buyInAmount ?? 30000,
+      teamWinBonus: data.teamWinBonus ?? 12500,
+      matchWinBonus: data.matchWinBonus ?? 2500,
+      matchTieBonus: data.matchTieBonus ?? 1250,
+      dailySkinsPot: data.dailySkinsPot ?? 21250,
+      targetPoints: data.targetPoints ?? 65,
+      useHandicaps: data.useHandicaps ?? false,
+    }).returning();
+
+    // Create Team A
+    const [teamA] = await db.insert(ryderCupTeams).values({
+      eventId: event.id,
+      name: data.teamA.name,
+      color: data.teamA.color || "#3b82f6",
+    }).returning();
+
+    for (const member of data.teamA.members) {
+      await db.insert(ryderCupTeamMembers).values({
+        teamId: teamA.id,
+        playerName: member.playerName,
+        handicapIndex: member.handicapIndex ?? null,
+      });
+    }
+
+    // Create Team B
+    const [teamB] = await db.insert(ryderCupTeams).values({
+      eventId: event.id,
+      name: data.teamB.name,
+      color: data.teamB.color || "#ef4444",
+    }).returning();
+
+    for (const member of data.teamB.members) {
+      await db.insert(ryderCupTeamMembers).values({
+        teamId: teamB.id,
+        playerName: member.playerName,
+        handicapIndex: member.handicapIndex ?? null,
+      });
+    }
+
+    // Create 4 days
+    for (let dayNum = 1; dayNum <= 4; dayNum++) {
+      await db.insert(ryderCupDays).values({
+        eventId: event.id,
+        dayNumber: dayNum,
+      });
+    }
+
+    return event;
+  }
+
+  async generateRyderCupSchedule(eventId: number): Promise<void> {
+    const event = await this.getRyderCupEventFull(eventId);
+    if (!event) throw new Error("Event not found");
+    if (event.teams.length !== 2) throw new Error("Event must have exactly 2 teams");
+
+    const teamA = event.teams[0];
+    const teamB = event.teams[1];
+    const teamAPlayers = teamA.members.map(m => m.playerName);
+    const teamBPlayers = teamB.members.map(m => m.playerName);
+
+    if (teamAPlayers.length !== 6 || teamBPlayers.length !== 6) {
+      throw new Error("Each team must have exactly 6 players");
+    }
+
+    // Generate pairings using rotation algorithm
+    // Each player plays with 4 of 5 teammates over 4 days (3 matches per day = 12 total)
+    // Partner rotation ensures variety
+    const schedule = this.generateRotationSchedule(teamAPlayers, teamBPlayers);
+
+    for (let dayIdx = 0; dayIdx < 4; dayIdx++) {
+      const day = event.days[dayIdx];
+      if (!day) continue;
+
+      for (let matchIdx = 0; matchIdx < 3; matchIdx++) {
+        const matchPairing = schedule[dayIdx * 3 + matchIdx];
+        if (!matchPairing) continue;
+
+        // Create pairing
+        const [pairing] = await db.insert(ryderCupPairings).values({
+          dayId: day.id,
+          matchNumber: matchIdx + 1,
+          isPrimary: true,
+          matchFormat: "match_play_1_ball",
+          useNetScoring: event.useHandicaps,
+          pointValue: 10, // 1.0 point
+        }).returning();
+
+        // Create sides
+        await db.insert(ryderCupPairingSides).values({
+          pairingId: pairing.id,
+          teamId: teamA.id,
+          player1Name: matchPairing.teamA[0],
+          player2Name: matchPairing.teamA[1],
+        });
+
+        await db.insert(ryderCupPairingSides).values({
+          pairingId: pairing.id,
+          teamId: teamB.id,
+          player1Name: matchPairing.teamB[0],
+          player2Name: matchPairing.teamB[1],
+        });
+      }
+    }
+
+    // Update event status to active
+    await db.update(ryderCupEvents).set({ status: "active" }).where(eq(ryderCupEvents.id, eventId));
+  }
+
+  private generateRotationSchedule(teamAPlayers: string[], teamBPlayers: string[]): { teamA: string[]; teamB: string[] }[] {
+    // Pre-defined rotation that ensures:
+    // - Each player plays with 4 of 5 teammates
+    // - Maximum variety in opponents
+    // Player indices: 0-5 for each team
+    const pairingPattern = [
+      // Day 1
+      { a: [0, 1], b: [0, 1] },
+      { a: [2, 3], b: [2, 3] },
+      { a: [4, 5], b: [4, 5] },
+      // Day 2
+      { a: [0, 2], b: [1, 3] },
+      { a: [1, 4], b: [0, 5] },
+      { a: [3, 5], b: [2, 4] },
+      // Day 3
+      { a: [0, 3], b: [2, 5] },
+      { a: [1, 5], b: [1, 4] },
+      { a: [2, 4], b: [0, 3] },
+      // Day 4
+      { a: [0, 4], b: [3, 5] },
+      { a: [1, 3], b: [0, 2] },
+      { a: [2, 5], b: [1, 4] },
+    ];
+
+    return pairingPattern.map(p => ({
+      teamA: [teamAPlayers[p.a[0]], teamAPlayers[p.a[1]]],
+      teamB: [teamBPlayers[p.b[0]], teamBPlayers[p.b[1]]],
+    }));
+  }
+
+  async addRyderCupSideMatch(data: AddSideMatchRequest, eventId: number): Promise<RyderCupPairing> {
+    const event = await this.getRyderCupEventFull(eventId);
+    if (!event) throw new Error("Event not found");
+
+    // Get max match number for the day
+    const existingPairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, data.dayId));
+    const maxMatchNum = Math.max(0, ...existingPairings.map(p => p.matchNumber));
+
+    const [pairing] = await db.insert(ryderCupPairings).values({
+      dayId: data.dayId,
+      matchNumber: maxMatchNum + 1,
+      isPrimary: false,
+      matchFormat: data.matchFormat,
+      useNetScoring: data.useNetScoring ?? false,
+      pointValue: 0, // Side matches don't count toward cup
+      purseAmount: data.purseAmount ?? null,
+    }).returning();
+
+    // Find team IDs
+    const teamA = event.teams[0];
+    const teamB = event.teams[1];
+
+    await db.insert(ryderCupPairingSides).values({
+      pairingId: pairing.id,
+      teamId: teamA.id,
+      player1Name: data.sideA.playerNames[0],
+      player2Name: data.sideA.playerNames[1] || null,
+    });
+
+    await db.insert(ryderCupPairingSides).values({
+      pairingId: pairing.id,
+      teamId: teamB.id,
+      player1Name: data.sideB.playerNames[0],
+      player2Name: data.sideB.playerNames[1] || null,
+    });
+
+    return pairing;
+  }
+
+  async recordPairingResult(pairingId: number, data: RecordPairingResultRequest): Promise<RyderCupPairingResult> {
+    // Get pairing and check if primary
+    const [pairing] = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.id, pairingId));
+    if (!pairing) throw new Error("Pairing not found");
+
+    // Check if result already exists
+    const [existing] = await db.select().from(ryderCupPairingResults).where(eq(ryderCupPairingResults.pairingId, pairingId));
+
+    const pointsAwarded = data.winningSideId ? pairing.pointValue : Math.floor(pairing.pointValue / 2); // Half for tie
+
+    if (existing) {
+      const [updated] = await db.update(ryderCupPairingResults)
+        .set({
+          winningSideId: data.winningSideId ?? null,
+          winningMargin: data.winningMargin ?? null,
+          pointsAwarded,
+        })
+        .where(eq(ryderCupPairingResults.id, existing.id))
+        .returning();
+
+      await this.updateTeamPoints(pairingId);
+      return updated;
+    }
+
+    const [result] = await db.insert(ryderCupPairingResults).values({
+      pairingId,
+      winningSideId: data.winningSideId ?? null,
+      winningMargin: data.winningMargin ?? null,
+      pointsAwarded,
+    }).returning();
+
+    // Update pairing status
+    await db.update(ryderCupPairings).set({ status: "completed" }).where(eq(ryderCupPairings.id, pairingId));
+
+    // Update team points
+    await this.updateTeamPoints(pairingId);
+
+    return result;
+  }
+
+  private async updateTeamPoints(pairingId: number): Promise<void> {
+    // Get pairing info
+    const [pairing] = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.id, pairingId));
+    if (!pairing || !pairing.isPrimary) return; // Only update for primary matches
+
+    const [day] = await db.select().from(ryderCupDays).where(eq(ryderCupDays.id, pairing.dayId));
+    if (!day) return;
+
+    // Get all completed primary pairings for this event
+    const allDays = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, day.eventId));
+    const dayIds = allDays.map(d => d.id);
+
+    const allPairings = await db.select().from(ryderCupPairings)
+      .where(and(
+        inArray(ryderCupPairings.dayId, dayIds),
+        eq(ryderCupPairings.isPrimary, true)
+      ));
+
+    const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, day.eventId));
+    const teamPoints: Record<number, number> = {};
+    teams.forEach(t => { teamPoints[t.id] = 0; });
+
+    for (const p of allPairings) {
+      const [result] = await db.select().from(ryderCupPairingResults).where(eq(ryderCupPairingResults.pairingId, p.id));
+      if (!result) continue;
+
+      if (result.winningSideId) {
+        // Get winning side's team
+        const [winningSide] = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.id, result.winningSideId));
+        if (winningSide) {
+          teamPoints[winningSide.teamId] += result.pointsAwarded;
+        }
+      } else {
+        // Tie - split points
+        const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, p.id));
+        for (const side of sides) {
+          teamPoints[side.teamId] += Math.floor(result.pointsAwarded / 2);
+        }
+      }
+    }
+
+    // Update team totals
+    for (const team of teams) {
+      await db.update(ryderCupTeams)
+        .set({ totalPoints: teamPoints[team.id] || 0 })
+        .where(eq(ryderCupTeams.id, team.id));
+    }
+
+    // Check for winner
+    const event = await this.getRyderCupEvent(day.eventId);
+    if (!event) return;
+
+    for (const team of teams) {
+      if (teamPoints[team.id] >= event.targetPoints) {
+        await db.update(ryderCupEvents)
+          .set({ status: "completed", winningTeamId: team.id })
+          .where(eq(ryderCupEvents.id, day.eventId));
+        break;
+      }
+    }
+  }
+
+  async recordRyderCupSkin(dayId: number, holeNumber: number, winnerName: string | null): Promise<RyderCupSkin> {
+    // Check if skin already recorded
+    const [existing] = await db.select().from(ryderCupSkins)
+      .where(and(
+        eq(ryderCupSkins.dayId, dayId),
+        eq(ryderCupSkins.holeNumber, holeNumber)
+      ));
+
+    if (existing) {
+      const [updated] = await db.update(ryderCupSkins)
+        .set({ winnerName })
+        .where(eq(ryderCupSkins.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [skin] = await db.insert(ryderCupSkins).values({
+      dayId,
+      holeNumber,
+      winnerName,
+    }).returning();
+
+    return skin;
+  }
+
+  async getRyderCupDaySkins(dayId: number): Promise<RyderCupSkin[]> {
+    return db.select().from(ryderCupSkins).where(eq(ryderCupSkins.dayId, dayId)).orderBy(ryderCupSkins.holeNumber);
+  }
+
+  async updateRyderCupEventHandicaps(eventId: number, useHandicaps: boolean): Promise<RyderCupEvent> {
+    const [updated] = await db.update(ryderCupEvents)
+      .set({ useHandicaps })
+      .where(eq(ryderCupEvents.id, eventId))
+      .returning();
+    return updated;
+  }
+
+  async deleteRyderCupEvent(eventId: number): Promise<void> {
+    // Delete all related data
+    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    for (const day of days) {
+      const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
+      for (const pairing of pairings) {
+        await db.delete(ryderCupPairingResults).where(eq(ryderCupPairingResults.pairingId, pairing.id));
+        await db.delete(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
+      }
+      await db.delete(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
+      await db.delete(ryderCupSkins).where(eq(ryderCupSkins.dayId, day.id));
+    }
+    await db.delete(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+
+    const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    for (const team of teams) {
+      await db.delete(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, team.id));
+    }
+    await db.delete(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+
+    await db.delete(ryderCupEvents).where(eq(ryderCupEvents.id, eventId));
   }
 }
 
