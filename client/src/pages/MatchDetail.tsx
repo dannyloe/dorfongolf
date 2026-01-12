@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, type MatchPlayerHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
@@ -9,7 +9,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, type NetScoringContext } from "@/lib/matchplay";
-import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo } from "@/lib/handicap";
+import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { PRESET_PLAYERS } from "@shared/models/auth";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -161,6 +161,10 @@ export default function MatchDetail() {
   const matchCourseId = coursesList?.find(c => c.name === match?.courseName)?.id;
   const { data: courseTees } = useCourseTees(matchCourseId);
   
+  // Get match-specific player handicap overrides
+  const { data: matchHandicapOverrides } = useMatchPlayerHandicaps(matchId);
+  const upsertMatchHandicap = useUpsertMatchPlayerHandicap(matchId);
+  
   const [newPlayerName, setNewPlayerName] = useState("");
   const [editingHandicap, setEditingHandicap] = useState<string | null>(null);
   const [handicapEditValue, setHandicapEditValue] = useState("");
@@ -264,16 +268,24 @@ export default function MatchDetail() {
         teeId: p.teeId,
       }));
     
-    // Check if at least some players have handicap data
-    const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null);
+    // Check if at least some players have handicap data or overrides
+    const overridesForMatch = matchHandicapOverrides?.get(eventMatch.id) || [];
+    const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null) || overridesForMatch.length > 0;
     if (!hasAnyHandicapData) {
       return null; // Can't calculate net scores if no players have handicaps and tees
     }
     
+    // Convert overrides to the format expected by buildNetScoringContext
+    const courseHandicapOverrides: CourseHandicapOverride[] = overridesForMatch.map(o => ({
+      playerId: o.playerId,
+      courseHandicap: o.courseHandicap,
+    }));
+    
     return buildNetScoringContext(
       playerHandicapInfo,
       courseTees,
-      matchCourse.holes
+      matchCourse.holes,
+      courseHandicapOverrides
     );
   };
 

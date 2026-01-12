@@ -111,23 +111,49 @@ export function calculateNetScore(
 export interface NetScoringContext {
   playerHandicaps: Map<number, number>; // playerId -> relativeHandicap
   holeHandicaps: Map<number, number>; // holeNumber -> handicapRank
+  courseHandicaps: Map<number, number>; // playerId -> courseHandicap (before relative adjustment)
+}
+
+export interface CourseHandicapOverride {
+  playerId: number;
+  courseHandicap: number;
 }
 
 export function buildNetScoringContext(
   players: PlayerHandicapInfo[],
   tees: CourseTee[],
-  holes: CourseHole[]
+  holes: CourseHole[],
+  courseHandicapOverrides?: CourseHandicapOverride[]
 ): NetScoringContext {
-  const relativeHandicaps = calculateRelativeHandicaps(players, tees);
+  // Calculate course handicaps from handicap index and slope rating
+  const calculatedHandicaps = calculateRelativeHandicaps(players, tees);
+  
+  // Create a map to track course handicaps (with overrides applied)
+  const courseHandicaps = new Map<number, number>();
+  const overrideMap = new Map((courseHandicapOverrides ?? []).map(o => [o.playerId, o.courseHandicap]));
+  
+  for (const p of calculatedHandicaps) {
+    // Use override if available, otherwise use calculated value
+    const courseHcp = overrideMap.has(p.playerId) ? overrideMap.get(p.playerId)! : p.courseHandicap;
+    courseHandicaps.set(p.playerId, courseHcp);
+  }
+  
+  // Calculate relative handicaps (lowest = 0) based on final course handicaps
+  const finalCourseHandicaps = Array.from(courseHandicaps.values()).filter(h => !isNaN(h) && isFinite(h));
+  const minHandicap = finalCourseHandicaps.length > 0 ? Math.min(...finalCourseHandicaps) : 0;
   
   const playerHandicaps = new Map<number, number>();
-  for (const p of relativeHandicaps) {
-    playerHandicaps.set(p.playerId, p.relativeHandicap);
+  const entries = Array.from(courseHandicaps.entries());
+  for (const entry of entries) {
+    const playerId = entry[0];
+    const courseHcp = entry[1];
+    const relative = isNaN(courseHcp) || !isFinite(courseHcp) ? 0 : courseHcp - minHandicap;
+    playerHandicaps.set(playerId, relative);
   }
   
   const holeHandicaps = buildHoleHandicapMap(holes);
   
-  return { playerHandicaps, holeHandicaps };
+  return { playerHandicaps, holeHandicaps, courseHandicaps };
 }
 
 export function getNetStrokes(

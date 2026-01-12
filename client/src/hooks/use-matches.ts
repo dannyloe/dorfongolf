@@ -580,3 +580,57 @@ export function useDeleteCourseTee(courseId: number) {
     },
   });
 }
+
+export type MatchPlayerHandicap = {
+  id: number;
+  eventMatchId: number;
+  playerId: number;
+  courseHandicap: number;
+};
+
+export function useMatchPlayerHandicaps(matchId: number | undefined) {
+  return useQuery({
+    queryKey: ['/api/matches', matchId, 'match-player-handicaps'],
+    queryFn: async () => {
+      if (!matchId) return new Map<number, MatchPlayerHandicap[]>();
+      const res = await fetch(`/api/matches/${matchId}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch match');
+      const match = await res.json();
+      const eventMatches = match.eventMatches || [];
+      
+      const allHandicaps = new Map<number, MatchPlayerHandicap[]>();
+      for (const em of eventMatches) {
+        const hcpRes = await fetch(`/api/event-matches/${em.id}/player-handicaps`, { credentials: 'include' });
+        if (hcpRes.ok) {
+          const handicaps = await hcpRes.json() as MatchPlayerHandicap[];
+          allHandicaps.set(em.id, handicaps);
+        }
+      }
+      return allHandicaps;
+    },
+    enabled: !!matchId,
+  });
+}
+
+export function useUpsertMatchPlayerHandicap(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, playerId, courseHandicap }: { eventMatchId: number; playerId: number; courseHandicap: number }) => {
+      const res = await fetch(`/api/event-matches/${eventMatchId}/player-handicaps/${playerId}`, {
+        method: 'PUT',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseHandicap }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update match player handicap");
+      }
+      return res.json() as Promise<MatchPlayerHandicap>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/matches', matchId, 'match-player-handicaps'] });
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
