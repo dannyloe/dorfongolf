@@ -2710,69 +2710,91 @@ export default function MatchDetail() {
               return (
                 <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isCurrentUser ? "bg-accent/5" : ""}`}>
                   <td className={`p-2 font-semibold sticky left-0 bg-white/95 backdrop-blur z-10 ${isCurrentUser ? "text-primary" : "text-foreground"}`}>
-                    <div className="flex items-center gap-1">
-                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
-                      <span className="truncate text-xs">{p.name}{isCurrentUser && " (You)"}</span>
-                      {/* Handicap inline - only show when handicapped */}
-                      {match?.isHandicapped && (
-                        <>
-                          {isCreator ? (
-                            editingPlayerHandicap === p.id ? (
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={playerHandicapEditValue}
-                                onChange={(e) => setPlayerHandicapEditValue(e.target.value)}
-                                onBlur={() => {
-                                  const parsed = parseFloat(playerHandicapEditValue);
-                                  if (!isNaN(parsed) && parsed >= -10 && parsed <= 54) {
-                                    updatePlayerMatchHandicap.mutate({ 
-                                      playerId: p.id, 
-                                      handicapIndex: Math.round(parsed * 10) 
-                                    });
-                                  } else if (playerHandicapEditValue === '') {
-                                    updatePlayerMatchHandicap.mutate({ 
-                                      playerId: p.id, 
-                                      handicapIndex: null 
-                                    });
-                                  }
-                                  setEditingPlayerHandicap(null);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.currentTarget.blur();
-                                  } else if (e.key === 'Escape') {
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
+                        <span className="truncate text-xs">{p.name}{isCurrentUser && " (You)"}</span>
+                        {/* Handicap inline - only show when handicapped */}
+                        {match?.isHandicapped && (
+                          <>
+                            {isCreator ? (
+                              editingPlayerHandicap === p.id ? (
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={playerHandicapEditValue}
+                                  onChange={(e) => setPlayerHandicapEditValue(e.target.value)}
+                                  onBlur={() => {
+                                    const parsed = parseFloat(playerHandicapEditValue);
+                                    if (!isNaN(parsed) && parsed >= -10 && parsed <= 54) {
+                                      updatePlayerMatchHandicap.mutate({ 
+                                        playerId: p.id, 
+                                        handicapIndex: Math.round(parsed * 10) 
+                                      });
+                                    } else if (playerHandicapEditValue === '') {
+                                      updatePlayerMatchHandicap.mutate({ 
+                                        playerId: p.id, 
+                                        handicapIndex: null 
+                                      });
+                                    }
                                     setEditingPlayerHandicap(null);
-                                  }
-                                }}
-                                autoFocus
-                                className="w-10 h-4 text-center text-[10px] border rounded px-0.5 font-normal flex-shrink-0"
-                                placeholder="HCP"
-                                data-testid={`input-player-handicap-${p.id}`}
-                              />
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.currentTarget.blur();
+                                    } else if (e.key === 'Escape') {
+                                      setEditingPlayerHandicap(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="w-10 h-4 text-center text-[10px] border rounded px-0.5 font-normal flex-shrink-0"
+                                  placeholder="HCP"
+                                  data-testid={`input-player-handicap-${p.id}`}
+                                />
+                              ) : (
+                                <span
+                                  onClick={() => {
+                                    setEditingPlayerHandicap(p.id);
+                                    const hcp = p.handicapIndex;
+                                    setPlayerHandicapEditValue(hcp !== null && hcp !== undefined ? (hcp / 10).toFixed(1) : '');
+                                  }}
+                                  className="w-8 h-4 text-center text-[10px] bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal cursor-pointer inline-flex items-center justify-center flex-shrink-0"
+                                  data-testid={`button-player-handicap-${p.id}`}
+                                >
+                                  {p.handicapIndex !== null && p.handicapIndex !== undefined 
+                                    ? (p.handicapIndex / 10).toFixed(1) 
+                                    : '-'}
+                                </span>
+                              )
                             ) : (
-                              <span
-                                onClick={() => {
-                                  setEditingPlayerHandicap(p.id);
-                                  const hcp = p.handicapIndex;
-                                  setPlayerHandicapEditValue(hcp !== null && hcp !== undefined ? (hcp / 10).toFixed(1) : '');
-                                }}
-                                className="w-8 h-4 text-center text-[10px] bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal cursor-pointer inline-flex items-center justify-center flex-shrink-0"
-                                data-testid={`button-player-handicap-${p.id}`}
-                              >
-                                {p.handicapIndex !== null && p.handicapIndex !== undefined 
-                                  ? (p.handicapIndex / 10).toFixed(1) 
-                                  : '-'}
-                              </span>
-                            )
-                          ) : (
-                            p.handicapIndex !== null && p.handicapIndex !== undefined && (
-                              <span className="text-[10px] text-muted-foreground font-normal flex-shrink-0">
-                                ({(p.handicapIndex / 10).toFixed(1)})
-                              </span>
-                            )
-                          )}
-                        </>
+                              p.handicapIndex !== null && p.handicapIndex !== undefined && (
+                                <span className="text-[10px] text-muted-foreground font-normal flex-shrink-0">
+                                  ({(p.handicapIndex / 10).toFixed(1)})
+                                </span>
+                              )
+                            )}
+                          </>
+                        )}
+                      </div>
+                      {/* Tee selector - only show when handicapped and creator */}
+                      {match?.isHandicapped && isCreator && courseTees && courseTees.length > 0 && (
+                        <Select
+                          value={p.teeId?.toString() || ''}
+                          onValueChange={(value) => {
+                            updatePlayerTee.mutate({ playerId: p.id, teeId: value ? parseInt(value) : null });
+                          }}
+                        >
+                          <SelectTrigger className="h-5 w-full text-[10px] px-1" data-testid={`select-player-tee-${p.id}`}>
+                            <SelectValue placeholder="Tee" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {courseTees.map((tee) => (
+                              <SelectItem key={tee.id} value={tee.id.toString()} className="text-xs">
+                                {tee.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     </div>
                   </td>
