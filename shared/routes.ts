@@ -472,6 +472,92 @@ export const api = {
       },
     },
   },
+  golfCourseApi: {
+    search: {
+      method: 'GET' as const,
+      path: '/api/golf-course-api/search',
+      responses: {
+        200: z.object({
+          courses: z.array(z.object({
+            id: z.number(),
+            club_name: z.string(),
+            course_name: z.string(),
+            location: z.object({
+              address: z.string().optional(),
+              city: z.string().optional(),
+              state: z.string().optional(),
+              country: z.string().optional(),
+            }).optional(),
+          })),
+        }),
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+    getCourse: {
+      method: 'GET' as const,
+      path: '/api/golf-course-api/courses/:id',
+      responses: {
+        200: z.object({
+          id: z.number(),
+          club_name: z.string(),
+          course_name: z.string(),
+          location: z.object({
+            address: z.string().optional(),
+            city: z.string().optional(),
+            state: z.string().optional(),
+            country: z.string().optional(),
+          }).optional(),
+          tees: z.object({
+            male: z.array(z.object({
+              tee_name: z.string(),
+              course_rating: z.number(),
+              slope_rating: z.number(),
+              par_total: z.number(),
+              total_yards: z.number().optional(),
+              holes: z.array(z.object({
+                par: z.number(),
+                yardage: z.number().optional(),
+                handicap: z.number(),
+              })),
+            })).optional(),
+            female: z.array(z.object({
+              tee_name: z.string(),
+              course_rating: z.number(),
+              slope_rating: z.number(),
+              par_total: z.number(),
+              total_yards: z.number().optional(),
+              holes: z.array(z.object({
+                par: z.number(),
+                yardage: z.number().optional(),
+                handicap: z.number(),
+              })),
+            })).optional(),
+          }).optional(),
+        }),
+        404: errorSchemas.notFound,
+        500: errorSchemas.internal,
+      },
+    },
+    importCourse: {
+      method: 'POST' as const,
+      path: '/api/golf-course-api/import',
+      input: z.object({
+        externalId: z.number(),
+        courseName: z.string(),
+        selectedTee: z.string(),
+      }),
+      responses: {
+        200: z.object({
+          courseId: z.number(),
+          holesImported: z.number(),
+          teesImported: z.number(),
+        }),
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

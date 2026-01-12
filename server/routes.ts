@@ -703,6 +703,150 @@ Rules:
     }
   });
 
+  // Golf Course API integration routes
+  app.get(api.golfCourseApi.search.path, isAuthenticated, async (req, res) => {
+    try {
+      const searchQuery = req.query.q as string;
+      if (!searchQuery || searchQuery.length < 2) {
+        return res.status(400).json({ message: "Search query must be at least 2 characters" });
+      }
+
+      const apiKey = process.env.GOLF_COURSE_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ message: "Golf course API not configured" });
+      }
+
+      const response = await fetch(
+        `https://api.golfcourseapi.com/v1/search?search_query=${encodeURIComponent(searchQuery)}`,
+        {
+          headers: {
+            'Authorization': `Key ${apiKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error("Golf API search error:", response.status, await response.text());
+        return res.status(500).json({ message: "Failed to search golf courses" });
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      console.error("Golf course search error:", err);
+      res.status(500).json({ message: "Failed to search golf courses" });
+    }
+  });
+
+  app.get('/api/golf-course-api/courses/:id', isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      if (isNaN(courseId)) {
+        return res.status(400).json({ message: "Invalid course ID" });
+      }
+
+      const apiKey = process.env.GOLF_COURSE_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ message: "Golf course API not configured" });
+      }
+
+      const response = await fetch(
+        `https://api.golfcourseapi.com/v1/courses/${courseId}`,
+        {
+          headers: {
+            'Authorization': `Key ${apiKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return res.status(404).json({ message: "Course not found" });
+        }
+        console.error("Golf API get course error:", response.status, await response.text());
+        return res.status(500).json({ message: "Failed to get course details" });
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (err) {
+      console.error("Golf course get error:", err);
+      res.status(500).json({ message: "Failed to get course details" });
+    }
+  });
+
+  app.post(api.golfCourseApi.importCourse.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.golfCourseApi.importCourse.input.parse(req.body);
+      
+      const apiKey = process.env.GOLF_COURSE_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ message: "Golf course API not configured" });
+      }
+
+      // Fetch full course data from API
+      const response = await fetch(
+        `https://api.golfcourseapi.com/v1/courses/${input.externalId}`,
+        {
+          headers: {
+            'Authorization': `Key ${apiKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        return res.status(500).json({ message: "Failed to fetch course data for import" });
+      }
+
+      const courseData = await response.json();
+      
+      // Find the selected tee data (prefer male tees, fall back to female)
+      const allTees = [...(courseData.tees?.male || []), ...(courseData.tees?.female || [])];
+      const selectedTeeData = allTees.find((t: any) => t.tee_name === input.selectedTee);
+      
+      if (!selectedTeeData || !selectedTeeData.holes || selectedTeeData.holes.length < 9) {
+        return res.status(400).json({ message: "Selected tee does not have valid hole data" });
+      }
+
+      // Create or update the course
+      const pars = selectedTeeData.holes.slice(0, 18).map((h: any) => h.par);
+      const handicaps = selectedTeeData.holes.slice(0, 18).map((h: any) => h.handicap);
+      
+      const course = await storage.seedCourseIfNotExists(input.courseName, pars);
+      
+      // Update hole pars and handicaps
+      for (let i = 0; i < Math.min(handicaps.length, 18); i++) {
+        await storage.updateCourseHole(course.id, i + 1, { par: pars[i], handicap: handicaps[i] });
+      }
+      
+      // Import all tees from the API data
+      let teesImported = 0;
+      for (const tee of allTees) {
+        if (tee.slope_rating && tee.course_rating) {
+          await storage.createCourseTee(course.id, {
+            name: tee.tee_name,
+            slopeRating: Math.round(tee.slope_rating),
+            courseRating: Math.round(tee.course_rating * 10), // Store as tenths
+            color: null,
+          });
+          teesImported++;
+        }
+      }
+
+      res.json({
+        courseId: course.id,
+        holesImported: Math.min(pars.length, 18),
+        teesImported,
+      });
+    } catch (err) {
+      console.error("Course import error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to import course" });
+    }
+  });
+
   // Seed courses on startup
   seedCourses();
 
