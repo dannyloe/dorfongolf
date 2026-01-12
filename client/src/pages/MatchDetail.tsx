@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useCourses } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useCourses, useUpdateHandicapped } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute, useLocation, Link } from "wouter";
@@ -52,6 +52,10 @@ interface EventMatch {
   parentMatchId?: number | null;
   autoPressOriginal?: boolean;
   autoPressAllPresses?: boolean;
+  autoPressNassauFront9?: boolean;
+  autoPressNassauBack9?: boolean;
+  autoPressNassauOverall?: boolean;
+  useNetScoring?: boolean;
   teams: Team[];
 }
 
@@ -123,6 +127,7 @@ export default function MatchDetail() {
   const deleteEventMatch = useDeleteEventMatch(matchId);
   const createPress = useCreatePress(matchId);
   const updateAutoPress = useUpdateAutoPress(matchId);
+  const updateHandicapped = useUpdateHandicapped(matchId);
   
   const [newPlayerName, setNewPlayerName] = useState("");
   const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
@@ -154,6 +159,9 @@ export default function MatchDetail() {
   
   // Skins match state
   const [skinsPlayerIds, setSkinsPlayerIds] = useState<number[]>([]);
+  
+  // Net scoring state (for handicapped events)
+  const [useNetScoring, setUseNetScoring] = useState(false);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -223,6 +231,7 @@ export default function MatchDetail() {
       autoPressNassauFront9: isNassau ? autoPressOriginal : true,
       autoPressNassauBack9: isNassau ? autoPressOriginal : true,
       autoPressNassauOverall: isNassau ? autoPressOriginal : true,
+      useNetScoring: match.isHandicapped ? useNetScoring : false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -231,6 +240,7 @@ export default function MatchDetail() {
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
         setAutoPressOriginal(true);
+        setUseNetScoring(false);
       }
     });
   };
@@ -275,12 +285,17 @@ export default function MatchDetail() {
       teamB: { name: 'Skins Players', playerIds: skinsPlayerIds },
       autoPressOriginal: false,
       autoPressAllPresses: false,
+      autoPressNassauFront9: true,
+      autoPressNassauBack9: true,
+      autoPressNassauOverall: true,
+      useNetScoring: match.isHandicapped ? useNetScoring : false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
         setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
         setUnitAmount(20);
         setSkinsPlayerIds([]);
+        setUseNetScoring(false);
       }
     });
   };
@@ -333,6 +348,10 @@ export default function MatchDetail() {
             teamB: { name: teamBName, playerIds: pairing.teamB },
             autoPressOriginal: autoPressOriginal,
             autoPressAllPresses: false,
+            autoPressNassauFront9: true,
+            autoPressNassauBack9: true,
+            autoPressNassauOverall: true,
+            useNetScoring: match.isHandicapped ? useNetScoring : false,
           }, {
             onSuccess: () => resolve(),
             onError: (err) => reject(err),
@@ -347,6 +366,7 @@ export default function MatchDetail() {
       setRoundRobinGroupBIds([]);
       setRoundRobinStep('select');
       setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+      setUseNetScoring(false);
     } catch (error) {
       console.error('Error creating round robin matches:', error);
     } finally {
@@ -427,7 +447,7 @@ export default function MatchDetail() {
     <div className="max-w-6xl mx-auto space-y-8 pb-20">
       {/* Header - Compact */}
       <div className="bg-white rounded-xl px-4 py-3 shadow-md border border-border/50 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <h1 className="text-xl font-display font-bold text-foreground">{match.name}</h1>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
@@ -438,6 +458,20 @@ export default function MatchDetail() {
               <Calendar className="w-4 h-4 text-primary" />
               {match.createdAt && format(new Date(match.createdAt), "MMM d, yyyy")}
             </span>
+            {isCreator ? (
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <Checkbox
+                  checked={match.isHandicapped || false}
+                  onCheckedChange={(checked) => updateHandicapped.mutate(!!checked)}
+                  data-testid="checkbox-handicapped-event"
+                />
+                <span className={match.isHandicapped ? "text-foreground font-medium" : ""}>
+                  Handicapped
+                </span>
+              </label>
+            ) : match.isHandicapped ? (
+              <span className="text-foreground font-medium">Handicapped Event</span>
+            ) : null}
           </div>
         </div>
 
@@ -925,6 +959,25 @@ export default function MatchDetail() {
                 </div>
               )}
 
+              {/* Net/Gross Scoring Option - Only for Handicapped Events */}
+              {match.isHandicapped && (
+                <div className="space-y-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={useNetScoring}
+                      onCheckedChange={(checked) => setUseNetScoring(!!checked)}
+                      data-testid="checkbox-use-net-scoring"
+                    />
+                    <span className="text-sm font-medium">Use Net Scoring</span>
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {useNetScoring 
+                      ? "Match results based on handicap-adjusted scores"
+                      : "Match results based on gross (raw) scores"}
+                  </p>
+                </div>
+              )}
+
               {/* Skins Player Selection */}
               {selectedMatchType === MATCH_TYPES.SKINS ? (
                 <>
@@ -1107,6 +1160,15 @@ export default function MatchDetail() {
                         {em.unitAmount > 0 && (
                           <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-muted rounded-full font-medium">
                             ${(em.unitAmount / 100).toFixed(2)}
+                          </span>
+                        )}
+                        {match.isHandicapped && (
+                          <span className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium ${
+                            em.useNetScoring 
+                              ? "bg-primary/20 text-primary" 
+                              : "bg-muted text-muted-foreground"
+                          }`}>
+                            {em.useNetScoring ? "Net" : "Gross"}
                           </span>
                         )}
                         <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>

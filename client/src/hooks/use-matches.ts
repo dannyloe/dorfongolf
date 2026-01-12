@@ -146,6 +146,28 @@ export function useUpdateMatchStatus() {
   });
 }
 
+export function useUpdateHandicapped(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (isHandicapped: boolean) => {
+      const url = buildUrl(api.matches.updateHandicapped.path, { id: matchId });
+      const res = await fetch(url, {
+        method: api.matches.updateHandicapped.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isHandicapped }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update handicapped status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+      queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
+    },
+  });
+}
+
 type CreateEventMatchInput = z.infer<typeof api.eventMatches.create.input>;
 
 export function useCreateEventMatch(matchId: number) {

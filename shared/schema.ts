@@ -10,6 +10,8 @@ import { users } from "./models/auth";
 export const courses = pgTable("courses", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
+  slopeRating: integer("slope_rating"),
+  courseRating: integer("course_rating"), // Stored as tenths (e.g., 721 = 72.1)
 });
 
 export const courseHoles = pgTable("course_holes", {
@@ -28,6 +30,7 @@ export const matches = pgTable("matches", {
   creatorId: text("creator_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),
+  isHandicapped: boolean("is_handicapped").default(false),
 });
 
 export const players = pgTable("players", {
@@ -59,7 +62,16 @@ export const eventMatches = pgTable("event_matches", {
   autoPressNassauFront9: boolean("auto_press_nassau_front9").notNull().default(true),
   autoPressNassauBack9: boolean("auto_press_nassau_back9").notNull().default(true),
   autoPressNassauOverall: boolean("auto_press_nassau_overall").notNull().default(true),
+  useNetScoring: boolean("use_net_scoring").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Player handicaps - stores handicap index for preset players
+export const playerHandicaps = pgTable("player_handicaps", {
+  id: serial("id").primaryKey(),
+  presetPlayerName: text("preset_player_name").notNull().unique(),
+  handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4)
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const teams = pgTable("teams", {
@@ -189,6 +201,11 @@ export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
   id: true,
 });
 
+export const insertPlayerHandicapSchema = createInsertSchema(playerHandicaps).omit({
+  id: true,
+  updatedAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Course = typeof courses.$inferSelect;
@@ -215,6 +232,9 @@ export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type TeamMember = typeof teamMembers.$inferSelect;
 export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 
+export type PlayerHandicap = typeof playerHandicaps.$inferSelect;
+export type InsertPlayerHandicap = z.infer<typeof insertPlayerHandicapSchema>;
+
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
 
@@ -238,6 +258,7 @@ export type CreateEventMatchRequest = {
   autoPressNassauFront9?: boolean;
   autoPressNassauBack9?: boolean;
   autoPressNassauOverall?: boolean;
+  useNetScoring?: boolean;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
 };

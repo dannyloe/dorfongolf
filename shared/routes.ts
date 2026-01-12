@@ -7,7 +7,8 @@ import {
   players,
   eventMatches,
   courses,
-  courseHoles
+  courseHoles,
+  playerHandicaps
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -100,6 +101,17 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateHandicapped: {
+      method: 'PATCH' as const,
+      path: '/api/matches/:id/handicapped',
+      input: z.object({
+        isHandicapped: z.boolean(),
+      }),
+      responses: {
+        200: z.custom<typeof matches.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   eventMatches: {
     list: {
@@ -121,6 +133,7 @@ export const api = {
         autoPressNassauFront9: z.boolean().default(true),
         autoPressNassauBack9: z.boolean().default(true),
         autoPressNassauOverall: z.boolean().default(true),
+        useNetScoring: z.boolean().default(false),
         teamA: z.object({
           name: z.string().min(1),
           playerIds: z.array(z.number()).min(1),
@@ -285,6 +298,46 @@ export const api = {
     delete: {
       method: 'DELETE' as const,
       path: '/api/courses/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateRatings: {
+      method: 'PATCH' as const,
+      path: '/api/courses/:id/ratings',
+      input: z.object({
+        slopeRating: z.number().min(55).max(155).nullable(),
+        courseRating: z.number().min(550).max(800).nullable(), // Stored as tenths (e.g., 721 = 72.1)
+      }),
+      responses: {
+        200: z.object({ id: z.number(), name: z.string(), slopeRating: z.number().nullable(), courseRating: z.number().nullable() }),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  playerHandicaps: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/player-handicaps',
+      responses: {
+        200: z.array(z.custom<typeof playerHandicaps.$inferSelect>()),
+      },
+    },
+    upsert: {
+      method: 'PUT' as const,
+      path: '/api/player-handicaps/:presetPlayerName',
+      input: z.object({
+        handicapIndex: z.number().min(-100).max(540).nullable(), // Stored as tenths (e.g., 124 = 12.4)
+      }),
+      responses: {
+        200: z.custom<typeof playerHandicaps.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/player-handicaps/:presetPlayerName',
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,

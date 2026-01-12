@@ -389,6 +389,72 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.courses.updateRatings.path, isAuthenticated, async (req, res) => {
+    try {
+      const courseId = parseInt(req.params.id);
+      const input = api.courses.updateRatings.input.parse(req.body);
+      const course = await storage.getCourse(courseId);
+      if (!course) return res.status(404).json({ message: "Course not found" });
+      const updated = await storage.updateCourseRatings(courseId, input.slopeRating, input.courseRating);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Player Handicaps
+  app.get(api.playerHandicaps.list.path, isAuthenticated, async (req, res) => {
+    const handicaps = await storage.getPlayerHandicaps();
+    res.json(handicaps);
+  });
+
+  app.put(api.playerHandicaps.upsert.path, isAuthenticated, async (req, res) => {
+    try {
+      const presetPlayerName = decodeURIComponent(req.params.presetPlayerName);
+      const input = api.playerHandicaps.upsert.input.parse(req.body);
+      const handicap = await storage.upsertPlayerHandicap({
+        presetPlayerName,
+        handicapIndex: input.handicapIndex,
+      });
+      res.json(handicap);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.playerHandicaps.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const presetPlayerName = decodeURIComponent(req.params.presetPlayerName);
+      await storage.deletePlayerHandicap(presetPlayerName);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Match Handicapped Status
+  app.patch(api.matches.updateHandicapped.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const input = api.matches.updateHandicapped.input.parse(req.body);
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      const updated = await storage.updateMatchHandicapped(matchId, input.isHandicapped);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Scorecard OCR Scanning
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {

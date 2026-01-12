@@ -1,9 +1,10 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
-  type Course, type CourseHole, type InsertCourse, type InsertCourseHole
+  type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
+  type PlayerHandicap, type InsertPlayerHandicap
 } from "@shared/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -160,6 +161,7 @@ export class DatabaseStorage implements IStorage {
       autoPressNassauFront9: data.autoPressNassauFront9 ?? true,
       autoPressNassauBack9: data.autoPressNassauBack9 ?? true,
       autoPressNassauOverall: data.autoPressNassauOverall ?? true,
+      useNetScoring: data.useNetScoring ?? false,
     }).returning();
 
     // Create Team A
@@ -383,6 +385,50 @@ export class DatabaseStorage implements IStorage {
       });
     }
     return course;
+  }
+
+  async updateCourseRatings(courseId: number, slopeRating: number | null, courseRating: number | null): Promise<Course | undefined> {
+    const [updated] = await db.update(courses)
+      .set({ slopeRating, courseRating })
+      .where(eq(courses.id, courseId))
+      .returning();
+    return updated;
+  }
+
+  // Player Handicap methods
+  async getPlayerHandicaps(): Promise<PlayerHandicap[]> {
+    return db.select().from(playerHandicaps).orderBy(playerHandicaps.presetPlayerName);
+  }
+
+  async getPlayerHandicap(presetPlayerName: string): Promise<PlayerHandicap | undefined> {
+    const [handicap] = await db.select().from(playerHandicaps)
+      .where(eq(playerHandicaps.presetPlayerName, presetPlayerName));
+    return handicap;
+  }
+
+  async upsertPlayerHandicap(data: InsertPlayerHandicap): Promise<PlayerHandicap> {
+    const existing = await this.getPlayerHandicap(data.presetPlayerName);
+    if (existing) {
+      const [updated] = await db.update(playerHandicaps)
+        .set({ handicapIndex: data.handicapIndex, updatedAt: new Date() })
+        .where(eq(playerHandicaps.presetPlayerName, data.presetPlayerName))
+        .returning();
+      return updated;
+    }
+    const [inserted] = await db.insert(playerHandicaps).values(data).returning();
+    return inserted;
+  }
+
+  async deletePlayerHandicap(presetPlayerName: string): Promise<void> {
+    await db.delete(playerHandicaps).where(eq(playerHandicaps.presetPlayerName, presetPlayerName));
+  }
+
+  async updateMatchHandicapped(matchId: number, isHandicapped: boolean): Promise<Match> {
+    const [updated] = await db.update(matches)
+      .set({ isHandicapped })
+      .where(eq(matches.id, matchId))
+      .returning();
+    return updated;
   }
 }
 
