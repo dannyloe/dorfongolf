@@ -14,7 +14,7 @@ export async function registerRoutes(
   registerAuthRoutes(app);
 
   app.get(api.matches.list.path, isAuthenticated, async (req, res) => {
-    const matches = await storage.getMatches();
+    const matches = await storage.getMatchesWithPlayers();
     res.json(matches);
   });
 

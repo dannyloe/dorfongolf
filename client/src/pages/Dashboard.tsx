@@ -2,7 +2,7 @@ import { useMatches, useDeleteMatch, useUpdateMatchStatus, useCloneEvent } from 
 import { useAuth } from "@/hooks/use-auth";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
@@ -253,6 +253,15 @@ function MatchCard({ match, isHistory = false, userId }: { match: any, isHistory
               <MapPin className="w-4 h-4 mr-1.5 text-accent" />
               {match.courseName}
             </div>
+            
+            {match.players && match.players.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap mt-1">
+                <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {match.players.map((p: any) => p.name).join(", ")}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center self-end text-primary font-semibold text-sm group-hover:translate-x-1 transition-transform mt-8">

@@ -54,6 +54,25 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(matches).orderBy(matches.createdAt);
   }
 
+  async getMatchesWithPlayers(): Promise<(Match & { players: Player[] })[]> {
+    await this.autoCompleteOldMatches();
+    const allMatches = await db.select().from(matches).orderBy(matches.createdAt);
+    const allPlayers = await db.select().from(players);
+    
+    const playersByMatch = new Map<number, Player[]>();
+    for (const player of allPlayers) {
+      if (!playersByMatch.has(player.matchId)) {
+        playersByMatch.set(player.matchId, []);
+      }
+      playersByMatch.get(player.matchId)!.push(player);
+    }
+    
+    return allMatches.map(match => ({
+      ...match,
+      players: playersByMatch.get(match.id) || [],
+    }));
+  }
+
   async getMatch(id: number): Promise<Match | undefined> {
     const [match] = await db.select().from(matches).where(eq(matches.id, id));
     return match;
