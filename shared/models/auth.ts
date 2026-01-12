@@ -34,7 +34,8 @@ export const PRESET_PLAYERS = [
   "DLoe", "Zimm", "Hutch", "Cody", "Cole", "Spikey", "CP", "Dooly", "Fontaine",
   "Ian", "JR", "JP", "Jordan", "Wait", "MeerKat", "Chaney", "Neal",
   "Nellie", "Hot Left Hansson", "Ocker", "Sub4 Seeger", "Tharnish",
-  "Yaffe", "Shu", "Smitty", "Coach", "Trey Billy", "Ty Adams", "Ty Matlock"
+  "Yaffe", "Shu", "Smitty", "Coach", "Trey Billy", "Ty Adams", "Ty Matlock",
+  "Mark Patrick"
 ] as const;
 
 export type PresetPlayerName = typeof PRESET_PLAYERS[number];
