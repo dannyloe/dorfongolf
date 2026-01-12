@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Search, Hash, Flag, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Users, Search, Hash, Flag, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -261,6 +262,8 @@ export default function PlayerMaintenance() {
   const [addingCourseForPlayer, setAddingCourseForPlayer] = useState<string | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
   const [selectedTeeId, setSelectedTeeId] = useState<string>("");
+  const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState("");
 
   const { data, isLoading: isLoadingPlayers } = useQuery<PlayerDataResponse>({
     queryKey: ["/api/preset-players/full"],
@@ -352,6 +355,27 @@ export default function PlayerMaintenance() {
     return (allCourseDefaults || []).filter(d => d.presetPlayerName === playerName);
   };
 
+  const createPlayerMutation = useMutation({
+    mutationFn: async (name: string) => {
+      return apiRequest("POST", "/api/preset-players", { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      setShowAddPlayerDialog(false);
+      setNewPlayerName("");
+      toast({ title: "Player added to roster" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleAddPlayer = () => {
+    const trimmedName = newPlayerName.trim();
+    if (trimmedName.length === 0) return;
+    createPlayerMutation.mutate(trimmedName);
+  };
+
   const getTeesForCourse = (courseId: number) => {
     return allTees.filter(t => t.courseId === courseId);
   };
@@ -398,6 +422,14 @@ export default function PlayerMaintenance() {
               <Badge variant="secondary">
                 {filteredPlayers.length} players
               </Badge>
+              <Button 
+                size="sm" 
+                onClick={() => setShowAddPlayerDialog(true)}
+                data-testid="button-add-player"
+              >
+                <UserPlus className="h-4 w-4 mr-1" />
+                Add Player
+              </Button>
             </div>
 
             {isLoadingPlayers ? (
@@ -660,6 +692,45 @@ export default function PlayerMaintenance() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={showAddPlayerDialog} onOpenChange={setShowAddPlayerDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Player to Roster</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              placeholder="Enter player name..."
+              value={newPlayerName}
+              onChange={(e) => setNewPlayerName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newPlayerName.trim()) {
+                  handleAddPlayer();
+                }
+              }}
+              data-testid="input-new-player-name"
+            />
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowAddPlayerDialog(false);
+                setNewPlayerName("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddPlayer}
+              disabled={!newPlayerName.trim() || createPlayerMutation.isPending}
+              data-testid="button-confirm-add-player"
+            >
+              {createPlayerMutation.isPending ? "Adding..." : "Add Player"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
