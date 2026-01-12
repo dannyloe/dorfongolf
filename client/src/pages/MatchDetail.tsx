@@ -2713,7 +2713,7 @@ export default function MatchDetail() {
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1">
                         <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isCurrentUser ? "bg-accent" : "bg-muted"}`} />
-                        <span className="truncate text-xs">{p.name}{isCurrentUser && " (You)"}</span>
+                        <span className="truncate text-sm font-semibold">{p.name}{isCurrentUser && " (You)"}</span>
                         {/* Handicap inline - only show when handicapped */}
                         {match?.isHandicapped && (
                           <>
