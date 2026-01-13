@@ -141,7 +141,7 @@ export default function RyderCupEvent() {
         if (!pairing.result || !pairing.isPrimary) continue;
         
         for (const side of pairing.sides) {
-          const players = [side.player1Name, side.player2Name].filter(Boolean);
+          const players = [side.player1Name, side.player2Name].filter((n): n is string => n !== null);
           const isWinner = pairing.result.winningSideId === side.id;
           const isTie = !pairing.result.winningSideId;
           
@@ -477,7 +477,7 @@ export default function RyderCupEvent() {
                         <span className="text-center">
                           <Badge 
                             variant="outline" 
-                            style={{ borderColor: team?.color, color: team?.color }}
+                            style={{ borderColor: team?.color || undefined, color: team?.color || undefined }}
                           >
                             {team?.name}
                           </Badge>

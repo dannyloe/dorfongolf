@@ -155,10 +155,7 @@ export default function MatchDetail() {
   const updateHandicapped = useUpdateHandicapped(matchId);
   const updateMatchDetails = useUpdateMatchDetails(matchId);
   const { data: playerHandicaps } = usePlayerHandicaps();
-  const { data: fullPlayerDataRaw } = useFullPlayerData();
-  const fullPlayerData = Array.isArray(fullPlayerDataRaw) 
-    ? fullPlayerDataRaw 
-    : (fullPlayerDataRaw as any)?.players || [];
+  const { data: fullPlayerData = [] } = useFullPlayerData();
   const upsertPlayerHandicap = useUpsertPlayerHandicap();
   const updatePlayerMatchHandicap = useUpdatePlayerMatchHandicap(matchId);
   const updatePlayerTee = useUpdatePlayerTee(matchId);
@@ -3071,25 +3068,39 @@ export default function MatchDetail() {
                           </>
                         )}
                       </div>
-                      {/* Tee selector - only show when handicapped and creator */}
-                      {match?.isHandicapped && isCreator && courseTees && courseTees.length > 0 && (
-                        <Select
-                          value={p.teeId?.toString() || ''}
-                          onValueChange={(value) => {
-                            updatePlayerTee.mutate({ playerId: p.id, teeId: value ? parseInt(value) : null });
-                          }}
-                        >
-                          <SelectTrigger className="h-5 w-full text-[10px] px-1" data-testid={`select-player-tee-${p.id}`}>
-                            <SelectValue placeholder="Tee" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {courseTees.map((tee) => (
-                              <SelectItem key={tee.id} value={tee.id.toString()} className="text-xs">
-                                {tee.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      {/* Tee selector and Course Handicap - only show when handicapped */}
+                      {match?.isHandicapped && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {isCreator && courseTees && courseTees.length > 0 && (
+                            <Select
+                              value={p.teeId?.toString() || ''}
+                              onValueChange={(value) => {
+                                updatePlayerTee.mutate({ playerId: p.id, teeId: value ? parseInt(value) : null });
+                              }}
+                            >
+                              <SelectTrigger className="h-5 w-20 text-[10px] px-1" data-testid={`select-player-tee-${p.id}`}>
+                                <SelectValue placeholder="Tee" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {courseTees.map((tee) => (
+                                  <SelectItem key={tee.id} value={tee.id.toString()} className="text-xs">
+                                    {tee.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {/* Course Handicap display */}
+                          {scorecardNetContext && (
+                            <span 
+                              className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded"
+                              title="Course Handicap (calculated from handicap index and tee slope)"
+                              data-testid={`course-hcp-${p.id}`}
+                            >
+                              CH: {scorecardNetContext.courseHandicaps?.get(p.id) ?? '-'}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </td>
