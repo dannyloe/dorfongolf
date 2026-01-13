@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CreateMatchModal } from "@/components/CreateMatchModal";
 import type { RyderCupEventResponse, RyderCupPairingSide, MATCH_TYPES, Match } from "@shared/schema";
 
 export default function RyderCupEvent() {
@@ -24,8 +23,6 @@ export default function RyderCupEvent() {
   const [selectedPairingId, setSelectedPairingId] = useState<number | null>(null);
   const [selectedWinnerId, setSelectedWinnerId] = useState<number | null>(null);
   const [winningMargin, setWinningMargin] = useState("");
-  
-  const [sideMatchModalOpen, setSideMatchModalOpen] = useState(false);
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
@@ -57,6 +54,31 @@ export default function RyderCupEvent() {
     },
   });
 
+  const createSideMatchMutation = useMutation({
+    mutationFn: async (): Promise<Match> => {
+      const currentDayData = event?.days.find(d => d.dayNumber === selectedDay);
+      const courseName = currentDayData?.courseName || event?.courseName || "";
+      const courseId = currentDayData?.courseId || event?.courseId;
+      
+      const res = await apiRequest("POST", "/api/matches", {
+        name: `Day ${selectedDay} Side Match`,
+        courseName,
+        courseId,
+        ryderCupEventId: parseInt(id!),
+        ryderCupDayNumber: selectedDay,
+        groupId: null,
+      });
+      return res.json();
+    },
+    onSuccess: (newMatch) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "matches"] });
+      toast({ title: "Side match created" });
+      setLocation(`/match/${newMatch.id}`);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create side match", variant: "destructive" });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -296,7 +318,8 @@ export default function RyderCupEvent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setSideMatchModalOpen(true)}
+                    onClick={() => createSideMatchMutation.mutate()}
+                    disabled={createSideMatchMutation.isPending}
                     data-testid="button-add-side-match"
                   >
                     <Plus className="w-3 h-3 mr-1" /> Add Side Match
@@ -522,17 +545,6 @@ export default function RyderCupEvent() {
           )}
         </DialogContent>
       </Dialog>
-
-      <CreateMatchModal
-        isOpen={sideMatchModalOpen}
-        onClose={() => setSideMatchModalOpen(false)}
-        ryderCupContext={{
-          eventId: parseInt(id!),
-          dayNumber: selectedDay,
-          courseName: currentDay?.courseName || event.courseName,
-          courseId: currentDay?.courseId || event.courseId || undefined,
-        }}
-      />
     </div>
   );
 }
