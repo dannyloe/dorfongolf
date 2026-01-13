@@ -1468,7 +1468,7 @@ export default function MatchDetail() {
                       <p><strong>Match Type:</strong> {MATCH_TYPE_LABELS[roundRobinMatchType]}</p>
                       <p><strong>Wager:</strong> ${unitAmount} per player per match</p>
                       <p><strong>Auto Press:</strong> {autoPressOriginal ? 'Enabled' : 'Disabled'}</p>
-                      <p><strong>Total Matches:</strong> {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).length}</p>
+                      <p><strong>Total Matches:</strong> {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds, roundRobinKeyedAIds, roundRobinKeyedBIds).length}</p>
                     </div>
 
                     <div className="flex gap-2">
@@ -1486,7 +1486,7 @@ export default function MatchDetail() {
                         className="flex-1"
                         data-testid="button-rr-create"
                       >
-                        {isCreatingRoundRobin ? 'Creating...' : `Create ${generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds).length} Matches`}
+                        {isCreatingRoundRobin ? 'Creating...' : `Create ${generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds, roundRobinKeyedAIds, roundRobinKeyedBIds).length} Matches`}
                       </Button>
                     </div>
                   </>
