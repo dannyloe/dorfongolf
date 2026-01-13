@@ -22,7 +22,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20 group-hover:rotate-6 transition-transform">
               <Trophy className="w-4 h-4" />
             </div>
-            <span className="font-display font-bold text-xl text-foreground">Dog Trip</span>
+            <span className="font-display font-bold text-xl text-foreground">Golf Betting</span>
           </Link>
 
           {user ? (

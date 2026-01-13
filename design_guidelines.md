@@ -1,4 +1,4 @@
-# Dog Trip Golf App - Design Guidelines
+# Golf Betting App - Design Guidelines
 
 ## Design Approach
 **Hybrid: Apple HIG Foundation + Sports App Inspiration**
@@ -71,7 +71,7 @@
 **Hero Section (100vh)**
 - Full-bleed golf course aerial image (lush fairway, sunset lighting)
 - Centered overlay content with blurred-background container:
-  - "Dog Trip" wordmark (text-6xl)
+  - "Golf Betting" wordmark (text-6xl)
   - Tagline: "Ryder Cup Events Made Simple" (text-xl)
   - Primary CTA button with backdrop-blur-md
   - Social proof: "Trusted by 50+ golf groups"

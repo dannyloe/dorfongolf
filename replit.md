@@ -1,8 +1,8 @@
-# Dog Trip - Golf Scorecard Application
+# Golf Betting - Golf Scorecard Application
 
 ## Overview
 
-Dog Trip is a modern golf scorecard web application that allows users to track real-time matches with friends, visualize stats, and maintain game history. The application features user authentication via Replit Auth, match creation and management, player tracking, and hole-by-hole score entry.
+Golf Betting is a modern golf scorecard web application that allows users to track real-time matches with friends, visualize stats, and maintain game history. The application features user authentication via Replit Auth, match creation and management, player tracking, and hole-by-hole score entry.
 
 ## User Preferences
 

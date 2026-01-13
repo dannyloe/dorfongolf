@@ -148,7 +148,7 @@ export default function RyderCupCreate() {
             id="eventName"
             value={eventName}
             onChange={(e) => setEventName(e.target.value)}
-            placeholder="e.g., 2026 Dog Trip Ryder Cup"
+            placeholder="e.g., 2026 Golf Betting Ryder Cup"
             data-testid="input-event-name"
           />
         </div>
