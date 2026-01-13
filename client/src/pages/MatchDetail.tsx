@@ -218,8 +218,9 @@ export default function MatchDetail() {
     { name: "Team 2", playerIds: [] },
   ]);
   
-  // Net scoring state (for handicapped events)
+  // Net scoring state (for handicapped events) - defaults to true when match is handicapped
   const [useNetScoring, setUseNetScoring] = useState(false);
+  const [useNetScoringInitialized, setUseNetScoringInitialized] = useState(false);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -249,6 +250,14 @@ export default function MatchDetail() {
       }
     }
   }, [editingCell]);
+
+  // Initialize useNetScoring to true when match is handicapped (only once)
+  useEffect(() => {
+    if (!useNetScoringInitialized && match?.isHandicapped) {
+      setUseNetScoring(true);
+      setUseNetScoringInitialized(true);
+    }
+  }, [match?.isHandicapped, useNetScoringInitialized]);
 
   if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading event details...</div>;
   if (error || !match) return <div className="p-12 text-center text-destructive">Event not found</div>;
@@ -393,7 +402,8 @@ export default function MatchDetail() {
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
         setAutoPressOriginal(true);
-        setUseNetScoring(false);
+        // Keep useNetScoring true for handicapped matches
+        setUseNetScoring(match.isHandicapped ?? false);
       }
     });
   };
@@ -448,7 +458,8 @@ export default function MatchDetail() {
         setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
         setUnitAmount(20);
         setSkinsPlayerIds([]);
-        setUseNetScoring(false);
+        // Keep useNetScoring true for handicapped matches
+        setUseNetScoring(match.isHandicapped ?? false);
       }
     });
   };
@@ -521,7 +532,8 @@ export default function MatchDetail() {
         setUnitAmount(1); // Reset to $1 default
         setFiveTeamCount(2);
         setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
-        setUseNetScoring(false);
+        // Keep useNetScoring true for handicapped matches
+        setUseNetScoring(match.isHandicapped ?? false);
       }
     });
   };
@@ -592,7 +604,8 @@ export default function MatchDetail() {
       setRoundRobinGroupBIds([]);
       setRoundRobinStep('select');
       setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
-      setUseNetScoring(false);
+      // Keep useNetScoring true for handicapped matches
+      setUseNetScoring(match.isHandicapped ?? false);
     } catch (error) {
       console.error('Error creating round robin matches:', error);
     } finally {
