@@ -407,6 +407,22 @@ export const api = {
         403: z.object({ message: z.string() }),
       },
     },
+    rename: {
+      method: 'PUT' as const,
+      path: '/api/preset-players/:name/rename',
+      input: z.object({
+        newName: z.string().min(1).max(100),
+      }),
+      responses: {
+        200: z.object({
+          oldName: z.string(),
+          newName: z.string(),
+        }),
+        400: errorSchemas.validation,
+        403: z.object({ message: z.string() }),
+        409: z.object({ message: z.string() }),
+      },
+    },
   },
   ledger: {
     get: {

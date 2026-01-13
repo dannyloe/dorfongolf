@@ -1041,6 +1041,47 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async renamePresetPlayer(oldName: string, newName: string): Promise<{ oldName: string; newName: string }> {
+    // Check if new name already exists
+    const newNameExists = await this.presetPlayerExists(newName);
+    if (newNameExists && oldName.toLowerCase() !== newName.toLowerCase()) {
+      throw new Error(`Player "${newName}" already exists`);
+    }
+    
+    // Update in presetPlayers table
+    const [existing] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, oldName));
+    if (existing) {
+      await db.update(presetPlayers)
+        .set({ name: newName })
+        .where(eq(presetPlayers.name, oldName));
+    } else {
+      // Create new record with new name
+      await db.insert(presetPlayers).values({ name: newName, showInRoster: true });
+    }
+    
+    // Update player_handicaps table
+    await db.update(playerHandicaps)
+      .set({ presetPlayerName: newName })
+      .where(eq(playerHandicaps.presetPlayerName, oldName));
+    
+    // Update player_aliases canonical name
+    await db.update(playerAliases)
+      .set({ canonicalName: newName })
+      .where(eq(playerAliases.canonicalName, oldName));
+    
+    // Update player_course_defaults
+    await db.update(playerCourseDefaults)
+      .set({ presetPlayerName: newName })
+      .where(eq(playerCourseDefaults.presetPlayerName, oldName));
+    
+    // Update users presetPlayerName
+    await db.update(users)
+      .set({ presetPlayerName: newName })
+      .where(eq(users.presetPlayerName, oldName));
+    
+    return { oldName, newName };
+  }
+
   // === RYDER CUP EVENT METHODS ===
 
   async getRyderCupEvents(): Promise<RyderCupEvent[]> {

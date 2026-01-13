@@ -53,6 +53,79 @@ interface Course {
   name: string;
 }
 
+function EditableNameCell({ 
+  player, 
+  onSave,
+  isExpanded,
+  onToggleExpand,
+  courseDefaultsCount,
+}: { 
+  player: PlayerData;
+  onSave: (newName: string) => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  courseDefaultsCount: number;
+}) {
+  const [value, setValue] = useState(player.name);
+  const [isEditing, setIsEditing] = useState(false);
+
+  const handleBlur = () => {
+    setIsEditing(false);
+    const newName = value.trim();
+    if (newName.length > 0 && newName !== player.name) {
+      onSave(newName);
+    } else {
+      setValue(player.name);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === "Escape") {
+      setValue(player.name);
+      setIsEditing(false);
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <Input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[200px]"
+        autoFocus
+        data-testid={`input-name-${player.name}`}
+      />
+    );
+  }
+
+  return (
+    <div 
+      className="flex items-center gap-2 cursor-pointer"
+      onClick={onToggleExpand}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        setIsEditing(true);
+      }}
+      data-testid={`cell-name-${player.name}`}
+    >
+      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      <span className="hover:bg-muted/50 rounded px-1 py-0.5">{player.name}</span>
+      {courseDefaultsCount > 0 && (
+        <Badge variant="outline" className="text-xs">
+          <MapPin className="h-3 w-3 mr-1" />
+          {courseDefaultsCount}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 function EditableHandicapCell({ 
   player, 
   onSave 
@@ -348,6 +421,28 @@ export default function PlayerMaintenance() {
     createPlayerMutation.mutate(trimmedName);
   };
 
+  const renameMutation = useMutation({
+    mutationFn: async ({ oldName, newName }: { oldName: string; newName: string }) => {
+      return apiRequest("PUT", `/api/preset-players/${encodeURIComponent(oldName)}/rename`, { newName });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/player-course-defaults"] });
+      // Update expanded player if it was the one renamed
+      if (expandedPlayer === variables.oldName) {
+        setExpandedPlayer(variables.newName);
+      }
+      toast({ title: "Player renamed", description: `"${variables.oldName}" is now "${variables.newName}"` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleRenamePlayer = (oldName: string, newName: string) => {
+    renameMutation.mutate({ oldName, newName });
+  };
+
   const getTeesForCourse = (courseId: number) => {
     return allTees.filter(t => t.courseId === courseId);
   };
@@ -450,7 +545,7 @@ export default function PlayerMaintenance() {
                       
                       return (
                         <Fragment key={player.name}>
-                          <TableRow data-testid={`row-player-${player.name}`} className="cursor-pointer" onClick={() => setExpandedPlayer(isExpanded ? null : player.name)}>
+                          <TableRow data-testid={`row-player-${player.name}`}>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <Switch
                                 checked={player.showInRoster}
@@ -460,16 +555,13 @@ export default function PlayerMaintenance() {
                               />
                             </TableCell>
                             <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                {player.name}
-                                {courseDefaults.length > 0 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    <MapPin className="h-3 w-3 mr-1" />
-                                    {courseDefaults.length}
-                                  </Badge>
-                                )}
-                              </div>
+                              <EditableNameCell
+                                player={player}
+                                onSave={(newName) => handleRenamePlayer(player.name, newName)}
+                                isExpanded={isExpanded}
+                                onToggleExpand={() => setExpandedPlayer(isExpanded ? null : player.name)}
+                                courseDefaultsCount={courseDefaults.length}
+                              />
                             </TableCell>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <EditableHandicapCell 
