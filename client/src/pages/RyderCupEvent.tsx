@@ -60,7 +60,7 @@ export default function RyderCupEvent() {
       const courseName = currentDayData?.courseName || event?.courseName || "";
       const courseId = currentDayData?.courseId || event?.courseId;
       
-      // Create the match
+      // Create the match (inherit handicap setting from Ryder Cup event)
       const res = await apiRequest("POST", "/api/matches", {
         name: `Day ${selectedDay} Side Match`,
         courseName,
@@ -68,6 +68,7 @@ export default function RyderCupEvent() {
         ryderCupEventId: parseInt(id!),
         ryderCupDayNumber: selectedDay,
         groupId: null,
+        isHandicapped: event?.useHandicaps ?? true,
       });
       const newMatch = await res.json();
       

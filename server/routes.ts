@@ -30,6 +30,7 @@ export async function registerRoutes(
         ryderCupEventId: input.ryderCupEventId ?? null,
         ryderCupDayNumber: input.ryderCupDayNumber ?? null,
         courseId: input.courseId ?? null,
+        isHandicapped: input.isHandicapped ?? false,
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
