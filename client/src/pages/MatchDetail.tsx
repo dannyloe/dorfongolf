@@ -1,6 +1,7 @@
 import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, type MatchPlayerHandicap } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check } from "lucide-react";
@@ -144,6 +145,7 @@ export default function MatchDetail() {
   const { data: groups } = useGroups();
   const createGroup = useCreateGroup();
   const { user } = useAuth();
+  const { toast } = useToast();
   const addPlayer = useAddPlayer(matchId);
   const submitScore = useSubmitScore(matchId);
   const deleteMatch = useDeleteMatch();
@@ -374,6 +376,43 @@ export default function MatchDetail() {
       .join('/');
   };
 
+  // Generate canonical signature for duplicate detection
+  // Format: "matchType|sortedTeamAIds|sortedTeamBIds" (teams sorted so A < B)
+  const getMatchSignature = (matchType: string, teamAIds: number[], teamBIds: number[]): string => {
+    const sortedA = [...teamAIds].sort((a, b) => a - b).join(',');
+    const sortedB = [...teamBIds].sort((a, b) => a - b).join(',');
+    // Sort teams alphabetically so A vs B and B vs A are the same
+    const teams = [sortedA, sortedB].sort();
+    return `${matchType}|${teams[0]}|${teams[1]}`;
+  };
+
+  // Check if a match with the same players and type already exists
+  const findDuplicateMatch = (matchType: string, teamAIds: number[], teamBIds: number[]): EventMatch | null => {
+    const signature = getMatchSignature(matchType, teamAIds, teamBIds);
+    for (const em of eventMatches) {
+      if (em.parentMatchId) continue; // Skip press matches
+      const existingTeamAIds = em.teams[0]?.members.map(m => m.playerId) || [];
+      const existingTeamBIds = em.teams[1]?.members.map(m => m.playerId) || [];
+      const existingSignature = getMatchSignature(em.matchType, existingTeamAIds, existingTeamBIds);
+      if (signature === existingSignature) {
+        return em;
+      }
+    }
+    return null;
+  };
+
+  // Find all duplicates for a set of proposed matches (for keyed/round robin)
+  const findDuplicateMatches = (proposedMatches: { matchType: string; teamAIds: number[]; teamBIds: number[] }[]): { proposed: typeof proposedMatches[0]; existing: EventMatch }[] => {
+    const duplicates: { proposed: typeof proposedMatches[0]; existing: EventMatch }[] = [];
+    for (const proposed of proposedMatches) {
+      const existing = findDuplicateMatch(proposed.matchType, proposed.teamAIds, proposed.teamBIds);
+      if (existing) {
+        duplicates.push({ proposed, existing });
+      }
+    }
+    return duplicates;
+  };
+
   const handleCreateEventMatch = async () => {
     if (teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0) return;
     
@@ -382,33 +421,72 @@ export default function MatchDetail() {
     
     // If keyed players exist, create individual matches for each keyed player vs each Team B player
     if (keyedTeamAIds.length > 0) {
-      try {
-        for (const keyedPlayerId of keyedTeamAIds) {
-          for (const opponentId of teamBPlayerIds) {
-            const keyedPlayerName = players.find(p => p.id === keyedPlayerId)?.name || '';
-            const opponentName = players.find(p => p.id === opponentId)?.name || '';
-            const matchName = `${keyedPlayerName} vs ${opponentName}`;
-            
-            await new Promise<void>((resolve, reject) => {
-              createEventMatch.mutate({
-                name: matchName,
-                matchType: selectedMatchType,
-                unitAmount: unitAmount * 100,
-                teamA: { name: keyedPlayerName, playerIds: [keyedPlayerId] },
-                teamB: { name: opponentName, playerIds: [opponentId] },
-                autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
-                autoPressAllPresses: false,
-                autoPressNassauFront9: isNassau ? autoPressOriginal : true,
-                autoPressNassauBack9: isNassau ? autoPressOriginal : true,
-                autoPressNassauOverall: isNassau ? autoPressOriginal : true,
-                useNetScoring: match.isHandicapped ? useNetScoring : false,
-              }, {
-                onSuccess: () => resolve(),
-                onError: (err) => reject(err),
-              });
-            });
-          }
+      // Build list of proposed matches for duplicate checking
+      const proposedMatches: { matchType: string; teamAIds: number[]; teamBIds: number[] }[] = [];
+      for (const keyedPlayerId of keyedTeamAIds) {
+        for (const opponentId of teamBPlayerIds) {
+          proposedMatches.push({
+            matchType: selectedMatchType,
+            teamAIds: [keyedPlayerId],
+            teamBIds: [opponentId],
+          });
         }
+      }
+      
+      // Check for duplicates
+      const duplicates = findDuplicateMatches(proposedMatches);
+      if (duplicates.length > 0) {
+        const dupNames = duplicates.map(d => d.existing.name).join(', ');
+        toast({
+          title: "Duplicate matches found",
+          description: `${duplicates.length} match(es) already exist: ${dupNames}. Skipping duplicates.`,
+          variant: "destructive",
+        });
+      }
+      
+      // Filter out duplicates
+      const matchesToCreate = proposedMatches.filter(pm => 
+        !findDuplicateMatch(pm.matchType, pm.teamAIds, pm.teamBIds)
+      );
+      
+      if (matchesToCreate.length === 0) {
+        toast({
+          title: "No new matches to create",
+          description: "All proposed matches already exist.",
+        });
+        return;
+      }
+      
+      try {
+        for (const pm of matchesToCreate) {
+          const keyedPlayerName = players.find(p => p.id === pm.teamAIds[0])?.name || '';
+          const opponentName = players.find(p => p.id === pm.teamBIds[0])?.name || '';
+          const matchName = `${keyedPlayerName} vs ${opponentName}`;
+          
+          await new Promise<void>((resolve, reject) => {
+            createEventMatch.mutate({
+              name: matchName,
+              matchType: selectedMatchType,
+              unitAmount: unitAmount * 100,
+              teamA: { name: keyedPlayerName, playerIds: pm.teamAIds },
+              teamB: { name: opponentName, playerIds: pm.teamBIds },
+              autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
+              autoPressAllPresses: false,
+              autoPressNassauFront9: isNassau ? autoPressOriginal : true,
+              autoPressNassauBack9: isNassau ? autoPressOriginal : true,
+              autoPressNassauOverall: isNassau ? autoPressOriginal : true,
+              useNetScoring: match.isHandicapped ? useNetScoring : false,
+            }, {
+              onSuccess: () => resolve(),
+              onError: (err) => reject(err),
+            });
+          });
+        }
+        
+        toast({
+          title: "Matches created",
+          description: `Created ${matchesToCreate.length} new match(es).`,
+        });
         
         // Reset state after all matches created
         setShowCreateMatch(false);
@@ -426,6 +504,17 @@ export default function MatchDetail() {
     }
     
     // Normal single match creation (no keyed players)
+    // Check for duplicate
+    const existingMatch = findDuplicateMatch(selectedMatchType, teamAPlayerIds, teamBPlayerIds);
+    if (existingMatch) {
+      toast({
+        title: "Duplicate match",
+        description: `A match with these players already exists: ${existingMatch.name}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
     const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
     const autoMatchName = `${autoTeamAName} vs ${autoTeamBName}`;
@@ -638,8 +727,40 @@ export default function MatchDetail() {
     setIsCreatingRoundRobin(true);
     const matchPairings = generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds, roundRobinKeyedAIds, roundRobinKeyedBIds);
     
+    // Build proposed matches for duplicate checking
+    const proposedMatches = matchPairings.map(pairing => ({
+      matchType: roundRobinMatchType,
+      teamAIds: [...pairing.teamA],
+      teamBIds: [...pairing.teamB],
+    }));
+    
+    // Check for duplicates
+    const duplicates = findDuplicateMatches(proposedMatches);
+    if (duplicates.length > 0) {
+      const dupCount = duplicates.length;
+      toast({
+        title: "Duplicate matches found",
+        description: `${dupCount} match(es) already exist. Skipping duplicates.`,
+        variant: "destructive",
+      });
+    }
+    
+    // Filter out duplicates
+    const pairingsToCreate = matchPairings.filter(pairing => 
+      !findDuplicateMatch(roundRobinMatchType, [...pairing.teamA], [...pairing.teamB])
+    );
+    
+    if (pairingsToCreate.length === 0) {
+      toast({
+        title: "No new matches to create",
+        description: "All proposed matches already exist.",
+      });
+      setIsCreatingRoundRobin(false);
+      return;
+    }
+    
     try {
-      for (const pairing of matchPairings) {
+      for (const pairing of pairingsToCreate) {
         const teamAName = pairing.teamA.map(id => getPlayerNameById(id)).join('/');
         const teamBName = pairing.teamB.map(id => getPlayerNameById(id)).join('/');
         
@@ -662,6 +783,11 @@ export default function MatchDetail() {
           });
         });
       }
+      
+      toast({
+        title: "Round Robin created",
+        description: `Created ${pairingsToCreate.length} new match(es).`,
+      });
       
       // Reset wizard state
       setShowCreateMatch(false);
