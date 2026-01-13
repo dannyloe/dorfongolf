@@ -155,7 +155,10 @@ export default function MatchDetail() {
   const updateHandicapped = useUpdateHandicapped(matchId);
   const updateMatchDetails = useUpdateMatchDetails(matchId);
   const { data: playerHandicaps } = usePlayerHandicaps();
-  const { data: fullPlayerData } = useFullPlayerData();
+  const { data: fullPlayerDataRaw } = useFullPlayerData();
+  const fullPlayerData = Array.isArray(fullPlayerDataRaw) 
+    ? fullPlayerDataRaw 
+    : (fullPlayerDataRaw as any)?.players || [];
   const upsertPlayerHandicap = useUpsertPlayerHandicap();
   const updatePlayerMatchHandicap = useUpdatePlayerMatchHandicap(matchId);
   const updatePlayerTee = useUpdatePlayerTee(matchId);

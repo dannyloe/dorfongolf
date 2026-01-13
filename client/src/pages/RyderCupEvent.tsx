@@ -60,6 +60,7 @@ export default function RyderCupEvent() {
       const courseName = currentDayData?.courseName || event?.courseName || "";
       const courseId = currentDayData?.courseId || event?.courseId;
       
+      // Create the match
       const res = await apiRequest("POST", "/api/matches", {
         name: `Day ${selectedDay} Side Match`,
         courseName,
@@ -68,11 +69,24 @@ export default function RyderCupEvent() {
         ryderCupDayNumber: selectedDay,
         groupId: null,
       });
-      return res.json();
+      const newMatch = await res.json();
+      
+      // Get all player names from both teams
+      const allPlayerNames = [
+        ...(event?.teams[0]?.members || []).map(m => m.playerName),
+        ...(event?.teams[1]?.members || []).map(m => m.playerName),
+      ];
+      
+      // Add all tournament players to the match
+      for (const playerName of allPlayerNames) {
+        await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { name: playerName });
+      }
+      
+      return newMatch;
     },
     onSuccess: (newMatch) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "matches"] });
-      toast({ title: "Side match created" });
+      toast({ title: "Side match created with all players" });
       setLocation(`/match/${newMatch.id}`);
     },
     onError: () => {
