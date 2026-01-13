@@ -377,23 +377,24 @@ export default function MatchDetail() {
   };
 
   // Generate canonical signature for duplicate detection
-  // Format: "matchType|sortedTeamAIds|sortedTeamBIds" (teams sorted so A < B)
-  const getMatchSignature = (matchType: string, teamAIds: number[], teamBIds: number[]): string => {
+  // Format: "matchType|netScoring|sortedTeamAIds|sortedTeamBIds" (teams sorted so A < B)
+  // Includes useNetScoring so gross and net matches with same players are allowed
+  const getMatchSignature = (matchType: string, teamAIds: number[], teamBIds: number[], isNetScoring: boolean): string => {
     const sortedA = [...teamAIds].sort((a, b) => a - b).join(',');
     const sortedB = [...teamBIds].sort((a, b) => a - b).join(',');
     // Sort teams alphabetically so A vs B and B vs A are the same
     const teams = [sortedA, sortedB].sort();
-    return `${matchType}|${teams[0]}|${teams[1]}`;
+    return `${matchType}|${isNetScoring ? 'net' : 'gross'}|${teams[0]}|${teams[1]}`;
   };
 
-  // Check if a match with the same players and type already exists
-  const findDuplicateMatch = (matchType: string, teamAIds: number[], teamBIds: number[]): EventMatch | null => {
-    const signature = getMatchSignature(matchType, teamAIds, teamBIds);
+  // Check if a match with the same players, type, and scoring mode already exists
+  const findDuplicateMatch = (matchType: string, teamAIds: number[], teamBIds: number[], isNetScoring: boolean): EventMatch | null => {
+    const signature = getMatchSignature(matchType, teamAIds, teamBIds, isNetScoring);
     for (const em of eventMatches) {
       if (em.parentMatchId) continue; // Skip press matches
       const existingTeamAIds = em.teams[0]?.members.map(m => m.playerId) || [];
       const existingTeamBIds = em.teams[1]?.members.map(m => m.playerId) || [];
-      const existingSignature = getMatchSignature(em.matchType, existingTeamAIds, existingTeamBIds);
+      const existingSignature = getMatchSignature(em.matchType, existingTeamAIds, existingTeamBIds, em.useNetScoring ?? false);
       if (signature === existingSignature) {
         return em;
       }
@@ -402,10 +403,10 @@ export default function MatchDetail() {
   };
 
   // Find all duplicates for a set of proposed matches (for keyed/round robin)
-  const findDuplicateMatches = (proposedMatches: { matchType: string; teamAIds: number[]; teamBIds: number[] }[]): { proposed: typeof proposedMatches[0]; existing: EventMatch }[] => {
+  const findDuplicateMatches = (proposedMatches: { matchType: string; teamAIds: number[]; teamBIds: number[]; isNetScoring: boolean }[]): { proposed: typeof proposedMatches[0]; existing: EventMatch }[] => {
     const duplicates: { proposed: typeof proposedMatches[0]; existing: EventMatch }[] = [];
     for (const proposed of proposedMatches) {
-      const existing = findDuplicateMatch(proposed.matchType, proposed.teamAIds, proposed.teamBIds);
+      const existing = findDuplicateMatch(proposed.matchType, proposed.teamAIds, proposed.teamBIds, proposed.isNetScoring);
       if (existing) {
         duplicates.push({ proposed, existing });
       }
@@ -420,15 +421,18 @@ export default function MatchDetail() {
     const isNassau = selectedMatchType === MATCH_TYPES.NASSAU;
     
     // If keyed players exist, create individual matches for each keyed player vs each Team B player
+    const currentNetScoring = match.isHandicapped ? useNetScoring : false;
+    
     if (keyedTeamAIds.length > 0) {
       // Build list of proposed matches for duplicate checking
-      const proposedMatches: { matchType: string; teamAIds: number[]; teamBIds: number[] }[] = [];
+      const proposedMatches: { matchType: string; teamAIds: number[]; teamBIds: number[]; isNetScoring: boolean }[] = [];
       for (const keyedPlayerId of keyedTeamAIds) {
         for (const opponentId of teamBPlayerIds) {
           proposedMatches.push({
             matchType: selectedMatchType,
             teamAIds: [keyedPlayerId],
             teamBIds: [opponentId],
+            isNetScoring: currentNetScoring,
           });
         }
       }
@@ -446,7 +450,7 @@ export default function MatchDetail() {
       
       // Filter out duplicates
       const matchesToCreate = proposedMatches.filter(pm => 
-        !findDuplicateMatch(pm.matchType, pm.teamAIds, pm.teamBIds)
+        !findDuplicateMatch(pm.matchType, pm.teamAIds, pm.teamBIds, pm.isNetScoring)
       );
       
       if (matchesToCreate.length === 0) {
@@ -504,8 +508,8 @@ export default function MatchDetail() {
     }
     
     // Normal single match creation (no keyed players)
-    // Check for duplicate
-    const existingMatch = findDuplicateMatch(selectedMatchType, teamAPlayerIds, teamBPlayerIds);
+    // Check for duplicate (including scoring mode)
+    const existingMatch = findDuplicateMatch(selectedMatchType, teamAPlayerIds, teamBPlayerIds, currentNetScoring);
     if (existingMatch) {
       toast({
         title: "Duplicate match",
@@ -726,12 +730,14 @@ export default function MatchDetail() {
     
     setIsCreatingRoundRobin(true);
     const matchPairings = generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds, roundRobinKeyedAIds, roundRobinKeyedBIds);
+    const currentNetScoring = match.isHandicapped ? useNetScoring : false;
     
     // Build proposed matches for duplicate checking
     const proposedMatches = matchPairings.map(pairing => ({
       matchType: roundRobinMatchType,
       teamAIds: [...pairing.teamA],
       teamBIds: [...pairing.teamB],
+      isNetScoring: currentNetScoring,
     }));
     
     // Check for duplicates
@@ -747,7 +753,7 @@ export default function MatchDetail() {
     
     // Filter out duplicates
     const pairingsToCreate = matchPairings.filter(pairing => 
-      !findDuplicateMatch(roundRobinMatchType, [...pairing.teamA], [...pairing.teamB])
+      !findDuplicateMatch(roundRobinMatchType, [...pairing.teamA], [...pairing.teamB], currentNetScoring)
     );
     
     if (pairingsToCreate.length === 0) {
