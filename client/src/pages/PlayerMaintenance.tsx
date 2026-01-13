@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -449,8 +449,8 @@ export default function PlayerMaintenance() {
                       const availableCoursesToAdd = (courses || []).filter(c => !coursesWithDefaults.includes(c.id));
                       
                       return (
-                        <>
-                          <TableRow key={player.name} data-testid={`row-player-${player.name}`} className="cursor-pointer" onClick={() => setExpandedPlayer(isExpanded ? null : player.name)}>
+                        <Fragment key={player.name}>
+                          <TableRow data-testid={`row-player-${player.name}`} className="cursor-pointer" onClick={() => setExpandedPlayer(isExpanded ? null : player.name)}>
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <Switch
                                 checked={player.showInRoster}
@@ -648,7 +648,7 @@ export default function PlayerMaintenance() {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                     {filteredPlayers.length === 0 && (
