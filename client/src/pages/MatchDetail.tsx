@@ -194,6 +194,7 @@ export default function MatchDetail() {
   const [unitAmount, setUnitAmount] = useState<number>(20);
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
+  const [keyedTeamAIds, setKeyedTeamAIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
@@ -373,15 +374,61 @@ export default function MatchDetail() {
       .join('/');
   };
 
-  const handleCreateEventMatch = () => {
+  const handleCreateEventMatch = async () => {
     if (teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0) return;
-    
-    const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
-    const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
-    const autoMatchName = `${autoTeamAName} vs ${autoTeamBName}`;
     
     const isMatchPlay = selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL;
     const isNassau = selectedMatchType === MATCH_TYPES.NASSAU;
+    
+    // If keyed players exist, create individual matches for each keyed player vs each Team B player
+    if (keyedTeamAIds.length > 0) {
+      try {
+        for (const keyedPlayerId of keyedTeamAIds) {
+          for (const opponentId of teamBPlayerIds) {
+            const keyedPlayerName = players.find(p => p.id === keyedPlayerId)?.name || '';
+            const opponentName = players.find(p => p.id === opponentId)?.name || '';
+            const matchName = `${keyedPlayerName} vs ${opponentName}`;
+            
+            await new Promise<void>((resolve, reject) => {
+              createEventMatch.mutate({
+                name: matchName,
+                matchType: selectedMatchType,
+                unitAmount: unitAmount * 100,
+                teamA: { name: keyedPlayerName, playerIds: [keyedPlayerId] },
+                teamB: { name: opponentName, playerIds: [opponentId] },
+                autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
+                autoPressAllPresses: false,
+                autoPressNassauFront9: isNassau ? autoPressOriginal : true,
+                autoPressNassauBack9: isNassau ? autoPressOriginal : true,
+                autoPressNassauOverall: isNassau ? autoPressOriginal : true,
+                useNetScoring: match.isHandicapped ? useNetScoring : false,
+              }, {
+                onSuccess: () => resolve(),
+                onError: (err) => reject(err),
+              });
+            });
+          }
+        }
+        
+        // Reset state after all matches created
+        setShowCreateMatch(false);
+        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setUnitAmount(20);
+        setTeamAPlayerIds([]);
+        setTeamBPlayerIds([]);
+        setKeyedTeamAIds([]);
+        setAutoPressOriginal(true);
+        setUseNetScoring(match.isHandicapped ?? false);
+      } catch (error) {
+        console.error('Error creating keyed matches:', error);
+      }
+      return;
+    }
+    
+    // Normal single match creation (no keyed players)
+    const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
+    const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
+    const autoMatchName = `${autoTeamAName} vs ${autoTeamBName}`;
     
     createEventMatch.mutate({
       name: autoMatchName,
@@ -391,7 +438,6 @@ export default function MatchDetail() {
       teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
       autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
       autoPressAllPresses: false,
-      // Nassau-specific: initialize all three to the same value as autoPressOriginal
       autoPressNassauFront9: isNassau ? autoPressOriginal : true,
       autoPressNassauBack9: isNassau ? autoPressOriginal : true,
       autoPressNassauOverall: isNassau ? autoPressOriginal : true,
@@ -403,8 +449,8 @@ export default function MatchDetail() {
         setUnitAmount(20);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
+        setKeyedTeamAIds([]);
         setAutoPressOriginal(true);
-        // Keep useNetScoring true for handicapped matches
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -414,6 +460,8 @@ export default function MatchDetail() {
     if (team === 'A') {
       if (teamAPlayerIds.includes(playerId)) {
         setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== playerId));
+        // Also remove from keyed if removed from team
+        setKeyedTeamAIds(keyedTeamAIds.filter(id => id !== playerId));
       } else {
         setTeamAPlayerIds([...teamAPlayerIds, playerId]);
         setTeamBPlayerIds(teamBPlayerIds.filter(id => id !== playerId));
@@ -424,7 +472,17 @@ export default function MatchDetail() {
       } else {
         setTeamBPlayerIds([...teamBPlayerIds, playerId]);
         setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== playerId));
+        // Also remove from keyed if moved to team B
+        setKeyedTeamAIds(keyedTeamAIds.filter(id => id !== playerId));
       }
+    }
+  };
+
+  const toggleKeyedTeamA = (playerId: number) => {
+    if (keyedTeamAIds.includes(playerId)) {
+      setKeyedTeamAIds(keyedTeamAIds.filter(id => id !== playerId));
+    } else {
+      setKeyedTeamAIds([...keyedTeamAIds, playerId]);
     }
   };
 
@@ -1722,6 +1780,9 @@ export default function MatchDetail() {
                 </>
               ) : (
                 <>
+                  <p className="text-xs text-muted-foreground">
+                    Check "Key" to create individual matches for that player vs each opponent.
+                  </p>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
@@ -1731,20 +1792,33 @@ export default function MatchDetail() {
                       </div>
                       <div className="space-y-1">
                         {players.map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => togglePlayerInTeam(p.id, 'A')}
-                            className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                              teamAPlayerIds.includes(p.id)
-                                ? "bg-primary text-primary-foreground"
-                                : teamBPlayerIds.includes(p.id)
-                                ? "bg-muted/50 text-muted-foreground line-through"
-                                : "bg-muted hover:bg-muted/80"
-                            }`}
-                            data-testid={`button-add-team-a-${p.id}`}
-                          >
-                            {p.name}
-                          </button>
+                          <div key={p.id} className="flex items-center gap-2">
+                            <button
+                              onClick={() => togglePlayerInTeam(p.id, 'A')}
+                              className={`flex-1 text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                teamAPlayerIds.includes(p.id)
+                                  ? "bg-primary text-primary-foreground"
+                                  : teamBPlayerIds.includes(p.id)
+                                  ? "bg-muted/50 text-muted-foreground line-through"
+                                  : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-add-team-a-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                            {teamAPlayerIds.includes(p.id) && (
+                              <label className="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap">
+                                <input
+                                  type="checkbox"
+                                  checked={keyedTeamAIds.includes(p.id)}
+                                  onChange={() => toggleKeyedTeamA(p.id)}
+                                  className="w-3 h-3 rounded border-border"
+                                  data-testid={`checkbox-key-a-${p.id}`}
+                                />
+                                <Check className={`w-3 h-3 ${keyedTeamAIds.includes(p.id) ? 'text-primary' : 'text-muted-foreground'}`} />
+                              </label>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1776,13 +1850,24 @@ export default function MatchDetail() {
                     </div>
                   </div>
 
+                  {keyedTeamAIds.length > 0 && teamBPlayerIds.length > 0 && (
+                    <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
+                      <p className="text-sm font-medium text-primary">
+                        {keyedTeamAIds.length} keyed player{keyedTeamAIds.length > 1 ? 's' : ''} x {teamBPlayerIds.length} opponent{teamBPlayerIds.length > 1 ? 's' : ''} = {keyedTeamAIds.length * teamBPlayerIds.length} matches
+                      </p>
+                    </div>
+                  )}
+
                   <Button
                     onClick={handleCreateEventMatch}
                     disabled={teamAPlayerIds.length === 0 || teamBPlayerIds.length === 0 || createEventMatch.isPending}
                     className="w-full"
                     data-testid="button-submit-create-match"
                   >
-                    {createEventMatch.isPending ? "Creating..." : "Create Match"}
+                    {createEventMatch.isPending ? "Creating..." : 
+                      keyedTeamAIds.length > 0 
+                        ? `Create ${keyedTeamAIds.length * teamBPlayerIds.length} Matches` 
+                        : "Create Match"}
                   </Button>
                 </>
               )}
