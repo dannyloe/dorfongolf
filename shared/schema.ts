@@ -43,6 +43,8 @@ export const matches = pgTable("matches", {
   courseName: text("course_name").notNull(),
   courseId: integer("course_id"),
   groupId: integer("group_id"),
+  ryderCupEventId: integer("ryder_cup_event_id"), // Links to Ryder Cup event for side matches
+  ryderCupDayNumber: integer("ryder_cup_day_number"), // Which day of the Ryder Cup event
   creatorId: text("creator_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),

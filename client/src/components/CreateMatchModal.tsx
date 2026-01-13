@@ -6,12 +6,19 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trophy, MapPin, Users, Plus } from "lucide-react";
 import { insertMatchSchema } from "@shared/schema";
-import { format } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
+interface RyderCupContext {
+  eventId: number;
+  dayNumber: number;
+  courseName?: string;
+  courseId?: number;
+}
 
 interface CreateMatchModalProps {
   isOpen: boolean;
   onClose: () => void;
+  ryderCupContext?: RyderCupContext;
 }
 
 // Frontend validation schema - name is optional
@@ -21,7 +28,7 @@ const formSchema = insertMatchSchema.pick({ name: true, courseName: true }).exte
 });
 type FormData = z.infer<typeof formSchema>;
 
-export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
+export function CreateMatchModal({ isOpen, onClose, ryderCupContext }: CreateMatchModalProps) {
   const [, setLocation] = useLocation();
   const [showNewGroupInput, setShowNewGroupInput] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
@@ -29,8 +36,8 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
   const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
-      courseName: "",
+      name: ryderCupContext ? `Day ${ryderCupContext.dayNumber} Side Match` : "",
+      courseName: ryderCupContext?.courseName || "",
       groupId: null,
     },
   });
@@ -40,6 +47,17 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
   const { data: courses } = useCourses();
   const { data: groups } = useGroups();
   const createGroup = useCreateGroup();
+
+  // Reset form when modal opens with new context
+  useEffect(() => {
+    if (isOpen) {
+      reset({
+        name: ryderCupContext ? `Day ${ryderCupContext.dayNumber} Side Match` : "",
+        courseName: ryderCupContext?.courseName || "",
+        groupId: null,
+      });
+    }
+  }, [isOpen, ryderCupContext, reset]);
 
   const handleAddNewGroup = async () => {
     if (!newGroupName.trim()) return;
@@ -54,7 +72,16 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
   };
 
   const onSubmit = (data: FormData) => {
-    createMatch.mutate(data, {
+    const matchData = {
+      ...data,
+      ...(ryderCupContext && {
+        ryderCupEventId: ryderCupContext.eventId,
+        ryderCupDayNumber: ryderCupContext.dayNumber,
+        courseId: ryderCupContext.courseId,
+      }),
+    };
+    
+    createMatch.mutate(matchData, {
       onSuccess: (newMatch) => {
         reset();
         setShowNewGroupInput(false);
@@ -88,7 +115,7 @@ export function CreateMatchModal({ isOpen, onClose }: CreateMatchModalProps) {
               <div className="p-6 border-b border-border/50 flex justify-between items-center bg-primary/5">
                 <h2 className="text-xl font-bold font-display text-primary flex items-center gap-2">
                   <Trophy className="w-5 h-5" />
-                  New Event
+                  {ryderCupContext ? "Add Side Match" : "New Event"}
                 </h2>
                 <button 
                   onClick={onClose}
