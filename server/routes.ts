@@ -27,6 +27,9 @@ export async function registerRoutes(
         courseName: input.courseName,
         creatorId: user.claims.sub,
         groupId: input.groupId ?? null,
+        ryderCupEventId: input.ryderCupEventId ?? null,
+        ryderCupDayNumber: input.ryderCupDayNumber ?? null,
+        courseId: input.courseId ?? null,
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
@@ -1379,6 +1382,12 @@ Rules:
     const dayId = parseInt(req.params.dayId);
     const skins = await storage.getRyderCupDaySkins(dayId);
     res.json(skins);
+  });
+
+  app.get(api.ryderCup.getSideMatches.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    const matches = await storage.getMatchesByRyderCupEvent(eventId);
+    res.json(matches);
   });
 
   return httpServer;

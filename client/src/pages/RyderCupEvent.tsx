@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { RyderCupEventResponse, RyderCupPairingSide, MATCH_TYPES } from "@shared/schema";
+import { CreateMatchModal } from "@/components/CreateMatchModal";
+import type { RyderCupEventResponse, RyderCupPairingSide, MATCH_TYPES, Match } from "@shared/schema";
 
 export default function RyderCupEvent() {
   const { id } = useParams<{ id: string }>();
@@ -24,13 +25,15 @@ export default function RyderCupEvent() {
   const [selectedWinnerId, setSelectedWinnerId] = useState<number | null>(null);
   const [winningMargin, setWinningMargin] = useState("");
   
-  const [addSideMatchDialogOpen, setAddSideMatchDialogOpen] = useState(false);
-  const [sideMatchSideA, setSideMatchSideA] = useState<string[]>([]);
-  const [sideMatchSideB, setSideMatchSideB] = useState<string[]>([]);
-  const [sideMatchPurse, setSideMatchPurse] = useState<string>("");
+  const [sideMatchModalOpen, setSideMatchModalOpen] = useState(false);
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
+  });
+
+  const { data: sideMatches = [] } = useQuery<Match[]>({
+    queryKey: ["/api/ryder-cup", id, "matches"],
+    enabled: !!id,
   });
 
   const recordResultMutation = useMutation({
@@ -54,29 +57,6 @@ export default function RyderCupEvent() {
     },
   });
 
-  const addSideMatchMutation = useMutation({
-    mutationFn: async () => {
-      if (!currentDay || sideMatchSideA.length === 0 || sideMatchSideB.length === 0) return;
-      return apiRequest("POST", `/api/ryder-cup/${id}/side-matches`, {
-        dayId: currentDay.id,
-        matchFormat: "match_play_2_ball",
-        purseAmount: sideMatchPurse ? Math.round(parseFloat(sideMatchPurse) * 100) : undefined,
-        sideA: { playerNames: sideMatchSideA },
-        sideB: { playerNames: sideMatchSideB },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-      toast({ title: "Side Match Added" });
-      setAddSideMatchDialogOpen(false);
-      setSideMatchSideA([]);
-      setSideMatchSideB([]);
-      setSideMatchPurse("");
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to add side match", variant: "destructive" });
-    },
-  });
 
   if (isLoading) {
     return (
@@ -112,16 +92,6 @@ export default function RyderCupEvent() {
     const team = getTeamById(side.teamId);
     const names = [side.player1Name, side.player2Name].filter(Boolean).join(" & ");
     return { names, teamName: team?.name || "", color: team?.color || "#888" };
-  };
-
-  const getAllPlayers = () => {
-    const players: string[] = [];
-    event.teams.forEach(team => {
-      team.members.forEach(member => {
-        players.push(member.playerName);
-      });
-    });
-    return players;
   };
 
   const calculatePayouts = () => {
@@ -326,45 +296,44 @@ export default function RyderCupEvent() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setAddSideMatchDialogOpen(true)}
+                    onClick={() => setSideMatchModalOpen(true)}
                     data-testid="button-add-side-match"
                   >
                     <Plus className="w-3 h-3 mr-1" /> Add Side Match
                   </Button>
                 </div>
-                {currentDay.pairings.filter(p => !p.isPrimary).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No side matches for this day</p>
-                ) : (
-                  <div className="space-y-2">
-                    {currentDay.pairings.filter(p => !p.isPrimary).map((pairing) => {
-                      const sideA = pairing.sides[0];
-                      const sideB = pairing.sides[1];
-                      return (
-                        <Card key={pairing.id} className="border-dashed">
+                {(() => {
+                  const daySideMatches = sideMatches.filter(m => m.ryderCupDayNumber === selectedDay);
+                  if (daySideMatches.length === 0) {
+                    return <p className="text-sm text-muted-foreground">No side matches for this day</p>;
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {daySideMatches.map((match) => (
+                        <Card 
+                          key={match.id} 
+                          className="border-dashed cursor-pointer hover-elevate"
+                          onClick={() => setLocation(`/match/${match.id}`)}
+                          data-testid={`card-side-match-${match.id}`}
+                        >
                           <CardContent className="py-3">
                             <div className="flex items-center justify-between text-sm">
-                              <span>
-                                {sideA?.player1Name}{sideA?.player2Name ? ` & ${sideA.player2Name}` : ""} 
-                                {" vs "}
-                                {sideB?.player1Name}{sideB?.player2Name ? ` & ${sideB.player2Name}` : ""}
-                              </span>
+                              <span className="font-medium">{match.name || "Side Match"}</span>
                               <div className="flex items-center gap-2">
-                                {pairing.purseAmount && pairing.purseAmount > 0 && (
-                                  <Badge variant="outline">{formatCurrency(pairing.purseAmount)}</Badge>
-                                )}
-                                {!pairing.result && (
-                                  <Button size="sm" variant="ghost" onClick={() => openRecordResult(pairing.id)}>
-                                    Result
-                                  </Button>
+                                <Badge variant="outline">{match.courseName}</Badge>
+                                {match.completed && (
+                                  <Badge variant="secondary">
+                                    <Check className="w-3 h-3 mr-1" /> Complete
+                                  </Badge>
                                 )}
                               </div>
                             </div>
                           </CardContent>
                         </Card>
-                      );
-                    })}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -554,85 +523,16 @@ export default function RyderCupEvent() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={addSideMatchDialogOpen} onOpenChange={setAddSideMatchDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Add Side Match - Day {selectedDay}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Side A Players</Label>
-                <div className="space-y-1 mt-1 max-h-40 overflow-y-auto border rounded p-2">
-                  {getAllPlayers().map(name => (
-                    <label key={name} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={sideMatchSideA.includes(name)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSideMatchSideA([...sideMatchSideA, name]);
-                            setSideMatchSideB(sideMatchSideB.filter(n => n !== name));
-                          } else {
-                            setSideMatchSideA(sideMatchSideA.filter(n => n !== name));
-                          }
-                        }}
-                        data-testid={`checkbox-side-a-${name}`}
-                      />
-                      {name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Side B Players</Label>
-                <div className="space-y-1 mt-1 max-h-40 overflow-y-auto border rounded p-2">
-                  {getAllPlayers().map(name => (
-                    <label key={name} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={sideMatchSideB.includes(name)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSideMatchSideB([...sideMatchSideB, name]);
-                            setSideMatchSideA(sideMatchSideA.filter(n => n !== name));
-                          } else {
-                            setSideMatchSideB(sideMatchSideB.filter(n => n !== name));
-                          }
-                        }}
-                        data-testid={`checkbox-side-b-${name}`}
-                      />
-                      {name}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div>
-              <Label>Purse Amount ($, optional)</Label>
-              <Input
-                type="number"
-                value={sideMatchPurse}
-                onChange={(e) => setSideMatchPurse(e.target.value)}
-                placeholder="0"
-                data-testid="input-side-match-purse"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAddSideMatchDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => addSideMatchMutation.mutate()}
-                disabled={addSideMatchMutation.isPending || sideMatchSideA.length === 0 || sideMatchSideB.length === 0}
-                data-testid="button-create-side-match"
-              >
-                Create Side Match
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateMatchModal
+        isOpen={sideMatchModalOpen}
+        onClose={() => setSideMatchModalOpen(false)}
+        ryderCupContext={{
+          eventId: parseInt(id!),
+          dayNumber: selectedDay,
+          courseName: currentDay?.courseName || event.courseName,
+          courseId: currentDay?.courseId || event.courseId || undefined,
+        }}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useCreateMatch, useCourses, useGroups, useCreateGroup } from "@/hooks/use-matches";
+import { queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trophy, MapPin, Users, Plus } from "lucide-react";
@@ -21,10 +22,13 @@ interface CreateMatchModalProps {
   ryderCupContext?: RyderCupContext;
 }
 
-// Frontend validation schema - name is optional
+// Frontend validation schema - name is optional, includes Ryder Cup context fields
 const formSchema = insertMatchSchema.pick({ name: true, courseName: true }).extend({
   name: z.string().optional(),
   groupId: z.number().nullable().optional(),
+  ryderCupEventId: z.number().nullable().optional(),
+  ryderCupDayNumber: z.number().nullable().optional(),
+  courseId: z.number().nullable().optional(),
 });
 type FormData = z.infer<typeof formSchema>;
 
@@ -86,6 +90,12 @@ export function CreateMatchModal({ isOpen, onClose, ryderCupContext }: CreateMat
         reset();
         setShowNewGroupInput(false);
         setNewGroupName("");
+        // If this was a Ryder Cup side match, invalidate the side matches query
+        if (ryderCupContext) {
+          queryClient.invalidateQueries({ 
+            queryKey: ["/api/ryder-cup", String(ryderCupContext.eventId), "matches"] 
+          });
+        }
         onClose();
         setLocation(`/match/${newMatch.id}`);
       },

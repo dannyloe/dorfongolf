@@ -934,6 +934,14 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    getSideMatches: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/:id/matches',
+      responses: {
+        200: z.array(z.custom<typeof matches.$inferSelect>()),
+        404: errorSchemas.notFound,
+      },
+    },
   },
 };
 

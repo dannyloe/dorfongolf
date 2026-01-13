@@ -25,7 +25,7 @@ export interface IStorage {
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
 
   // App methods
-  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null }): Promise<Match>;
+  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null }): Promise<Match>;
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
   getMatchPlayers(matchId: number): Promise<Player[]>;
@@ -42,10 +42,10 @@ export class DatabaseStorage implements IStorage {
     return authStorage.upsertUser(user);
   }
 
-  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null }): Promise<Match> {
-    // Look up courseId from courseName
-    let courseId: number | null = null;
-    if (match.courseName) {
+  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null }): Promise<Match> {
+    // Look up courseId from courseName if not already provided
+    let courseId: number | null = match.courseId ?? null;
+    if (!courseId && match.courseName) {
       const [course] = await db.select().from(courses).where(eq(courses.name, match.courseName));
       if (course) {
         courseId = course.id;
@@ -57,6 +57,8 @@ export class DatabaseStorage implements IStorage {
       creatorId: match.creatorId,
       courseId,
       groupId: match.groupId ?? null,
+      ryderCupEventId: match.ryderCupEventId ?? null,
+      ryderCupDayNumber: match.ryderCupDayNumber ?? null,
     }).returning();
     return newMatch;
   }
@@ -1404,6 +1406,10 @@ export class DatabaseStorage implements IStorage {
 
   async getRyderCupDaySkins(dayId: number): Promise<RyderCupSkin[]> {
     return db.select().from(ryderCupSkins).where(eq(ryderCupSkins.dayId, dayId)).orderBy(ryderCupSkins.holeNumber);
+  }
+
+  async getMatchesByRyderCupEvent(eventId: number): Promise<Match[]> {
+    return db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt);
   }
 
   async updateRyderCupEventHandicaps(eventId: number, useHandicaps: boolean): Promise<RyderCupEvent> {
