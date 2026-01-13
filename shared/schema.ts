@@ -481,6 +481,8 @@ export const ryderCupDays = pgTable("ryder_cup_days", {
   eventId: integer("event_id").notNull(),
   dayNumber: integer("day_number").notNull(), // 1-4
   date: timestamp("date"),
+  courseId: integer("course_id"), // optional - can play different course each day
+  courseName: text("course_name"), // display name for the course
   skinsCarryover: integer("skins_carryover").notNull().default(0), // carried from previous day
   skinsDistributed: boolean("skins_distributed").notNull().default(false),
   status: text("status").notNull().default("pending"), // pending, active, completed
@@ -679,8 +681,8 @@ export type InsertRyderCupSkin = z.infer<typeof insertRyderCupSkinSchema>;
 
 export type CreateRyderCupEventRequest = {
   name: string;
-  courseName: string;
-  courseId?: number;
+  courseName: string; // default course name
+  courseId?: number; // default course id
   buyInAmount?: number;
   teamWinBonus?: number;
   matchWinBonus?: number;
@@ -688,6 +690,12 @@ export type CreateRyderCupEventRequest = {
   dailySkinsPot?: number;
   targetPoints?: number;
   useHandicaps?: boolean;
+  numberOfDays?: number; // defaults to 4
+  dayConfigs?: { // optional per-day course selection
+    dayNumber: number;
+    courseId?: number;
+    courseName?: string;
+  }[];
   teamA: {
     name: string;
     color?: string;

@@ -31,6 +31,14 @@ export default function RyderCupCreate() {
   const [matchTieBonus, setMatchTieBonus] = useState(12.5);
   const [dailySkinsPot, setDailySkinsPot] = useState(212.5);
 
+  const [useDifferentCourses, setUseDifferentCourses] = useState(false);
+  const [dayCourses, setDayCourses] = useState<{ dayNumber: number; courseId?: number; courseName: string }[]>([
+    { dayNumber: 1, courseName: "" },
+    { dayNumber: 2, courseName: "" },
+    { dayNumber: 3, courseName: "" },
+    { dayNumber: 4, courseName: "" },
+  ]);
+
   const [teamAName, setTeamAName] = useState("Team A");
   const [teamBName, setTeamBName] = useState("Team B");
   const [teamAColor, setTeamAColor] = useState("#3b82f6");
@@ -62,8 +70,8 @@ export default function RyderCupCreate() {
     mutationFn: async () => {
       const payload = {
         name: eventName,
-        courseName,
-        courseId,
+        courseName: useDifferentCourses ? dayCourses[0].courseName : courseName,
+        courseId: useDifferentCourses ? dayCourses[0].courseId : courseId,
         buyInAmount: Math.round(buyInAmount * 100),
         teamWinBonus: Math.round(teamWinBonus * 100),
         matchWinBonus: Math.round(matchWinBonus * 100),
@@ -71,6 +79,12 @@ export default function RyderCupCreate() {
         dailySkinsPot: Math.round(dailySkinsPot * 100),
         targetPoints: 65,
         useHandicaps,
+        numberOfDays: 4,
+        dayConfigs: useDifferentCourses ? dayCourses.map(dc => ({
+          dayNumber: dc.dayNumber,
+          courseId: dc.courseId,
+          courseName: dc.courseName,
+        })) : undefined,
         teamA: {
           name: teamAName,
           color: teamAColor,
@@ -118,7 +132,11 @@ export default function RyderCupCreate() {
     }
   };
 
-  const canProceedStep1 = eventName.length > 0 && courseName.length > 0;
+  const canProceedStep1 = eventName.length > 0 && (
+    useDifferentCourses 
+      ? dayCourses.every(dc => dc.courseName.length > 0)
+      : courseName.length > 0
+  );
   const canProceedStep2 = teamAMembers.length === 6 && teamBMembers.length === 6;
 
   const renderStep1 = () => (
@@ -134,29 +152,74 @@ export default function RyderCupCreate() {
             data-testid="input-event-name"
           />
         </div>
-        <div>
-          <Label htmlFor="course">Course</Label>
-          <Select
-            value={courseId?.toString() || ""}
-            onValueChange={(val) => {
-              const id = parseInt(val);
-              setCourseId(id);
-              const course = courses.find(c => c.id === id);
-              if (course) setCourseName(course.name);
-            }}
-          >
-            <SelectTrigger data-testid="select-course">
-              <SelectValue placeholder="Select a course" />
-            </SelectTrigger>
-            <SelectContent>
-              {courses.map((course) => (
-                <SelectItem key={course.id} value={course.id.toString()}>
-                  {course.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Different Course Each Day</Label>
+            <p className="text-sm text-muted-foreground">Play a different course each day</p>
+          </div>
+          <Switch
+            checked={useDifferentCourses}
+            onCheckedChange={setUseDifferentCourses}
+            data-testid="switch-different-courses"
+          />
         </div>
+        {!useDifferentCourses ? (
+          <div>
+            <Label htmlFor="course">Course (all days)</Label>
+            <Select
+              value={courseId?.toString() || ""}
+              onValueChange={(val) => {
+                const id = parseInt(val);
+                setCourseId(id);
+                const course = courses.find(c => c.id === id);
+                if (course) setCourseName(course.name);
+              }}
+            >
+              <SelectTrigger data-testid="select-course">
+                <SelectValue placeholder="Select a course" />
+              </SelectTrigger>
+              <SelectContent>
+                {courses.map((course) => (
+                  <SelectItem key={course.id} value={course.id.toString()}>
+                    {course.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Label>Course for Each Day</Label>
+            {[1, 2, 3, 4].map((dayNum) => (
+              <div key={dayNum} className="flex items-center gap-3">
+                <span className="text-sm font-medium w-16">Day {dayNum}</span>
+                <Select
+                  value={dayCourses[dayNum - 1]?.courseId?.toString() || ""}
+                  onValueChange={(val) => {
+                    const id = parseInt(val);
+                    const course = courses.find(c => c.id === id);
+                    setDayCourses(prev => prev.map(dc => 
+                      dc.dayNumber === dayNum 
+                        ? { ...dc, courseId: id, courseName: course?.name || "" }
+                        : dc
+                    ));
+                  }}
+                >
+                  <SelectTrigger data-testid={`select-course-day-${dayNum}`} className="flex-1">
+                    <SelectValue placeholder={`Select course for Day ${dayNum}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((course) => (
+                      <SelectItem key={course.id} value={course.id.toString()}>
+                        {course.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <Label>Use Handicaps</Label>
@@ -383,10 +446,20 @@ export default function RyderCupCreate() {
               <p className="font-semibold">{eventName}</p>
             </div>
             <div>
-              <Label className="text-muted-foreground">Course</Label>
-              <p className="font-semibold flex items-center gap-1">
-                <Flag className="w-4 h-4" /> {courseName}
-              </p>
+              <Label className="text-muted-foreground">Course{useDifferentCourses ? "s" : ""}</Label>
+              {useDifferentCourses ? (
+                <div className="space-y-1">
+                  {dayCourses.map((dc) => (
+                    <p key={dc.dayNumber} className="text-sm flex items-center gap-1">
+                      <Flag className="w-3 h-3" /> Day {dc.dayNumber}: {dc.courseName}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-semibold flex items-center gap-1">
+                  <Flag className="w-4 h-4" /> {courseName}
+                </p>
+              )}
             </div>
             <div>
               <Label className="text-muted-foreground">Format</Label>

@@ -235,22 +235,33 @@ export default function RyderCupEvent() {
         </TabsList>
 
         <TabsContent value="schedule" className="space-y-4">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {event.days.map((day) => (
               <Button
                 key={day.id}
                 variant={selectedDay === day.dayNumber ? "default" : "outline"}
                 onClick={() => setSelectedDay(day.dayNumber)}
                 data-testid={`button-day-${day.dayNumber}`}
+                className="flex-col h-auto py-2"
               >
-                Day {day.dayNumber}
+                <span>Day {day.dayNumber}</span>
+                {day.courseName && (
+                  <span className="text-xs opacity-75 font-normal">{day.courseName}</span>
+                )}
               </Button>
             ))}
           </div>
 
           {currentDay && (
             <div className="space-y-3">
-              <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
+                {currentDay.courseName && (
+                  <Badge variant="outline" className="text-xs">
+                    <Flag className="w-3 h-3 mr-1" /> {currentDay.courseName}
+                  </Badge>
+                )}
+              </div>
               {currentDay.pairings.filter(p => p.isPrimary).map((pairing) => {
                 const sideA = pairing.sides.find(s => s.teamId === teamA?.id);
                 const sideB = pairing.sides.find(s => s.teamId === teamB?.id);

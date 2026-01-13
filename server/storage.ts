@@ -1132,11 +1132,16 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
-    // Create 4 days
-    for (let dayNum = 1; dayNum <= 4; dayNum++) {
+    // Create days (default 4)
+    const numberOfDays = data.numberOfDays ?? 4;
+    for (let dayNum = 1; dayNum <= numberOfDays; dayNum++) {
+      // Check for per-day course config
+      const dayConfig = data.dayConfigs?.find(d => d.dayNumber === dayNum);
       await db.insert(ryderCupDays).values({
         eventId: event.id,
         dayNumber: dayNum,
+        courseId: dayConfig?.courseId ?? courseId,
+        courseName: dayConfig?.courseName ?? data.courseName,
       });
     }
 
