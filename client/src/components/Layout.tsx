@@ -66,6 +66,12 @@ export function Layout({ children }: { children: ReactNode }) {
                       Ryder Cup
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile" className="flex items-center gap-2 w-full" data-testid="mobile-link-profile">
+                      <User className="w-4 h-4" />
+                      Profile
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setIsCreateOpen(true)} data-testid="mobile-button-new-event">
                     <Plus className="w-4 h-4 mr-2" />
@@ -137,16 +143,22 @@ export function Layout({ children }: { children: ReactNode }) {
               <div className="h-6 w-px bg-border mx-2 hidden md:block" />
 
               <div className="flex items-center gap-3">
-                <span className="hidden sm:inline text-sm font-medium text-foreground">
-                  {user.firstName || user.email?.split('@')[0]}
-                </span>
-                {user.profileImageUrl ? (
-                  <img src={user.profileImageUrl} alt="Profile" className="w-8 h-8 rounded-full border border-border" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                    <User className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                )}
+                <Link 
+                  href="/profile" 
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  data-testid="link-profile"
+                >
+                  <span className="hidden sm:inline text-sm font-medium text-foreground">
+                    {user.firstName || user.email?.split('@')[0]}
+                  </span>
+                  {user.profileImageUrl ? (
+                    <img src={user.profileImageUrl} alt="Profile" className="w-8 h-8 rounded-full border border-border" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                      <User className="w-4 h-4 text-muted-foreground" />
+                    </div>
+                  )}
+                </Link>
                 <button
                   onClick={() => logout()}
                   className="p-2 text-muted-foreground hover:text-destructive transition-colors"

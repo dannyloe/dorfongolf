@@ -1568,7 +1568,7 @@ Rules:
       
       // Update handicap if provided and user has preset name
       if (input.handicapIndex !== undefined && updatedUser.presetPlayerName) {
-        await storage.updatePlayerHandicap(updatedUser.presetPlayerName, { handicapIndex: input.handicapIndex });
+        await storage.upsertPlayerHandicap({ presetPlayerName: updatedUser.presetPlayerName, handicapIndex: input.handicapIndex });
       }
       
       // Return updated profile
@@ -1578,10 +1578,10 @@ Rules:
         aliases = aliasRecords.map(a => a.alias);
       }
       
-      let handicapIndex: number | null = null;
+      let handicapIndexVal: number | null = null;
       if (updatedUser.presetPlayerName) {
         const handicapRecord = await storage.getPlayerHandicap(updatedUser.presetPlayerName);
-        handicapIndex = handicapRecord?.handicapIndex ?? null;
+        handicapIndexVal = handicapRecord?.handicapIndex ?? null;
       }
       
       res.json({
@@ -1592,7 +1592,7 @@ Rules:
         phone: updatedUser.phone,
         presetPlayerName: updatedUser.presetPlayerName,
         aliases,
-        handicapIndex,
+        handicapIndex: handicapIndexVal,
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
