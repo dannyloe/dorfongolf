@@ -1,9 +1,17 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users } from "lucide-react";
+import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users, Menu } from "lucide-react";
 import { CreateMatchModal } from "./CreateMatchModal";
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -18,12 +26,62 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Navbar */}
       <header className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-border/50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20 group-hover:rotate-6 transition-transform">
-              <Trophy className="w-4 h-4" />
-            </div>
-            <span className="font-display font-bold text-xl text-foreground">Golf Betting</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* Mobile Menu */}
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild className="md:hidden">
+                  <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
+                    <Menu className="w-5 h-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard" className="flex items-center gap-2 w-full" data-testid="mobile-link-dashboard">
+                      <Trophy className="w-4 h-4" />
+                      Dashboard
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/ledger" className="flex items-center gap-2 w-full" data-testid="mobile-link-ledger">
+                      <BookOpen className="w-4 h-4" />
+                      Ledger
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/courses" className="flex items-center gap-2 w-full" data-testid="mobile-link-courses">
+                      <MapPin className="w-4 h-4" />
+                      Courses
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/players" className="flex items-center gap-2 w-full" data-testid="mobile-link-players">
+                      <Users className="w-4 h-4" />
+                      Players
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/ryder-cup" className="flex items-center gap-2 w-full" data-testid="mobile-link-ryder-cup">
+                      <Trophy className="w-4 h-4" />
+                      Ryder Cup
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setIsCreateOpen(true)} data-testid="mobile-button-new-event">
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Event
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            <Link href="/" className="flex items-center gap-2 group">
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/20 group-hover:rotate-6 transition-transform">
+                <Trophy className="w-4 h-4" />
+              </div>
+              <span className="font-display font-bold text-xl text-foreground">Golf Betting</span>
+            </Link>
+          </div>
 
           {user ? (
             <div className="flex items-center gap-4">
