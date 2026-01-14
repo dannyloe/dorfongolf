@@ -31,14 +31,18 @@ export function ClaimPresetPlayerModal({
   const { toast } = useToast();
   const [selectedName, setSelectedName] = useState<string | null>(currentPresetName);
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newName, setNewName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [displayName, setDisplayName] = useState("");
 
   // Reset selection when modal opens or currentPresetName changes
   useEffect(() => {
     if (open) {
       setSelectedName(currentPresetName);
       setIsAddingNew(false);
-      setNewName("");
+      setFirstName("");
+      setLastName("");
+      setDisplayName("");
     }
   }, [open, currentPresetName]);
 
@@ -81,8 +85,8 @@ export function ClaimPresetPlayerModal({
   });
 
   const createAndClaimMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const res = await apiRequest("POST", "/api/preset-players/create-and-claim", { name });
+    mutationFn: async (data: { firstName: string; lastName: string; displayName?: string }) => {
+      const res = await apiRequest("POST", "/api/preset-players/create-and-claim", data);
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || "Failed to create profile");
@@ -109,13 +113,21 @@ export function ClaimPresetPlayerModal({
 
   const handleSave = () => {
     if (isAddingNew) {
-      if (newName.trim()) {
-        createAndClaimMutation.mutate(newName.trim());
+      if (firstName.trim() && lastName.trim()) {
+        createAndClaimMutation.mutate({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          displayName: displayName.trim() || undefined,
+        });
       }
     } else {
       claimMutation.mutate(selectedName);
     }
   };
+
+  const isFormValid = isAddingNew 
+    ? firstName.trim() && lastName.trim() 
+    : !!selectedName;
 
   const handleSkip = () => {
     onClose();
@@ -142,17 +154,37 @@ export function ClaimPresetPlayerModal({
 
         {isAddingNew ? (
           <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">First Name</label>
+                <Input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="John"
+                  data-testid="input-first-name"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1.5 block">Last Name</label>
+                <Input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Smith"
+                  data-testid="input-last-name"
+                />
+              </div>
+            </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Enter your name</label>
+              <label className="text-sm font-medium mb-1.5 block">Display Name (optional)</label>
               <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Your full name"
-                data-testid="input-new-player-name"
-                autoFocus
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder={firstName && lastName ? `${firstName} ${lastName}` : "Nickname or preferred name"}
+                data-testid="input-display-name"
               />
-              <p className="text-xs text-muted-foreground mt-2">
-                This will create a profile for you. You can participate in matches using this name.
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Leave blank to use your full name, or enter a nickname (e.g., "JT", "Big Mike")
               </p>
             </div>
             <Button
@@ -160,7 +192,9 @@ export function ClaimPresetPlayerModal({
               size="sm"
               onClick={() => {
                 setIsAddingNew(false);
-                setNewName("");
+                setFirstName("");
+                setLastName("");
+                setDisplayName("");
               }}
               data-testid="button-back-to-roster"
             >
@@ -237,7 +271,7 @@ export function ClaimPresetPlayerModal({
           )}
           <Button 
             onClick={handleSave}
-            disabled={isPending || (isAddingNew ? !newName.trim() : !selectedName)}
+            disabled={isPending || !isFormValid}
             data-testid="button-save-preset"
           >
             {isPending ? "Saving..." : "Save"}

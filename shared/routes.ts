@@ -427,7 +427,9 @@ export const api = {
       method: 'POST' as const,
       path: '/api/preset-players/create-and-claim',
       input: z.object({
-        name: z.string().min(1).max(100),
+        firstName: z.string().min(1, "First name is required").max(50),
+        lastName: z.string().min(1, "Last name is required").max(50),
+        displayName: z.string().max(100).optional(), // Optional custom display name
       }),
       responses: {
         201: z.custom<typeof users.$inferSelect>(),

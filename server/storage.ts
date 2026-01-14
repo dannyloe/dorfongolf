@@ -23,6 +23,8 @@ export interface IStorage {
   // Auth methods
   getUser(id: string): Promise<typeof users.$inferSelect | undefined>;
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
+  claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect>;
+  claimPresetPlayerWithName(userId: string, presetPlayerName: string, firstName: string, lastName: string): Promise<typeof users.$inferSelect>;
 
   // App methods
   createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null }): Promise<Match>;
@@ -364,6 +366,21 @@ export class DatabaseStorage implements IStorage {
 
     const [updated] = await db.update(users)
       .set({ presetPlayerName })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async claimPresetPlayerWithName(userId: string, presetPlayerName: string, firstName: string, lastName: string): Promise<typeof users.$inferSelect> {
+    // Check if already claimed by someone else
+    const [existingClaim] = await db.select().from(users)
+      .where(eq(users.presetPlayerName, presetPlayerName));
+    if (existingClaim && existingClaim.id !== userId) {
+      throw new Error(`${presetPlayerName} is already claimed by another user`);
+    }
+
+    const [updated] = await db.update(users)
+      .set({ presetPlayerName, firstName, lastName })
       .where(eq(users.id, userId))
       .returning();
     return updated;

@@ -515,19 +515,23 @@ export async function registerRoutes(
       const input = api.presetPlayers.createAndClaim.input.parse(req.body);
       const user = req.user as any;
       const userId = user.claims.sub;
-      const name = input.name.trim();
+      
+      const firstName = input.firstName.trim();
+      const lastName = input.lastName.trim();
+      // Use displayName if provided, otherwise combine first and last name
+      const displayName = input.displayName?.trim() || `${firstName} ${lastName}`;
       
       // Check if player already exists
-      const exists = await storage.presetPlayerExists(name);
+      const exists = await storage.presetPlayerExists(displayName);
       if (exists) {
-        return res.status(409).json({ message: `"${name}" already exists. Please choose a different name or select it from the list.` });
+        return res.status(409).json({ message: `"${displayName}" already exists. Please choose a different name or select it from the list.` });
       }
       
       // Create the preset player with showInRoster: false
-      await storage.createPresetPlayer(name, false);
+      await storage.createPresetPlayer(displayName, false);
       
-      // Claim it for the current user
-      const updatedUser = await storage.claimPresetPlayer(userId, name);
+      // Claim it for the current user and update their name fields
+      const updatedUser = await storage.claimPresetPlayerWithName(userId, displayName, firstName, lastName);
       res.status(201).json(updatedUser);
     } catch (err) {
       if (err instanceof z.ZodError) {
