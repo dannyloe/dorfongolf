@@ -423,6 +423,18 @@ export const api = {
         409: z.object({ message: z.string() }),
       },
     },
+    createAndClaim: {
+      method: 'POST' as const,
+      path: '/api/preset-players/create-and-claim',
+      input: z.object({
+        name: z.string().min(1).max(100),
+      }),
+      responses: {
+        201: z.custom<typeof users.$inferSelect>(),
+        400: errorSchemas.validation,
+        409: z.object({ message: z.string() }),
+      },
+    },
   },
   ledger: {
     get: {

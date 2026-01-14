@@ -432,10 +432,10 @@ export async function registerRoutes(
       const user = req.user as any;
       const userId = user.claims.sub;
       
-      // Validate preset name is in the allowed list (or null to release)
+      // Validate preset name exists (or null to release)
       if (input.presetPlayerName !== null) {
-        const { PRESET_PLAYERS } = await import("@shared/models/auth");
-        if (!PRESET_PLAYERS.includes(input.presetPlayerName as any)) {
+        const exists = await storage.presetPlayerExists(input.presetPlayerName);
+        if (!exists) {
           return res.status(400).json({ message: `"${input.presetPlayerName}" is not a valid preset player name` });
         }
       }
@@ -504,6 +504,37 @@ export async function registerRoutes(
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Create a new preset player (hidden from roster) and claim it for the current user
+  app.post(api.presetPlayers.createAndClaim.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.presetPlayers.createAndClaim.input.parse(req.body);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const name = input.name.trim();
+      
+      // Check if player already exists
+      const exists = await storage.presetPlayerExists(name);
+      if (exists) {
+        return res.status(409).json({ message: `"${name}" already exists. Please choose a different name or select it from the list.` });
+      }
+      
+      // Create the preset player with showInRoster: false
+      await storage.createPresetPlayer(name, false);
+      
+      // Claim it for the current user
+      const updatedUser = await storage.claimPresetPlayer(userId, name);
+      res.status(201).json(updatedUser);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message.includes("already claimed")) {
+        return res.status(409).json({ message: err.message });
       }
       res.status(500).json({ message: "Internal server error" });
     }

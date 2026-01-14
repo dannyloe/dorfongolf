@@ -991,8 +991,8 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(presetPlayers).orderBy(presetPlayers.name);
   }
 
-  async createPresetPlayer(name: string): Promise<PresetPlayer> {
-    const [newPlayer] = await db.insert(presetPlayers).values({ name }).returning();
+  async createPresetPlayer(name: string, showInRoster: boolean = true): Promise<PresetPlayer> {
+    const [newPlayer] = await db.insert(presetPlayers).values({ name, showInRoster }).returning();
     return newPlayer;
   }
 
