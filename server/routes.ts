@@ -118,7 +118,50 @@ export async function registerRoutes(
 
   app.post(api.matches.submitScore.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
     try {
+      // Get match to check creator
+      const match = await storage.getMatch(matchId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      // Check if user is admin, creator, or participant
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      
+      if (!isAdmin && !isCreator) {
+        // Check if user is a participant in the match
+        const matchPlayers = await storage.getMatchPlayers(matchId);
+        
+        // Check by userId linkage
+        let isParticipant = matchPlayers.some(p => p.userId === userId);
+        
+        // Also check by preset player name or aliases (many players added without userId)
+        if (!isParticipant) {
+          const currentUser = await storage.getUser(userId);
+          if (currentUser?.presetPlayerName) {
+            const presetName = currentUser.presetPlayerName.toLowerCase().trim();
+            
+            // Get aliases for this user's preset player
+            const aliases = await storage.getPlayerAliases(currentUser.presetPlayerName);
+            const aliasNames = aliases.map(a => a.alias.toLowerCase().trim());
+            
+            // Check if any match player's name matches preset name or any alias
+            isParticipant = matchPlayers.some(p => {
+              const playerName = p.name.toLowerCase().trim();
+              return playerName === presetName || aliasNames.includes(playerName);
+            });
+          }
+        }
+        
+        if (!isParticipant) {
+          return res.status(403).json({ message: "Only match participants can submit scores" });
+        }
+      }
+      
       const input = api.matches.submitScore.input.parse(req.body);
       const score = await storage.submitScore({
         matchId,
