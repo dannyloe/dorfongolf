@@ -256,6 +256,12 @@ export interface LedgerEntry {
   amount: number;
   isComplete: boolean;
   createdAt?: string;
+  betType?: string;
+  isAutoPress?: boolean;
+  pressHole?: number | null;
+  teamAMembers?: string[];
+  teamBMembers?: string[];
+  teamName?: string;
 }
 
 export interface PlayerBalance {
@@ -307,6 +313,11 @@ export function calculateLedger(
 
     const shouldAutoPress = em.autoPressOriginal ?? true;
 
+    // Helper to get team member names
+    const teamAMembers = teamA.members.map(m => m.player?.name || `Player ${m.playerId}`);
+    const teamBMembers = teamB.members.map(m => m.player?.name || `Player ${m.playerId}`);
+    const pressHole = em.startHole && em.startHole > 1 ? em.startHole : null;
+
     if (em.matchType === 'skins') {
       // Skins match - use teamA to get the included player IDs
       const includedPlayerIds = teamA.members.map(m => m.playerId);
@@ -328,6 +339,12 @@ export function calculateLedger(
           amount: s.amount,
           isComplete: skinsResult.isComplete,
           createdAt: em.createdAt,
+          betType: 'Skins',
+          isAutoPress: false,
+          pressHole,
+          teamAMembers,
+          teamBMembers,
+          teamName: s.teamName,
         });
 
         if (skinsResult.isComplete) {
@@ -362,6 +379,12 @@ export function calculateLedger(
             amount: s.amount,
             isComplete: ns.settlement.isComplete,
             createdAt: em.createdAt,
+            betType: ns.betName,
+            isAutoPress: ns.autoPressTriggered || false,
+            pressHole,
+            teamAMembers,
+            teamBMembers,
+            teamName: s.teamName,
           });
 
           if (ns.settlement.isComplete) {
@@ -399,6 +422,7 @@ export function calculateLedger(
         
         for (const member of team.members) {
           const playerName = member.player?.name || `Player ${member.playerId}`;
+          const teamIdx = teamSettlement.teamIndex;
           
           entries.push({
             matchId: em.id,
@@ -408,6 +432,12 @@ export function calculateLedger(
             amount: Math.round(perPlayerAmount * 100) / 100,
             isComplete: true,
             createdAt: em.createdAt,
+            betType: '5-5-5-3',
+            isAutoPress: false,
+            pressHole,
+            teamAMembers,
+            teamBMembers,
+            teamName: teamIdx === 0 ? teamA.name : teamB.name,
           });
 
           const stableKey = playerIdToStableKey.get(member.playerId) || `guest:${playerName.toLowerCase().trim()}`;
@@ -425,6 +455,14 @@ export function calculateLedger(
       const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
+      
+      // Determine if auto press was triggered (check if settlement total is doubled)
+      const wasAutoPress = shouldAutoPress && settlement.totalPot > ((em.unitAmount || 0) / 100) * Math.max(teamA.members.length, teamB.members.length);
+      
+      // Get a friendly bet type name
+      let betTypeName = 'Match Play';
+      if (em.matchType === 'stroke_play') betTypeName = 'Stroke Play';
+      else if (em.matchType === 'match_play_2_ball') betTypeName = 'Match Play (2-Ball)';
 
       for (const s of settlement.settlements) {
         entries.push({
@@ -435,6 +473,12 @@ export function calculateLedger(
           amount: s.amount,
           isComplete: settlement.isComplete,
           createdAt: em.createdAt,
+          betType: betTypeName,
+          isAutoPress: wasAutoPress,
+          pressHole,
+          teamAMembers,
+          teamBMembers,
+          teamName: s.teamName,
         });
 
         if (settlement.isComplete) {
