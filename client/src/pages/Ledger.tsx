@@ -442,40 +442,248 @@ export default function Ledger() {
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {ledgerResults?.entries && ledgerResults.entries.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="whitespace-nowrap">Date</TableHead>
-                  <TableHead className="whitespace-nowrap min-w-fit">Match</TableHead>
-                  <TableHead className="whitespace-nowrap min-w-fit">Player</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Amount</TableHead>
-                  <TableHead className="text-right whitespace-nowrap">Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ledgerResults.entries.map((entry, idx) => (
-                  <TableRow key={`${entry.matchId}-${entry.playerId}-${idx}`} data-testid={`row-entry-${idx}`}>
-                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                      {entry.createdAt ? format(new Date(entry.createdAt), "MMM d, yyyy") : "-"}
-                    </TableCell>
-                    <TableCell className="font-medium whitespace-nowrap">{entry.matchName}</TableCell>
-                    <TableCell className="whitespace-nowrap">{entry.playerName}</TableCell>
-                    <TableCell className={`text-right font-bold whitespace-nowrap ${entry.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
-                      {entry.amount >= 0 ? "+" : ""}${entry.amount.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        entry.isComplete 
-                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
-                          : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-                      }`}>
-                        {entry.isComplete ? "Complete" : "In Progress"}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            (() => {
+              // Separate individual bets (Skins) from team-based bets
+              const skinsEntries = ledgerResults.entries.filter(e => e.betType === 'Skins');
+              const teamEntries = ledgerResults.entries.filter(e => e.betType !== 'Skins');
+              
+              // Group team-based entries by match+betType to consolidate team view
+              // Use teamIndex (0 or 1) as authoritative team identifier
+              const groupedEntries = teamEntries.reduce((acc, entry, idx) => {
+                const key = `${entry.matchId}-${entry.betType || 'default'}-${entry.matchName}`;
+                if (!acc[key]) {
+                  acc[key] = {
+                    matchId: entry.matchId,
+                    matchName: entry.matchName,
+                    betType: entry.betType,
+                    isAutoPress: entry.isAutoPress,
+                    pressHole: entry.pressHole,
+                    createdAt: entry.createdAt,
+                    isComplete: entry.isComplete,
+                    teamAMembers: entry.teamAMembers || [],
+                    teamBMembers: entry.teamBMembers || [],
+                    teamAAmount: 0,
+                    teamBAmount: 0,
+                    processedPlayers: new Set<number>(),
+                  };
+                }
+                // Use teamIndex to route amounts to correct team bucket
+                // Prevent duplicate player counting using playerId
+                if (!acc[key].processedPlayers.has(entry.playerId)) {
+                  acc[key].processedPlayers.add(entry.playerId);
+                  // Use teamIndex (0=Team A, 1=Team B), throw error if undefined for team games
+                  const teamIdx = entry.teamIndex;
+                  if (teamIdx === undefined) {
+                    console.warn(`Missing teamIndex for entry: ${entry.matchName} - ${entry.playerName}`);
+                  }
+                  if (teamIdx === 0 || teamIdx === undefined) {
+                    acc[key].teamAAmount += entry.amount;
+                  } else {
+                    acc[key].teamBAmount += entry.amount;
+                  }
+                }
+                return acc;
+              }, {} as Record<string, {
+                matchId: number;
+                matchName: string;
+                betType?: string;
+                isAutoPress?: boolean;
+                pressHole?: number | null;
+                createdAt?: string;
+                isComplete: boolean;
+                teamAMembers: string[];
+                teamBMembers: string[];
+                teamAAmount: number;
+                teamBAmount: number;
+                processedPlayers: Set<number>;
+              }>);
+
+              // Convert to list and compute winning team info
+              const groupedList = Object.values(groupedEntries).map(group => {
+                // Determine winner based on accumulated team amounts
+                const teamAWon = group.teamAAmount > 0;
+                const teamBWon = group.teamBAmount > 0;
+                const isTie = group.teamAAmount === 0 && group.teamBAmount === 0;
+                const winAmount = Math.max(Math.abs(group.teamAAmount), Math.abs(group.teamBAmount));
+                
+                return {
+                  ...group,
+                  teamAWon,
+                  teamBWon,
+                  isTie,
+                  winAmount,
+                  isSkins: false,
+                };
+              });
+              
+              // Add skins entries as individual rows (grouped by match but showing individual results)
+              const skinsGrouped = skinsEntries.reduce((acc, entry) => {
+                const key = `${entry.matchId}-skins`;
+                if (!acc[key]) {
+                  acc[key] = {
+                    matchId: entry.matchId,
+                    matchName: entry.matchName,
+                    betType: 'Skins',
+                    isAutoPress: false,
+                    pressHole: entry.pressHole,
+                    createdAt: entry.createdAt,
+                    isComplete: entry.isComplete,
+                    players: [] as { name: string; amount: number }[],
+                  };
+                }
+                acc[key].players.push({ name: entry.playerName, amount: entry.amount });
+                return acc;
+              }, {} as Record<string, {
+                matchId: number;
+                matchName: string;
+                betType: string;
+                isAutoPress: boolean;
+                pressHole?: number | null;
+                createdAt?: string;
+                isComplete: boolean;
+                players: { name: string; amount: number }[];
+              }>);
+              
+              const skinsRows = Object.values(skinsGrouped).map(group => ({
+                ...group,
+                teamAMembers: group.players.map(p => p.name),
+                teamBMembers: [] as string[],
+                teamAWon: false,
+                teamBWon: false,
+                isTie: false,
+                winAmount: 0,
+                isSkins: true,
+                playerResults: group.players,
+              }));
+              
+              // Combine both types of entries
+              const allRows = [...groupedList, ...skinsRows].sort((a, b) => {
+                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return dateB - dateA;
+              });
+
+              return (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Date</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-fit">Match</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-fit">Bet Type</TableHead>
+                      <TableHead className="whitespace-nowrap min-w-fit">Players/Teams</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Result</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allRows.map((row, idx) => {
+                      if (row.isSkins && 'playerResults' in row) {
+                        // Skins row - show individual player results
+                        const winners = row.playerResults.filter((p: { amount: number }) => p.amount > 0);
+                        const losers = row.playerResults.filter((p: { amount: number }) => p.amount < 0);
+                        const totalWinnings = winners.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0);
+                        
+                        return (
+                          <TableRow key={`${row.matchId}-skins-${idx}`} data-testid={`row-skins-${idx}`}>
+                            <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                              {row.createdAt ? format(new Date(row.createdAt), "MMM d, yyyy") : "-"}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <span className="whitespace-nowrap">{row.matchName}</span>
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              <span className="text-sm">Skins</span>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1 text-sm">
+                                {winners.length > 0 && (
+                                  <div className="text-green-600">
+                                    {winners.map((p: { name: string; amount: number }) => `${p.name} +$${p.amount.toFixed(2)}`).join(', ')}
+                                  </div>
+                                )}
+                                {losers.length > 0 && (
+                                  <div className="text-red-600">
+                                    {losers.map((p: { name: string; amount: number }) => `${p.name} $${p.amount.toFixed(2)}`).join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              <span className="font-bold text-green-600">${totalWinnings.toFixed(2)}</span>
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                                row.isComplete 
+                                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+                                  : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                              }`}>
+                                {row.isComplete ? "Complete" : "In Progress"}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      
+                      // Team-based bet row
+                      return (
+                        <TableRow key={`${row.matchId}-${row.betType}-${idx}`} data-testid={`row-group-${idx}`}>
+                          <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                            {row.createdAt ? format(new Date(row.createdAt), "MMM d, yyyy") : "-"}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <div className="flex flex-col">
+                              <span className="whitespace-nowrap">{row.matchName?.split(' - ')[0]}</span>
+                              {row.pressHole && (
+                                <span className="text-xs text-muted-foreground">Press on hole {row.pressHole}</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <span className="text-sm">{row.betType || 'Match Play'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <div className={`text-sm ${row.teamAWon ? 'font-semibold text-green-600' : ''}`}>
+                                {row.teamAMembers.join(', ') || 'Team A'}
+                              </div>
+                              <div className="text-xs text-muted-foreground">vs</div>
+                              <div className={`text-sm ${row.teamBWon ? 'font-semibold text-green-600' : ''}`}>
+                                {row.teamBMembers.join(', ') || 'Team B'}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            {row.isTie ? (
+                              <span className="text-muted-foreground">Tie</span>
+                            ) : (
+                              <div className="flex items-center justify-end gap-1">
+                                <span className={`font-bold ${row.teamAWon || row.teamBWon ? 'text-green-600' : 'text-muted-foreground'}`}>
+                                  ${row.winAmount.toFixed(2)}
+                                </span>
+                                {row.isAutoPress && (
+                                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border-2 border-amber-500 text-amber-600 text-xs font-bold" title="Auto Press">
+                                    P
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              row.isComplete 
+                                ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" 
+                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                            }`}>
+                              {row.isComplete ? "Complete" : "In Progress"}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              );
+            })()
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               No transactions in this date range.

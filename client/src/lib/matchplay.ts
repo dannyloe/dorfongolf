@@ -262,6 +262,7 @@ export interface LedgerEntry {
   teamAMembers?: string[];
   teamBMembers?: string[];
   teamName?: string;
+  teamIndex?: number;
 }
 
 export interface PlayerBalance {
@@ -345,6 +346,7 @@ export function calculateLedger(
           teamAMembers,
           teamBMembers,
           teamName: s.teamName,
+          teamIndex: 0,
         });
 
         if (skinsResult.isComplete) {
@@ -369,8 +371,14 @@ export function calculateLedger(
       };
       const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, nassauAutoPressSettings);
       
+      // Build player ID to team index lookup
+      const playerTeamIndex = new Map<number, number>();
+      for (const m of teamA.members) playerTeamIndex.set(m.playerId, 0);
+      for (const m of teamB.members) playerTeamIndex.set(m.playerId, 1);
+      
       for (const ns of nassauSettlements) {
         for (const s of ns.settlement.settlements) {
+          const teamIdx = playerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
           entries.push({
             matchId: em.id,
             matchName: `${em.name} - ${ns.betName}`,
@@ -385,6 +393,7 @@ export function calculateLedger(
             teamAMembers,
             teamBMembers,
             teamName: s.teamName,
+            teamIndex: teamIdx,
           });
 
           if (ns.settlement.isComplete) {
@@ -438,6 +447,7 @@ export function calculateLedger(
             teamAMembers,
             teamBMembers,
             teamName: teamIdx === 0 ? teamA.name : teamB.name,
+            teamIndex: teamIdx,
           });
 
           const stableKey = playerIdToStableKey.get(member.playerId) || `guest:${playerName.toLowerCase().trim()}`;
@@ -464,7 +474,13 @@ export function calculateLedger(
       if (em.matchType === 'stroke_play') betTypeName = 'Stroke Play';
       else if (em.matchType === 'match_play_2_ball') betTypeName = 'Match Play (2-Ball)';
 
+      // Build player ID to team index lookup for match play
+      const matchPlayerTeamIndex = new Map<number, number>();
+      for (const m of teamA.members) matchPlayerTeamIndex.set(m.playerId, 0);
+      for (const m of teamB.members) matchPlayerTeamIndex.set(m.playerId, 1);
+      
       for (const s of settlement.settlements) {
+        const teamIdx = matchPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
         entries.push({
           matchId: em.id,
           matchName: em.name,
@@ -479,6 +495,7 @@ export function calculateLedger(
           teamAMembers,
           teamBMembers,
           teamName: s.teamName,
+          teamIndex: teamIdx,
         });
 
         if (settlement.isComplete) {
