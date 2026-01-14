@@ -1505,5 +1505,102 @@ Rules:
     res.json(matches);
   });
 
+  // Profile endpoints
+  app.get(api.profile.get.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // Get aliases if user has a preset player name
+      let aliases: string[] = [];
+      if (currentUser.presetPlayerName) {
+        const aliasRecords = await storage.getPlayerAliases(currentUser.presetPlayerName);
+        aliases = aliasRecords.map(a => a.alias);
+      }
+      
+      // Get handicap if user has a preset player name
+      let handicapIndex: number | null = null;
+      if (currentUser.presetPlayerName) {
+        const handicapRecord = await storage.getPlayerHandicap(currentUser.presetPlayerName);
+        handicapIndex = handicapRecord?.handicapIndex ?? null;
+      }
+      
+      res.json({
+        id: currentUser.id,
+        email: currentUser.email,
+        firstName: currentUser.firstName,
+        lastName: currentUser.lastName,
+        phone: currentUser.phone,
+        presetPlayerName: currentUser.presetPlayerName,
+        aliases,
+        handicapIndex,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.profile.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.profile.update.input.parse(req.body);
+      
+      // Update user profile
+      const updateData: { firstName?: string; lastName?: string; email?: string; phone?: string } = {};
+      if (input.firstName !== undefined) updateData.firstName = input.firstName;
+      if (input.lastName !== undefined) updateData.lastName = input.lastName;
+      if (input.email !== undefined) updateData.email = input.email;
+      if (input.phone !== undefined) updateData.phone = input.phone;
+      
+      const updatedUser = await storage.updateUserProfile(userId, updateData);
+      
+      // Update aliases if provided and user has preset name
+      if (input.aliases !== undefined && updatedUser.presetPlayerName) {
+        await storage.setPlayerAliases(updatedUser.presetPlayerName, input.aliases);
+      }
+      
+      // Update handicap if provided and user has preset name
+      if (input.handicapIndex !== undefined && updatedUser.presetPlayerName) {
+        await storage.updatePlayerHandicap(updatedUser.presetPlayerName, { handicapIndex: input.handicapIndex });
+      }
+      
+      // Return updated profile
+      let aliases: string[] = [];
+      if (updatedUser.presetPlayerName) {
+        const aliasRecords = await storage.getPlayerAliases(updatedUser.presetPlayerName);
+        aliases = aliasRecords.map(a => a.alias);
+      }
+      
+      let handicapIndex: number | null = null;
+      if (updatedUser.presetPlayerName) {
+        const handicapRecord = await storage.getPlayerHandicap(updatedUser.presetPlayerName);
+        handicapIndex = handicapRecord?.handicapIndex ?? null;
+      }
+      
+      res.json({
+        id: updatedUser.id,
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        phone: updatedUser.phone,
+        presetPlayerName: updatedUser.presetPlayerName,
+        aliases,
+        handicapIndex,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

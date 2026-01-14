@@ -25,6 +25,7 @@ export interface IStorage {
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
   claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect>;
   claimPresetPlayerWithName(userId: string, presetPlayerName: string, firstName: string, lastName: string): Promise<typeof users.$inferSelect>;
+  updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string }): Promise<typeof users.$inferSelect>;
 
   // App methods
   createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null }): Promise<Match>;
@@ -381,6 +382,20 @@ export class DatabaseStorage implements IStorage {
 
     const [updated] = await db.update(users)
       .set({ presetPlayerName, firstName, lastName })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string }): Promise<typeof users.$inferSelect> {
+    const updateData: Partial<typeof users.$inferInsert> = {};
+    if (data.firstName !== undefined) updateData.firstName = data.firstName;
+    if (data.lastName !== undefined) updateData.lastName = data.lastName;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.phone !== undefined) updateData.phone = data.phone;
+
+    const [updated] = await db.update(users)
+      .set(updateData)
       .where(eq(users.id, userId))
       .returning();
     return updated;

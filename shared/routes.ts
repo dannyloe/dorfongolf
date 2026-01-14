@@ -974,6 +974,51 @@ export const api = {
       },
     },
   },
+  profile: {
+    get: {
+      method: 'GET' as const,
+      path: '/api/profile',
+      responses: {
+        200: z.object({
+          id: z.string(),
+          email: z.string().nullable(),
+          firstName: z.string().nullable(),
+          lastName: z.string().nullable(),
+          phone: z.string().nullable(),
+          presetPlayerName: z.string().nullable(),
+          aliases: z.array(z.string()),
+          handicapIndex: z.number().nullable(),
+        }),
+        401: z.object({ message: z.string() }),
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/profile',
+      input: z.object({
+        firstName: z.string().max(100).optional(),
+        lastName: z.string().max(100).optional(),
+        email: z.string().email().max(255).optional(),
+        phone: z.string().max(20).optional(),
+        aliases: z.array(z.string().max(50)).max(10).optional(),
+        handicapIndex: z.number().min(0).max(540).nullable().optional(), // Stored as tenths
+      }),
+      responses: {
+        200: z.object({
+          id: z.string(),
+          email: z.string().nullable(),
+          firstName: z.string().nullable(),
+          lastName: z.string().nullable(),
+          phone: z.string().nullable(),
+          presetPlayerName: z.string().nullable(),
+          aliases: z.array(z.string()),
+          handicapIndex: z.number().nullable(),
+        }),
+        400: errorSchemas.validation,
+        401: z.object({ message: z.string() }),
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
