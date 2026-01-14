@@ -518,8 +518,7 @@ export async function registerRoutes(
       
       const firstName = input.firstName.trim();
       const lastName = input.lastName.trim();
-      // Use displayName if provided, otherwise combine first and last name
-      const displayName = input.displayName?.trim() || `${firstName} ${lastName}`;
+      const displayName = input.displayName.trim(); // This becomes preset_player_name
       
       // Check if player already exists
       const exists = await storage.presetPlayerExists(displayName);
@@ -529,6 +528,11 @@ export async function registerRoutes(
       
       // Create the preset player with showInRoster: false
       await storage.createPresetPlayer(displayName, false);
+      
+      // Save aliases if provided
+      if (input.aliases && input.aliases.length > 0) {
+        await storage.setPlayerAliases(displayName, input.aliases);
+      }
       
       // Claim it for the current user and update their name fields
       const updatedUser = await storage.claimPresetPlayerWithName(userId, displayName, firstName, lastName);

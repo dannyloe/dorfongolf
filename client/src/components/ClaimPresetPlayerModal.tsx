@@ -34,6 +34,7 @@ export function ClaimPresetPlayerModal({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [aliasInput, setAliasInput] = useState("");
 
   // Reset selection when modal opens or currentPresetName changes
   useEffect(() => {
@@ -43,6 +44,7 @@ export function ClaimPresetPlayerModal({
       setFirstName("");
       setLastName("");
       setDisplayName("");
+      setAliasInput("");
     }
   }, [open, currentPresetName]);
 
@@ -85,7 +87,7 @@ export function ClaimPresetPlayerModal({
   });
 
   const createAndClaimMutation = useMutation({
-    mutationFn: async (data: { firstName: string; lastName: string; displayName?: string }) => {
+    mutationFn: async (data: { firstName: string; lastName: string; displayName: string; aliases?: string[] }) => {
       const res = await apiRequest("POST", "/api/preset-players/create-and-claim", data);
       if (!res.ok) {
         const error = await res.json();
@@ -113,11 +115,18 @@ export function ClaimPresetPlayerModal({
 
   const handleSave = () => {
     if (isAddingNew) {
-      if (firstName.trim() && lastName.trim()) {
+      if (firstName.trim() && lastName.trim() && displayName.trim()) {
+        // Parse aliases from comma-separated input
+        const aliases = aliasInput
+          .split(',')
+          .map(a => a.trim())
+          .filter(a => a.length > 0);
+        
         createAndClaimMutation.mutate({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          displayName: displayName.trim() || undefined,
+          displayName: displayName.trim(),
+          aliases: aliases.length > 0 ? aliases : undefined,
         });
       }
     } else {
@@ -126,7 +135,7 @@ export function ClaimPresetPlayerModal({
   };
 
   const isFormValid = isAddingNew 
-    ? firstName.trim() && lastName.trim() 
+    ? firstName.trim() && lastName.trim() && displayName.trim()
     : !!selectedName;
 
   const handleSkip = () => {
@@ -176,15 +185,27 @@ export function ClaimPresetPlayerModal({
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1.5 block">Display Name (optional)</label>
+              <label className="text-sm font-medium mb-1.5 block">Display Name</label>
               <Input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder={firstName && lastName ? `${firstName} ${lastName}` : "Nickname or preferred name"}
+                placeholder="e.g., JT, Big Mike, Coach"
                 data-testid="input-display-name"
               />
               <p className="text-xs text-muted-foreground mt-1.5">
-                Leave blank to use your full name, or enter a nickname (e.g., "JT", "Big Mike")
+                This is how you'll appear in matches and leaderboards
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Nicknames (optional)</label>
+              <Input
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                placeholder="e.g., Johnny, JS, Smitty"
+                data-testid="input-aliases"
+              />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Separate multiple nicknames with commas. These help match you to scores.
               </p>
             </div>
             <Button
@@ -195,6 +216,7 @@ export function ClaimPresetPlayerModal({
                 setFirstName("");
                 setLastName("");
                 setDisplayName("");
+                setAliasInput("");
               }}
               data-testid="button-back-to-roster"
             >

@@ -429,7 +429,8 @@ export const api = {
       input: z.object({
         firstName: z.string().min(1, "First name is required").max(50),
         lastName: z.string().min(1, "Last name is required").max(50),
-        displayName: z.string().max(100).optional(), // Optional custom display name
+        displayName: z.string().min(1, "Display name is required").max(100), // This becomes preset_player_name
+        aliases: z.array(z.string().max(50)).max(10).optional(), // Optional nicknames
       }),
       responses: {
         201: z.custom<typeof users.$inferSelect>(),
