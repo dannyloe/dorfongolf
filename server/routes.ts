@@ -1899,14 +1899,19 @@ Rules:
       const code = generateVerificationCode();
       await storage.createVerificationCode(phone, code);
       
+      console.log(`[SMS] Sending verification code to ${phone}`);
+      
       // Send the code
       const result = await sendVerificationCode(phone, code);
+      
+      console.log(`[SMS] Send result:`, JSON.stringify(result));
       
       if (result.success) {
         // Update rate limit tracking
         smsRateLimits.set(phone, { lastSent: now, attempts: 0 });
         res.json({ success: true, message: "Verification code sent" });
       } else {
+        console.error(`[SMS] Failed to send: ${result.error}`);
         res.status(500).json({ message: result.error || "Failed to send verification code" });
       }
     } catch (err) {
