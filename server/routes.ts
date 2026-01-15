@@ -1909,10 +1909,10 @@ Rules:
       if (result.success) {
         // Update rate limit tracking
         smsRateLimits.set(phone, { lastSent: now, attempts: 0 });
-        res.json({ success: true, message: "Verification code sent" });
+        res.json({ success: true, message: "Verification code sent", sid: result.sid });
       } else {
         console.error(`[SMS] Failed to send: ${result.error}`);
-        res.status(500).json({ message: result.error || "Failed to send verification code" });
+        res.status(500).json({ message: result.error || "Failed to send verification code", details: result.error });
       }
     } catch (err) {
       if (err instanceof z.ZodError) {
