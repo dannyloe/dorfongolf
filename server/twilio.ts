@@ -13,14 +13,14 @@ async function getCredentials() {
     ? 'depl ' + process.env.WEB_REPL_RENEWAL 
     : null;
 
-  process.stderr.write(`[Twilio Debug] hostname: ${hostname}, hasToken: ${!!xReplitToken}\n`);
+  console.log(`[Twilio Debug] hostname: ${hostname}, hasToken: ${!!xReplitToken}`);
 
   if (!xReplitToken) {
     throw new Error('X_REPLIT_TOKEN not found for repl/depl');
   }
 
   const url = 'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=twilio';
-  process.stderr.write(`[Twilio Debug] Fetching credentials from: ${url}\n`);
+  console.log(`[Twilio Debug] Fetching credentials from: ${url}`);
   
   const response = await fetch(url, {
     headers: {
@@ -32,7 +32,7 @@ async function getCredentials() {
   const data = await response.json();
   connectionSettings = data.items?.[0];
   
-  process.stderr.write(`[Twilio Debug] Connection response: ${JSON.stringify({ hasSettings: !!connectionSettings, hasAccountSid: !!connectionSettings?.settings?.account_sid, hasPhoneNumber: !!connectionSettings?.settings?.phone_number })}\n`);
+  console.log(`[Twilio Debug] Connection response:`, JSON.stringify({ hasSettings: !!connectionSettings, hasAccountSid: !!connectionSettings?.settings?.account_sid, hasPhoneNumber: !!connectionSettings?.settings?.phone_number }));
 
   if (!connectionSettings || (!connectionSettings.settings.account_sid || !connectionSettings.settings.api_key || !connectionSettings.settings.api_key_secret)) {
     throw new Error('Twilio not connected');
