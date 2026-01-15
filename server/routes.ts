@@ -1806,5 +1806,203 @@ Rules:
     }
   });
 
+  // === SMS ROUTES ===
+  
+  app.post(api.sms.sendVerification.path, async (req, res) => {
+    try {
+      const input = api.sms.sendVerification.input.parse(req.body);
+      
+      // Generate and store verification code
+      const { generateVerificationCode, sendVerificationCode } = await import('./twilio');
+      const code = generateVerificationCode();
+      await storage.createVerificationCode(input.phone, code);
+      
+      // Send the code
+      const result = await sendVerificationCode(input.phone, code);
+      
+      if (result.success) {
+        res.json({ success: true, message: "Verification code sent" });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send verification code" });
+      }
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error('SMS verification error:', err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.sms.verifyCode.path, async (req, res) => {
+    try {
+      const input = api.sms.verifyCode.input.parse(req.body);
+      
+      const verified = await storage.verifyCode(input.phone, input.code);
+      res.json({ success: true, verified });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.sms.sendMessage.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.sms.sendMessage.input.parse(req.body);
+      const { sendSMS } = await import('./twilio');
+      
+      const result = await sendSMS(input.to, input.message);
+      res.json({ success: result.success, sid: result.sid });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error('SMS send error:', err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // === NOTIFICATION PREFERENCES ROUTES ===
+
+  app.get(api.notifications.getPreferences.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const prefs = await storage.getNotificationPreferences(userId);
+      
+      res.json({
+        matchInvitations: prefs?.matchInvitations ?? true,
+        scoreUpdates: prefs?.scoreUpdates ?? false,
+        betResults: prefs?.betResults ?? true,
+        matchReminders: prefs?.matchReminders ?? true,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put(api.notifications.updatePreferences.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.notifications.updatePreferences.input.parse(req.body);
+      const prefs = await storage.upsertNotificationPreferences(userId, input);
+      
+      res.json({
+        matchInvitations: prefs.matchInvitations ?? true,
+        scoreUpdates: prefs.scoreUpdates ?? false,
+        betResults: prefs.betResults ?? true,
+        matchReminders: prefs.matchReminders ?? true,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // === MESSAGE ROUTES ===
+
+  app.get(api.messages.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const userMessages = await storage.getMessages(userId);
+      
+      res.json(userMessages.map(m => ({
+        id: m.id,
+        matchId: m.matchId,
+        senderId: m.senderId,
+        senderName: m.senderName,
+        recipientId: m.recipientId,
+        content: m.content,
+        readAt: m.readAt?.toISOString() || null,
+        createdAt: m.createdAt?.toISOString() || new Date().toISOString(),
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.messages.listByMatch.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      
+      const match = await storage.getMatch(matchId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      const matchMessages = await storage.getMatchMessages(matchId);
+      
+      res.json(matchMessages.map(m => ({
+        id: m.id,
+        matchId: m.matchId,
+        senderId: m.senderId,
+        senderName: m.senderName,
+        recipientId: m.recipientId,
+        content: m.content,
+        readAt: m.readAt?.toISOString() || null,
+        createdAt: m.createdAt?.toISOString() || new Date().toISOString(),
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.messages.send.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.messages.send.input.parse(req.body);
+      
+      const message = await storage.createMessage(
+        userId,
+        input.content,
+        input.matchId,
+        input.recipientId
+      );
+      
+      res.status(201).json({
+        id: message.id,
+        matchId: message.matchId,
+        senderId: message.senderId,
+        recipientId: message.recipientId,
+        content: message.content,
+        createdAt: message.createdAt?.toISOString() || new Date().toISOString(),
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch(api.messages.markRead.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const messageId = parseInt(req.params.id);
+      
+      const success = await storage.markMessageRead(messageId, userId);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

@@ -149,6 +149,38 @@ export const playerAliases = pgTable("player_aliases", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Phone verification codes for SMS verification
+export const verificationCodes = pgTable("verification_codes", {
+  id: serial("id").primaryKey(),
+  phone: text("phone").notNull(),
+  code: text("code").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  verified: boolean("verified").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// User notification preferences for SMS
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  matchInvitations: boolean("match_invitations").default(true),
+  scoreUpdates: boolean("score_updates").default(false),
+  betResults: boolean("bet_results").default(true),
+  matchReminders: boolean("match_reminders").default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// In-app messages between users
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id"), // Optional - messages can be match-specific
+  senderId: text("sender_id").notNull(),
+  recipientId: text("recipient_id"), // Null for group messages to all match participants
+  content: text("content").notNull(),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === RELATIONS ===
 
 export const coursesRelations = relations(courses, ({ many }) => ({
@@ -329,6 +361,23 @@ export const insertMatchRoleSchema = createInsertSchema(matchRoles).omit({
   createdAt: true,
 });
 
+export const insertVerificationCodeSchema = createInsertSchema(verificationCodes).omit({
+  id: true,
+  createdAt: true,
+  verified: true,
+});
+
+export const insertNotificationPreferencesSchema = createInsertSchema(notificationPreferences).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  createdAt: true,
+  readAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -378,6 +427,15 @@ export type InsertPlayerAlias = z.infer<typeof insertPlayerAliasSchema>;
 
 export type MatchRole = typeof matchRoles.$inferSelect;
 export type InsertMatchRole = z.infer<typeof insertMatchRoleSchema>;
+
+export type VerificationCode = typeof verificationCodes.$inferSelect;
+export type InsertVerificationCode = z.infer<typeof insertVerificationCodeSchema>;
+
+export type NotificationPreferences = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreferences = z.infer<typeof insertNotificationPreferencesSchema>;
+
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

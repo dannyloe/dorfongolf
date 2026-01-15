@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { 
   matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
+  verificationCodes, notificationPreferences, messages,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
@@ -13,11 +14,12 @@ import {
   type PresetPlayer, type InsertPresetPlayer,
   type PlayerAlias, type InsertPlayerAlias,
   type MatchRole, type InsertMatchRole,
+  type VerificationCode, type NotificationPreferences, type Message,
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
-import { eq, and, lt, inArray } from "drizzle-orm";
+import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -1549,6 +1551,163 @@ export class DatabaseStorage implements IStorage {
   async deleteMatchRole(matchId: number, userId: string): Promise<void> {
     await db.delete(matchRoles)
       .where(and(eq(matchRoles.matchId, matchId), eq(matchRoles.userId, userId)));
+  }
+
+  // === VERIFICATION CODE METHODS ===
+
+  async createVerificationCode(phone: string, code: string): Promise<VerificationCode> {
+    // Delete any existing codes for this phone
+    await db.delete(verificationCodes).where(eq(verificationCodes.phone, phone));
+    
+    // Create new code that expires in 10 minutes
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const [verificationCode] = await db.insert(verificationCodes)
+      .values({ phone, code, expiresAt })
+      .returning();
+    return verificationCode;
+  }
+
+  async verifyCode(phone: string, code: string): Promise<boolean> {
+    const [verificationCode] = await db.select().from(verificationCodes)
+      .where(and(
+        eq(verificationCodes.phone, phone),
+        eq(verificationCodes.code, code),
+        gte(verificationCodes.expiresAt, new Date()),
+        eq(verificationCodes.verified, false)
+      ));
+    
+    if (!verificationCode) return false;
+    
+    // Mark as verified
+    await db.update(verificationCodes)
+      .set({ verified: true })
+      .where(eq(verificationCodes.id, verificationCode.id));
+    
+    return true;
+  }
+
+  // === NOTIFICATION PREFERENCES METHODS ===
+
+  async getNotificationPreferences(userId: string): Promise<NotificationPreferences | undefined> {
+    const [prefs] = await db.select().from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, userId));
+    return prefs;
+  }
+
+  async upsertNotificationPreferences(userId: string, prefs: Partial<{
+    matchInvitations: boolean;
+    scoreUpdates: boolean;
+    betResults: boolean;
+    matchReminders: boolean;
+  }>): Promise<NotificationPreferences> {
+    const existing = await this.getNotificationPreferences(userId);
+    
+    if (existing) {
+      const [updated] = await db.update(notificationPreferences)
+        .set({ ...prefs, updatedAt: new Date() })
+        .where(eq(notificationPreferences.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(notificationPreferences)
+        .values({
+          userId,
+          matchInvitations: prefs.matchInvitations ?? true,
+          scoreUpdates: prefs.scoreUpdates ?? false,
+          betResults: prefs.betResults ?? true,
+          matchReminders: prefs.matchReminders ?? true,
+        })
+        .returning();
+      return created;
+    }
+  }
+
+  // === MESSAGE METHODS ===
+
+  async getMessages(userId: string): Promise<(Message & { senderName: string | null })[]> {
+    const userMessages = await db.select().from(messages)
+      .where(or(
+        eq(messages.senderId, userId),
+        eq(messages.recipientId, userId),
+        isNull(messages.recipientId) // Group messages
+      ))
+      .orderBy(desc(messages.createdAt));
+    
+    // Get sender names
+    const senderIds = Array.from(new Set(userMessages.map(m => m.senderId)));
+    const senders = senderIds.length > 0 
+      ? await db.select().from(users).where(inArray(users.id, senderIds))
+      : [];
+    const senderMap = new Map(senders.map(s => [s.id, s.presetPlayerName || s.firstName || 'Unknown']));
+    
+    return userMessages.map(m => ({
+      ...m,
+      senderName: senderMap.get(m.senderId) || null,
+    }));
+  }
+
+  async getMatchMessages(matchId: number): Promise<(Message & { senderName: string | null })[]> {
+    const matchMessages = await db.select().from(messages)
+      .where(eq(messages.matchId, matchId))
+      .orderBy(desc(messages.createdAt));
+    
+    // Get sender names
+    const senderIds = Array.from(new Set(matchMessages.map(m => m.senderId)));
+    const senders = senderIds.length > 0 
+      ? await db.select().from(users).where(inArray(users.id, senderIds))
+      : [];
+    const senderMap = new Map(senders.map(s => [s.id, s.presetPlayerName || s.firstName || 'Unknown']));
+    
+    return matchMessages.map(m => ({
+      ...m,
+      senderName: senderMap.get(m.senderId) || null,
+    }));
+  }
+
+  async createMessage(senderId: string, content: string, matchId?: number, recipientId?: string): Promise<Message> {
+    const [message] = await db.insert(messages)
+      .values({
+        senderId,
+        content,
+        matchId: matchId ?? null,
+        recipientId: recipientId ?? null,
+      })
+      .returning();
+    return message;
+  }
+
+  async markMessageRead(messageId: number, userId: string): Promise<boolean> {
+    const [message] = await db.select().from(messages).where(eq(messages.id, messageId));
+    if (!message || (message.recipientId && message.recipientId !== userId)) {
+      return false;
+    }
+    
+    await db.update(messages)
+      .set({ readAt: new Date() })
+      .where(eq(messages.id, messageId));
+    return true;
+  }
+
+  // Get users with phone numbers for a match (for notifications)
+  async getMatchParticipantsWithPhone(matchId: number): Promise<{ userId: string; phone: string; name: string }[]> {
+    const matchPlayers = await this.getMatchPlayers(matchId);
+    const userIds = matchPlayers.filter(p => p.userId).map(p => p.userId!);
+    
+    if (userIds.length === 0) return [];
+    
+    const usersWithPhone = await db.select().from(users)
+      .where(and(
+        inArray(users.id, userIds),
+        // Only users with verified phone numbers
+      ));
+    
+    return usersWithPhone
+      .filter(u => u.phone)
+      .map(u => ({
+        userId: u.id,
+        phone: u.phone!,
+        name: u.presetPlayerName || u.firstName || 'User',
+      }));
   }
 }
 

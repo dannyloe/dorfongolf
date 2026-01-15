@@ -1078,6 +1078,147 @@ export const api = {
       },
     },
   },
+  sms: {
+    sendVerification: {
+      method: 'POST' as const,
+      path: '/api/sms/verification/send',
+      input: z.object({
+        phone: z.string().min(10),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean(), message: z.string() }),
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+    verifyCode: {
+      method: 'POST' as const,
+      path: '/api/sms/verification/verify',
+      input: z.object({
+        phone: z.string().min(10),
+        code: z.string().length(6),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean(), verified: z.boolean() }),
+        400: errorSchemas.validation,
+      },
+    },
+    sendMessage: {
+      method: 'POST' as const,
+      path: '/api/sms/send',
+      input: z.object({
+        to: z.string().min(10),
+        message: z.string().min(1).max(1600),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean(), sid: z.string().optional() }),
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+  },
+  notifications: {
+    getPreferences: {
+      method: 'GET' as const,
+      path: '/api/notifications/preferences',
+      responses: {
+        200: z.object({
+          matchInvitations: z.boolean(),
+          scoreUpdates: z.boolean(),
+          betResults: z.boolean(),
+          matchReminders: z.boolean(),
+        }),
+        401: z.object({ message: z.string() }),
+      },
+    },
+    updatePreferences: {
+      method: 'PUT' as const,
+      path: '/api/notifications/preferences',
+      input: z.object({
+        matchInvitations: z.boolean().optional(),
+        scoreUpdates: z.boolean().optional(),
+        betResults: z.boolean().optional(),
+        matchReminders: z.boolean().optional(),
+      }),
+      responses: {
+        200: z.object({
+          matchInvitations: z.boolean(),
+          scoreUpdates: z.boolean(),
+          betResults: z.boolean(),
+          matchReminders: z.boolean(),
+        }),
+        400: errorSchemas.validation,
+        401: z.object({ message: z.string() }),
+      },
+    },
+  },
+  messages: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/messages',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          matchId: z.number().nullable(),
+          senderId: z.string(),
+          senderName: z.string().nullable(),
+          recipientId: z.string().nullable(),
+          content: z.string(),
+          readAt: z.string().nullable(),
+          createdAt: z.string(),
+        })),
+        401: z.object({ message: z.string() }),
+      },
+    },
+    listByMatch: {
+      method: 'GET' as const,
+      path: '/api/matches/:id/messages',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          matchId: z.number().nullable(),
+          senderId: z.string(),
+          senderName: z.string().nullable(),
+          recipientId: z.string().nullable(),
+          content: z.string(),
+          readAt: z.string().nullable(),
+          createdAt: z.string(),
+        })),
+        401: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    send: {
+      method: 'POST' as const,
+      path: '/api/messages',
+      input: z.object({
+        matchId: z.number().optional(),
+        recipientId: z.string().optional(),
+        content: z.string().min(1).max(2000),
+      }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          matchId: z.number().nullable(),
+          senderId: z.string(),
+          recipientId: z.string().nullable(),
+          content: z.string(),
+          createdAt: z.string(),
+        }),
+        400: errorSchemas.validation,
+        401: z.object({ message: z.string() }),
+      },
+    },
+    markRead: {
+      method: 'PATCH' as const,
+      path: '/api/messages/:id/read',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        401: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
