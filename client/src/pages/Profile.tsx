@@ -6,8 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { User, Save, X, Plus, Loader2 } from "lucide-react";
+import { User, Save, X, Plus, Loader2, Phone, Check, Bell } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface ProfileData {
   id: string;
@@ -15,9 +24,17 @@ interface ProfileData {
   firstName: string | null;
   lastName: string | null;
   phone: string | null;
+  phoneVerified?: boolean;
   presetPlayerName: string | null;
   aliases: string[];
   handicapIndex: number | null;
+}
+
+interface NotificationPreferences {
+  matchInvitations: boolean;
+  scoreUpdates: boolean;
+  betResults: boolean;
+  matchReminders: boolean;
 }
 
 export default function Profile() {
@@ -27,6 +44,10 @@ export default function Profile() {
     queryKey: ['/api/profile'],
   });
 
+  const { data: notificationPrefs } = useQuery<NotificationPreferences>({
+    queryKey: ['/api/notifications/preferences'],
+  });
+
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -34,6 +55,16 @@ export default function Profile() {
   const [aliases, setAliases] = useState<string[]>([]);
   const [handicapIndex, setHandicapIndex] = useState("");
   const [newAlias, setNewAlias] = useState("");
+  
+  // Phone verification state
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [phoneToVerify, setPhoneToVerify] = useState("");
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [phoneEdited, setPhoneEdited] = useState(false);
+  
+  // Compute verification status: verified if phone matches profile and phoneVerified is true, and phone hasn't been edited
+  const isPhoneVerified = !phoneEdited && profile?.phoneVerified === true && phone === profile?.phone;
 
   useEffect(() => {
     if (profile) {
@@ -43,8 +74,119 @@ export default function Profile() {
       setPhone(profile.phone || "");
       setAliases(profile.aliases || []);
       setHandicapIndex(profile.handicapIndex !== null ? (profile.handicapIndex / 10).toString() : "");
+      setPhoneEdited(false);
     }
   }, [profile]);
+
+  // Send verification code mutation
+  const sendVerificationMutation = useMutation({
+    mutationFn: async (phoneNumber: string) => {
+      return apiRequest('POST', '/api/sms/send-verification', { phone: phoneNumber });
+    },
+    onSuccess: () => {
+      setVerificationSent(true);
+      toast({
+        title: "Code sent",
+        description: "Check your phone for the verification code.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send verification code",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Verify code mutation
+  const verifyCodeMutation = useMutation({
+    mutationFn: async (data: { phone: string; code: string }) => {
+      return apiRequest('POST', '/api/sms/verify-code', data);
+    },
+    onSuccess: async (response) => {
+      const result = await response.json();
+      if (result.verified) {
+        // Server has updated phone and phoneVerified - just refetch profile
+        queryClient.invalidateQueries({ queryKey: ['/api/profile'] });
+        setShowVerificationDialog(false);
+        setVerificationCode("");
+        setVerificationSent(false);
+        setPhoneEdited(false);
+        
+        toast({
+          title: "Phone verified",
+          description: "Your phone number has been verified.",
+        });
+      } else {
+        toast({
+          title: "Invalid code",
+          description: "The verification code is incorrect or expired.",
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to verify code",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update notification preferences mutation
+  const updateNotificationsMutation = useMutation({
+    mutationFn: async (prefs: Partial<NotificationPreferences>) => {
+      return apiRequest('PUT', '/api/notifications/preferences', prefs);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/preferences'] });
+      toast({
+        title: "Preferences updated",
+        description: "Your notification settings have been saved.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update preferences",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleVerifyPhone = () => {
+    const cleanPhone = phone.trim();
+    if (!cleanPhone) {
+      toast({
+        title: "Phone required",
+        description: "Please enter a phone number first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPhoneToVerify(cleanPhone);
+    setShowVerificationDialog(true);
+    setVerificationSent(false);
+    setVerificationCode("");
+  };
+
+  const handleSendCode = () => {
+    sendVerificationMutation.mutate(phoneToVerify);
+  };
+
+  const handleSubmitCode = () => {
+    if (verificationCode.length !== 6) {
+      toast({
+        title: "Invalid code",
+        description: "Please enter a 6-digit code.",
+        variant: "destructive",
+      });
+      return;
+    }
+    verifyCodeMutation.mutate({ phone: phoneToVerify, code: verificationCode });
+  };
 
   const updateMutation = useMutation({
     mutationFn: async (data: Partial<ProfileData> & { aliases?: string[]; handicapIndex?: number | null }) => {
@@ -154,14 +296,41 @@ export default function Profile() {
 
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Enter phone number"
-                data-testid="input-phone"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setPhoneEdited(true);
+                  }}
+                  placeholder="Enter phone number"
+                  data-testid="input-phone"
+                />
+                {phone.trim() && (
+                  isPhoneVerified ? (
+                    <Badge className="bg-emerald-600 text-white flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Verified
+                    </Badge>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleVerifyPhone}
+                      data-testid="button-verify-phone"
+                    >
+                      <Phone className="w-4 h-4 mr-1" />
+                      Verify
+                    </Button>
+                  )
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Verify your phone to receive match notifications via SMS
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -257,6 +426,92 @@ export default function Profile() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2">
+            <Bell className="w-5 h-5 text-primary" />
+            <CardTitle className="text-lg">Notification Preferences</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!isPhoneVerified && (
+              <div className="bg-muted/50 border rounded-md p-3 mb-4">
+                <p className="text-sm text-muted-foreground">
+                  Verify your phone number above to receive SMS notifications.
+                </p>
+              </div>
+            )}
+            
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Match Invitations</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Get notified when added to a match
+                  </p>
+                </div>
+                <Switch
+                  checked={notificationPrefs?.matchInvitations ?? true}
+                  onCheckedChange={(checked) => 
+                    updateNotificationsMutation.mutate({ matchInvitations: checked })
+                  }
+                  disabled={!isPhoneVerified}
+                  data-testid="switch-match-invitations"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Score Updates</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Get notified when scores are entered
+                  </p>
+                </div>
+                <Switch
+                  checked={notificationPrefs?.scoreUpdates ?? false}
+                  onCheckedChange={(checked) => 
+                    updateNotificationsMutation.mutate({ scoreUpdates: checked })
+                  }
+                  disabled={!isPhoneVerified}
+                  data-testid="switch-score-updates"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Bet Results</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Get notified when a bet is settled
+                  </p>
+                </div>
+                <Switch
+                  checked={notificationPrefs?.betResults ?? true}
+                  onCheckedChange={(checked) => 
+                    updateNotificationsMutation.mutate({ betResults: checked })
+                  }
+                  disabled={!isPhoneVerified}
+                  data-testid="switch-bet-results"
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Match Reminders</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Get reminder notifications for upcoming matches
+                  </p>
+                </div>
+                <Switch
+                  checked={notificationPrefs?.matchReminders ?? true}
+                  onCheckedChange={(checked) => 
+                    updateNotificationsMutation.mutate({ matchReminders: checked })
+                  }
+                  disabled={!isPhoneVerified}
+                  data-testid="switch-match-reminders"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="flex justify-end">
           <Button
             onClick={handleSave}
@@ -273,6 +528,83 @@ export default function Profile() {
           </Button>
         </div>
       </div>
+
+      {/* Phone Verification Dialog */}
+      <Dialog open={showVerificationDialog} onOpenChange={setShowVerificationDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Verify Phone Number</DialogTitle>
+            <DialogDescription>
+              {verificationSent
+                ? "Enter the 6-digit code we sent to your phone."
+                : `We'll send a verification code to ${phoneToVerify}`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!verificationSent ? (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 p-3 bg-muted rounded-md">
+                <Phone className="w-5 h-5 text-muted-foreground" />
+                <span className="font-medium">{phoneToVerify}</span>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowVerificationDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendCode}
+                  disabled={sendVerificationMutation.isPending}
+                  data-testid="button-send-code"
+                >
+                  {sendVerificationMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Send Code
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="verification-code">Verification Code</Label>
+                <Input
+                  id="verification-code"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="Enter 6-digit code"
+                  maxLength={6}
+                  className="text-center text-lg tracking-widest"
+                  data-testid="input-verification-code"
+                />
+              </div>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSendCode}
+                  disabled={sendVerificationMutation.isPending}
+                  data-testid="button-resend-code"
+                >
+                  Resend Code
+                </Button>
+                <Button
+                  onClick={handleSubmitCode}
+                  disabled={verifyCodeMutation.isPending || verificationCode.length !== 6}
+                  data-testid="button-verify-code"
+                >
+                  {verifyCodeMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Verify
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

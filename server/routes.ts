@@ -5,6 +5,63 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { ai } from "./replit_integrations/image/client";
+import { sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
+
+// Helper to send match invitation notification to a player (non-blocking)
+async function notifyPlayerOfMatchInvitation(
+  matchId: number, 
+  playerUserId: string | null | undefined,
+  matchName: string | null,
+  inviterUserId: string
+) {
+  if (!playerUserId) return;
+  
+  try {
+    const user = await storage.getUser(playerUserId);
+    if (!user?.phone) return;
+    
+    // Check notification preferences
+    const prefs = await storage.getNotificationPreferences(playerUserId);
+    if (prefs && prefs.matchInvitations === false) return;
+    
+    // Get inviter's display name
+    const inviter = await storage.getUser(inviterUserId);
+    const inviterName = inviter?.presetPlayerName || inviter?.firstName || "Someone";
+    
+    const matchDisplayName = matchName || "a match";
+    await sendMatchInvitation(user.phone, matchDisplayName, inviterName);
+  } catch (error) {
+    console.error('Failed to send match invitation notification:', error);
+  }
+}
+
+// Helper to send score update notifications (non-blocking)
+async function notifyMatchParticipantsOfScoreUpdate(
+  matchId: number,
+  playerName: string,
+  holeNumber: number
+) {
+  try {
+    const participants = await storage.getMatchParticipantsWithPhone(matchId);
+    const match = await storage.getMatch(matchId);
+    const matchName = match?.name || "Match";
+    
+    for (const participant of participants) {
+      // Check notification preferences
+      const prefs = await storage.getNotificationPreferences(participant.userId);
+      if (prefs && prefs.scoreUpdates === false) continue;
+      
+      await sendScoreUpdate(
+        participant.phone,
+        matchName,
+        playerName,
+        holeNumber
+      );
+    }
+  } catch (error) {
+    console.error('Failed to send score update notifications:', error);
+  }
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -121,6 +178,10 @@ export async function registerRoutes(
         name: input.name,
         userId: input.userId,
       }, match?.courseId ?? undefined);
+      
+      // Send notification to newly added player (non-blocking)
+      notifyPlayerOfMatchInvitation(matchId, input.userId, match.name, userId).catch(() => {});
+      
       res.status(201).json(player);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1740,6 +1801,7 @@ Rules:
         firstName: currentUser.firstName,
         lastName: currentUser.lastName,
         phone: currentUser.phone,
+        phoneVerified: currentUser.phoneVerified ?? false,
         presetPlayerName: currentUser.presetPlayerName,
         aliases,
         handicapIndex,
@@ -1808,19 +1870,41 @@ Rules:
 
   // === SMS ROUTES ===
   
-  app.post(api.sms.sendVerification.path, async (req, res) => {
+  // Rate limiting map for SMS verification (phone -> { lastSent, attempts })
+  const smsRateLimits = new Map<string, { lastSent: number; attempts: number }>();
+  const SMS_RATE_LIMIT_WINDOW = 60 * 1000; // 60 seconds between sends
+  const SMS_MAX_ATTEMPTS = 5; // Max 5 attempts per verification session
+  
+  app.post(api.sms.sendVerification.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.sms.sendVerification.input.parse(req.body);
+      const phone = input.phone;
+      
+      // Rate limit check
+      const rateLimit = smsRateLimits.get(phone);
+      const now = Date.now();
+      
+      if (rateLimit) {
+        const timeSinceLastSend = now - rateLimit.lastSent;
+        if (timeSinceLastSend < SMS_RATE_LIMIT_WINDOW) {
+          const waitTime = Math.ceil((SMS_RATE_LIMIT_WINDOW - timeSinceLastSend) / 1000);
+          return res.status(429).json({ 
+            message: `Please wait ${waitTime} seconds before requesting another code` 
+          });
+        }
+      }
       
       // Generate and store verification code
       const { generateVerificationCode, sendVerificationCode } = await import('./twilio');
       const code = generateVerificationCode();
-      await storage.createVerificationCode(input.phone, code);
+      await storage.createVerificationCode(phone, code);
       
       // Send the code
-      const result = await sendVerificationCode(input.phone, code);
+      const result = await sendVerificationCode(phone, code);
       
       if (result.success) {
+        // Update rate limit tracking
+        smsRateLimits.set(phone, { lastSent: now, attempts: 0 });
         res.json({ success: true, message: "Verification code sent" });
       } else {
         res.status(500).json({ message: result.error || "Failed to send verification code" });
@@ -1834,11 +1918,43 @@ Rules:
     }
   });
 
-  app.post(api.sms.verifyCode.path, async (req, res) => {
+  app.post(api.sms.verifyCode.path, isAuthenticated, async (req, res) => {
     try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
       const input = api.sms.verifyCode.input.parse(req.body);
+      const phone = input.phone;
+      
+      // Check attempt rate limit - initialize if not exists
+      let rateLimit = smsRateLimits.get(phone);
+      if (!rateLimit) {
+        // Initialize attempt tracking even without prior send
+        rateLimit = { lastSent: 0, attempts: 0 };
+        smsRateLimits.set(phone, rateLimit);
+      }
+      
+      if (rateLimit.attempts >= SMS_MAX_ATTEMPTS) {
+        return res.status(429).json({ 
+          message: "Too many verification attempts. Please request a new code." 
+        });
+      }
+      
+      // Track attempt
+      rateLimit.attempts++;
       
       const verified = await storage.verifyCode(input.phone, input.code);
+      
+      if (verified) {
+        // Clear rate limit on success
+        smsRateLimits.delete(phone);
+        
+        // Update user's phone and phoneVerified status
+        await storage.updateUserProfile(userId, { 
+          phone: phone,
+          phoneVerified: true 
+        });
+      }
+      
       res.json({ success: true, verified });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1932,11 +2048,42 @@ Rules:
 
   app.get(api.messages.listByMatch.path, isAuthenticated, async (req, res) => {
     try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
       const matchId = parseInt(req.params.id);
       
       const match = await storage.getMatch(matchId);
       if (!match) {
         return res.status(404).json({ message: "Match not found" });
+      }
+      
+      // Check if user is a participant in the match
+      const matchPlayers = await storage.getMatchPlayers(matchId);
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      const isPlayer = matchPlayers.some(p => p.userId === userId);
+      
+      // Also check by preset player name or aliases
+      let isParticipantByName = false;
+      if (!isPlayer) {
+        const currentUser = await storage.getUser(userId);
+        if (currentUser?.presetPlayerName) {
+          const presetName = currentUser.presetPlayerName.toLowerCase().trim();
+          const aliases = await storage.getPlayerAliases(currentUser.presetPlayerName);
+          const aliasNames = aliases.map(a => a.alias.toLowerCase().trim());
+          isParticipantByName = matchPlayers.some(p => {
+            const playerName = p.name.toLowerCase().trim();
+            return playerName === presetName || aliasNames.includes(playerName);
+          });
+        }
+      }
+      
+      // Check for organizer/viewer role
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const hasRole = matchRole !== null;
+      
+      if (!isAdmin && !isCreator && !isPlayer && !isParticipantByName && !hasRole) {
+        return res.status(403).json({ message: "Not authorized to view match messages" });
       }
       
       const matchMessages = await storage.getMatchMessages(matchId);
@@ -1962,6 +2109,42 @@ Rules:
       const userId = user.claims.sub;
       
       const input = api.messages.send.input.parse(req.body);
+      
+      // If sending to a match, verify user is a participant
+      if (input.matchId) {
+        const match = await storage.getMatch(input.matchId);
+        if (!match) {
+          return res.status(404).json({ message: "Match not found" });
+        }
+        
+        const matchPlayers = await storage.getMatchPlayers(input.matchId);
+        const isAdmin = await storage.isUserAdmin(userId);
+        const isCreator = match.creatorId === userId;
+        const isPlayer = matchPlayers.some(p => p.userId === userId);
+        
+        // Also check by preset player name or aliases
+        let isParticipantByName = false;
+        if (!isPlayer) {
+          const currentUser = await storage.getUser(userId);
+          if (currentUser?.presetPlayerName) {
+            const presetName = currentUser.presetPlayerName.toLowerCase().trim();
+            const aliases = await storage.getPlayerAliases(currentUser.presetPlayerName);
+            const aliasNames = aliases.map(a => a.alias.toLowerCase().trim());
+            isParticipantByName = matchPlayers.some(p => {
+              const playerName = p.name.toLowerCase().trim();
+              return playerName === presetName || aliasNames.includes(playerName);
+            });
+          }
+        }
+        
+        // Check for organizer/viewer role
+        const matchRole = await storage.getMatchRole(input.matchId, userId);
+        const hasRole = matchRole !== null;
+        
+        if (!isAdmin && !isCreator && !isPlayer && !isParticipantByName && !hasRole) {
+          return res.status(403).json({ message: "Not authorized to send messages to this match" });
+        }
+      }
       
       const message = await storage.createMessage(
         userId,

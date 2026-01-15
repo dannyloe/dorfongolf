@@ -125,10 +125,29 @@ shared/           # Shared code between client and server
   - Yellow warning: Medium confidence
   - Red warning: Low confidence
 
+### SMS Integration (Twilio)
+- **Provider**: Twilio via Replit Connectors
+- **Environment Variables**:
+  - `TWILIO_ACCOUNT_SID`: Twilio account SID
+  - `TWILIO_AUTH_TOKEN`: Twilio auth token
+  - `TWILIO_PHONE_NUMBER`: Twilio phone number for sending SMS
+- **Features**:
+  - **Phone Verification**: 6-digit SMS codes with 10-minute expiration
+  - **Match Notifications**: SMS when added to matches (if enabled)
+  - **Notification Preferences**: User-configurable settings for match invitations, score updates, bet results, match reminders
+  - **In-App Messaging**: Match-scoped chat messages between players
+- **Security**:
+  - Rate limiting: 60 seconds between SMS sends, max 5 verification attempts per session
+  - Authentication required for verification and messaging endpoints
+  - Match participant checks for viewing/sending match messages
+- **Schema Tables**: `verification_codes`, `notification_preferences`, `messages`
+- **Service Module**: `server/twilio.ts`
+
 ### Key NPM Packages
 - **UI**: @radix-ui/* primitives, lucide-react icons, class-variance-authority
 - **Data**: drizzle-orm, @tanstack/react-query, zod
 - **Forms**: react-hook-form, @hookform/resolvers
 - **Animation**: framer-motion
 - **AI**: @google/genai for Gemini integration
+- **SMS**: twilio for Twilio SMS integration
 - **Utilities**: date-fns, clsx, tailwind-merge

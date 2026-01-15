@@ -21,6 +21,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   phone: varchar("phone"),
+  phoneVerified: boolean("phone_verified").default(false),
   profileImageUrl: varchar("profile_image_url"),
   presetPlayerName: varchar("preset_player_name"),
   isAdmin: boolean("is_admin").default(false),
