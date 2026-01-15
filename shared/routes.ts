@@ -180,6 +180,65 @@ export const api = {
         500: errorSchemas.internal,
       },
     },
+    listRoles: {
+      method: 'GET' as const,
+      path: '/api/matches/:id/roles',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          matchId: z.number(),
+          userId: z.string(),
+          role: z.string(),
+          createdAt: z.date().nullable(),
+          user: z.object({
+            id: z.string(),
+            firstName: z.string().nullable(),
+            lastName: z.string().nullable(),
+            email: z.string().nullable(),
+            presetPlayerName: z.string().nullable(),
+          }).nullable(),
+        })),
+        404: errorSchemas.notFound,
+      },
+    },
+    upsertRole: {
+      method: 'POST' as const,
+      path: '/api/matches/:id/roles',
+      input: z.object({
+        userId: z.string(),
+        role: z.enum(['organizer', 'viewer']),
+      }),
+      responses: {
+        200: z.object({
+          id: z.number(),
+          matchId: z.number(),
+          userId: z.string(),
+          role: z.string(),
+          createdAt: z.date().nullable(),
+        }),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    deleteRole: {
+      method: 'DELETE' as const,
+      path: '/api/matches/:id/roles/:userId',
+      responses: {
+        204: z.void(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    getMyRole: {
+      method: 'GET' as const,
+      path: '/api/matches/:id/my-role',
+      responses: {
+        200: z.object({
+          role: z.enum(['creator', 'organizer', 'viewer', 'player', 'none']),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   eventMatches: {
     list: {

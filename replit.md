@@ -54,6 +54,16 @@ Preferred communication style: Simple, everyday language.
 - **Use Cases**: Organize events into leagues, tournament series, or custom categories (e.g., "Sunday League", "Tournament Series")
 - **Inline Editing**: Groups can be edited inline in MatchDetail header alongside name/course/date
 
+### Match Roles and Permissions
+- **Three-Tier Permission System**:
+  - **Creator**: Full control (delete match, add players, edit details, toggle handicapped, delete bets, manage roles)
+  - **Organizer**: Can edit scores, bets, course handicap overrides, press bets, player handicaps/tees, toggle net scoring
+  - **Viewer**: Read-only access to all match data
+  - **Player**: Can edit their own scores only
+- **Role Management**: Only creators can add/remove organizers and viewers via collapsible panel in MatchDetail
+- **Self-Join**: Users can add themselves to matches without needing creator permission
+- **Backend Enforcement**: All permissions enforced in server/routes.ts with proper checks
+
 ### Ledger Filtering
 - **Date Range**: Quick filters (30 days, 90 days, This Year, All Time) plus custom date range picker
 - **Event Filter**: Filter by specific event

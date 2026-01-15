@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, type MatchPlayerHandicap } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -170,6 +170,12 @@ export default function MatchDetail() {
   const { data: matchHandicapOverrides } = useMatchPlayerHandicaps(matchId);
   const upsertMatchHandicap = useUpsertMatchPlayerHandicap(matchId);
   
+  // Get user's role for this match
+  const { data: myRole } = useMyMatchRole(matchId);
+  const { data: matchRoles } = useMatchRoles(matchId);
+  const upsertMatchRole = useUpsertMatchRole(matchId);
+  const deleteMatchRole = useDeleteMatchRole(matchId);
+  
   // Copy bets from another event
   const copyBetsFromEvent = useCopyBetsFromEvent(matchId);
   const { data: allMatches } = useMatches();
@@ -186,6 +192,9 @@ export default function MatchDetail() {
   const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
   const [pressStartHole, setPressStartHole] = useState<number>(2);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRoleManagement, setShowRoleManagement] = useState(false);
+  const [newRoleUserId, setNewRoleUserId] = useState("");
+  const [newRoleType, setNewRoleType] = useState<'organizer' | 'viewer'>('organizer');
   const [editingCell, setEditingCell] = useState<{ playerId: number; hole: number } | null>(null);
   const [editValue, setEditValue] = useState("");
   const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
@@ -272,7 +281,10 @@ export default function MatchDetail() {
   const eventMatches: EventMatch[] = match.eventMatches || [];
   const ADMIN_USER_ID = "52861828";
   const isAdmin = user?.id === ADMIN_USER_ID;
-  const isCreator = user?.id === match.creatorId || isAdmin;
+  const isCreator = user?.id === match.creatorId || isAdmin; // Only creator/admin can delete, add players, manage settings
+  const isOrganizer = myRole === 'organizer';
+  const isViewer = myRole === 'viewer';
+  const canEditScoresAndBets = isCreator || isOrganizer; // Organizers can edit scores/bets
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   const currentPlayer = players.find((p: Player) => p.userId === user?.id);
   
@@ -1229,6 +1241,128 @@ export default function MatchDetail() {
         </div>
       </div>
 
+      {/* Role Management Section (visible only to actual creator, not organizers) */}
+      {isCreator && (
+        <div className="bg-card rounded-xl shadow-md border border-border/50 overflow-hidden mb-4">
+          <button
+            onClick={() => setShowRoleManagement(!showRoleManagement)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
+            data-testid="button-toggle-role-management"
+          >
+            <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Manage Access ({matchRoles?.length || 0} shared)
+            </h3>
+            {showRoleManagement ? (
+              <ChevronUp className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
+          
+          {showRoleManagement && (
+            <div className="px-4 pb-4 pt-2 border-t border-border/50 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Share this event with others. <strong>Organizers</strong> can edit scores and bets. <strong>Viewers</strong> have read-only access.
+              </p>
+              
+              {/* Add new role form */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Select value={newRoleType} onValueChange={(v) => setNewRoleType(v as 'organizer' | 'viewer')}>
+                  <SelectTrigger className="w-full sm:w-32" data-testid="select-role-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="organizer">Organizer</SelectItem>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="flex-1 flex gap-2">
+                  <Select value={newRoleUserId} onValueChange={setNewRoleUserId}>
+                    <SelectTrigger className="flex-1" data-testid="select-role-user">
+                      <SelectValue placeholder="Select a player..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fullPlayerData
+                        ?.filter(p => p.claimedByUserId && p.claimedByUserId !== user?.id && !matchRoles?.some(r => r.userId === p.claimedByUserId))
+                        .map(p => (
+                          <SelectItem key={p.claimedByUserId} value={p.claimedByUserId!}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="default"
+                    disabled={!newRoleUserId || upsertMatchRole.isPending}
+                    onClick={() => {
+                      if (newRoleUserId) {
+                        upsertMatchRole.mutate(
+                          { userId: newRoleUserId, role: newRoleType },
+                          {
+                            onSuccess: () => {
+                              setNewRoleUserId("");
+                              toast({ title: "Access granted" });
+                            },
+                            onError: (err) => {
+                              toast({ title: "Failed to add", description: err.message, variant: "destructive" });
+                            }
+                          }
+                        );
+                      }
+                    }}
+                    data-testid="button-add-role"
+                  >
+                    {upsertMatchRole.isPending ? "..." : <Plus className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Current roles list */}
+              {matchRoles && matchRoles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Current Access</p>
+                  <div className="space-y-1">
+                    {matchRoles.map(role => {
+                      const playerInfo = fullPlayerData?.find(p => p.claimedByUserId === role.userId);
+                      return (
+                        <div key={role.id} className="flex items-center justify-between p-2 bg-muted/30 rounded-md">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{playerInfo?.name || role.userId}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              role.role === 'organizer' 
+                                ? 'bg-primary/10 text-primary' 
+                                : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {role.role === 'organizer' ? 'Organizer' : 'Viewer'}
+                            </span>
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              deleteMatchRole.mutate(role.userId, {
+                                onSuccess: () => toast({ title: "Access removed" }),
+                                onError: (err) => toast({ title: "Failed", description: err.message, variant: "destructive" })
+                              });
+                            }}
+                            disabled={deleteMatchRole.isPending}
+                            data-testid={`button-remove-role-${role.userId}`}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Add Player Section (visible to creator) - Collapsible */}
       {isCreator && (() => {
         const existingPlayerNames = players.map(p => p.name.toLowerCase());
@@ -2087,7 +2221,7 @@ export default function MatchDetail() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (isCreator) {
+                                if (canEditScoresAndBets) {
                                   updateNetScoring.mutate({ 
                                     eventMatchId: em.id, 
                                     useNetScoring: !em.useNetScoring 
@@ -2100,8 +2234,8 @@ export default function MatchDetail() {
                                   : em.useNetScoring 
                                     ? "bg-primary/20 text-primary" 
                                     : "bg-muted text-muted-foreground"
-                              } ${isCreator ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
-                              disabled={!isCreator || updateNetScoring.isPending}
+                              } ${canEditScoresAndBets ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+                              disabled={!canEditScoresAndBets || updateNetScoring.isPending}
                               title={isNetSkipped ? "Net scoring skipped - missing handicap data or hole handicaps" : undefined}
                               data-testid={`button-toggle-net-scoring-${em.id}`}
                             >
@@ -2445,7 +2579,7 @@ export default function MatchDetail() {
                                 return (
                                   <div key={m.playerId} className="flex items-center gap-1">
                                     <span className="text-xs text-muted-foreground">{m.player?.name}:</span>
-                                    {isEditing && isCreator ? (
+                                    {isEditing && canEditScoresAndBets ? (
                                       <Input
                                         type="number"
                                         value={matchCourseHcpEditValue}
@@ -2483,7 +2617,7 @@ export default function MatchDetail() {
                                     ) : (
                                       <button
                                         onClick={() => {
-                                          if (isCreator) {
+                                          if (canEditScoresAndBets) {
                                             setEditingMatchCourseHcp({ eventMatchId: em.id, playerId: m.playerId });
                                             setMatchCourseHcpEditValue(displayHcp?.toString() ?? '');
                                           }
@@ -2492,8 +2626,8 @@ export default function MatchDetail() {
                                           hasOverride 
                                             ? 'bg-primary/20 text-primary border border-primary/30' 
                                             : 'bg-muted text-muted-foreground'
-                                        } ${isCreator ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
-                                        disabled={!isCreator}
+                                        } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
+                                        disabled={!canEditScoresAndBets}
                                         title={hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
                                         data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
                                       >
@@ -2959,7 +3093,7 @@ export default function MatchDetail() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && isCreator && (
+                            {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && canEditScoresAndBets && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -3407,7 +3541,7 @@ export default function MatchDetail() {
           <tbody className="divide-y divide-border">
             {players.map((p: Player) => {
               const isCurrentUser = p.userId === user?.id;
-              const canEdit = isCreator || isCurrentUser;
+              const canEditPlayerScore = canEditScoresAndBets || isCurrentUser;
               
               return (
                 <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isCurrentUser ? "bg-accent/5" : ""}`}>
@@ -3419,7 +3553,7 @@ export default function MatchDetail() {
                         {/* Handicap inline - only show when handicapped */}
                         {match?.isHandicapped && (
                           <>
-                            {isCreator ? (
+                            {canEditScoresAndBets ? (
                               editingPlayerHandicap === p.id ? (
                                 <input
                                   type="text"
@@ -3481,7 +3615,7 @@ export default function MatchDetail() {
                       {/* Tee selector and Course Handicap - only show when handicapped */}
                       {match?.isHandicapped && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          {isCreator && courseTees && courseTees.length > 0 && (
+                          {canEditScoresAndBets && courseTees && courseTees.length > 0 && (
                             <Select
                               value={p.teeId?.toString() || ''}
                               onValueChange={(value) => {
@@ -3523,7 +3657,7 @@ export default function MatchDetail() {
                       <td 
                         key={hole} 
                         className="p-1 text-center border-l border-border/30"
-                        onClick={() => canEdit && handleCellClick(p.id, hole)}
+                        onClick={() => canEditPlayerScore && handleCellClick(p.id, hole)}
                       >
                         {isEditing ? (
                           <input
@@ -3556,7 +3690,7 @@ export default function MatchDetail() {
                           <div 
                             className={`
                               inline-block rounded
-                              ${canEdit ? "cursor-pointer hover:bg-primary/10" : ""}
+                              ${canEditPlayerScore ? "cursor-pointer hover:bg-primary/10" : ""}
                             `}
                           >
                             <ScoreCell 

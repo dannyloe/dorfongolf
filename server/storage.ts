@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases,
+  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
@@ -12,6 +12,7 @@ import {
   type Group, type InsertGroup,
   type PresetPlayer, type InsertPresetPlayer,
   type PlayerAlias, type InsertPlayerAlias,
+  type MatchRole, type InsertMatchRole,
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
@@ -28,7 +29,7 @@ export interface IStorage {
   updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string }): Promise<typeof users.$inferSelect>;
 
   // App methods
-  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null }): Promise<Match>;
+  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match>;
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
   getMatchPlayers(matchId: number): Promise<Player[]>;
@@ -45,7 +46,7 @@ export class DatabaseStorage implements IStorage {
     return authStorage.upsertUser(user);
   }
 
-  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null }): Promise<Match> {
+  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match> {
     // Look up courseId from courseName if not already provided
     let courseId: number | null = match.courseId ?? null;
     if (!courseId && match.courseName) {
@@ -62,6 +63,7 @@ export class DatabaseStorage implements IStorage {
       groupId: match.groupId ?? null,
       ryderCupEventId: match.ryderCupEventId ?? null,
       ryderCupDayNumber: match.ryderCupDayNumber ?? null,
+      isHandicapped: match.isHandicapped ?? false,
     }).returning();
     return newMatch;
   }
@@ -1514,6 +1516,39 @@ export class DatabaseStorage implements IStorage {
     await db.delete(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
 
     await db.delete(ryderCupEvents).where(eq(ryderCupEvents.id, eventId));
+  }
+
+  // === MATCH ROLE METHODS ===
+
+  async getMatchRole(matchId: number, userId: string): Promise<MatchRole | undefined> {
+    const [role] = await db.select().from(matchRoles)
+      .where(and(eq(matchRoles.matchId, matchId), eq(matchRoles.userId, userId)));
+    return role;
+  }
+
+  async listMatchRoles(matchId: number): Promise<MatchRole[]> {
+    return db.select().from(matchRoles).where(eq(matchRoles.matchId, matchId));
+  }
+
+  async upsertMatchRole(matchId: number, userId: string, role: string): Promise<MatchRole> {
+    const existing = await this.getMatchRole(matchId, userId);
+    if (existing) {
+      const [updated] = await db.update(matchRoles)
+        .set({ role })
+        .where(and(eq(matchRoles.matchId, matchId), eq(matchRoles.userId, userId)))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(matchRoles)
+        .values({ matchId, userId, role })
+        .returning();
+      return created;
+    }
+  }
+
+  async deleteMatchRole(matchId: number, userId: string): Promise<void> {
+    await db.delete(matchRoles)
+      .where(and(eq(matchRoles.matchId, matchId), eq(matchRoles.userId, userId)));
   }
 }
 

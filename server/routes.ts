@@ -81,9 +81,23 @@ export async function registerRoutes(
 
   app.post(api.matches.addPlayer.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
     try {
       const input = api.matches.addPlayer.input.parse(req.body);
       const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      // Permission check: User can add themselves, or creator/admin can add anyone
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const isAddingSelf = input.userId === userId;
+      
+      if (!isAdmin && !isCreator && !isAddingSelf) {
+        return res.status(403).json({ message: "Only the creator can add other players" });
+      }
+      
       const existingPlayers = await storage.getMatchPlayers(matchId);
       
       // Check if user is already in the match (by userId or by name for guests)
@@ -128,11 +142,15 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Match not found" });
       }
       
-      // Check if user is admin, creator, or participant
+      // Check if user is admin, creator, organizer, or participant
       const isAdmin = await storage.isUserAdmin(userId);
       const isCreator = match.creatorId === userId;
       
-      if (!isAdmin && !isCreator) {
+      // Check for organizer role
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
         // Check if user is a participant in the match
         const matchPlayers = await storage.getMatchPlayers(matchId);
         
@@ -234,7 +252,23 @@ export async function registerRoutes(
 
   app.post(api.eventMatches.create.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
     try {
+      // Check permissions - creator or organizer can create bets
+      const match = await storage.getMatch(eventId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(eventId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can create bets" });
+      }
+      
       const input = api.eventMatches.create.input.parse(req.body);
       const eventMatch = await storage.createEventMatch(eventId, input);
       const withTeams = await storage.getEventMatchWithTeams(eventMatch.id);
@@ -269,7 +303,7 @@ export async function registerRoutes(
     const isCreator = match.creatorId === userId;
     
     if (!isAdmin && !isCreator) {
-      return res.status(403).json({ message: "Only the match creator can delete this event" });
+      return res.status(403).json({ message: "Only the creator can delete bets" });
     }
     
     await storage.deleteEventMatch(eventMatchId);
@@ -278,7 +312,28 @@ export async function registerRoutes(
 
   app.post(api.eventMatches.createPress.path, isAuthenticated, async (req, res) => {
     const parentMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
     try {
+      // Get the parent event match to find the main match
+      const parentEventMatch = await storage.getEventMatch(parentMatchId);
+      if (!parentEventMatch) {
+        return res.status(404).json({ message: "Parent match not found" });
+      }
+      
+      const match = await storage.getMatch(parentEventMatch.eventId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(parentEventMatch.eventId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can create presses" });
+      }
+      
       const input = api.eventMatches.createPress.input.parse(req.body);
       const pressMatch = await storage.createPressMatch(parentMatchId, input.startHole);
       const withTeams = await storage.getEventMatchWithTeams(pressMatch.id);
@@ -296,7 +351,25 @@ export async function registerRoutes(
 
   app.patch(api.eventMatches.updateAutoPress.path, isAuthenticated, async (req, res) => {
     const eventMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
     try {
+      const eventMatch = await storage.getEventMatch(eventMatchId);
+      if (!eventMatch) return res.status(404).json({ message: "Event match not found" });
+      
+      const match = await storage.getMatch(eventMatch.eventId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(eventMatch.eventId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can change auto press settings" });
+      }
+      
       const input = api.eventMatches.updateAutoPress.input.parse(req.body);
       const updated = await storage.updateEventMatchAutoPress(eventMatchId, input);
       const withTeams = await storage.getEventMatchWithTeams(updated.id);
@@ -326,9 +399,11 @@ export async function registerRoutes(
     
     const isAdmin = userId === ADMIN_USER_ID;
     const isCreator = match.creatorId === userId;
+    const matchRole = await storage.getMatchRole(eventMatch.eventId, userId);
+    const isOrganizer = matchRole?.role === 'organizer';
     
-    if (!isAdmin && !isCreator) {
-      return res.status(403).json({ message: "Only the match creator can change net scoring" });
+    if (!isAdmin && !isCreator && !isOrganizer) {
+      return res.status(403).json({ message: "Only the creator or organizer can change net scoring" });
     }
     
     try {
@@ -901,13 +976,24 @@ export async function registerRoutes(
     }
   });
 
-  // Match Handicapped Status
+  // Match Handicapped Status (creator only)
   app.patch(api.matches.updateHandicapped.path, isAuthenticated, async (req, res) => {
     try {
       const matchId = parseInt(req.params.id);
-      const input = api.matches.updateHandicapped.input.parse(req.body);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
       const match = await storage.getMatch(matchId);
       if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      
+      if (!isAdmin && !isCreator) {
+        return res.status(403).json({ message: "Only the creator can change handicapped mode" });
+      }
+      
+      const input = api.matches.updateHandicapped.input.parse(req.body);
       const updated = await storage.updateMatchHandicapped(matchId, input.isHandicapped);
       res.json(updated);
     } catch (err) {
@@ -965,9 +1051,11 @@ export async function registerRoutes(
       
       const isAdmin = userId === ADMIN_USER_ID;
       const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
       
-      if (!isAdmin && !isCreator) {
-        return res.status(403).json({ message: "Only the event creator can update handicaps" });
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can update handicaps" });
       }
       
       const input = api.matches.updatePlayerHandicap.input.parse(req.body);
@@ -981,7 +1069,7 @@ export async function registerRoutes(
     }
   });
 
-  // Update player tee for a match (creator only)
+  // Update player tee for a match (creator or organizer)
   app.patch(api.matches.updatePlayerTee.path, isAuthenticated, async (req, res) => {
     try {
       const matchId = parseInt(req.params.matchId);
@@ -994,10 +1082,14 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Match not found" });
       }
       
-      // Only match creator or admin can update player tees
+      // Creator, admin, or organizer can update player tees
       const isAdmin = userId === ADMIN_USER_ID;
-      if (match.creatorId !== userId && !isAdmin) {
-        return res.status(403).json({ message: "Only the match creator can update player tees" });
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can update player tees" });
       }
       
       const input = api.matches.updatePlayerTee.input.parse(req.body);
@@ -1041,6 +1133,118 @@ export async function registerRoutes(
       if (err?.message?.includes("not found")) {
         return res.status(404).json({ message: err.message });
       }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Match Roles - list roles for a match
+  app.get(api.matches.listRoles.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const roles = await storage.listMatchRoles(matchId);
+      const rolesWithUsers = await Promise.all(
+        roles.map(async (role) => {
+          const user = await storage.getUser(role.userId);
+          return {
+            ...role,
+            user: user ? {
+              id: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              presetPlayerName: user.presetPlayerName,
+            } : null,
+          };
+        })
+      );
+      res.json(rolesWithUsers);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Match Roles - upsert role (only creator can manage roles)
+  app.post(api.matches.upsertRole.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      // Only creator can manage roles
+      if (match.creatorId !== userId) {
+        return res.status(403).json({ message: "Only the creator can manage roles" });
+      }
+      
+      const input = api.matches.upsertRole.input.parse(req.body);
+      const role = await storage.upsertMatchRole(matchId, input.userId, input.role);
+      res.json(role);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Match Roles - delete role (only creator can manage roles)
+  app.delete(api.matches.deleteRole.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const targetUserId = req.params.userId;
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      // Only creator can manage roles
+      if (match.creatorId !== userId) {
+        return res.status(403).json({ message: "Only the creator can manage roles" });
+      }
+      
+      await storage.deleteMatchRole(matchId, targetUserId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Match Roles - get current user's role for a match
+  app.get(api.matches.getMyRole.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      
+      // Check if creator
+      if (match.creatorId === userId) {
+        return res.json({ role: 'creator' });
+      }
+      
+      // Check for explicit role
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      if (matchRole) {
+        return res.json({ role: matchRole.role as 'organizer' | 'viewer' });
+      }
+      
+      // Check if player in the match
+      const players = await storage.getMatchPlayers(matchId);
+      const isPlayer = players.some(p => p.userId === userId);
+      if (isPlayer) {
+        return res.json({ role: 'player' });
+      }
+      
+      res.json({ role: 'none' });
+    } catch (err) {
       res.status(500).json({ message: "Internal server error" });
     }
   });

@@ -761,3 +761,76 @@ export function useCreateGroup() {
     },
   });
 }
+
+// Match Roles hooks
+export type UserMatchRole = 'creator' | 'organizer' | 'viewer' | 'player' | 'none';
+
+export function useMyMatchRole(matchId: number) {
+  return useQuery({
+    queryKey: [api.matches.getMyRole.path, matchId],
+    queryFn: async () => {
+      const url = buildUrl(api.matches.getMyRole.path, { id: matchId });
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch role");
+      const data = api.matches.getMyRole.responses[200].parse(await res.json());
+      return data.role as UserMatchRole;
+    },
+    enabled: !!matchId && !isNaN(matchId),
+  });
+}
+
+export function useMatchRoles(matchId: number) {
+  return useQuery({
+    queryKey: [api.matches.listRoles.path, matchId],
+    queryFn: async () => {
+      const url = buildUrl(api.matches.listRoles.path, { id: matchId });
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch roles");
+      return api.matches.listRoles.responses[200].parse(await res.json());
+    },
+    enabled: !!matchId && !isNaN(matchId),
+  });
+}
+
+export function useUpsertMatchRole(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { userId: string; role: 'organizer' | 'viewer' }) => {
+      const url = buildUrl(api.matches.upsertRole.path, { id: matchId });
+      const res = await fetch(url, {
+        method: api.matches.upsertRole.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update role");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.listRoles.path, matchId] });
+    },
+  });
+}
+
+export function useDeleteMatchRole(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const url = buildUrl(api.matches.deleteRole.path, { id: matchId, userId });
+      const res = await fetch(url, {
+        method: api.matches.deleteRole.method,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete role");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.listRoles.path, matchId] });
+    },
+  });
+}

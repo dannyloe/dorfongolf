@@ -124,6 +124,15 @@ export const teamMembers = pgTable("team_members", {
   playerId: integer("player_id").notNull(),
 });
 
+// Match roles - organizers can edit scores/bets without being players, viewers have read-only access
+export const matchRoles = pgTable("match_roles", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id").notNull(),
+  userId: text("user_id").notNull(),
+  role: text("role").notNull(), // 'organizer' or 'viewer'
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Dynamic preset players - supplements the hardcoded PRESET_PLAYERS list
 export const presetPlayers = pgTable("preset_players", {
   id: serial("id").primaryKey(),
@@ -233,6 +242,17 @@ export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
   }),
 }));
 
+export const matchRolesRelations = relations(matchRoles, ({ one }) => ({
+  match: one(matches, {
+    fields: [matchRoles.matchId],
+    references: [matches.id],
+  }),
+  user: one(users, {
+    fields: [matchRoles.userId],
+    references: [users.id],
+  }),
+}));
+
 // === BASE SCHEMAS ===
 
 export const insertGroupSchema = createInsertSchema(groups).omit({
@@ -304,6 +324,11 @@ export const insertPlayerAliasSchema = createInsertSchema(playerAliases).omit({
   createdAt: true,
 });
 
+export const insertMatchRoleSchema = createInsertSchema(matchRoles).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -350,6 +375,9 @@ export type InsertPresetPlayer = z.infer<typeof insertPresetPlayerSchema>;
 
 export type PlayerAlias = typeof playerAliases.$inferSelect;
 export type InsertPlayerAlias = z.infer<typeof insertPlayerAliasSchema>;
+
+export type MatchRole = typeof matchRoles.$inferSelect;
+export type InsertMatchRole = z.infer<typeof insertMatchRoleSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
