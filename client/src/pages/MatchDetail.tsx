@@ -3210,34 +3210,151 @@ export default function MatchDetail() {
                       const teamA = eventMatch?.teams[0];
                       const teamB = eventMatch?.teams[1];
                       const matchType = eventMatch?.matchType ? (MATCH_TYPE_LABELS[eventMatch.matchType as MatchType] || eventMatch.matchType) : '';
+                      const isSkins = eventMatch?.matchType === 'skins';
+                      
+                      // Build player ID to team mapping
+                      const playerTeamIndex = new Map<number, number>();
+                      if (teamA) teamA.members.forEach(m => playerTeamIndex.set(m.playerId, 0));
+                      if (teamB) teamB.members.forEach(m => playerTeamIndex.set(m.playerId, 1));
+                      
+                      // Group entries by bet type and aggregate by team
+                      const groupedByBetType = matchEntries.reduce((acc, entry) => {
+                        const betType = entry.betType || 'Match';
+                        if (!acc[betType]) {
+                          acc[betType] = {
+                            betType,
+                            isAutoPress: entry.isAutoPress,
+                            pressHole: entry.pressHole,
+                            teamAMembers: [] as { name: string; amount: number; playerId: number }[],
+                            teamBMembers: [] as { name: string; amount: number; playerId: number }[],
+                            teamATotal: 0,
+                            teamBTotal: 0,
+                            processedPlayers: new Set<number>(),
+                          };
+                        }
+                        if (!acc[betType].processedPlayers.has(entry.playerId)) {
+                          acc[betType].processedPlayers.add(entry.playerId);
+                          const teamIdx = entry.teamIndex ?? playerTeamIndex.get(entry.playerId) ?? 0;
+                          const memberEntry = { name: entry.playerName, amount: entry.amount, playerId: entry.playerId };
+                          if (teamIdx === 0) {
+                            acc[betType].teamAMembers.push(memberEntry);
+                            acc[betType].teamATotal += entry.amount;
+                          } else {
+                            acc[betType].teamBMembers.push(memberEntry);
+                            acc[betType].teamBTotal += entry.amount;
+                          }
+                        }
+                        return acc;
+                      }, {} as Record<string, {
+                        betType: string;
+                        isAutoPress?: boolean;
+                        pressHole?: number | null;
+                        teamAMembers: { name: string; amount: number; playerId: number }[];
+                        teamBMembers: { name: string; amount: number; playerId: number }[];
+                        teamATotal: number;
+                        teamBTotal: number;
+                        processedPlayers: Set<number>;
+                      }>);
+                      
+                      const betGroups = Object.values(groupedByBetType);
                       const matchTitle = teamA && teamB 
                         ? `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`
                         : matchEntries[0]?.matchName || 'Match';
                       
                       return (
                         <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
-                          <div className="text-sm font-semibold mb-2">{matchTitle}</div>
-                          <div className="grid grid-cols-2 gap-1">
-                            {matchEntries.map((e, idx) => (
-                              <div 
-                                key={`${e.playerId}-${idx}`}
-                                className={`flex justify-between text-xs px-2 py-1 rounded ${
-                                  selectedStandingsPlayer === e.playerId ? 'ring-1 ring-primary' : ''
-                                } ${
-                                  e.amount > 0 
-                                    ? 'text-primary bg-primary/5' 
-                                    : e.amount < 0 
-                                    ? 'text-destructive bg-destructive/5'
-                                    : 'text-muted-foreground'
-                                }`}
-                              >
-                                <span>{e.playerName}</span>
-                                <span className="font-medium">
-                                  {e.amount > 0 ? '+' : ''}{e.amount === 0 ? 'Push' : `$${e.amount.toFixed(2)}`}
-                                </span>
+                          <div className="text-sm font-semibold mb-3">{matchTitle}</div>
+                          {betGroups.map((group, gIdx) => {
+                            const teamAWon = group.teamATotal > 0;
+                            const teamBWon = group.teamBTotal > 0;
+                            const isTie = group.teamATotal === 0 && group.teamBTotal === 0;
+                            const winAmount = Math.max(Math.abs(group.teamATotal), Math.abs(group.teamBTotal));
+                            const isSkinsBet = group.betType === 'Skins';
+                            
+                            return (
+                              <div key={gIdx} className={gIdx > 0 ? 'mt-3 pt-3 border-t border-border' : ''}>
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold">{group.betType}</span>
+                                    {group.isAutoPress && (
+                                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-amber-500 text-amber-600 text-[10px] font-bold" title="Auto Press">
+                                        P
+                                      </span>
+                                    )}
+                                    {group.pressHole && (
+                                      <span className="text-xs text-muted-foreground">Press hole {group.pressHole}</span>
+                                    )}
+                                  </div>
+                                  <span className={`text-sm font-bold ${isTie ? 'text-muted-foreground' : 'text-primary'}`}>
+                                    {isTie ? 'Tie' : `$${winAmount.toFixed(2)}`}
+                                  </span>
+                                </div>
+                                
+                                {isSkinsBet ? (
+                                  <div className="space-y-1">
+                                    {[...group.teamAMembers, ...group.teamBMembers].map((m, mIdx) => (
+                                      <div 
+                                        key={mIdx}
+                                        className={`flex justify-between text-xs px-2 py-1 rounded ${
+                                          selectedStandingsPlayer === m.playerId ? 'ring-1 ring-primary' : ''
+                                        } ${
+                                          m.amount > 0 
+                                            ? 'text-primary bg-primary/5' 
+                                            : m.amount < 0 
+                                            ? 'text-destructive bg-destructive/5'
+                                            : 'text-muted-foreground'
+                                        }`}
+                                      >
+                                        <span>{m.name}</span>
+                                        <span className="font-medium">
+                                          {m.amount > 0 ? '+' : ''}{m.amount === 0 ? 'Push' : `$${m.amount.toFixed(2)}`}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className={`rounded-lg p-2 ${teamAWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'}`}>
+                                      <div className={`text-xs font-medium mb-1 ${teamAWon ? 'text-primary' : 'text-muted-foreground'}`}>
+                                        {teamA?.name || 'Team A'} {teamAWon && '(Won)'}
+                                      </div>
+                                      {group.teamAMembers.map((m, mIdx) => (
+                                        <div 
+                                          key={mIdx}
+                                          className={`flex justify-between text-xs px-1 py-0.5 ${
+                                            selectedStandingsPlayer === m.playerId ? 'ring-1 ring-primary rounded' : ''
+                                          }`}
+                                        >
+                                          <span>{m.name}</span>
+                                          <span className={`font-medium ${m.amount > 0 ? 'text-primary' : m.amount < 0 ? 'text-destructive' : ''}`}>
+                                            {m.amount > 0 ? '+' : ''}${m.amount.toFixed(2)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <div className={`rounded-lg p-2 ${teamBWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'}`}>
+                                      <div className={`text-xs font-medium mb-1 ${teamBWon ? 'text-primary' : 'text-muted-foreground'}`}>
+                                        {teamB?.name || 'Team B'} {teamBWon && '(Won)'}
+                                      </div>
+                                      {group.teamBMembers.map((m, mIdx) => (
+                                        <div 
+                                          key={mIdx}
+                                          className={`flex justify-between text-xs px-1 py-0.5 ${
+                                            selectedStandingsPlayer === m.playerId ? 'ring-1 ring-primary rounded' : ''
+                                          }`}
+                                        >
+                                          <span>{m.name}</span>
+                                          <span className={`font-medium ${m.amount > 0 ? 'text-primary' : m.amount < 0 ? 'text-destructive' : ''}`}>
+                                            {m.amount > 0 ? '+' : ''}${m.amount.toFixed(2)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            ))}
-                          </div>
+                            );
+                          })}
                         </div>
                       );
                     });
