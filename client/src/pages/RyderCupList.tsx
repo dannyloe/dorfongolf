@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Trophy, Plus, Users, Calendar, Flag, ChevronRight } from "lucide-react";
+import { Trophy, Plus, Users, Calendar, Flag, ChevronRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useDeleteRyderCupEvent } from "@/hooks/use-matches";
+import { useAuth } from "@/hooks/use-auth";
+import { useState, type ReactNode } from "react";
 import type { RyderCupEvent } from "@shared/schema";
 
 export default function RyderCupList() {
@@ -74,49 +77,125 @@ export default function RyderCupList() {
       ) : (
         <div className="grid gap-4">
           {events.map((event) => (
-            <Link key={event.id} href={`/ryder-cup/${event.id}`}>
-              <Card className="hover-elevate cursor-pointer" data-testid={`card-ryder-cup-${event.id}`}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl font-display">{event.name}</CardTitle>
-                    <div className="flex items-center gap-2">
-                      {getStatusBadge(event.status)}
-                      <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Flag className="w-4 h-4" />
-                      {event.courseName}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-4 h-4" />
-                      12 Players
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      4 Days
-                    </div>
-                    <div className="flex items-center gap-1">
-                      Buy-in: {formatCurrency(event.buyInAmount)}
-                    </div>
-                    {event.useHandicaps && (
-                      <Badge variant="outline" className="text-xs">Handicapped</Badge>
-                    )}
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-sm font-medium">Target:</span>
-                    <span className="text-primary font-bold">{event.targetPoints / 10} pts</span>
-                    <span className="text-muted-foreground text-sm">to win</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
+            <RyderCupEventCard 
+              key={event.id} 
+              event={event} 
+              formatCurrency={formatCurrency}
+              getStatusBadge={getStatusBadge}
+            />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function RyderCupEventCard({ 
+  event, 
+  formatCurrency, 
+  getStatusBadge 
+}: { 
+  event: RyderCupEvent; 
+  formatCurrency: (cents: number) => string;
+  getStatusBadge: (status: string) => ReactNode;
+}) {
+  const { user } = useAuth();
+  const deleteEvent = useDeleteRyderCupEvent();
+  const [showConfirm, setShowConfirm] = useState(false);
+  const ADMIN_USER_ID = "52861828";
+  const isAdmin = user?.id === ADMIN_USER_ID;
+  const isCreator = user?.id === event.creatorId || isAdmin;
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (showConfirm) {
+      deleteEvent.mutate(event.id);
+      setShowConfirm(false);
+    } else {
+      setShowConfirm(true);
+    }
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowConfirm(false);
+  };
+
+  return (
+    <Link href={`/ryder-cup/${event.id}`}>
+      <Card className="hover-elevate cursor-pointer group relative" data-testid={`card-ryder-cup-${event.id}`}>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-xl font-display">{event.name}</CardTitle>
+            <div className="flex items-center gap-2">
+              {isCreator && (
+                showConfirm ? (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleDelete}
+                      disabled={deleteEvent.isPending}
+                      data-testid={`button-confirm-delete-ryder-cup-${event.id}`}
+                    >
+                      {deleteEvent.isPending ? "..." : "Confirm"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelDelete}
+                      data-testid={`button-cancel-delete-ryder-cup-${event.id}`}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleDelete}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                    data-testid={`button-delete-ryder-cup-${event.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )
+              )}
+              {getStatusBadge(event.status)}
+              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Flag className="w-4 h-4" />
+              {event.courseName}
+            </div>
+            <div className="flex items-center gap-1">
+              <Users className="w-4 h-4" />
+              12 Players
+            </div>
+            <div className="flex items-center gap-1">
+              <Calendar className="w-4 h-4" />
+              4 Days
+            </div>
+            <div className="flex items-center gap-1">
+              Buy-in: {formatCurrency(event.buyInAmount)}
+            </div>
+            {event.useHandicaps && (
+              <Badge variant="outline" className="text-xs">Handicapped</Badge>
+            )}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-sm font-medium">Target:</span>
+            <span className="text-primary font-bold">{event.targetPoints / 10} pts</span>
+            <span className="text-muted-foreground text-sm">to win</span>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

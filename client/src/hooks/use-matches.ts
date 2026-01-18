@@ -834,3 +834,23 @@ export function useDeleteMatchRole(matchId: number) {
     },
   });
 }
+
+export function useDeleteRyderCupEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (eventId: number) => {
+      const url = buildUrl(api.ryderCup.delete.path, { id: eventId });
+      const res = await fetch(url, {
+        method: api.ryderCup.delete.method,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete Ryder Cup event");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.ryderCup.list.path] });
+    },
+  });
+}
