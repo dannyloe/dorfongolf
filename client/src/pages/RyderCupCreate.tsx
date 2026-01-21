@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Trophy, Users, ArrowLeft, ArrowRight, DollarSign, ChevronLeft, ChevronRight, Check, Flag } from "lucide-react";
+import { Trophy, Users, ArrowLeft, ArrowRight, DollarSign, ChevronLeft, ChevronRight, Check, Flag, CalendarDays, Clock, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,11 +32,17 @@ export default function RyderCupCreate() {
   const [dailySkinsPot, setDailySkinsPot] = useState(212.5);
 
   const [useDifferentCourses, setUseDifferentCourses] = useState(false);
-  const [dayCourses, setDayCourses] = useState<{ dayNumber: number; courseId?: number; courseName: string }[]>([
-    { dayNumber: 1, courseName: "" },
-    { dayNumber: 2, courseName: "" },
-    { dayNumber: 3, courseName: "" },
-    { dayNumber: 4, courseName: "" },
+  const [dayConfigs, setDayConfigs] = useState<{ 
+    dayNumber: number; 
+    courseId?: number; 
+    courseName: string;
+    date: string;
+    teeTimes: string[];
+  }[]>([
+    { dayNumber: 1, courseName: "", date: "", teeTimes: [] },
+    { dayNumber: 2, courseName: "", date: "", teeTimes: [] },
+    { dayNumber: 3, courseName: "", date: "", teeTimes: [] },
+    { dayNumber: 4, courseName: "", date: "", teeTimes: [] },
   ]);
 
   const [teamAName, setTeamAName] = useState("Team A");
@@ -70,8 +76,8 @@ export default function RyderCupCreate() {
     mutationFn: async () => {
       const payload = {
         name: eventName,
-        courseName: useDifferentCourses ? dayCourses[0].courseName : courseName,
-        courseId: useDifferentCourses ? dayCourses[0].courseId : courseId,
+        courseName: useDifferentCourses ? dayConfigs[0].courseName : courseName,
+        courseId: useDifferentCourses ? dayConfigs[0].courseId : courseId,
         buyInAmount: Math.round(buyInAmount * 100),
         teamWinBonus: Math.round(teamWinBonus * 100),
         matchWinBonus: Math.round(matchWinBonus * 100),
@@ -80,11 +86,13 @@ export default function RyderCupCreate() {
         targetPoints: 65,
         useHandicaps,
         numberOfDays: 4,
-        dayConfigs: useDifferentCourses ? dayCourses.map(dc => ({
+        dayConfigs: dayConfigs.map(dc => ({
           dayNumber: dc.dayNumber,
-          courseId: dc.courseId,
-          courseName: dc.courseName,
-        })) : undefined,
+          date: dc.date || undefined,
+          teeTimes: dc.teeTimes.length > 0 ? dc.teeTimes : undefined,
+          courseId: useDifferentCourses ? dc.courseId : courseId,
+          courseName: useDifferentCourses ? dc.courseName : courseName,
+        })),
         teamA: {
           name: teamAName,
           color: teamAColor,
@@ -134,7 +142,7 @@ export default function RyderCupCreate() {
 
   const canProceedStep1 = eventName.length > 0 && (
     useDifferentCourses 
-      ? dayCourses.every(dc => dc.courseName.length > 0)
+      ? dayConfigs.every(dc => dc.courseName.length > 0)
       : courseName.length > 0
   );
   const canProceedStep2 = teamAMembers.length === 6 && teamBMembers.length === 6;
@@ -194,11 +202,11 @@ export default function RyderCupCreate() {
               <div key={dayNum} className="flex items-center gap-3">
                 <span className="text-sm font-medium w-16">Day {dayNum}</span>
                 <Select
-                  value={dayCourses[dayNum - 1]?.courseId?.toString() || ""}
+                  value={dayConfigs[dayNum - 1]?.courseId?.toString() || ""}
                   onValueChange={(val) => {
                     const id = parseInt(val);
                     const course = courses.find(c => c.id === id);
-                    setDayCourses(prev => prev.map(dc => 
+                    setDayConfigs(prev => prev.map(dc => 
                       dc.dayNumber === dayNum 
                         ? { ...dc, courseId: id, courseName: course?.name || "" }
                         : dc
@@ -230,6 +238,109 @@ export default function RyderCupCreate() {
             onCheckedChange={setUseHandicaps}
             data-testid="switch-handicaps"
           />
+        </div>
+      </div>
+
+      <div className="border-t pt-4">
+        <h3 className="font-semibold flex items-center gap-2 mb-4">
+          <CalendarDays className="w-5 h-5" /> Schedule (Optional)
+        </h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Set dates and tee times for each day. You can also configure these later.
+        </p>
+        <div className="space-y-4">
+          {dayConfigs.map((dc, idx) => (
+            <div key={dc.dayNumber} className="p-3 border rounded-md space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Day {dc.dayNumber}</span>
+                {dc.date && (
+                  <span className="text-sm text-muted-foreground">
+                    {new Date(dc.date).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-sm">Date</Label>
+                  <Input
+                    type="date"
+                    value={dc.date}
+                    onChange={(e) => {
+                      setDayConfigs(prev => prev.map((d, i) => 
+                        i === idx ? { ...d, date: e.target.value } : d
+                      ));
+                    }}
+                    data-testid={`input-date-day-${dc.dayNumber}`}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">Tee Times</Label>
+                  <div className="flex gap-1 flex-wrap min-h-9 items-center">
+                    {dc.teeTimes.map((time, timeIdx) => (
+                      <Badge key={timeIdx} variant="secondary" className="gap-1">
+                        {time}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDayConfigs(prev => prev.map((d, i) => 
+                              i === idx 
+                                ? { ...d, teeTimes: d.teeTimes.filter((_, ti) => ti !== timeIdx) }
+                                : d
+                            ));
+                          }}
+                          className="ml-1 hover:text-destructive"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    <Input
+                      type="time"
+                      className="w-24"
+                      placeholder="Add"
+                      onBlur={(e) => {
+                        if (e.target.value) {
+                          const timeStr = e.target.value;
+                          const [hours, mins] = timeStr.split(':');
+                          const hour = parseInt(hours);
+                          const ampm = hour >= 12 ? 'PM' : 'AM';
+                          const displayHour = hour % 12 || 12;
+                          const formattedTime = `${displayHour}:${mins} ${ampm}`;
+                          setDayConfigs(prev => prev.map((d, i) => 
+                            i === idx && !d.teeTimes.includes(formattedTime)
+                              ? { ...d, teeTimes: [...d.teeTimes, formattedTime].sort() }
+                              : d
+                          ));
+                          e.target.value = '';
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const input = e.currentTarget;
+                          if (input.value) {
+                            const timeStr = input.value;
+                            const [hours, mins] = timeStr.split(':');
+                            const hour = parseInt(hours);
+                            const ampm = hour >= 12 ? 'PM' : 'AM';
+                            const displayHour = hour % 12 || 12;
+                            const formattedTime = `${displayHour}:${mins} ${ampm}`;
+                            setDayConfigs(prev => prev.map((d, i) => 
+                              i === idx && !d.teeTimes.includes(formattedTime)
+                                ? { ...d, teeTimes: [...d.teeTimes, formattedTime].sort() }
+                                : d
+                            ));
+                            input.value = '';
+                          }
+                        }
+                      }}
+                      data-testid={`input-tee-time-day-${dc.dayNumber}`}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -449,7 +560,7 @@ export default function RyderCupCreate() {
               <Label className="text-muted-foreground">Course{useDifferentCourses ? "s" : ""}</Label>
               {useDifferentCourses ? (
                 <div className="space-y-1">
-                  {dayCourses.map((dc) => (
+                  {dayConfigs.map((dc) => (
                     <p key={dc.dayNumber} className="text-sm flex items-center gap-1">
                       <Flag className="w-3 h-3" /> Day {dc.dayNumber}: {dc.courseName}
                     </p>

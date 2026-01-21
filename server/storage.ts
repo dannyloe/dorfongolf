@@ -1261,6 +1261,8 @@ export class DatabaseStorage implements IStorage {
       await db.insert(ryderCupDays).values({
         eventId: event.id,
         dayNumber: dayNum,
+        date: dayConfig?.date ? new Date(dayConfig.date) : null,
+        teeTimes: dayConfig?.teeTimes ?? null,
         courseId: dayConfig?.courseId ?? courseId,
         courseName: dayConfig?.courseName ?? data.courseName,
       });
