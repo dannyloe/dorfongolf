@@ -569,6 +569,7 @@ export const ryderCupDays = pgTable("ryder_cup_days", {
   eventId: integer("event_id").notNull(),
   dayNumber: integer("day_number").notNull(), // 1-4
   date: timestamp("date"),
+  teeTimes: text("tee_times").array(), // available tee times for the day, e.g. ["8:00 AM", "8:12 AM", "8:24 AM"]
   courseId: integer("course_id"), // optional - can play different course each day
   courseName: text("course_name"), // display name for the course
   skinsCarryover: integer("skins_carryover").notNull().default(0), // carried from previous day
@@ -580,6 +581,7 @@ export const ryderCupPairings = pgTable("ryder_cup_pairings", {
   id: serial("id").primaryKey(),
   dayId: integer("day_id").notNull(),
   matchNumber: integer("match_number").notNull(), // 1-3 for core matches
+  teeTime: text("tee_time"), // assigned tee time, e.g. "8:00 AM"
   isPrimary: boolean("is_primary").notNull().default(true), // true = counts toward cup, false = side match
   matchFormat: text("match_format").notNull().default("match_play_1_ball"),
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
