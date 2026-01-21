@@ -1150,6 +1150,24 @@ export class DatabaseStorage implements IStorage {
     }
     if (teeTimes !== undefined) {
       updateData.teeTimes = teeTimes;
+      
+      // Auto-assign tee times to pairings in order (first tee time → first match, etc.)
+      const pairings = await db.select().from(ryderCupPairings)
+        .where(and(
+          eq(ryderCupPairings.dayId, dayId),
+          eq(ryderCupPairings.isPrimary, true)
+        ));
+      
+      // Sort pairings by match number
+      const sortedPairings = pairings.sort((a, b) => a.matchNumber - b.matchNumber);
+      
+      // Assign tee times in order
+      for (let i = 0; i < sortedPairings.length; i++) {
+        const teeTime = i < teeTimes.length ? teeTimes[i] : null;
+        await db.update(ryderCupPairings)
+          .set({ teeTime })
+          .where(eq(ryderCupPairings.id, sortedPairings[i].id));
+      }
     }
     const [updated] = await db.update(ryderCupDays)
       .set(updateData)
