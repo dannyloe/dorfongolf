@@ -17,6 +17,7 @@ import PlayerMaintenance from "@/pages/PlayerMaintenance";
 import RyderCupList from "@/pages/RyderCupList";
 import RyderCupCreate from "@/pages/RyderCupCreate";
 import RyderCupEvent from "@/pages/RyderCupEvent";
+import RyderCupScorecard from "@/pages/RyderCupScorecard";
 import Profile from "@/pages/Profile";
 import NotFound from "@/pages/not-found";
 
@@ -84,6 +85,9 @@ function Router() {
       </Route>
       <Route path="/ryder-cup/:id">
         <PrivateRoute component={RyderCupEvent} />
+      </Route>
+      <Route path="/ryder-cup/pairing/:pairingId/scorecard">
+        <PrivateRoute component={RyderCupScorecard} />
       </Route>
       <Route path="/profile">
         <PrivateRoute component={Profile} />

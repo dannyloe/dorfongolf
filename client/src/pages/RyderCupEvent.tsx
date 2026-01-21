@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical } from "lucide-react";
+import { useParams, useLocation, Link } from "wouter";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -602,7 +602,16 @@ export default function RyderCupEvent() {
                               <p className="text-xs text-muted-foreground">{displayB?.teamName}</p>
                             </div>
                           </div>
-                          <div className="ml-4">
+                          <div className="ml-4 flex items-center gap-2">
+                            <Link href={`/ryder-cup/pairing/${pairing.id}/scorecard`}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                data-testid={`button-scorecard-${pairing.id}`}
+                              >
+                                <ClipboardList className="w-4 h-4" />
+                              </Button>
+                            </Link>
                             {pairing.result ? (
                               <Badge variant="secondary" className="flex items-center gap-1">
                                 {pairing.result.winningSideId ? (
@@ -617,7 +626,7 @@ export default function RyderCupEvent() {
                                   </>
                                 )}
                               </Badge>
-                            ) : (
+                            ) : isCreatorOrAdmin ? (
                               <Button
                                 size="sm"
                                 onClick={() => openRecordResult(pairing.id)}
@@ -625,7 +634,7 @@ export default function RyderCupEvent() {
                               >
                                 Record Result
                               </Button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </CardContent>
