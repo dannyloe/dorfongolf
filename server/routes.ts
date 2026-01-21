@@ -528,8 +528,10 @@ export async function registerRoutes(
       }
       
       const playerName = decodeURIComponent(req.params.name);
-      const { PRESET_PLAYERS } = await import("@shared/models/auth");
-      if (!PRESET_PLAYERS.includes(playerName as any)) {
+      
+      // Check if player exists in database (includes dynamically added players)
+      const exists = await storage.presetPlayerExists(playerName);
+      if (!exists) {
         return res.status(404).json({ message: `Player "${playerName}" not found` });
       }
       
