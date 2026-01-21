@@ -922,6 +922,8 @@ export const api = {
         numberOfDays: z.number().optional(),
         dayConfigs: z.array(z.object({
           dayNumber: z.number(),
+          date: z.string().optional(), // ISO date string
+          teeTimes: z.array(z.string()).optional(), // e.g. ["8:00 AM", "8:12 AM"]
           courseId: z.number().optional(),
           courseName: z.string().optional(),
         })).optional(),
@@ -1048,6 +1050,31 @@ export const api = {
       }),
       responses: {
         200: z.custom<typeof ryderCupDays.$inferSelect>(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateDaySchedule: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/days/:dayId/schedule',
+      input: z.object({
+        date: z.string().optional(), // ISO date string
+        teeTimes: z.array(z.string()).optional(), // e.g. ["8:00 AM", "8:12 AM"]
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupDays.$inferSelect>(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    updatePairingTeeTime: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/pairings/:pairingId/tee-time',
+      input: z.object({
+        teeTime: z.string().nullable(), // null to unassign
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupPairings.$inferSelect>(),
         403: z.object({ message: z.string() }),
         404: errorSchemas.notFound,
       },

@@ -1807,6 +1807,79 @@ Rules:
     }
   });
 
+  // Update day schedule (date and tee times)
+  app.patch(api.ryderCup.updateDaySchedule.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.ryderCup.updateDaySchedule.input.parse(req.body);
+      
+      const day = await storage.getRyderCupDay(dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      
+      const event = await storage.getRyderCupEvent(day.eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can update schedule" });
+      }
+      
+      const updatedDay = await storage.updateRyderCupDaySchedule(dayId, input.date, input.teeTimes);
+      res.json(updatedDay);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Update pairing tee time
+  app.patch(api.ryderCup.updatePairingTeeTime.path, isAuthenticated, async (req, res) => {
+    const pairingId = parseInt(req.params.pairingId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.ryderCup.updatePairingTeeTime.input.parse(req.body);
+      
+      const pairing = await storage.getRyderCupPairing(pairingId);
+      if (!pairing) {
+        return res.status(404).json({ message: "Pairing not found" });
+      }
+      
+      const day = await storage.getRyderCupDay(pairing.dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      
+      const event = await storage.getRyderCupEvent(day.eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can update tee times" });
+      }
+      
+      const updatedPairing = await storage.updateRyderCupPairingTeeTime(pairingId, input.teeTime);
+      res.json(updatedPairing);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Profile endpoints
   app.get(api.profile.get.path, isAuthenticated, async (req, res) => {
     try {
