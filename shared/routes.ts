@@ -15,6 +15,7 @@ import {
   ryderCupEvents,
   ryderCupTeams,
   ryderCupPairings,
+  ryderCupPairingSides,
   ryderCupSkins,
   ryderCupDays,
 } from './schema';
@@ -1088,6 +1089,48 @@ export const api = {
       responses: {
         200: z.object({ success: z.boolean() }),
         403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateSidePlayer: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/sides/:sideId/player',
+      input: z.object({
+        playerNumber: z.number().min(1).max(2), // 1 or 2
+        handicapIndex: z.number().nullable().optional(),
+        teeId: z.number().nullable().optional(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupPairingSides.$inferSelect>(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    savePairingScores: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/sides/:sideId/scores',
+      input: z.object({
+        scores: z.array(z.object({
+          holeNumber: z.number().min(1).max(18),
+          player1Strokes: z.number().nullable(),
+          player2Strokes: z.number().nullable(),
+        })),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    getPairingScorecard: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/pairings/:pairingId/scorecard',
+      responses: {
+        200: z.object({
+          pairing: z.any(),
+          sides: z.array(z.any()),
+          course: z.any().nullable(),
+        }),
         404: errorSchemas.notFound,
       },
     },

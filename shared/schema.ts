@@ -596,6 +596,21 @@ export const ryderCupPairingSides = pgTable("ryder_cup_pairing_sides", {
   teamId: integer("team_id").notNull(), // which ryder cup team this side belongs to
   player1Name: text("player1_name").notNull(),
   player2Name: text("player2_name"),
+  // Player 1 handicap/tee
+  player1HandicapIndex: integer("player1_handicap_index"), // Stored as tenths (e.g., 124 = 12.4)
+  player1TeeId: integer("player1_tee_id"), // References courseTees
+  // Player 2 handicap/tee (for 2-player formats like fourball/foursomes)
+  player2HandicapIndex: integer("player2_handicap_index"),
+  player2TeeId: integer("player2_tee_id"),
+});
+
+// Hole-by-hole scores for Ryder Cup pairings
+export const ryderCupPairingScores = pgTable("ryder_cup_pairing_scores", {
+  id: serial("id").primaryKey(),
+  sideId: integer("side_id").notNull(), // References ryderCupPairingSides
+  holeNumber: integer("hole_number").notNull(),
+  player1Strokes: integer("player1_strokes"),
+  player2Strokes: integer("player2_strokes"),
 });
 
 export const ryderCupPairingResults = pgTable("ryder_cup_pairing_results", {
@@ -668,7 +683,7 @@ export const ryderCupPairingsRelations = relations(ryderCupPairings, ({ one, man
   }),
 }));
 
-export const ryderCupPairingSidesRelations = relations(ryderCupPairingSides, ({ one }) => ({
+export const ryderCupPairingSidesRelations = relations(ryderCupPairingSides, ({ one, many }) => ({
   pairing: one(ryderCupPairings, {
     fields: [ryderCupPairingSides.pairingId],
     references: [ryderCupPairings.id],
@@ -676,6 +691,14 @@ export const ryderCupPairingSidesRelations = relations(ryderCupPairingSides, ({ 
   team: one(ryderCupTeams, {
     fields: [ryderCupPairingSides.teamId],
     references: [ryderCupTeams.id],
+  }),
+  scores: many(ryderCupPairingScores),
+}));
+
+export const ryderCupPairingScoresRelations = relations(ryderCupPairingScores, ({ one }) => ({
+  side: one(ryderCupPairingSides, {
+    fields: [ryderCupPairingScores.sideId],
+    references: [ryderCupPairingSides.id],
   }),
 }));
 
@@ -732,6 +755,10 @@ export const insertRyderCupPairingSideSchema = createInsertSchema(ryderCupPairin
   id: true,
 });
 
+export const insertRyderCupPairingScoreSchema = createInsertSchema(ryderCupPairingScores).omit({
+  id: true,
+});
+
 export const insertRyderCupPairingResultSchema = createInsertSchema(ryderCupPairingResults).omit({
   id: true,
   recordedAt: true,
@@ -760,6 +787,9 @@ export type InsertRyderCupPairing = z.infer<typeof insertRyderCupPairingSchema>;
 
 export type RyderCupPairingSide = typeof ryderCupPairingSides.$inferSelect;
 export type InsertRyderCupPairingSide = z.infer<typeof insertRyderCupPairingSideSchema>;
+
+export type RyderCupPairingScore = typeof ryderCupPairingScores.$inferSelect;
+export type InsertRyderCupPairingScore = z.infer<typeof insertRyderCupPairingScoreSchema>;
 
 export type RyderCupPairingResult = typeof ryderCupPairingResults.$inferSelect;
 export type InsertRyderCupPairingResult = z.infer<typeof insertRyderCupPairingResultSchema>;

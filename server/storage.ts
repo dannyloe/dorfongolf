@@ -2,7 +2,7 @@ import { db } from "./db";
 import { 
   matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   verificationCodes, notificationPreferences, messages,
-  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins,
+  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -16,7 +16,7 @@ import {
   type MatchRole, type InsertMatchRole,
   type VerificationCode, type NotificationPreferences, type Message,
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
-  type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin,
+  type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
@@ -1211,6 +1211,92 @@ export class DatabaseStorage implements IStorage {
           .where(eq(ryderCupPairings.id, pairingId));
       }
     }
+  }
+
+  async getRyderCupPairingSide(sideId: number): Promise<RyderCupPairingSide | undefined> {
+    const [side] = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.id, sideId));
+    return side;
+  }
+
+  async updateRyderCupSidePlayer(
+    sideId: number,
+    playerNumber: 1 | 2,
+    handicapIndex?: number | null,
+    teeId?: number | null
+  ): Promise<RyderCupPairingSide> {
+    const updateData: Record<string, number | null> = {};
+    if (playerNumber === 1) {
+      if (handicapIndex !== undefined) updateData.player1HandicapIndex = handicapIndex;
+      if (teeId !== undefined) updateData.player1TeeId = teeId;
+    } else {
+      if (handicapIndex !== undefined) updateData.player2HandicapIndex = handicapIndex;
+      if (teeId !== undefined) updateData.player2TeeId = teeId;
+    }
+    const [updated] = await db.update(ryderCupPairingSides)
+      .set(updateData)
+      .where(eq(ryderCupPairingSides.id, sideId))
+      .returning();
+    return updated;
+  }
+
+  async saveRyderCupPairingScores(
+    sideId: number,
+    scores: { holeNumber: number; player1Strokes: number | null; player2Strokes: number | null }[]
+  ): Promise<void> {
+    // Upsert scores for each hole
+    for (const score of scores) {
+      const [existing] = await db.select()
+        .from(ryderCupPairingScores)
+        .where(and(
+          eq(ryderCupPairingScores.sideId, sideId),
+          eq(ryderCupPairingScores.holeNumber, score.holeNumber)
+        ));
+      
+      if (existing) {
+        await db.update(ryderCupPairingScores)
+          .set({
+            player1Strokes: score.player1Strokes,
+            player2Strokes: score.player2Strokes,
+          })
+          .where(eq(ryderCupPairingScores.id, existing.id));
+      } else {
+        await db.insert(ryderCupPairingScores).values({
+          sideId,
+          holeNumber: score.holeNumber,
+          player1Strokes: score.player1Strokes,
+          player2Strokes: score.player2Strokes,
+        });
+      }
+    }
+  }
+
+  async getRyderCupPairingScorecard(pairingId: number): Promise<{
+    pairing: RyderCupPairing;
+    sides: (RyderCupPairingSide & { scores: RyderCupPairingScore[] })[];
+    course: Course | null;
+  } | null> {
+    const pairing = await this.getRyderCupPairing(pairingId);
+    if (!pairing) return null;
+
+    const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairingId));
+    const sidesWithScores = await Promise.all(
+      sides.map(async (side) => {
+        const scores = await db.select()
+          .from(ryderCupPairingScores)
+          .where(eq(ryderCupPairingScores.sideId, side.id))
+          .orderBy(ryderCupPairingScores.holeNumber);
+        return { ...side, scores };
+      })
+    );
+
+    // Get course from the day
+    const day = await this.getRyderCupDay(pairing.dayId);
+    let course: Course | null = null;
+    if (day?.courseId) {
+      course = await this.getCourse(day.courseId) || null;
+    }
+
+    return { pairing, sides: sidesWithScores, course };
   }
 
   async getRyderCupEventFull(id: number): Promise<RyderCupEventResponse | undefined> {
