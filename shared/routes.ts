@@ -919,6 +919,12 @@ export const api = {
         dailySkinsPot: z.number().optional(),
         targetPoints: z.number().optional(),
         useHandicaps: z.boolean().optional(),
+        numberOfDays: z.number().optional(),
+        dayConfigs: z.array(z.object({
+          dayNumber: z.number(),
+          courseId: z.number().optional(),
+          courseName: z.string().optional(),
+        })).optional(),
         teamA: z.object({
           name: z.string().min(1),
           color: z.string().optional(),
