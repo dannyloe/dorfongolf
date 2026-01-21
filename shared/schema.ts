@@ -781,8 +781,10 @@ export type CreateRyderCupEventRequest = {
   targetPoints?: number;
   useHandicaps?: boolean;
   numberOfDays?: number; // defaults to 4
-  dayConfigs?: { // optional per-day course selection
+  dayConfigs?: { // optional per-day course and schedule selection
     dayNumber: number;
+    date?: string; // ISO date string
+    teeTimes?: string[]; // e.g. ["8:00 AM", "8:12 AM"]
     courseId?: number;
     courseName?: string;
   }[];

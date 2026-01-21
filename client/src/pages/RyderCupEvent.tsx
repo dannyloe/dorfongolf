@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,9 @@ export default function RyderCupEvent() {
   const [selectedWinnerId, setSelectedWinnerId] = useState<number | null>(null);
   const [winningMargin, setWinningMargin] = useState("");
   const [editingDayCourse, setEditingDayCourse] = useState<number | null>(null);
+  const [editingDaySchedule, setEditingDaySchedule] = useState<number | null>(null);
+  const [newTeeTime, setNewTeeTime] = useState("");
+  const [draggingPairingId, setDraggingPairingId] = useState<number | null>(null);
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
@@ -53,6 +56,31 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update course", variant: "destructive" });
+    },
+  });
+
+  const updateDayScheduleMutation = useMutation({
+    mutationFn: async ({ dayId, date, teeTimes }: { dayId: number; date?: string; teeTimes?: string[] }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/days/${dayId}/schedule`, { date, teeTimes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Schedule Updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update schedule", variant: "destructive" });
+    },
+  });
+
+  const updatePairingTeeTimeMutation = useMutation({
+    mutationFn: async ({ pairingId, teeTime }: { pairingId: number; teeTime: string | null }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/pairings/${pairingId}/tee-time`, { teeTime });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to assign tee time", variant: "destructive" });
     },
   });
 
@@ -275,7 +303,10 @@ export default function RyderCupEvent() {
                 className="flex-col h-auto py-2"
               >
                 <span>Day {day.dayNumber}</span>
-                {day.courseName && (
+                {day.date && (
+                  <span className="text-xs opacity-75 font-normal">{new Date(day.date).toLocaleDateString()}</span>
+                )}
+                {day.courseName && !day.date && (
                   <span className="text-xs opacity-75 font-normal">{day.courseName}</span>
                 )}
               </Button>
@@ -326,6 +357,11 @@ export default function RyderCupEvent() {
                     <Badge variant="outline" className="text-xs" data-testid={`badge-day-course-${currentDay.id}`}>
                       <Flag className="w-3 h-3 mr-1" /> <span data-testid={`text-day-course-${currentDay.id}`}>{currentDay.courseName || "No course set"}</span>
                     </Badge>
+                    {currentDay.date && (
+                      <Badge variant="outline" className="text-xs">
+                        <Calendar className="w-3 h-3 mr-1" /> {new Date(currentDay.date).toLocaleDateString()}
+                      </Badge>
+                    )}
                     {isCreatorOrAdmin && (
                       <Button 
                         size="icon" 
@@ -339,63 +375,258 @@ export default function RyderCupEvent() {
                   </div>
                 )}
               </div>
-              {currentDay.pairings.filter(p => p.isPrimary).map((pairing) => {
-                const sideA = pairing.sides.find(s => s.teamId === teamA?.id);
-                const sideB = pairing.sides.find(s => s.teamId === teamB?.id);
-                const displayA = sideA ? getSideDisplay(sideA) : null;
-                const displayB = sideB ? getSideDisplay(sideB) : null;
-                
-                return (
-                  <Card key={pairing.id} data-testid={`card-pairing-${pairing.id}`}>
-                    <CardContent className="py-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4 flex-1">
-                          <div 
-                            className="flex-1 p-3 rounded-lg text-center"
-                            style={{ backgroundColor: `${displayA?.color}20` }}
+
+              {isCreatorOrAdmin && (
+                <div className="p-3 border rounded-md space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-sm flex items-center gap-2">
+                      <Clock className="w-4 h-4" /> Tee Times
+                    </h4>
+                    {editingDaySchedule === currentDay.id ? (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => setEditingDaySchedule(null)}
+                        data-testid={`button-done-edit-schedule-${currentDay.id}`}
+                      >
+                        Done
+                      </Button>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={() => setEditingDaySchedule(currentDay.id)}
+                        data-testid={`button-edit-schedule-${currentDay.id}`}
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> Edit
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {editingDaySchedule === currentDay.id && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="w-16 text-sm">Date:</Label>
+                        <Input
+                          type="date"
+                          value={currentDay.date ? new Date(currentDay.date).toISOString().split('T')[0] : ''}
+                          onChange={(e) => {
+                            updateDayScheduleMutation.mutate({
+                              dayId: currentDay.id,
+                              date: e.target.value,
+                            });
+                          }}
+                          className="w-40"
+                          data-testid={`input-date-day-${currentDay.id}`}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="w-16 text-sm">Add:</Label>
+                        <Input
+                          type="time"
+                          value={newTeeTime}
+                          onChange={(e) => setNewTeeTime(e.target.value)}
+                          className="w-28"
+                          data-testid={`input-tee-time-day-${currentDay.id}`}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          data-testid={`button-add-tee-time-day-${currentDay.id}`}
+                          onClick={() => {
+                            if (newTeeTime) {
+                              const [hours, mins] = newTeeTime.split(':');
+                              const hour = parseInt(hours);
+                              const ampm = hour >= 12 ? 'PM' : 'AM';
+                              const displayHour = hour % 12 || 12;
+                              const formattedTime = `${displayHour}:${mins} ${ampm}`;
+                              const existingTimes = currentDay.teeTimes || [];
+                              if (!existingTimes.includes(formattedTime)) {
+                                const sortByTime = (a: string, b: string) => {
+                                  const parseTime = (t: string) => {
+                                    const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                                    if (!match) return 0;
+                                    let h = parseInt(match[1]);
+                                    const m = parseInt(match[2]);
+                                    const pm = match[3].toUpperCase() === 'PM';
+                                    if (pm && h !== 12) h += 12;
+                                    if (!pm && h === 12) h = 0;
+                                    return h * 60 + m;
+                                  };
+                                  return parseTime(a) - parseTime(b);
+                                };
+                                updateDayScheduleMutation.mutate({
+                                  dayId: currentDay.id,
+                                  teeTimes: [...existingTimes, formattedTime].sort(sortByTime),
+                                });
+                              }
+                              setNewTeeTime('');
+                            }
+                          }}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {(currentDay.teeTimes || []).map((time, idx) => (
+                      <Badge 
+                        key={idx} 
+                        variant="secondary" 
+                        className="gap-1 cursor-pointer"
+                        data-testid={`badge-tee-time-${currentDay.id}-${idx}`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('ring-2', 'ring-primary');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('ring-2', 'ring-primary');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('ring-2', 'ring-primary');
+                          if (draggingPairingId) {
+                            updatePairingTeeTimeMutation.mutate({
+                              pairingId: draggingPairingId,
+                              teeTime: time,
+                            });
+                            setDraggingPairingId(null);
+                          }
+                        }}
+                      >
+                        <Clock className="w-3 h-3" /> {time}
+                        {editingDaySchedule === currentDay.id && (
+                          <button
+                            onClick={() => {
+                              const existingTimes = currentDay.teeTimes || [];
+                              updateDayScheduleMutation.mutate({
+                                dayId: currentDay.id,
+                                teeTimes: existingTimes.filter((_, i) => i !== idx),
+                              });
+                            }}
+                            className="ml-1 hover:text-destructive"
+                            data-testid={`button-remove-tee-time-${currentDay.id}-${idx}`}
                           >
-                            <p className="font-medium">{displayA?.names}</p>
-                            <p className="text-xs text-muted-foreground">{displayA?.teamName}</p>
-                          </div>
-                          <span className="text-muted-foreground font-semibold">vs</span>
-                          <div 
-                            className="flex-1 p-3 rounded-lg text-center"
-                            style={{ backgroundColor: `${displayB?.color}20` }}
-                          >
-                            <p className="font-medium">{displayB?.names}</p>
-                            <p className="text-xs text-muted-foreground">{displayB?.teamName}</p>
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          {pairing.result ? (
-                            <Badge variant="secondary" className="flex items-center gap-1">
-                              {pairing.result.winningSideId ? (
-                                <>
-                                  <Check className="w-3 h-3" />
-                                  {pairing.result.winningSideId === sideA?.id ? displayA?.teamName : displayB?.teamName}
-                                  {pairing.result.winningMargin && ` (${pairing.result.winningMargin})`}
-                                </>
-                              ) : (
-                                <>
-                                  <Minus className="w-3 h-3" /> Halved
-                                </>
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </Badge>
+                    ))}
+                    {(!currentDay.teeTimes || currentDay.teeTimes.length === 0) && (
+                      <span className="text-sm text-muted-foreground">No tee times set</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {(() => {
+                const parseTimeToMinutes = (t: string | null | undefined): number => {
+                  if (!t) return Infinity;
+                  const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+                  if (!match) return Infinity;
+                  let h = parseInt(match[1]);
+                  const m = parseInt(match[2]);
+                  const pm = match[3].toUpperCase() === 'PM';
+                  if (pm && h !== 12) h += 12;
+                  if (!pm && h === 12) h = 0;
+                  return h * 60 + m;
+                };
+                const sortedPairings = [...currentDay.pairings.filter(p => p.isPrimary)].sort((a, b) => {
+                  const timeA = parseTimeToMinutes(a.teeTime);
+                  const timeB = parseTimeToMinutes(b.teeTime);
+                  if (timeA === Infinity && timeB === Infinity) return a.matchNumber - b.matchNumber;
+                  return timeA - timeB;
+                });
+                return sortedPairings.map((pairing) => {
+                  const sideA = pairing.sides.find(s => s.teamId === teamA?.id);
+                  const sideB = pairing.sides.find(s => s.teamId === teamB?.id);
+                  const displayA = sideA ? getSideDisplay(sideA) : null;
+                  const displayB = sideB ? getSideDisplay(sideB) : null;
+                  
+                  return (
+                    <Card 
+                      key={pairing.id} 
+                      data-testid={`card-pairing-${pairing.id}`}
+                      draggable={!!isCreatorOrAdmin}
+                      onDragStart={() => setDraggingPairingId(pairing.id)}
+                      onDragEnd={() => setDraggingPairingId(null)}
+                      className={isCreatorOrAdmin ? "cursor-grab active:cursor-grabbing" : ""}
+                    >
+                      <CardContent className="py-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          {isCreatorOrAdmin && (
+                            <GripVertical className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          {pairing.teeTime ? (
+                            <Badge variant="outline" className="gap-1">
+                              <Clock className="w-3 h-3" /> {pairing.teeTime}
+                              {isCreatorOrAdmin && (
+                                <button 
+                                  onClick={() => updatePairingTeeTimeMutation.mutate({ pairingId: pairing.id, teeTime: null })}
+                                  className="ml-1 hover:text-destructive"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
                               )}
                             </Badge>
                           ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => openRecordResult(pairing.id)}
-                              data-testid={`button-record-result-${pairing.id}`}
-                            >
-                              Record Result
-                            </Button>
+                            <Badge variant="secondary" className="text-xs opacity-60">
+                              No tee time
+                            </Badge>
                           )}
+                          <span className="text-xs text-muted-foreground">Match {pairing.matchNumber}</span>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 flex-1">
+                            <div 
+                              className="flex-1 p-3 rounded-lg text-center"
+                              style={{ backgroundColor: `${displayA?.color}20` }}
+                            >
+                              <p className="font-medium">{displayA?.names}</p>
+                              <p className="text-xs text-muted-foreground">{displayA?.teamName}</p>
+                            </div>
+                            <span className="text-muted-foreground font-semibold">vs</span>
+                            <div 
+                              className="flex-1 p-3 rounded-lg text-center"
+                              style={{ backgroundColor: `${displayB?.color}20` }}
+                            >
+                              <p className="font-medium">{displayB?.names}</p>
+                              <p className="text-xs text-muted-foreground">{displayB?.teamName}</p>
+                            </div>
+                          </div>
+                          <div className="ml-4">
+                            {pairing.result ? (
+                              <Badge variant="secondary" className="flex items-center gap-1">
+                                {pairing.result.winningSideId ? (
+                                  <>
+                                    <Check className="w-3 h-3" />
+                                    {pairing.result.winningSideId === sideA?.id ? displayA?.teamName : displayB?.teamName}
+                                    {pairing.result.winningMargin && ` (${pairing.result.winningMargin})`}
+                                  </>
+                                ) : (
+                                  <>
+                                    <Minus className="w-3 h-3" /> Halved
+                                  </>
+                                )}
+                              </Badge>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => openRecordResult(pairing.id)}
+                                data-testid={`button-record-result-${pairing.id}`}
+                              >
+                                Record Result
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                });
+              })()}
 
               <div className="mt-6">
                 <div className="flex items-center justify-between mb-2">
