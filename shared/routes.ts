@@ -1079,6 +1079,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    reorderPairings: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/days/:dayId/reorder-pairings',
+      input: z.object({
+        pairingOrder: z.array(z.number()), // array of pairing IDs in desired order
+      }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   profile: {
     get: {

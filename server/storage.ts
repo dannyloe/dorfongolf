@@ -1189,6 +1189,30 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async reorderRyderCupPairings(dayId: number, pairingOrder: number[]): Promise<void> {
+    // Update match numbers based on the new order
+    // pairingOrder is an array of pairing IDs in the desired order
+    for (let i = 0; i < pairingOrder.length; i++) {
+      const pairingId = pairingOrder[i];
+      const matchNumber = i + 1;
+      await db.update(ryderCupPairings)
+        .set({ matchNumber })
+        .where(eq(ryderCupPairings.id, pairingId));
+    }
+    
+    // Re-assign tee times based on new order
+    const day = await this.getRyderCupDay(dayId);
+    if (day?.teeTimes && day.teeTimes.length > 0) {
+      for (let i = 0; i < pairingOrder.length; i++) {
+        const pairingId = pairingOrder[i];
+        const teeTime = i < day.teeTimes.length ? day.teeTimes[i] : null;
+        await db.update(ryderCupPairings)
+          .set({ teeTime })
+          .where(eq(ryderCupPairings.id, pairingId));
+      }
+    }
+  }
+
   async getRyderCupEventFull(id: number): Promise<RyderCupEventResponse | undefined> {
     const event = await this.getRyderCupEvent(id);
     if (!event) return undefined;

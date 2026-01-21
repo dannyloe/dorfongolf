@@ -84,6 +84,19 @@ export default function RyderCupEvent() {
     },
   });
 
+  const reorderPairingsMutation = useMutation({
+    mutationFn: async ({ dayId, pairingOrder }: { dayId: number; pairingOrder: number[] }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/days/${dayId}/reorder-pairings`, { pairingOrder });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Order Updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to reorder matches", variant: "destructive" });
+    },
+  });
+
   const recordResultMutation = useMutation({
     mutationFn: async () => {
       if (!selectedPairingId) return;
@@ -475,28 +488,10 @@ export default function RyderCupEvent() {
                       <Badge 
                         key={idx} 
                         variant="secondary" 
-                        className="gap-1 cursor-pointer"
+                        className="gap-1"
                         data-testid={`badge-tee-time-${currentDay.id}-${idx}`}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.currentTarget.classList.add('ring-2', 'ring-primary');
-                        }}
-                        onDragLeave={(e) => {
-                          e.currentTarget.classList.remove('ring-2', 'ring-primary');
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.currentTarget.classList.remove('ring-2', 'ring-primary');
-                          if (draggingPairingId) {
-                            updatePairingTeeTimeMutation.mutate({
-                              pairingId: draggingPairingId,
-                              teeTime: time,
-                            });
-                            setDraggingPairingId(null);
-                          }
-                        }}
                       >
-                        <Clock className="w-3 h-3" /> {time}
+                        <Clock className="w-3 h-3" /> Slot {idx + 1}: {time}
                         {editingDaySchedule === currentDay.id && (
                           <button
                             onClick={() => {
@@ -515,35 +510,27 @@ export default function RyderCupEvent() {
                       </Badge>
                     ))}
                     {(!currentDay.teeTimes || currentDay.teeTimes.length === 0) && (
-                      <span className="text-sm text-muted-foreground">No tee times set</span>
+                      <span className="text-sm text-muted-foreground">No tee times set - add tee times to assign them to matches</span>
                     )}
                   </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Drag matches below to reorder. The first match gets the first tee time, second match gets second tee time, etc.
+                  </p>
                 </div>
               )}
 
               {(() => {
-                const parseTimeToMinutes = (t: string | null | undefined): number => {
-                  if (!t) return Infinity;
-                  const match = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
-                  if (!match) return Infinity;
-                  let h = parseInt(match[1]);
-                  const m = parseInt(match[2]);
-                  const pm = match[3].toUpperCase() === 'PM';
-                  if (pm && h !== 12) h += 12;
-                  if (!pm && h === 12) h = 0;
-                  return h * 60 + m;
-                };
-                const sortedPairings = [...currentDay.pairings.filter(p => p.isPrimary)].sort((a, b) => {
-                  const timeA = parseTimeToMinutes(a.teeTime);
-                  const timeB = parseTimeToMinutes(b.teeTime);
-                  if (timeA === Infinity && timeB === Infinity) return a.matchNumber - b.matchNumber;
-                  return timeA - timeB;
-                });
-                return sortedPairings.map((pairing) => {
+                // Sort by matchNumber which represents the slot/position
+                const sortedPairings = [...currentDay.pairings.filter(p => p.isPrimary)].sort((a, b) => a.matchNumber - b.matchNumber);
+                const teeTimes = currentDay.teeTimes || [];
+                
+                return sortedPairings.map((pairing, index) => {
                   const sideA = pairing.sides.find(s => s.teamId === teamA?.id);
                   const sideB = pairing.sides.find(s => s.teamId === teamB?.id);
                   const displayA = sideA ? getSideDisplay(sideA) : null;
                   const displayB = sideB ? getSideDisplay(sideB) : null;
+                  // Tee time is based on position, not stored on pairing
+                  const slotTeeTime = index < teeTimes.length ? teeTimes[index] : null;
                   
                   return (
                     <Card 
@@ -552,6 +539,34 @@ export default function RyderCupEvent() {
                       draggable={!!isCreatorOrAdmin}
                       onDragStart={() => setDraggingPairingId(pairing.id)}
                       onDragEnd={() => setDraggingPairingId(null)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (draggingPairingId && draggingPairingId !== pairing.id) {
+                          e.currentTarget.classList.add('ring-2', 'ring-primary');
+                        }
+                      }}
+                      onDragLeave={(e) => {
+                        e.currentTarget.classList.remove('ring-2', 'ring-primary');
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('ring-2', 'ring-primary');
+                        if (draggingPairingId && draggingPairingId !== pairing.id) {
+                          // Reorder: move dragged pairing to this position
+                          const draggedIndex = sortedPairings.findIndex(p => p.id === draggingPairingId);
+                          const targetIndex = index;
+                          if (draggedIndex !== -1) {
+                            const newOrder = [...sortedPairings];
+                            const [removed] = newOrder.splice(draggedIndex, 1);
+                            newOrder.splice(targetIndex, 0, removed);
+                            reorderPairingsMutation.mutate({
+                              dayId: currentDay.id,
+                              pairingOrder: newOrder.map(p => p.id),
+                            });
+                          }
+                          setDraggingPairingId(null);
+                        }
+                      }}
                       className={isCreatorOrAdmin ? "cursor-grab active:cursor-grabbing" : ""}
                     >
                       <CardContent className="py-4">
@@ -559,24 +574,15 @@ export default function RyderCupEvent() {
                           {isCreatorOrAdmin && (
                             <GripVertical className="w-4 h-4 text-muted-foreground" />
                           )}
-                          {pairing.teeTime ? (
+                          {slotTeeTime ? (
                             <Badge variant="outline" className="gap-1">
-                              <Clock className="w-3 h-3" /> {pairing.teeTime}
-                              {isCreatorOrAdmin && (
-                                <button 
-                                  onClick={() => updatePairingTeeTimeMutation.mutate({ pairingId: pairing.id, teeTime: null })}
-                                  className="ml-1 hover:text-destructive"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              )}
+                              <Clock className="w-3 h-3" /> {slotTeeTime}
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className="text-xs opacity-60">
-                              No tee time
+                              Slot {index + 1}
                             </Badge>
                           )}
-                          <span className="text-xs text-muted-foreground">Match {pairing.matchNumber}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4 flex-1">

@@ -1880,6 +1880,40 @@ Rules:
     }
   });
 
+  // Reorder pairings for a day
+  app.patch(api.ryderCup.reorderPairings.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.ryderCup.reorderPairings.input.parse(req.body);
+      
+      const day = await storage.getRyderCupDay(dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      
+      const event = await storage.getRyderCupEvent(day.eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can reorder pairings" });
+      }
+      
+      await storage.reorderRyderCupPairings(dayId, input.pairingOrder);
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Profile endpoints
   app.get(api.profile.get.path, isAuthenticated, async (req, res) => {
     try {
