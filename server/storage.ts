@@ -1130,6 +1130,19 @@ export class DatabaseStorage implements IStorage {
     return event;
   }
 
+  async getRyderCupDay(dayId: number): Promise<RyderCupDay | undefined> {
+    const [day] = await db.select().from(ryderCupDays).where(eq(ryderCupDays.id, dayId));
+    return day;
+  }
+
+  async updateRyderCupDayCourse(dayId: number, courseId: number, courseName: string): Promise<RyderCupDay> {
+    const [updated] = await db.update(ryderCupDays)
+      .set({ courseId, courseName })
+      .where(eq(ryderCupDays.id, dayId))
+      .returning();
+    return updated;
+  }
+
   async getRyderCupEventFull(id: number): Promise<RyderCupEventResponse | undefined> {
     const event = await this.getRyderCupEvent(id);
     if (!event) return undefined;

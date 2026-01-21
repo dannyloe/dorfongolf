@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,17 +12,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { RyderCupEventResponse, RyderCupPairingSide, MATCH_TYPES, Match } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
+import type { RyderCupEventResponse, RyderCupPairingSide, MATCH_TYPES, Match, Course } from "@shared/schema";
 
 export default function RyderCupEvent() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedDay, setSelectedDay] = useState<number>(1);
   const [recordResultDialogOpen, setRecordResultDialogOpen] = useState(false);
   const [selectedPairingId, setSelectedPairingId] = useState<number | null>(null);
   const [selectedWinnerId, setSelectedWinnerId] = useState<number | null>(null);
   const [winningMargin, setWinningMargin] = useState("");
+  const [editingDayCourse, setEditingDayCourse] = useState<number | null>(null);
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
@@ -31,6 +34,26 @@ export default function RyderCupEvent() {
   const { data: sideMatches = [] } = useQuery<Match[]>({
     queryKey: ["/api/ryder-cup", id, "matches"],
     enabled: !!id,
+  });
+
+  const { data: courses = [] } = useQuery<Course[]>({
+    queryKey: ["/api/courses"],
+  });
+
+  const isCreatorOrAdmin = event && (event.creatorId === user?.id || user?.isAdmin);
+
+  const updateDayCourseMutation = useMutation({
+    mutationFn: async ({ dayId, courseId, courseName }: { dayId: number; courseId: number; courseName: string }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/days/${dayId}/course`, { courseId, courseName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Course Updated" });
+      setEditingDayCourse(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update course", variant: "destructive" });
+    },
   });
 
   const recordResultMutation = useMutation({
@@ -261,12 +284,59 @@ export default function RyderCupEvent() {
 
           {currentDay && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
-                {currentDay.courseName && (
-                  <Badge variant="outline" className="text-xs">
-                    <Flag className="w-3 h-3 mr-1" /> {currentDay.courseName}
-                  </Badge>
+                {editingDayCourse === currentDay.id ? (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={currentDay.courseId?.toString() || ""}
+                      onValueChange={(val) => {
+                        const course = courses.find(c => c.id === parseInt(val));
+                        if (course) {
+                          updateDayCourseMutation.mutate({
+                            dayId: currentDay.id,
+                            courseId: course.id,
+                            courseName: course.name,
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-[200px]" data-testid="select-day-course">
+                        <SelectValue placeholder="Select course" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {courses.map((course) => (
+                          <SelectItem key={course.id} value={course.id.toString()} data-testid={`select-item-course-${course.id}`}>
+                            {course.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      onClick={() => setEditingDayCourse(null)}
+                      data-testid="button-cancel-edit-course"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline" className="text-xs" data-testid={`badge-day-course-${currentDay.id}`}>
+                      <Flag className="w-3 h-3 mr-1" /> <span data-testid={`text-day-course-${currentDay.id}`}>{currentDay.courseName || "No course set"}</span>
+                    </Badge>
+                    {isCreatorOrAdmin && (
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={() => setEditingDayCourse(currentDay.id)}
+                        data-testid="button-edit-day-course"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
               {currentDay.pairings.filter(p => p.isPrimary).map((pairing) => {

@@ -16,6 +16,7 @@ import {
   ryderCupTeams,
   ryderCupPairings,
   ryderCupSkins,
+  ryderCupDays,
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -1029,6 +1030,19 @@ export const api = {
       path: '/api/ryder-cup/:id/matches',
       responses: {
         200: z.array(z.custom<typeof matches.$inferSelect>()),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateDayCourse: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/days/:dayId/course',
+      input: z.object({
+        courseId: z.number(),
+        courseName: z.string().min(1),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupDays.$inferSelect>(),
+        403: z.object({ message: z.string() }),
         404: errorSchemas.notFound,
       },
     },

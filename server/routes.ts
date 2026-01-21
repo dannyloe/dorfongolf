@@ -1772,6 +1772,41 @@ Rules:
     res.json(matches);
   });
 
+  app.patch(api.ryderCup.updateDayCourse.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.ryderCup.updateDayCourse.input.parse(req.body);
+      
+      // Get the day and check permissions
+      const day = await storage.getRyderCupDay(dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      
+      // Get the event to check if user is creator or admin
+      const event = await storage.getRyderCupEvent(day.eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can update course" });
+      }
+      
+      const updatedDay = await storage.updateRyderCupDayCourse(dayId, input.courseId, input.courseName);
+      res.json(updatedDay);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Profile endpoints
   app.get(api.profile.get.path, isAuthenticated, async (req, res) => {
     try {
