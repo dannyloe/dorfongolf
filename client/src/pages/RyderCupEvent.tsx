@@ -355,6 +355,7 @@ export default function RyderCupEvent() {
     winnerName: string | null;
     lowestScore: number | null;
     isSkin: boolean;
+    isPending: boolean; // waiting for next hole to be played
   }
 
   interface DaySkinsData {
@@ -442,6 +443,7 @@ export default function RyderCupEvent() {
           winnerName: null,
           lowestScore: null,
           isSkin: false,
+          isPending: false,
         });
         continue;
       }
@@ -457,6 +459,7 @@ export default function RyderCupEvent() {
           winnerName: null,
           lowestScore: minScore,
           isSkin: false,
+          isPending: false,
         });
         continue;
       }
@@ -470,13 +473,14 @@ export default function RyderCupEvent() {
           .map(p => ({ name: p.name, strokes: p.scores[hole + 1]! }));
 
         if (nextHoleScores.length === 0) {
-          // Next hole not played yet
+          // Next hole not played yet - pending
           holeResults.push({
             holeNumber,
             winnerId: potentialWinner.name,
             winnerName: potentialWinner.name,
             lowestScore: minScore,
             isSkin: false,
+            isPending: true,
           });
           continue;
         }
@@ -493,6 +497,7 @@ export default function RyderCupEvent() {
             winnerName: potentialWinner.name,
             lowestScore: minScore,
             isSkin: true,
+            isPending: false,
           });
         } else {
           // Winner didn't tie/beat on next hole
@@ -502,6 +507,7 @@ export default function RyderCupEvent() {
             winnerName: potentialWinner.name,
             lowestScore: minScore,
             isSkin: false,
+            isPending: false,
           });
         }
       } else {
@@ -513,6 +519,7 @@ export default function RyderCupEvent() {
           winnerName: potentialWinner.name,
           lowestScore: minScore,
           isSkin: true,
+          isPending: false,
         });
       }
     }
@@ -2380,13 +2387,17 @@ export default function RyderCupEvent() {
                       </thead>
                       <tbody>
                         {skinsData.players.map((player) => {
-                          const front9 = player.scores.slice(0, 9).reduce((sum, s) => sum + (s ?? 0), 0);
-                          const back9 = player.scores.slice(9, 18).reduce((sum, s) => sum + (s ?? 0), 0);
-                          const total = front9 + back9;
+                          const front9Scores = player.scores.slice(0, 9);
+                          const back9Scores = player.scores.slice(9, 18);
+                          const front9Complete = front9Scores.every(s => s !== null);
+                          const back9Complete = back9Scores.every(s => s !== null);
+                          const front9 = front9Complete ? front9Scores.reduce<number>((sum, s) => sum + (s ?? 0), 0) : null;
+                          const back9 = back9Complete ? back9Scores.reduce<number>((sum, s) => sum + (s ?? 0), 0) : null;
+                          const total = front9 !== null && back9 !== null ? front9 + back9 : null;
                           const skinCount = skinsData.skinWinners.find(w => w.name === player.name)?.skinsWon || 0;
 
                           return (
-                            <tr key={player.name} className="border-t">
+                            <tr key={player.name} className="border-t" data-testid={`skins-player-row-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
                               <td className="px-3 py-2 font-medium sticky left-0 bg-background z-10">
                                 <div className="flex items-center gap-2">
                                   <span
@@ -2437,13 +2448,13 @@ export default function RyderCupEvent() {
                                   </td>
                                 );
                               })}
-                              <td className="px-2 py-2 text-center font-medium bg-muted/30">
-                                {back9 || '-'}
+                              <td className="px-2 py-2 text-center font-medium bg-muted/30" data-testid={`skins-back9-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
+                                {back9 !== null ? back9 : '-'}
                               </td>
-                              <td className="px-2 py-2 text-center font-bold bg-muted/50">
-                                {total || '-'}
+                              <td className="px-2 py-2 text-center font-bold bg-muted/50" data-testid={`skins-total-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
+                                {total !== null ? total : '-'}
                               </td>
-                              <td className="px-2 py-2 text-center font-bold bg-primary/10">
+                              <td className="px-2 py-2 text-center font-bold bg-primary/10" data-testid={`skins-count-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
                                 {skinCount > 0 ? (
                                   <span className="text-green-600">{skinCount}</span>
                                 ) : '-'}
@@ -2452,18 +2463,18 @@ export default function RyderCupEvent() {
                           );
                         })}
                         {/* Skins row */}
-                        <tr className="border-t-2 border-primary/20 bg-primary/5">
+                        <tr className="border-t-2 border-primary/20 bg-primary/5" data-testid="skins-results-row">
                           <td className="px-3 py-2 font-semibold sticky left-0 bg-primary/5 z-10">
                             Skins
                           </td>
                           {skinsData.holeResults.slice(0, 9).map((result, idx) => (
-                            <td key={idx} className="px-2 py-2 text-center text-xs">
+                            <td key={idx} className="px-2 py-2 text-center text-xs" data-testid={`skins-hole-${idx + 1}`}>
                               {result.isSkin ? (
                                 <span className="text-green-600 font-bold">
                                   {result.winnerName?.split(' ')[0]?.slice(0, 3)}
                                 </span>
-                              ) : result.winnerId ? (
-                                <span className="text-muted-foreground">-</span>
+                              ) : result.isPending ? (
+                                <span className="text-yellow-600" title="Pending - waiting for next hole">?</span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}
@@ -2471,13 +2482,13 @@ export default function RyderCupEvent() {
                           ))}
                           <td className="px-2 py-2 text-center bg-muted/30" />
                           {skinsData.holeResults.slice(9, 18).map((result, idx) => (
-                            <td key={idx + 9} className="px-2 py-2 text-center text-xs">
+                            <td key={idx + 9} className="px-2 py-2 text-center text-xs" data-testid={`skins-hole-${idx + 10}`}>
                               {result.isSkin ? (
                                 <span className="text-green-600 font-bold">
                                   {result.winnerName?.split(' ')[0]?.slice(0, 3)}
                                 </span>
-                              ) : result.winnerId ? (
-                                <span className="text-muted-foreground">-</span>
+                              ) : result.isPending ? (
+                                <span className="text-yellow-600" title="Pending - waiting for next hole">?</span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}
@@ -2485,7 +2496,7 @@ export default function RyderCupEvent() {
                           ))}
                           <td className="px-2 py-2 text-center bg-muted/30" />
                           <td className="px-2 py-2 text-center bg-muted/50" />
-                          <td className="px-2 py-2 text-center font-bold bg-primary/10 text-primary">
+                          <td className="px-2 py-2 text-center font-bold bg-primary/10 text-primary" data-testid="skins-total-count">
                             {skinsData.totalSkins}
                           </td>
                         </tr>
@@ -2501,7 +2512,11 @@ export default function RyderCupEvent() {
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-4 h-4 bg-yellow-50 dark:bg-yellow-900/20 rounded border" />
-                      <span>Low Score (no skin)</span>
+                      <span>Low Score (pending)</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-yellow-600 font-bold">?</span>
+                      <span>Pending next hole</span>
                     </div>
                   </div>
                 </div>
