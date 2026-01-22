@@ -1017,18 +1017,8 @@ export default function RyderCupEvent() {
                               })}
                             </div>
                           </div>
-                          <div className="ml-4 flex items-center gap-2">
-                            <Link href={`/ryder-cup/pairing/${pairing.id}/scorecard`}>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                data-testid={`button-scorecard-${pairing.id}`}
-                              >
-                                <ClipboardList className="w-4 h-4 mr-1" />
-                                Scores
-                              </Button>
-                            </Link>
-                            {pairing.result ? (
+                          {pairing.result && (
+                            <div className="ml-4">
                               <Badge variant="secondary" className="flex items-center gap-1">
                                 {pairing.result.winningSideId ? (
                                   <>
@@ -1042,16 +1032,8 @@ export default function RyderCupEvent() {
                                   </>
                                 )}
                               </Badge>
-                            ) : isCreatorOrAdmin ? (
-                              <Button
-                                size="sm"
-                                onClick={() => openRecordResult(pairing.id)}
-                                data-testid={`button-record-result-${pairing.id}`}
-                              >
-                                Record Result
-                              </Button>
-                            ) : null}
-                          </div>
+                            </div>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
