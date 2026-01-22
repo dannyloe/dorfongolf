@@ -2654,95 +2654,120 @@ export default function RyderCupEvent() {
               )}
             </CardHeader>
             <CardContent>
-              {transactions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No transactions recorded yet. Add an expense to get started.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {(() => {
-                    const allPlayers = [
-                      ...(teamA?.members.map(m => m.playerName) || []),
-                      ...(teamB?.members.map(m => m.playerName) || []),
-                    ];
-                    
-                    const balances: Record<string, number> = {};
-                    allPlayers.forEach(name => { balances[name] = 0; });
-                    
-                    transactions.forEach(t => {
-                      balances[t.payerName] = (balances[t.payerName] || 0) + t.amount;
-                      t.splits.forEach(s => {
-                        balances[s.playerName] = (balances[s.playerName] || 0) - s.amount;
-                      });
-                    });
+              {(() => {
+                const allPlayers = [
+                  ...(teamA?.members.map(m => m.playerName) || []),
+                  ...(teamB?.members.map(m => m.playerName) || []),
+                ];
+                
+                // Calculate expense balances
+                const expenseBalances: Record<string, number> = {};
+                allPlayers.forEach(name => { expenseBalances[name] = 0; });
+                
+                transactions.forEach(t => {
+                  expenseBalances[t.payerName] = (expenseBalances[t.payerName] || 0) + t.amount;
+                  t.splits.forEach(s => {
+                    expenseBalances[s.playerName] = (expenseBalances[s.playerName] || 0) - s.amount;
+                  });
+                });
 
-                    return (
-                      <>
-                        <div className="mb-6">
-                          <h4 className="text-sm font-semibold mb-3">Balances</h4>
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                            {Object.entries(balances)
-                              .filter(([_, amount]) => amount !== 0)
-                              .sort((a, b) => b[1] - a[1])
-                              .map(([playerName, amount]) => {
+                // Calculate net position (payouts + expense balances)
+                const netPosition: Record<string, number> = {};
+                allPlayers.forEach(name => {
+                  netPosition[name] = (payouts[name] || 0) + (expenseBalances[name] || 0);
+                });
+
+                return (
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Net Position (Earnings + Expenses)</h4>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 pr-4">Player</th>
+                              <th className="text-right py-2 px-2">Earnings</th>
+                              <th className="text-right py-2 px-2">Expenses</th>
+                              <th className="text-right py-2 pl-2 font-bold">Net</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {allPlayers
+                              .sort((a, b) => (netPosition[b] || 0) - (netPosition[a] || 0))
+                              .map(playerName => {
                                 const team = teamA?.members.find(m => m.playerName === playerName) ? teamA : teamB;
+                                const earnings = payouts[playerName] || 0;
+                                const expenses = expenseBalances[playerName] || 0;
+                                const net = netPosition[playerName] || 0;
                                 return (
-                                  <div 
-                                    key={playerName} 
-                                    className="flex items-center justify-between p-2 rounded border"
-                                    style={{ borderColor: team?.color || undefined }}
-                                  >
-                                    <span className="text-sm font-medium truncate">{playerName}</span>
-                                    <span className={`text-sm font-semibold ${amount > 0 ? "text-green-600" : "text-red-600"}`}>
-                                      {amount > 0 ? "+" : ""}{formatCurrency(amount)}
-                                    </span>
-                                  </div>
+                                  <tr key={playerName} className="border-b border-muted/50">
+                                    <td className="py-2 pr-4">
+                                      <div className="flex items-center gap-2">
+                                        <div 
+                                          className="w-2 h-2 rounded-full" 
+                                          style={{ backgroundColor: team?.color || "#888" }}
+                                        />
+                                        <span className="font-medium">{playerName}</span>
+                                      </div>
+                                    </td>
+                                    <td className={`text-right py-2 px-2 ${earnings > 0 ? "text-green-600" : ""}`}>
+                                      {formatCurrency(earnings)}
+                                    </td>
+                                    <td className={`text-right py-2 px-2 ${expenses > 0 ? "text-green-600" : expenses < 0 ? "text-red-600" : ""}`}>
+                                      {expenses > 0 ? "+" : ""}{formatCurrency(expenses)}
+                                    </td>
+                                    <td className={`text-right py-2 pl-2 font-bold ${net > 0 ? "text-green-600" : net < 0 ? "text-red-600" : ""}`}>
+                                      {net > 0 ? "+" : ""}{formatCurrency(net)}
+                                    </td>
+                                  </tr>
                                 );
                               })}
-                          </div>
-                        </div>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
-                        <div>
-                          <h4 className="text-sm font-semibold mb-3">Transaction History</h4>
-                          <div className="space-y-3">
-                            {transactions.map(t => (
-                              <div key={t.id} className="border rounded p-3">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-medium">{t.description}</span>
-                                      <Badge variant="secondary">{formatCurrency(t.amount)}</Badge>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                      Paid by <span className="font-medium">{t.payerName}</span>
-                                      {t.createdAt && ` on ${new Date(t.createdAt).toLocaleDateString()}`}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Split between: {t.splits.map(s => s.playerName).join(", ")}
-                                      {" "}({formatCurrency(t.splits[0]?.amount || 0)} each)
-                                    </p>
+                    {transactions.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Transaction History</h4>
+                        <div className="space-y-3">
+                          {transactions.map(t => (
+                            <div key={t.id} className="border rounded p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium">{t.description}</span>
+                                    <Badge variant="secondary">{formatCurrency(t.amount)}</Badge>
                                   </div>
-                                  {isCreatorOrAdmin && (
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      onClick={() => deleteTransactionMutation.mutate(t.id)}
-                                      disabled={deleteTransactionMutation.isPending}
-                                      data-testid={`button-delete-transaction-${t.id}`}
-                                    >
-                                      <Trash2 className="w-4 h-4 text-destructive" />
-                                    </Button>
-                                  )}
+                                  <p className="text-sm text-muted-foreground mt-1">
+                                    Paid by <span className="font-medium">{t.payerName}</span>
+                                    {t.createdAt && ` on ${new Date(t.createdAt).toLocaleDateString()}`}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Split between: {t.splits.map(s => s.playerName).join(", ")}
+                                    {" "}({formatCurrency(t.splits[0]?.amount || 0)} each)
+                                  </p>
                                 </div>
+                                {isCreatorOrAdmin && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => deleteTransactionMutation.mutate(t.id)}
+                                    disabled={deleteTransactionMutation.isPending}
+                                    data-testid={`button-delete-transaction-${t.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                )}
                               </div>
-                            ))}
-                          </div>
+                            </div>
+                          ))}
                         </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
