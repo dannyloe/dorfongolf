@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,8 +31,16 @@ export default function RyderCupEvent() {
   const [newTeeTime, setNewTeeTime] = useState("");
   const [draggingPairingId, setDraggingPairingId] = useState<number | null>(null);
   const [currentHole, setCurrentHole] = useState(1);
-  const [editingScore, setEditingScore] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
+  const [editingScore, setEditingScore] = useState<{ sideId: number; playerNumber: 1 | 2; hole: number } | null>(null);
   const [editScoreValue, setEditScoreValue] = useState("");
+  const [expandedPairingId, setExpandedPairingId] = useState<number | null>(null);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanningPairingId, setScanningPairingId] = useState<number | null>(null);
+  const [scannedScores, setScannedScores] = useState<ScannedPlayer[]>([]);
+  const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
+  const [playerMappings, setPlayerMappings] = useState<Record<string, { sideId: number; playerNumber: 1 | 2 } | null>>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const scanScorecard = useScanScorecard();
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
@@ -721,41 +730,10 @@ export default function RyderCupEvent() {
                 })()}
               </div>
 
-              {/* Inline Scorecard Section */}
+              {/* Full 18-Hole Scorecards Section */}
               <div className="mt-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-semibold text-lg">Live Scorecards</h4>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={currentHole === 1}
-                      onClick={() => setCurrentHole(h => Math.max(1, h - 1))}
-                      data-testid="button-prev-hole"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </Button>
-                    <div className="text-center min-w-20">
-                      <span className="font-bold" data-testid="text-current-hole">Hole {currentHole}</span>
-                      {(() => {
-                        const holeData = courseHoles.find(h => h.holeNumber === currentHole);
-                        return holeData ? (
-                          <div className="text-xs text-muted-foreground">
-                            Par {holeData.par} | HCP {holeData.handicap}
-                          </div>
-                        ) : null;
-                      })()}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={currentHole === 18}
-                      onClick={() => setCurrentHole(h => Math.min(18, h + 1))}
-                      data-testid="button-next-hole"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </Button>
-                  </div>
+                  <h4 className="font-semibold text-lg">Scorecards</h4>
                 </div>
 
                 {(() => {
@@ -767,18 +745,14 @@ export default function RyderCupEvent() {
                     return <p className="text-sm text-muted-foreground">No matches for this day</p>;
                   }
 
-                  const currentHoleData = courseHoles.find(h => h.holeNumber === currentHole);
-                  const holePar = currentHoleData?.par || 4;
-                  const holeHcp = currentHoleData?.handicap || currentHole;
-
                   const getScoreColor = (score: number | null, par: number): string => {
-                    if (score === null) return "text-muted-foreground";
+                    if (score === null) return "";
                     const diff = score - par;
-                    if (diff <= -2) return "text-yellow-500";
-                    if (diff === -1) return "text-red-500";
-                    if (diff === 0) return "text-foreground";
-                    if (diff === 1) return "text-blue-500";
-                    return "text-blue-700";
+                    if (diff <= -2) return "bg-yellow-400 text-yellow-950";
+                    if (diff === -1) return "bg-red-500 text-white";
+                    if (diff === 0) return "";
+                    if (diff === 1) return "bg-blue-500 text-white";
+                    return "bg-blue-700 text-white";
                   };
 
                   const calculateCourseHandicap = (handicapIndex: number | null, tee: CourseTee | undefined): number | null => {
@@ -818,35 +792,140 @@ export default function RyderCupEvent() {
                     return playerNumber === 1 ? scoreEntry?.player1Strokes ?? null : scoreEntry?.player2Strokes ?? null;
                   };
 
-                  const handleScoreClick = (sideId: number, playerNumber: 1 | 2, currentScore: number | null) => {
+                  const handleScoreClick = (sideId: number, playerNumber: 1 | 2, hole: number, currentScore: number | null) => {
                     setEditScoreValue(currentScore?.toString() || "");
-                    setEditingScore({ sideId, playerNumber });
+                    setEditingScore({ sideId, playerNumber, hole });
                   };
 
-                  const handleScoreSubmit = async (side: RyderCupPairingSideWithScores) => {
+                  const handleScoreSubmit = async (side: RyderCupPairingSideWithScores, hole: number) => {
                     if (!editingScore) return;
                     const strokes = editScoreValue ? parseInt(editScoreValue) : null;
                     if (editScoreValue && (isNaN(strokes!) || strokes! < 1 || strokes! > 15)) {
                       toast({ title: "Invalid score", description: "Enter 1-15", variant: "destructive" });
                       return;
                     }
-                    const existingScore = side.scores.find(s => s.holeNumber === currentHole);
+                    const existingScore = side.scores.find(s => s.holeNumber === hole);
                     const player1Strokes = editingScore.playerNumber === 1 ? strokes : (existingScore?.player1Strokes ?? null);
                     const player2Strokes = editingScore.playerNumber === 2 ? strokes : (existingScore?.player2Strokes ?? null);
                     await saveScoresMutation.mutateAsync({
                       sideId: side.id,
-                      scores: [{ holeNumber: currentHole, player1Strokes, player2Strokes }],
+                      scores: [{ holeNumber: hole, player1Strokes, player2Strokes }],
                     });
                     setEditingScore(null);
                     setEditScoreValue("");
                   };
 
-                  const handleKeyDown = (e: React.KeyboardEvent, side: RyderCupPairingSideWithScores) => {
-                    if (e.key === "Enter") handleScoreSubmit(side);
+                  const handleKeyDown = (e: React.KeyboardEvent, side: RyderCupPairingSideWithScores, hole: number) => {
+                    if (e.key === "Enter") handleScoreSubmit(side, hole);
                     else if (e.key === "Escape") {
                       setEditingScore(null);
                       setEditScoreValue("");
                     }
+                  };
+
+                  const calculateTotals = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2) => {
+                    let front9 = 0, back9 = 0, front9Count = 0, back9Count = 0;
+                    for (let hole = 1; hole <= 9; hole++) {
+                      const score = getPlayerScore(side, playerNumber, hole);
+                      if (score !== null) { front9 += score; front9Count++; }
+                    }
+                    for (let hole = 10; hole <= 18; hole++) {
+                      const score = getPlayerScore(side, playerNumber, hole);
+                      if (score !== null) { back9 += score; back9Count++; }
+                    }
+                    return {
+                      front9: front9Count === 9 ? front9 : null,
+                      back9: back9Count === 9 ? back9 : null,
+                      total: front9Count === 9 && back9Count === 9 ? front9 + back9 : null,
+                    };
+                  };
+
+                  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, pairing: typeof sortedPairings[0]) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const sideA = pairing.sides[0];
+                    const sideB = pairing.sides[1];
+                    const playerNames = [
+                      sideA.player1Name,
+                      sideA.player2Name,
+                      sideB.player1Name,
+                      sideB.player2Name,
+                    ].filter((n): n is string => !!n);
+
+                    const reader = new FileReader();
+                    reader.onloadend = async () => {
+                      const base64 = reader.result as string;
+                      try {
+                        const result = await scanScorecard.mutateAsync({
+                          imageBase64: base64,
+                          playerNames,
+                          courseName: currentDay?.courseName || event?.courseName || "",
+                        });
+                        if (result.success && result.scores.length > 0) {
+                          setScannedScores(result.scores);
+                          const editable: Record<string, Record<number, string>> = {};
+                          const mappings: Record<string, { sideId: number; playerNumber: 1 | 2 } | null> = {};
+                          result.scores.forEach(ps => {
+                            editable[ps.playerName] = {};
+                            ps.holes.forEach(h => {
+                              if (h.holeNumber >= 1 && h.holeNumber <= 18) {
+                                editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
+                              }
+                            });
+                            const matchedSideA1 = sideA.player1Name?.toLowerCase() === ps.playerName.toLowerCase();
+                            const matchedSideA2 = sideA.player2Name?.toLowerCase() === ps.playerName.toLowerCase();
+                            const matchedSideB1 = sideB.player1Name?.toLowerCase() === ps.playerName.toLowerCase();
+                            const matchedSideB2 = sideB.player2Name?.toLowerCase() === ps.playerName.toLowerCase();
+                            if (matchedSideA1) mappings[ps.playerName] = { sideId: sideA.id, playerNumber: 1 };
+                            else if (matchedSideA2) mappings[ps.playerName] = { sideId: sideA.id, playerNumber: 2 };
+                            else if (matchedSideB1) mappings[ps.playerName] = { sideId: sideB.id, playerNumber: 1 };
+                            else if (matchedSideB2) mappings[ps.playerName] = { sideId: sideB.id, playerNumber: 2 };
+                            else mappings[ps.playerName] = null;
+                          });
+                          setEditableScores(editable);
+                          setPlayerMappings(mappings);
+                          setScanningPairingId(pairing.id);
+                          setShowScanModal(true);
+                        } else {
+                          toast({ variant: "destructive", title: "Scan Failed", description: "Could not extract scores from the image." });
+                        }
+                      } catch (err) {
+                        toast({ variant: "destructive", title: "Scan Error", description: err instanceof Error ? err.message : "Failed to process scorecard" });
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                    e.target.value = '';
+                  };
+
+                  const handleConfirmScannedScores = async () => {
+                    let successCount = 0;
+                    for (const [scannedName, mapping] of Object.entries(playerMappings)) {
+                      if (!mapping) continue;
+                      const scores = editableScores[scannedName] || {};
+                      const scoreEntries: { holeNumber: number; player1Strokes: number | null; player2Strokes: number | null }[] = [];
+                      for (let hole = 1; hole <= 18; hole++) {
+                        const strokes = parseInt(scores[hole] || '');
+                        if (!isNaN(strokes) && strokes > 0) {
+                          scoreEntries.push({
+                            holeNumber: hole,
+                            player1Strokes: mapping.playerNumber === 1 ? strokes : null,
+                            player2Strokes: mapping.playerNumber === 2 ? strokes : null,
+                          });
+                        }
+                      }
+                      if (scoreEntries.length > 0) {
+                        try {
+                          await saveScoresMutation.mutateAsync({ sideId: mapping.sideId, scores: scoreEntries });
+                          successCount += scoreEntries.length;
+                        } catch { /* ignore */ }
+                      }
+                    }
+                    setShowScanModal(false);
+                    setScannedScores([]);
+                    setEditableScores({});
+                    setPlayerMappings({});
+                    setScanningPairingId(null);
+                    if (successCount > 0) toast({ title: "Scores Saved", description: `${successCount} scores saved successfully.` });
                   };
 
                   return (
@@ -864,65 +943,308 @@ export default function RyderCupEvent() {
                         ].filter((h): h is number => h !== null);
                         const lowHandicap = allHandicaps.length > 0 ? Math.min(...allHandicaps) : 0;
 
-                        const renderPlayer = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2) => {
+                        const isExpanded = expandedPairingId === pairing.id;
+
+                        const renderPlayerRow = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2, teamColor?: string) => {
                           const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
                           if (!playerName) return null;
-                          const score = getPlayerScore(side, playerNumber, currentHole);
                           const courseHcp = getPlayerCourseHandicap(side, playerNumber);
-                          const strokes = courseHcp !== null ? getStrokesOnHole(courseHcp, lowHandicap, holeHcp) : 0;
-                          const isEditing = editingScore?.sideId === side.id && editingScore?.playerNumber === playerNumber;
+                          const totals = calculateTotals(side, playerNumber);
 
                           return (
-                            <div key={`${side.id}-${playerNumber}`} className="flex items-center justify-between py-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm">{playerName.split(" ")[0]}</span>
-                                {strokes > 0 && (
-                                  <div className="flex gap-0.5">
-                                    {Array.from({ length: strokes }, (_, i) => (
-                                      <Circle key={i} className="w-2 h-2 fill-primary text-primary" />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              <Input
-                                type="text"
-                                inputMode={isEditing ? "numeric" : "none"}
-                                pattern="[0-9]*"
-                                maxLength={2}
-                                readOnly={!isEditing}
-                                value={isEditing ? editScoreValue : (score?.toString() ?? "-")}
-                                onChange={(e) => setEditScoreValue(e.target.value)}
-                                onBlur={() => isEditing && handleScoreSubmit(side)}
-                                onKeyDown={(e) => isEditing && handleKeyDown(e, side)}
-                                onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, score)}
-                                autoFocus={isEditing}
-                                className={`w-12 text-center font-bold cursor-pointer ${isEditing ? "" : getScoreColor(score, holePar)}`}
-                                data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}`}
-                              />
-                            </div>
+                            <tr key={`${side.id}-${playerNumber}`} className="border-b last:border-b-0">
+                              <td className="py-1 px-2 font-medium text-sm sticky left-0 bg-card z-10" style={{ borderLeft: teamColor ? `3px solid ${teamColor}` : undefined }}>
+                                <div className="flex items-center gap-1">
+                                  <span className="truncate max-w-20">{playerName.split(" ")[0]}</span>
+                                  {courseHcp !== null && <span className="text-xs text-muted-foreground">({courseHcp})</span>}
+                                </div>
+                              </td>
+                              {[1,2,3,4,5,6,7,8,9].map(hole => {
+                                const holeData = courseHoles.find(h => h.holeNumber === hole);
+                                const holePar = holeData?.par || 4;
+                                const holeHcp = holeData?.handicap || hole;
+                                const score = getPlayerScore(side, playerNumber, hole);
+                                const strokes = courseHcp !== null ? getStrokesOnHole(courseHcp, lowHandicap, holeHcp) : 0;
+                                const isEditing = editingScore?.sideId === side.id && editingScore?.playerNumber === playerNumber && editingScore?.hole === hole;
+                                return (
+                                  <td key={hole} className="text-center p-0 relative">
+                                    {strokes > 0 && (
+                                      <div className="absolute top-0 right-0 flex gap-px p-px">
+                                        {Array.from({ length: strokes }, (_, i) => (
+                                          <Circle key={i} className="w-1.5 h-1.5 fill-primary text-primary" />
+                                        ))}
+                                      </div>
+                                    )}
+                                    <input
+                                      type="text"
+                                      inputMode={isEditing ? "numeric" : "none"}
+                                      pattern="[0-9]*"
+                                      maxLength={2}
+                                      readOnly={!isEditing}
+                                      value={isEditing ? editScoreValue : (score?.toString() ?? "")}
+                                      onChange={(e) => setEditScoreValue(e.target.value)}
+                                      onBlur={() => isEditing && handleScoreSubmit(side, hole)}
+                                      onKeyDown={(e) => isEditing && handleKeyDown(e, side, hole)}
+                                      onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, hole, score)}
+                                      autoFocus={isEditing}
+                                      className={`w-8 h-7 text-center text-sm font-medium border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded ${getScoreColor(score, holePar)}`}
+                                      data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}-${hole}`}
+                                    />
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center text-sm font-bold bg-muted/50 px-2">{totals.front9 ?? "-"}</td>
+                              {[10,11,12,13,14,15,16,17,18].map(hole => {
+                                const holeData = courseHoles.find(h => h.holeNumber === hole);
+                                const holePar = holeData?.par || 4;
+                                const holeHcp = holeData?.handicap || hole;
+                                const score = getPlayerScore(side, playerNumber, hole);
+                                const strokes = courseHcp !== null ? getStrokesOnHole(courseHcp, lowHandicap, holeHcp) : 0;
+                                const isEditing = editingScore?.sideId === side.id && editingScore?.playerNumber === playerNumber && editingScore?.hole === hole;
+                                return (
+                                  <td key={hole} className="text-center p-0 relative">
+                                    {strokes > 0 && (
+                                      <div className="absolute top-0 right-0 flex gap-px p-px">
+                                        {Array.from({ length: strokes }, (_, i) => (
+                                          <Circle key={i} className="w-1.5 h-1.5 fill-primary text-primary" />
+                                        ))}
+                                      </div>
+                                    )}
+                                    <input
+                                      type="text"
+                                      inputMode={isEditing ? "numeric" : "none"}
+                                      pattern="[0-9]*"
+                                      maxLength={2}
+                                      readOnly={!isEditing}
+                                      value={isEditing ? editScoreValue : (score?.toString() ?? "")}
+                                      onChange={(e) => setEditScoreValue(e.target.value)}
+                                      onBlur={() => isEditing && handleScoreSubmit(side, hole)}
+                                      onKeyDown={(e) => isEditing && handleKeyDown(e, side, hole)}
+                                      onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, hole, score)}
+                                      autoFocus={isEditing}
+                                      className={`w-8 h-7 text-center text-sm font-medium border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded ${getScoreColor(score, holePar)}`}
+                                      data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}-${hole}`}
+                                    />
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center text-sm font-bold bg-muted/50 px-2">{totals.back9 ?? "-"}</td>
+                              <td className="text-center text-sm font-bold bg-primary/10 text-primary px-2">{totals.total ?? "-"}</td>
+                            </tr>
                           );
                         };
 
+                        const teamAColor = event?.teams.find(t => t.id === sideA.teamId)?.color;
+                        const teamBColor = event?.teams.find(t => t.id === sideB.teamId)?.color;
+
                         return (
                           <Card key={pairing.id} data-testid={`scorecard-pairing-${pairing.id}`}>
-                            <CardContent className="py-3">
-                              <div className="text-xs text-muted-foreground mb-2">
-                                Match {pairing.matchNumber} - {pairing.matchFormat}
-                              </div>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1 border-r pr-4">
-                                  {renderPlayer(sideA, 1)}
-                                  {sideA.player2Name && renderPlayer(sideA, 2)}
+                            <CardHeader className="py-2 px-3 cursor-pointer" onClick={() => setExpandedPairingId(isExpanded ? null : pairing.id)}>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline">Match {pairing.matchNumber}</Badge>
+                                  <span className="text-sm text-muted-foreground">{pairing.matchFormat}</span>
                                 </div>
-                                <div className="space-y-1 pl-4">
-                                  {renderPlayer(sideB, 1)}
-                                  {sideB.player2Name && renderPlayer(sideB, 2)}
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    className="hidden"
+                                    id={`scan-input-${pairing.id}`}
+                                    onChange={(e) => handleFileSelect(e, pairing)}
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      document.getElementById(`scan-input-${pairing.id}`)?.click();
+                                    }}
+                                    disabled={scanScorecard.isPending}
+                                    data-testid={`button-scan-${pairing.id}`}
+                                  >
+                                    {scanScorecard.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                                  </Button>
+                                  <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
                                 </div>
                               </div>
-                            </CardContent>
+                              <div className="flex items-center gap-2 mt-1 text-sm">
+                                <span style={{ color: teamAColor || undefined }}>{sideA.player1Name?.split(" ")[0]}{sideA.player2Name ? ` / ${sideA.player2Name.split(" ")[0]}` : ""}</span>
+                                <span className="text-muted-foreground">vs</span>
+                                <span style={{ color: teamBColor || undefined }}>{sideB.player1Name?.split(" ")[0]}{sideB.player2Name ? ` / ${sideB.player2Name.split(" ")[0]}` : ""}</span>
+                              </div>
+                            </CardHeader>
+                            {isExpanded && (
+                              <CardContent className="pt-0 pb-3 px-0">
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-xs border-collapse">
+                                    <thead>
+                                      <tr className="bg-muted/30">
+                                        <th className="py-1 px-2 text-left sticky left-0 bg-muted/30 z-10">Hole</th>
+                                        {[1,2,3,4,5,6,7,8,9].map(h => <th key={h} className="w-8 text-center">{h}</th>)}
+                                        <th className="text-center px-2 bg-muted/50">OUT</th>
+                                        {[10,11,12,13,14,15,16,17,18].map(h => <th key={h} className="w-8 text-center">{h}</th>)}
+                                        <th className="text-center px-2 bg-muted/50">IN</th>
+                                        <th className="text-center px-2 bg-primary/10">TOT</th>
+                                      </tr>
+                                      <tr className="text-muted-foreground border-b">
+                                        <td className="py-1 px-2 sticky left-0 bg-card z-10">Par</td>
+                                        {[1,2,3,4,5,6,7,8,9].map(h => {
+                                          const holeData = courseHoles.find(hole => hole.holeNumber === h);
+                                          return <td key={h} className="text-center">{holeData?.par ?? "-"}</td>;
+                                        })}
+                                        <td className="text-center bg-muted/50">{courseHoles.filter(h => h.holeNumber <= 9).reduce((sum, h) => sum + h.par, 0) || "-"}</td>
+                                        {[10,11,12,13,14,15,16,17,18].map(h => {
+                                          const holeData = courseHoles.find(hole => hole.holeNumber === h);
+                                          return <td key={h} className="text-center">{holeData?.par ?? "-"}</td>;
+                                        })}
+                                        <td className="text-center bg-muted/50">{courseHoles.filter(h => h.holeNumber > 9).reduce((sum, h) => sum + h.par, 0) || "-"}</td>
+                                        <td className="text-center bg-primary/10">{courseHoles.reduce((sum, h) => sum + h.par, 0) || "-"}</td>
+                                      </tr>
+                                      <tr className="text-muted-foreground text-[10px] border-b">
+                                        <td className="py-0.5 px-2 sticky left-0 bg-card z-10">HCP</td>
+                                        {[1,2,3,4,5,6,7,8,9].map(h => {
+                                          const holeData = courseHoles.find(hole => hole.holeNumber === h);
+                                          return <td key={h} className="text-center">{holeData?.handicap ?? "-"}</td>;
+                                        })}
+                                        <td className="bg-muted/50"></td>
+                                        {[10,11,12,13,14,15,16,17,18].map(h => {
+                                          const holeData = courseHoles.find(hole => hole.holeNumber === h);
+                                          return <td key={h} className="text-center">{holeData?.handicap ?? "-"}</td>;
+                                        })}
+                                        <td className="bg-muted/50"></td>
+                                        <td className="bg-primary/10"></td>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {renderPlayerRow(sideA, 1, teamAColor || undefined)}
+                                      {sideA.player2Name && renderPlayerRow(sideA, 2, teamAColor || undefined)}
+                                      {renderPlayerRow(sideB, 1, teamBColor || undefined)}
+                                      {sideB.player2Name && renderPlayerRow(sideB, 2, teamBColor || undefined)}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </CardContent>
+                            )}
                           </Card>
                         );
                       })}
+
+                      {/* Scan Review Modal */}
+                      <Dialog open={showScanModal} onOpenChange={setShowScanModal}>
+                        <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+                          <DialogHeader>
+                            <DialogTitle>Review Scanned Scores</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-6">
+                            {scannedScores.map((ps) => {
+                              const mapping = playerMappings[ps.playerName];
+                              const totals = (() => {
+                                const scores = editableScores[ps.playerName] || {};
+                                let f9 = 0, b9 = 0, f9c = 0, b9c = 0;
+                                for (let h = 1; h <= 9; h++) { const v = parseInt(scores[h] || ''); if (!isNaN(v) && v > 0) { f9 += v; f9c++; } }
+                                for (let h = 10; h <= 18; h++) { const v = parseInt(scores[h] || ''); if (!isNaN(v) && v > 0) { b9 += v; b9c++; } }
+                                return { front9: f9c === 9 ? f9 : null, back9: b9c === 9 ? b9 : null, total: f9c === 9 && b9c === 9 ? f9 + b9 : null };
+                              })();
+                              return (
+                                <div key={ps.playerName} className="space-y-3 p-3 border rounded-lg">
+                                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm text-muted-foreground">Scanned:</span>
+                                      <span className="font-semibold">{ps.playerName}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {mapping ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <AlertCircle className="w-4 h-4 text-yellow-500" />}
+                                      <span className="text-sm">{mapping ? "Matched" : "No match"}</span>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-10 gap-1">
+                                    {[1,2,3,4,5,6,7,8,9].map(hole => {
+                                      const holeData = ps.holes.find(h => h.holeNumber === hole);
+                                      const value = editableScores[ps.playerName]?.[hole] || '';
+                                      return (
+                                        <div key={hole} className="text-center">
+                                          <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                                          <div className="relative">
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              value={value}
+                                              onChange={(e) => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                setEditableScores(prev => ({ ...prev, [ps.playerName]: { ...prev[ps.playerName], [hole]: val } }));
+                                              }}
+                                              className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                              data-testid={`input-scan-${ps.playerName}-${hole}`}
+                                            />
+                                            {holeData?.confidence && (
+                                              <div className="absolute -top-1 -right-1">
+                                                {holeData.confidence === 'high' ? <CheckCircle2 className="w-3 h-3 text-green-500" /> :
+                                                 holeData.confidence === 'medium' ? <AlertCircle className="w-3 h-3 text-yellow-500" /> :
+                                                 <AlertCircle className="w-3 h-3 text-red-500" />}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="text-center">
+                                      <div className="text-xs text-muted-foreground mb-1">OUT</div>
+                                      <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">{totals.front9 ?? '-'}</div>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-10 gap-1">
+                                    {[10,11,12,13,14,15,16,17,18].map(hole => {
+                                      const holeData = ps.holes.find(h => h.holeNumber === hole);
+                                      const value = editableScores[ps.playerName]?.[hole] || '';
+                                      return (
+                                        <div key={hole} className="text-center">
+                                          <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                                          <div className="relative">
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              value={value}
+                                              onChange={(e) => {
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                setEditableScores(prev => ({ ...prev, [ps.playerName]: { ...prev[ps.playerName], [hole]: val } }));
+                                              }}
+                                              className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                              data-testid={`input-scan-${ps.playerName}-${hole}`}
+                                            />
+                                            {holeData?.confidence && (
+                                              <div className="absolute -top-1 -right-1">
+                                                {holeData.confidence === 'high' ? <CheckCircle2 className="w-3 h-3 text-green-500" /> :
+                                                 holeData.confidence === 'medium' ? <AlertCircle className="w-3 h-3 text-yellow-500" /> :
+                                                 <AlertCircle className="w-3 h-3 text-red-500" />}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="text-center">
+                                      <div className="text-xs text-muted-foreground mb-1">IN</div>
+                                      <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">{totals.back9 ?? '-'}</div>
+                                    </div>
+                                  </div>
+                                  <div className="flex justify-end">
+                                    <div className="text-center">
+                                      <div className="text-xs text-muted-foreground mb-1">TOTAL</div>
+                                      <div className="h-8 w-12 flex items-center justify-center text-sm font-bold bg-primary/10 text-primary rounded">{totals.total ?? '-'}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex justify-end gap-2 mt-4">
+                            <Button variant="outline" onClick={() => { setShowScanModal(false); setScannedScores([]); setEditableScores({}); setPlayerMappings({}); }} data-testid="button-cancel-scan">Cancel</Button>
+                            <Button onClick={handleConfirmScannedScores} data-testid="button-confirm-scan">Confirm Scores</Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   );
                 })()}
