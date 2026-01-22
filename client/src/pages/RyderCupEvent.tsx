@@ -966,13 +966,13 @@ export default function RyderCupEvent() {
                   }
 
                   const getScoreColor = (score: number | null, par: number): string => {
-                    if (score === null) return "";
+                    if (score === null) return "text-foreground";
                     const diff = score - par;
-                    if (diff <= -2) return "bg-yellow-400 text-yellow-950";
-                    if (diff === -1) return "bg-red-500 text-white";
-                    if (diff === 0) return "";
-                    if (diff === 1) return "bg-blue-500 text-white";
-                    return "bg-blue-700 text-white";
+                    if (diff <= -2) return "text-yellow-600 font-bold";
+                    if (diff === -1) return "text-red-600 font-bold";
+                    if (diff === 0) return "text-foreground";
+                    if (diff === 1) return "text-blue-600 font-bold";
+                    return "text-blue-800 font-bold";
                   };
 
                   const calculateCourseHandicap = (handicapIndex: number | null, tee: CourseTee | undefined): number | null => {
