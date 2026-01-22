@@ -1819,6 +1819,7 @@ Rules:
       // Process each day and pairing
       for (const day of fullEvent.days) {
         const courseHoles = day.courseId ? await storage.getCourseHoles(day.courseId) : [];
+        const courseTees = day.courseId ? await storage.getCourseTees(day.courseId) : [];
         
         for (const pairing of day.pairings) {
           if (pairing.sides.length !== 2) continue;
@@ -1826,13 +1827,15 @@ Rules:
           const sideA = pairing.sides[0];
           const sideB = pairing.sides[1];
           
-          // Calculate course handicaps for each player
+          // Calculate course handicaps for each player using tee slope
           const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
             const hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
-            if (hcpTenths !== null && hcpTenths !== undefined) {
-              return Math.round(hcpTenths / 10);
-            }
-            return null;
+            const teeId = playerNum === 1 ? s.player1TeeId : s.player2TeeId;
+            if (hcpTenths === null || hcpTenths === undefined) return null;
+            const handicapIndex = hcpTenths / 10;
+            const tee = teeId ? courseTees.find(t => t.id === teeId) : courseTees[0];
+            const slopeRating = tee?.slopeRating || 113;
+            return Math.round(handicapIndex * (slopeRating / 113));
           };
           
           const courseHcps = [
@@ -2215,14 +2218,17 @@ Rules:
           const sideA = scorecard.sides[0];
           const sideB = scorecard.sides[1];
           const courseHoles = scorecard.courseHoles;
+          const courseTees = scorecard.courseTees;
           
-          // Calculate course handicaps for each player
+          // Calculate course handicaps for each player using tee slope
           const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
             const hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
-            if (hcpTenths !== null && hcpTenths !== undefined) {
-              return Math.round(hcpTenths / 10);
-            }
-            return null;
+            const teeId = playerNum === 1 ? s.player1TeeId : s.player2TeeId;
+            if (hcpTenths === null || hcpTenths === undefined) return null;
+            const handicapIndex = hcpTenths / 10;
+            const tee = teeId ? courseTees.find(t => t.id === teeId) : courseTees[0];
+            const slopeRating = tee?.slopeRating || 113;
+            return Math.round(handicapIndex * (slopeRating / 113));
           };
           
           // Get all course handicaps

@@ -1286,6 +1286,7 @@ export class DatabaseStorage implements IStorage {
     sides: (RyderCupPairingSide & { scores: RyderCupPairingScore[] })[];
     course: Course | null;
     courseHoles: CourseHole[];
+    courseTees: CourseTee[];
     eventId: number | null;
   } | null> {
     const pairing = await this.getRyderCupPairing(pairingId);
@@ -1306,16 +1307,18 @@ export class DatabaseStorage implements IStorage {
     const day = await this.getRyderCupDay(pairing.dayId);
     let course: Course | null = null;
     let courseHolesData: CourseHole[] = [];
+    let courseTeesData: CourseTee[] = [];
     let eventId: number | null = null;
     if (day) {
       eventId = day.eventId;
       if (day.courseId) {
         course = await this.getCourse(day.courseId) || null;
         courseHolesData = await this.getCourseHoles(day.courseId);
+        courseTeesData = await this.getCourseTees(day.courseId);
       }
     }
 
-    return { pairing, sides: sidesWithScores, course, courseHoles: courseHolesData, eventId };
+    return { pairing, sides: sidesWithScores, course, courseHoles: courseHolesData, courseTees: courseTeesData, eventId };
   }
 
   async getRyderCupEventFull(id: number): Promise<RyderCupEventResponse | undefined> {
