@@ -1247,7 +1247,7 @@ export class DatabaseStorage implements IStorage {
     sideId: number,
     scores: { holeNumber: number; player1Strokes: number | null; player2Strokes: number | null }[]
   ): Promise<void> {
-    // Upsert scores for each hole
+    // Upsert scores for each hole - preserve existing scores when only one player is being updated
     for (const score of scores) {
       const [existing] = await db.select()
         .from(ryderCupPairingScores)
@@ -1257,12 +1257,19 @@ export class DatabaseStorage implements IStorage {
         ));
       
       if (existing) {
-        await db.update(ryderCupPairingScores)
-          .set({
-            player1Strokes: score.player1Strokes,
-            player2Strokes: score.player2Strokes,
-          })
-          .where(eq(ryderCupPairingScores.id, existing.id));
+        // Only update the fields that are provided (not null), preserve existing values otherwise
+        const updateData: { player1Strokes?: number | null; player2Strokes?: number | null } = {};
+        if (score.player1Strokes !== null) {
+          updateData.player1Strokes = score.player1Strokes;
+        }
+        if (score.player2Strokes !== null) {
+          updateData.player2Strokes = score.player2Strokes;
+        }
+        if (Object.keys(updateData).length > 0) {
+          await db.update(ryderCupPairingScores)
+            .set(updateData)
+            .where(eq(ryderCupPairingScores.id, existing.id));
+        }
       } else {
         await db.insert(ryderCupPairingScores).values({
           sideId,
