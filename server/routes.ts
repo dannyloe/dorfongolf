@@ -2246,6 +2246,89 @@ Rules:
     }
   });
 
+  // Ryder Cup Transaction endpoints
+  app.get(api.ryderCup.listTransactions.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    try {
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      const transactions = await storage.getRyderCupTransactions(eventId);
+      res.json(transactions.map(t => ({
+        ...t,
+        createdAt: t.createdAt?.toISOString() || null,
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.ryderCup.createTransaction.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      // Only event creator or admin can add transactions
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can add transactions" });
+      }
+      
+      const input = api.ryderCup.createTransaction.input.parse(req.body);
+      const transaction = await storage.createRyderCupTransaction(
+        eventId,
+        input.payerName,
+        input.description,
+        input.amount,
+        input.splitPlayerNames
+      );
+      
+      res.status(201).json(transaction);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.ryderCup.deleteTransaction.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    const transactionId = parseInt(req.params.transactionId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      // Only event creator or admin can delete transactions
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can delete transactions" });
+      }
+      
+      const transaction = await storage.getRyderCupTransaction(transactionId);
+      if (!transaction || transaction.eventId !== eventId) {
+        return res.status(404).json({ message: "Transaction not found" });
+      }
+      
+      await storage.deleteRyderCupTransaction(transactionId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Profile endpoints
   app.get(api.profile.get.path, isAuthenticated, async (req, res) => {
     try {

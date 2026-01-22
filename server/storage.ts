@@ -2,7 +2,7 @@ import { db } from "./db";
 import { 
   matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   verificationCodes, notificationPreferences, messages,
-  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores,
+  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -17,6 +17,7 @@ import {
   type VerificationCode, type NotificationPreferences, type Message,
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
+  type RyderCupTransaction, type RyderCupTransactionSplit,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
@@ -1932,6 +1933,68 @@ export class DatabaseStorage implements IStorage {
         phone: u.phone!,
         name: u.presetPlayerName || u.firstName || 'User',
       }));
+  }
+
+  // Ryder Cup Transaction methods
+  async getRyderCupTransactions(eventId: number): Promise<(RyderCupTransaction & { splits: RyderCupTransactionSplit[] })[]> {
+    const transactions = await db.select().from(ryderCupTransactions)
+      .where(eq(ryderCupTransactions.eventId, eventId))
+      .orderBy(desc(ryderCupTransactions.createdAt));
+    
+    const result: (RyderCupTransaction & { splits: RyderCupTransactionSplit[] })[] = [];
+    
+    for (const transaction of transactions) {
+      const splits = await db.select().from(ryderCupTransactionSplits)
+        .where(eq(ryderCupTransactionSplits.transactionId, transaction.id));
+      result.push({ ...transaction, splits });
+    }
+    
+    return result;
+  }
+
+  async createRyderCupTransaction(
+    eventId: number,
+    payerName: string,
+    description: string,
+    amount: number,
+    splitPlayerNames: string[]
+  ): Promise<RyderCupTransaction> {
+    const [transaction] = await db.insert(ryderCupTransactions)
+      .values({ eventId, payerName, description, amount })
+      .returning();
+    
+    // Calculate split amount (evenly divided)
+    const splitAmount = Math.floor(amount / splitPlayerNames.length);
+    const remainder = amount % splitPlayerNames.length;
+    
+    // Create splits for each player
+    for (let i = 0; i < splitPlayerNames.length; i++) {
+      const playerAmount = splitAmount + (i < remainder ? 1 : 0); // Distribute remainder
+      await db.insert(ryderCupTransactionSplits)
+        .values({
+          transactionId: transaction.id,
+          playerName: splitPlayerNames[i],
+          amount: playerAmount,
+        });
+    }
+    
+    return transaction;
+  }
+
+  async deleteRyderCupTransaction(transactionId: number): Promise<void> {
+    // Delete splits first (child records)
+    await db.delete(ryderCupTransactionSplits)
+      .where(eq(ryderCupTransactionSplits.transactionId, transactionId));
+    
+    // Delete transaction
+    await db.delete(ryderCupTransactions)
+      .where(eq(ryderCupTransactions.id, transactionId));
+  }
+
+  async getRyderCupTransaction(transactionId: number): Promise<RyderCupTransaction | null> {
+    const [transaction] = await db.select().from(ryderCupTransactions)
+      .where(eq(ryderCupTransactions.id, transactionId));
+    return transaction || null;
   }
 }
 
