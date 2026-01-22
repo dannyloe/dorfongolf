@@ -842,8 +842,8 @@ export default function RyderCupEvent() {
                                     {isEditingThis ? (
                                       <div className="flex items-center gap-1">
                                         <Input
-                                          type="number"
-                                          step="1"
+                                          type="text"
+                                          inputMode="decimal"
                                           placeholder="CH"
                                           value={editingSideHandicapValue}
                                           onChange={(e) => setEditingSideHandicapValue(e.target.value)}
@@ -938,8 +938,8 @@ export default function RyderCupEvent() {
                                     {isEditingThis ? (
                                       <div className="flex items-center gap-1">
                                         <Input
-                                          type="number"
-                                          step="1"
+                                          type="text"
+                                          inputMode="decimal"
                                           placeholder="CH"
                                           value={editingSideHandicapValue}
                                           onChange={(e) => setEditingSideHandicapValue(e.target.value)}
@@ -1827,8 +1827,8 @@ export default function RyderCupEvent() {
                       {editingMemberId === member.id ? (
                         <div className="flex items-center gap-1">
                           <Input
-                            type="number"
-                            step="0.1"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="HCP"
                             value={editingMemberHandicap}
                             onChange={(e) => setEditingMemberHandicap(e.target.value)}
@@ -1903,8 +1903,8 @@ export default function RyderCupEvent() {
                       {editingMemberId === member.id ? (
                         <div className="flex items-center gap-1">
                           <Input
-                            type="number"
-                            step="0.1"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="HCP"
                             value={editingMemberHandicap}
                             onChange={(e) => setEditingMemberHandicap(e.target.value)}
