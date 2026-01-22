@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -171,6 +171,19 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update team name", variant: "destructive" });
+    },
+  });
+
+  const recalculateResultsMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/ryder-cup/${id}/recalculate-results`);
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Results recalculated", description: `Updated ${data.updatedCount || 0} matches` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to recalculate results", variant: "destructive" });
     },
   });
 
@@ -544,6 +557,18 @@ export default function RyderCupEvent() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
+                {isCreatorOrAdmin && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => recalculateResultsMutation.mutate()}
+                    disabled={recalculateResultsMutation.isPending}
+                    data-testid="button-recalculate-results"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-1 ${recalculateResultsMutation.isPending ? 'animate-spin' : ''}`} />
+                    Recalculate Results
+                  </Button>
+                )}
                 {editingDayCourse === currentDay.id ? (
                   <div className="flex items-center gap-2">
                     <Select
@@ -995,11 +1020,12 @@ export default function RyderCupEvent() {
                           <div className="ml-4 flex items-center gap-2">
                             <Link href={`/ryder-cup/pairing/${pairing.id}/scorecard`}>
                               <Button
-                                size="icon"
-                                variant="ghost"
+                                size="sm"
+                                variant="outline"
                                 data-testid={`button-scorecard-${pairing.id}`}
                               >
-                                <ClipboardList className="w-4 h-4" />
+                                <ClipboardList className="w-4 h-4 mr-1" />
+                                Scores
                               </Button>
                             </Link>
                             {pairing.result ? (

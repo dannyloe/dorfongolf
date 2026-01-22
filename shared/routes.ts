@@ -30,6 +30,9 @@ export const errorSchemas = {
   notFound: z.object({
     message: z.string(),
   }),
+  forbidden: z.object({
+    message: z.string(),
+  }),
   internal: z.object({
     message: z.string(),
   }),
@@ -1034,6 +1037,15 @@ export const api = {
       responses: {
         200: z.any(),
         400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    recalculateResults: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/:eventId/recalculate-results',
+      responses: {
+        200: z.object({ updatedCount: z.number() }),
+        403: errorSchemas.forbidden,
         404: errorSchemas.notFound,
       },
     },

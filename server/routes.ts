@@ -1792,6 +1792,169 @@ Rules:
     }
   });
 
+  app.post(api.ryderCup.recalculateResults.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.eventId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can recalculate results" });
+      }
+      
+      // Get full event data
+      const fullEvent = await storage.getRyderCupEventFull(eventId);
+      if (!fullEvent) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      let updatedCount = 0;
+      
+      // Process each day and pairing
+      for (const day of fullEvent.days) {
+        const courseHoles = day.courseId ? await storage.getCourseHoles(day.courseId) : [];
+        
+        for (const pairing of day.pairings) {
+          if (pairing.sides.length !== 2) continue;
+          
+          const sideA = pairing.sides[0];
+          const sideB = pairing.sides[1];
+          
+          // Calculate course handicaps for each player
+          const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
+            const hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
+            if (hcpTenths !== null && hcpTenths !== undefined) {
+              return Math.round(hcpTenths / 10);
+            }
+            return null;
+          };
+          
+          const courseHcps = [
+            getPlayerCourseHcp(sideA, 1),
+            getPlayerCourseHcp(sideA, 2),
+            getPlayerCourseHcp(sideB, 1),
+            getPlayerCourseHcp(sideB, 2),
+          ].filter((h): h is number => h !== null);
+          
+          const lowHandicap = courseHcps.length > 0 ? Math.min(...courseHcps) : 0;
+          
+          const getStrokesOnHole = (courseHcp: number | null, holeHcp: number): number => {
+            if (courseHcp === null || !pairing.useNetScoring) return 0;
+            const relativeHcp = courseHcp - lowHandicap;
+            if (relativeHcp <= 0) return 0;
+            let strokes = 0;
+            if (holeHcp <= relativeHcp) strokes++;
+            if (relativeHcp > 18 && holeHcp <= (relativeHcp - 18)) strokes++;
+            return strokes;
+          };
+          
+          type HoleResult = { winner: 'A' | 'B' | null; complete: boolean };
+          const holeResults: HoleResult[] = [];
+          
+          for (let hole = 1; hole <= 18; hole++) {
+            const holeData = courseHoles.find(h => h.holeNumber === hole);
+            const holeHcp = holeData?.handicap || hole;
+            
+            const scoreA = sideA.scores.find(s => s.holeNumber === hole);
+            const scoreB = sideB.scores.find(s => s.holeNumber === hole);
+            
+            const getBestNet = (s: typeof sideA, score: typeof scoreA): number | null => {
+              if (!score) return null;
+              let best: number | null = null;
+              
+              if (score.player1Strokes !== null && s.player1Name) {
+                const courseHcp = getPlayerCourseHcp(s, 1);
+                const strokes = getStrokesOnHole(courseHcp, holeHcp);
+                const net = score.player1Strokes - strokes;
+                if (best === null || net < best) best = net;
+              }
+              if (score.player2Strokes !== null && s.player2Name) {
+                const courseHcp = getPlayerCourseHcp(s, 2);
+                const strokes = getStrokesOnHole(courseHcp, holeHcp);
+                const net = score.player2Strokes - strokes;
+                if (best === null || net < best) best = net;
+              }
+              return best;
+            };
+            
+            const bestA = getBestNet(sideA, scoreA);
+            const bestB = getBestNet(sideB, scoreB);
+            
+            let winner: 'A' | 'B' | null = null;
+            let complete = false;
+            
+            if (bestA !== null && bestB !== null) {
+              complete = true;
+              if (bestA < bestB) winner = 'A';
+              else if (bestB < bestA) winner = 'B';
+            }
+            
+            holeResults.push({ winner, complete });
+          }
+          
+          // Calculate running score
+          let score = 0;
+          let decidedOnHole: number | null = null;
+          let allHolesComplete = true;
+          
+          for (let hole = 1; hole <= 18; hole++) {
+            const result = holeResults[hole - 1];
+            
+            if (!result.complete) {
+              allHolesComplete = false;
+              break;
+            }
+            
+            if (result.winner === 'A') score++;
+            else if (result.winner === 'B') score--;
+            
+            const holesRemaining = 18 - hole;
+            const lead = Math.abs(score);
+            if (lead > holesRemaining) {
+              decidedOnHole = hole;
+              break;
+            }
+          }
+          
+          const isDecided = decidedOnHole !== null || (allHolesComplete && holeResults.every(r => r.complete));
+          
+          if (isDecided) {
+            let winningSideId: number | undefined = undefined;
+            let winningMargin: string | undefined = undefined;
+            
+            if (score > 0) {
+              winningSideId = sideA.id;
+            } else if (score < 0) {
+              winningSideId = sideB.id;
+            }
+            
+            const lead = Math.abs(score);
+            if (decidedOnHole !== null) {
+              const holesLeft = 18 - decidedOnHole;
+              winningMargin = String(lead) + "&" + String(holesLeft);
+            } else if (lead > 0) {
+              winningMargin = String(lead) + " up";
+            }
+            
+            await storage.recordPairingResult(pairing.id, { winningSideId, winningMargin });
+            updatedCount++;
+          }
+        }
+      }
+      
+      res.json({ updatedCount });
+    } catch (err) {
+      console.error("Recalculate results error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.ryderCup.recordSkin.path, isAuthenticated, async (req, res) => {
     const dayId = parseInt(req.params.dayId);
     try {
@@ -2051,7 +2214,7 @@ Rules:
         if (scorecard && scorecard.sides.length === 2) {
           const sideA = scorecard.sides[0];
           const sideB = scorecard.sides[1];
-          const courseHoles = scorecard.course?.holes || [];
+          const courseHoles = scorecard.courseHoles;
           
           // Calculate course handicaps for each player
           const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
