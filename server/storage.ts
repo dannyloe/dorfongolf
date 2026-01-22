@@ -1630,10 +1630,10 @@ export class DatabaseStorage implements IStorage {
           teamPoints[winningSide.teamId] += result.pointsAwarded;
         }
       } else {
-        // Tie - split points
+        // Tie - each team gets the halved points (pointsAwarded is already half the match value for ties)
         const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, p.id));
         for (const side of sides) {
-          teamPoints[side.teamId] += Math.floor(result.pointsAwarded / 2);
+          teamPoints[side.teamId] += result.pointsAwarded;
         }
       }
     }
