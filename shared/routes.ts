@@ -19,6 +19,8 @@ import {
   ryderCupPairingSides,
   ryderCupSkins,
   ryderCupDays,
+  ryderCupTransactions,
+  ryderCupTransactionSplits,
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -1172,6 +1174,52 @@ export const api = {
           sides: z.array(z.any()),
           course: z.any().nullable(),
         }),
+        404: errorSchemas.notFound,
+      },
+    },
+    listTransactions: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/:id/transactions',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          eventId: z.number(),
+          payerName: z.string(),
+          description: z.string(),
+          amount: z.number(),
+          createdAt: z.string().nullable(),
+          splits: z.array(z.object({
+            id: z.number(),
+            transactionId: z.number(),
+            playerName: z.string(),
+            amount: z.number(),
+          })),
+        })),
+        404: errorSchemas.notFound,
+      },
+    },
+    createTransaction: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/:id/transactions',
+      input: z.object({
+        payerName: z.string().min(1),
+        description: z.string().min(1),
+        amount: z.number().min(1), // Amount in cents
+        splitPlayerNames: z.array(z.string()).min(1), // Players to split the cost between
+      }),
+      responses: {
+        201: z.custom<typeof ryderCupTransactions.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    deleteTransaction: {
+      method: 'DELETE' as const,
+      path: '/api/ryder-cup/:id/transactions/:transactionId',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        403: z.object({ message: z.string() }),
         404: errorSchemas.notFound,
       },
     },

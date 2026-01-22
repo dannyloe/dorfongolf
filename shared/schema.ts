@@ -631,6 +631,24 @@ export const ryderCupSkins = pgTable("ryder_cup_skins", {
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
 });
 
+// Ryder Cup event transactions (ledger entries for expenses)
+export const ryderCupTransactions = pgTable("ryder_cup_transactions", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull(), // References ryderCupEvents
+  payerName: text("payer_name").notNull(), // Player who paid
+  description: text("description").notNull(),
+  amount: integer("amount").notNull(), // Amount in cents
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Transaction splits - who owes what portion of the transaction
+export const ryderCupTransactionSplits = pgTable("ryder_cup_transaction_splits", {
+  id: serial("id").primaryKey(),
+  transactionId: integer("transaction_id").notNull(), // References ryderCupTransactions
+  playerName: text("player_name").notNull(), // Player who owes
+  amount: integer("amount").notNull(), // Amount owed in cents
+});
+
 // === RYDER CUP RELATIONS ===
 
 export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many }) => ({
@@ -720,6 +738,21 @@ export const ryderCupSkinsRelations = relations(ryderCupSkins, ({ one }) => ({
   }),
 }));
 
+export const ryderCupTransactionsRelations = relations(ryderCupTransactions, ({ one, many }) => ({
+  event: one(ryderCupEvents, {
+    fields: [ryderCupTransactions.eventId],
+    references: [ryderCupEvents.id],
+  }),
+  splits: many(ryderCupTransactionSplits),
+}));
+
+export const ryderCupTransactionSplitsRelations = relations(ryderCupTransactionSplits, ({ one }) => ({
+  transaction: one(ryderCupTransactions, {
+    fields: [ryderCupTransactionSplits.transactionId],
+    references: [ryderCupTransactions.id],
+  }),
+}));
+
 // === RYDER CUP SCHEMAS ===
 
 export const insertRyderCupEventSchema = createInsertSchema(ryderCupEvents).omit({
@@ -768,6 +801,15 @@ export const insertRyderCupSkinSchema = createInsertSchema(ryderCupSkins).omit({
   id: true,
 });
 
+export const insertRyderCupTransactionSchema = createInsertSchema(ryderCupTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRyderCupTransactionSplitSchema = createInsertSchema(ryderCupTransactionSplits).omit({
+  id: true,
+});
+
 // === RYDER CUP TYPES ===
 
 export type RyderCupEvent = typeof ryderCupEvents.$inferSelect;
@@ -796,6 +838,12 @@ export type InsertRyderCupPairingResult = z.infer<typeof insertRyderCupPairingRe
 
 export type RyderCupSkin = typeof ryderCupSkins.$inferSelect;
 export type InsertRyderCupSkin = z.infer<typeof insertRyderCupSkinSchema>;
+
+export type RyderCupTransaction = typeof ryderCupTransactions.$inferSelect;
+export type InsertRyderCupTransaction = z.infer<typeof insertRyderCupTransactionSchema>;
+
+export type RyderCupTransactionSplit = typeof ryderCupTransactionSplits.$inferSelect;
+export type InsertRyderCupTransactionSplit = z.infer<typeof insertRyderCupTransactionSplitSchema>;
 
 // === RYDER CUP API TYPES ===
 
