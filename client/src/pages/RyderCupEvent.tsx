@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2 } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -46,6 +46,11 @@ export default function RyderCupEvent() {
   const [editingSideHandicap, setEditingSideHandicap] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
   const [editingSideHandicapValue, setEditingSideHandicapValue] = useState("");
   const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
+  const [addTransactionOpen, setAddTransactionOpen] = useState(false);
+  const [transactionPayer, setTransactionPayer] = useState("");
+  const [transactionDescription, setTransactionDescription] = useState("");
+  const [transactionAmount, setTransactionAmount] = useState("");
+  const [transactionSplitPlayers, setTransactionSplitPlayers] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -83,6 +88,29 @@ export default function RyderCupEvent() {
   const { data: courseHoles = [] } = useQuery<CourseHole[]>({
     queryKey: ["/api/courses", currentDayCourseId, "holes"],
     enabled: !!currentDayCourseId,
+  });
+
+  // Transaction types
+  type TransactionSplit = {
+    id: number;
+    transactionId: number;
+    playerName: string;
+    amount: number;
+  };
+  
+  type Transaction = {
+    id: number;
+    eventId: number;
+    payerName: string;
+    description: string;
+    amount: number;
+    createdAt: string | null;
+    splits: TransactionSplit[];
+  };
+
+  const { data: transactions = [] } = useQuery<Transaction[]>({
+    queryKey: ["/api/ryder-cup", id, "transactions"],
+    enabled: !!id,
   });
 
   const isCreatorOrAdmin = event && (event.creatorId === user?.id || user?.isAdmin);
@@ -185,6 +213,37 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to recalculate results", variant: "destructive" });
+    },
+  });
+
+  const createTransactionMutation = useMutation({
+    mutationFn: async ({ payerName, description, amount, splitPlayerNames }: { payerName: string; description: string; amount: number; splitPlayerNames: string[] }) => {
+      return apiRequest("POST", `/api/ryder-cup/${id}/transactions`, { payerName, description, amount, splitPlayerNames });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "transactions"] });
+      toast({ title: "Transaction added" });
+      setAddTransactionOpen(false);
+      setTransactionPayer("");
+      setTransactionDescription("");
+      setTransactionAmount("");
+      setTransactionSplitPlayers([]);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add transaction", variant: "destructive" });
+    },
+  });
+
+  const deleteTransactionMutation = useMutation({
+    mutationFn: async (transactionId: number) => {
+      return apiRequest("DELETE", `/api/ryder-cup/${id}/transactions/${transactionId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "transactions"] });
+      toast({ title: "Transaction deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete transaction", variant: "destructive" });
     },
   });
 
@@ -730,11 +789,12 @@ export default function RyderCupEvent() {
       </div>
 
       <Tabs defaultValue="schedule">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
           <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>
           <TabsTrigger value="skins" data-testid="tab-skins">Skins</TabsTrigger>
           <TabsTrigger value="payouts" data-testid="tab-payouts">Payouts</TabsTrigger>
+          <TabsTrigger value="ledger" data-testid="tab-ledger">Ledger</TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule" className="space-y-4">
@@ -2571,7 +2631,242 @@ export default function RyderCupEvent() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="ledger">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Receipt className="w-5 h-5" /> Event Ledger
+                </CardTitle>
+                <CardDescription>
+                  Track shared expenses and who owes who
+                </CardDescription>
+              </div>
+              {isCreatorOrAdmin && (
+                <Button
+                  size="sm"
+                  onClick={() => setAddTransactionOpen(true)}
+                  data-testid="button-add-transaction"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add Expense
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {transactions.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No transactions recorded yet. Add an expense to get started.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {(() => {
+                    const allPlayers = [
+                      ...(teamA?.members.map(m => m.playerName) || []),
+                      ...(teamB?.members.map(m => m.playerName) || []),
+                    ];
+                    
+                    const balances: Record<string, number> = {};
+                    allPlayers.forEach(name => { balances[name] = 0; });
+                    
+                    transactions.forEach(t => {
+                      balances[t.payerName] = (balances[t.payerName] || 0) + t.amount;
+                      t.splits.forEach(s => {
+                        balances[s.playerName] = (balances[s.playerName] || 0) - s.amount;
+                      });
+                    });
+
+                    return (
+                      <>
+                        <div className="mb-6">
+                          <h4 className="text-sm font-semibold mb-3">Balances</h4>
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                            {Object.entries(balances)
+                              .filter(([_, amount]) => amount !== 0)
+                              .sort((a, b) => b[1] - a[1])
+                              .map(([playerName, amount]) => {
+                                const team = teamA?.members.find(m => m.playerName === playerName) ? teamA : teamB;
+                                return (
+                                  <div 
+                                    key={playerName} 
+                                    className="flex items-center justify-between p-2 rounded border"
+                                    style={{ borderColor: team?.color || undefined }}
+                                  >
+                                    <span className="text-sm font-medium truncate">{playerName}</span>
+                                    <span className={`text-sm font-semibold ${amount > 0 ? "text-green-600" : "text-red-600"}`}>
+                                      {amount > 0 ? "+" : ""}{formatCurrency(amount)}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="text-sm font-semibold mb-3">Transaction History</h4>
+                          <div className="space-y-3">
+                            {transactions.map(t => (
+                              <div key={t.id} className="border rounded p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-medium">{t.description}</span>
+                                      <Badge variant="secondary">{formatCurrency(t.amount)}</Badge>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                      Paid by <span className="font-medium">{t.payerName}</span>
+                                      {t.createdAt && ` on ${new Date(t.createdAt).toLocaleDateString()}`}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      Split between: {t.splits.map(s => s.playerName).join(", ")}
+                                      {" "}({formatCurrency(t.splits[0]?.amount || 0)} each)
+                                    </p>
+                                  </div>
+                                  {isCreatorOrAdmin && (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => deleteTransactionMutation.mutate(t.id)}
+                                      disabled={deleteTransactionMutation.isPending}
+                                      data-testid={`button-delete-transaction-${t.id}`}
+                                    >
+                                      <Trash2 className="w-4 h-4 text-destructive" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={addTransactionOpen} onOpenChange={setAddTransactionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Expense</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Who paid?</Label>
+              <Select value={transactionPayer} onValueChange={setTransactionPayer}>
+                <SelectTrigger data-testid="select-payer">
+                  <SelectValue placeholder="Select player" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[...(teamA?.members || []), ...(teamB?.members || [])].map(m => (
+                    <SelectItem key={m.id} value={m.playerName} data-testid={`select-item-payer-${m.id}`}>
+                      {m.playerName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Description</Label>
+              <Input
+                value={transactionDescription}
+                onChange={(e) => setTransactionDescription(e.target.value)}
+                placeholder="e.g., Dinner, Golf cart, Drinks"
+                data-testid="input-transaction-description"
+              />
+            </div>
+
+            <div>
+              <Label>Amount</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={transactionAmount}
+                  onChange={(e) => setTransactionAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="pl-7"
+                  data-testid="input-transaction-amount"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="mb-2 block">Split between (select players)</Label>
+              <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
+                {[...(teamA?.members || []), ...(teamB?.members || [])].map(m => {
+                  const isSelected = transactionSplitPlayers.includes(m.playerName);
+                  const team = teamA?.members.find(tm => tm.id === m.id) ? teamA : teamB;
+                  return (
+                    <Button
+                      key={m.id}
+                      type="button"
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        if (isSelected) {
+                          setTransactionSplitPlayers(prev => prev.filter(n => n !== m.playerName));
+                        } else {
+                          setTransactionSplitPlayers(prev => [...prev, m.playerName]);
+                        }
+                      }}
+                      className="justify-start"
+                      style={isSelected ? { backgroundColor: team?.color || undefined } : undefined}
+                      data-testid={`button-split-player-${m.id}`}
+                    >
+                      {isSelected && <Check className="w-3 h-3 mr-1" />}
+                      {m.playerName}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => {
+                  const allNames = [...(teamA?.members || []), ...(teamB?.members || [])].map(m => m.playerName);
+                  setTransactionSplitPlayers(allNames);
+                }}
+                data-testid="button-select-all-players"
+              >
+                Select All
+              </Button>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAddTransactionOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  const amountInCents = Math.round(parseFloat(transactionAmount) * 100);
+                  if (!transactionPayer || !transactionDescription || !amountInCents || transactionSplitPlayers.length === 0) {
+                    toast({ title: "Error", description: "Please fill in all fields", variant: "destructive" });
+                    return;
+                  }
+                  createTransactionMutation.mutate({
+                    payerName: transactionPayer,
+                    description: transactionDescription,
+                    amount: amountInCents,
+                    splitPlayerNames: transactionSplitPlayers,
+                  });
+                }}
+                disabled={createTransactionMutation.isPending}
+                data-testid="button-save-transaction"
+              >
+                Add Expense
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={recordResultDialogOpen} onOpenChange={setRecordResultDialogOpen}>
         <DialogContent>
