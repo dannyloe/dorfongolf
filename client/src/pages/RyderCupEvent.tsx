@@ -1065,14 +1065,23 @@ export default function RyderCupEvent() {
                   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>, pairing: typeof sortedPairings[0]) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    const sideA = pairing.sides[0];
-                    const sideB = pairing.sides[1];
-                    const playerNames = [
-                      sideA.player1Name,
-                      sideA.player2Name,
-                      sideB.player1Name,
-                      sideB.player2Name,
-                    ].filter((n): n is string => !!n);
+                    
+                    // Collect ALL player names from ALL matches in the current day for better AI matching
+                    const allPlayerNames: string[] = [];
+                    const allSides: Array<{ side: typeof pairing.sides[0]; playerNumber: 1 | 2; playerName: string }> = [];
+                    
+                    sortedPairings.forEach(p => {
+                      p.sides.forEach(side => {
+                        if (side.player1Name) {
+                          allPlayerNames.push(side.player1Name);
+                          allSides.push({ side, playerNumber: 1, playerName: side.player1Name });
+                        }
+                        if (side.player2Name) {
+                          allPlayerNames.push(side.player2Name);
+                          allSides.push({ side, playerNumber: 2, playerName: side.player2Name });
+                        }
+                      });
+                    });
 
                     const reader = new FileReader();
                     reader.onloadend = async () => {
@@ -1080,7 +1089,7 @@ export default function RyderCupEvent() {
                       try {
                         const result = await scanScorecard.mutateAsync({
                           imageBase64: base64,
-                          playerNames,
+                          playerNames: allPlayerNames,
                           courseName: currentDay?.courseName || event?.courseName || "",
                         });
                         if (result.success && result.scores.length > 0) {
@@ -1094,15 +1103,15 @@ export default function RyderCupEvent() {
                                 editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
                               }
                             });
-                            const matchedSideA1 = sideA.player1Name?.toLowerCase() === ps.playerName.toLowerCase();
-                            const matchedSideA2 = sideA.player2Name?.toLowerCase() === ps.playerName.toLowerCase();
-                            const matchedSideB1 = sideB.player1Name?.toLowerCase() === ps.playerName.toLowerCase();
-                            const matchedSideB2 = sideB.player2Name?.toLowerCase() === ps.playerName.toLowerCase();
-                            if (matchedSideA1) mappings[ps.playerName] = { sideId: sideA.id, playerNumber: 1 };
-                            else if (matchedSideA2) mappings[ps.playerName] = { sideId: sideA.id, playerNumber: 2 };
-                            else if (matchedSideB1) mappings[ps.playerName] = { sideId: sideB.id, playerNumber: 1 };
-                            else if (matchedSideB2) mappings[ps.playerName] = { sideId: sideB.id, playerNumber: 2 };
-                            else mappings[ps.playerName] = null;
+                            // Search across ALL sides from ALL matches to find the matching player
+                            const matchedSide = allSides.find(s => 
+                              s.playerName.toLowerCase() === ps.playerName.toLowerCase()
+                            );
+                            if (matchedSide) {
+                              mappings[ps.playerName] = { sideId: matchedSide.side.id, playerNumber: matchedSide.playerNumber };
+                            } else {
+                              mappings[ps.playerName] = null;
+                            }
                           });
                           setEditableScores(editable);
                           setPlayerMappings(mappings);
