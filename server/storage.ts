@@ -38,6 +38,10 @@ export interface IStorage {
   addPlayer(player: InsertPlayer): Promise<Player>;
   getMatchScores(matchId: number): Promise<Score[]>;
   submitScore(score: InsertScore): Promise<Score>;
+  
+  // Ryder Cup Team methods
+  getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null>;
+  updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1681,6 +1685,19 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ryderCupEvents.id, eventId))
       .returning();
     return updated;
+  }
+
+  async updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null> {
+    const [updated] = await db.update(ryderCupTeams)
+      .set(updates)
+      .where(eq(ryderCupTeams.id, teamId))
+      .returning();
+    return updated || null;
+  }
+
+  async getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null> {
+    const [team] = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.id, teamId));
+    return team || null;
   }
 
   async deleteRyderCupEvent(eventId: number): Promise<void> {

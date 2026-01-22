@@ -1712,6 +1712,37 @@ Rules:
     }
   });
 
+  app.patch(api.ryderCup.updateTeam.path, isAuthenticated, async (req, res) => {
+    const teamId = parseInt(req.params.teamId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      const input = api.ryderCup.updateTeam.input.parse(req.body);
+      const team = await storage.getRyderCupTeam(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      
+      // Get the event to check authorization
+      const event = await storage.getRyderCupEvent(team.eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      
+      // Get current user to check admin status
+      const currentUser = await storage.getUser(userId);
+      
+      // Only creator or admin can update team names
+      if (event.creatorId !== userId && !currentUser?.isAdmin) {
+        return res.status(403).json({ message: "Only the creator or admin can update team names" });
+      }
+      
+      const updated = await storage.updateRyderCupTeam(teamId, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.ryderCup.addSideMatch.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
     try {

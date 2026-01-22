@@ -39,6 +39,8 @@ export default function RyderCupEvent() {
   const [scannedScores, setScannedScores] = useState<ScannedPlayer[]>([]);
   const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
   const [playerMappings, setPlayerMappings] = useState<Record<string, { sideId: number; playerNumber: 1 | 2 } | null>>({});
+  const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
+  const [editingTeamName, setEditingTeamName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
 
@@ -141,6 +143,21 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to record result", variant: "destructive" });
+    },
+  });
+
+  const updateTeamMutation = useMutation({
+    mutationFn: async ({ teamId, name }: { teamId: number; name: string }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/teams/${teamId}`, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Team name updated" });
+      setEditingTeamId(null);
+      setEditingTeamName("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update team name", variant: "destructive" });
     },
   });
 
@@ -305,7 +322,63 @@ export default function RyderCupEvent() {
       <div className="grid md:grid-cols-3 gap-4">
         <Card style={{ borderTop: `4px solid ${teamA?.color}` }}>
           <CardContent className="pt-4 text-center">
-            <h3 className="font-semibold text-lg">{teamA?.name}</h3>
+            {editingTeamId === teamA?.id ? (
+              <div className="flex items-center justify-center gap-1">
+                <Input
+                  value={editingTeamName}
+                  onChange={(e) => setEditingTeamName(e.target.value)}
+                  className="h-8 text-center font-semibold text-lg max-w-32"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && editingTeamName.trim()) {
+                      updateTeamMutation.mutate({ teamId: teamA.id, name: editingTeamName.trim() });
+                    } else if (e.key === "Escape") {
+                      setEditingTeamId(null);
+                      setEditingTeamName("");
+                    }
+                  }}
+                  data-testid="input-team-a-name"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (editingTeamName.trim()) {
+                      updateTeamMutation.mutate({ teamId: teamA.id, name: editingTeamName.trim() });
+                    }
+                  }}
+                  disabled={updateTeamMutation.isPending}
+                  data-testid="button-save-team-a-name"
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingTeamId(null);
+                    setEditingTeamName("");
+                  }}
+                  data-testid="button-cancel-team-a-name"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <h3
+                className="font-semibold text-lg cursor-pointer hover-elevate inline-flex items-center gap-1 px-2 py-1 rounded"
+                onClick={() => {
+                  if (isCreatorOrAdmin) {
+                    setEditingTeamId(teamA?.id || null);
+                    setEditingTeamName(teamA?.name || "");
+                  }
+                }}
+                data-testid="text-team-a-name"
+              >
+                {teamA?.name}
+                {isCreatorOrAdmin && <Pencil className="w-3 h-3 text-muted-foreground" />}
+              </h3>
+            )}
             <p className="text-4xl font-bold text-primary mt-2">
               {(teamA?.totalPoints || 0) / 10}
             </p>
@@ -328,7 +401,63 @@ export default function RyderCupEvent() {
 
         <Card style={{ borderTop: `4px solid ${teamB?.color}` }}>
           <CardContent className="pt-4 text-center">
-            <h3 className="font-semibold text-lg">{teamB?.name}</h3>
+            {editingTeamId === teamB?.id ? (
+              <div className="flex items-center justify-center gap-1">
+                <Input
+                  value={editingTeamName}
+                  onChange={(e) => setEditingTeamName(e.target.value)}
+                  className="h-8 text-center font-semibold text-lg max-w-32"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && editingTeamName.trim()) {
+                      updateTeamMutation.mutate({ teamId: teamB.id, name: editingTeamName.trim() });
+                    } else if (e.key === "Escape") {
+                      setEditingTeamId(null);
+                      setEditingTeamName("");
+                    }
+                  }}
+                  data-testid="input-team-b-name"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    if (editingTeamName.trim()) {
+                      updateTeamMutation.mutate({ teamId: teamB.id, name: editingTeamName.trim() });
+                    }
+                  }}
+                  disabled={updateTeamMutation.isPending}
+                  data-testid="button-save-team-b-name"
+                >
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditingTeamId(null);
+                    setEditingTeamName("");
+                  }}
+                  data-testid="button-cancel-team-b-name"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <h3
+                className="font-semibold text-lg cursor-pointer hover-elevate inline-flex items-center gap-1 px-2 py-1 rounded"
+                onClick={() => {
+                  if (isCreatorOrAdmin) {
+                    setEditingTeamId(teamB?.id || null);
+                    setEditingTeamName(teamB?.name || "");
+                  }
+                }}
+                data-testid="text-team-b-name"
+              >
+                {teamB?.name}
+                {isCreatorOrAdmin && <Pencil className="w-3 h-3 text-muted-foreground" />}
+              </h3>
+            )}
             <p className="text-4xl font-bold text-primary mt-2">
               {(teamB?.totalPoints || 0) / 10}
             </p>
