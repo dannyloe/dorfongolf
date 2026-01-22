@@ -161,6 +161,18 @@ export default function RyderCupEvent() {
     },
   });
 
+  const updateSidePlayerMutation = useMutation({
+    mutationFn: async ({ sideId, playerNumber, teeId }: { sideId: number; playerNumber: 1 | 2; teeId: number | null }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/sides/${sideId}/player`, { playerNumber, teeId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update player tee", variant: "destructive" });
+    },
+  });
+
   const createSideMatchMutation = useMutation({
     mutationFn: async (): Promise<Match> => {
       const currentDayData = event?.days.find(d => d.dayNumber === selectedDay);
@@ -756,19 +768,87 @@ export default function RyderCupEvent() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4 flex-1">
                             <div 
-                              className="flex-1 p-3 rounded-lg text-center"
+                              className="flex-1 p-3 rounded-lg"
                               style={{ backgroundColor: `${displayA?.color}20` }}
                             >
-                              <p className="font-medium">{displayA?.names}</p>
-                              <p className="text-xs text-muted-foreground">{displayA?.teamName}</p>
+                              <p className="text-xs text-muted-foreground mb-1 text-center">{displayA?.teamName}</p>
+                              {[sideA?.player1Name, sideA?.player2Name].filter(Boolean).map((playerName, pIdx) => {
+                                const playerNumber = (pIdx + 1) as 1 | 2;
+                                const teeId = playerNumber === 1 ? sideA?.player1TeeId : sideA?.player2TeeId;
+                                const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
+                                const handicapIndex = member?.handicapIndex;
+                                const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
+                                const courseHcp = handicapIndex !== null && handicapIndex !== undefined && tee
+                                  ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
+                                  : null;
+                                return (
+                                  <div key={pIdx} className="flex items-center justify-between gap-2 py-1">
+                                    <span className="font-medium text-sm truncate flex-1">{playerName}</span>
+                                    <Select
+                                      value={teeId?.toString() || ""}
+                                      onValueChange={(val) => sideA && updateSidePlayerMutation.mutate({
+                                        sideId: sideA.id,
+                                        playerNumber,
+                                        teeId: val ? parseInt(val) : null,
+                                      })}
+                                    >
+                                      <SelectTrigger className="h-6 w-20 text-xs" data-testid={`select-tee-${sideA?.id}-${playerNumber}`}>
+                                        <SelectValue placeholder="Tee" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {courseTees.map(t => (
+                                          <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {courseHcp !== null && (
+                                      <Badge variant="outline" className="text-xs w-8 justify-center">{courseHcp}</Badge>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                             <span className="text-muted-foreground font-semibold">vs</span>
                             <div 
-                              className="flex-1 p-3 rounded-lg text-center"
+                              className="flex-1 p-3 rounded-lg"
                               style={{ backgroundColor: `${displayB?.color}20` }}
                             >
-                              <p className="font-medium">{displayB?.names}</p>
-                              <p className="text-xs text-muted-foreground">{displayB?.teamName}</p>
+                              <p className="text-xs text-muted-foreground mb-1 text-center">{displayB?.teamName}</p>
+                              {[sideB?.player1Name, sideB?.player2Name].filter(Boolean).map((playerName, pIdx) => {
+                                const playerNumber = (pIdx + 1) as 1 | 2;
+                                const teeId = playerNumber === 1 ? sideB?.player1TeeId : sideB?.player2TeeId;
+                                const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
+                                const handicapIndex = member?.handicapIndex;
+                                const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
+                                const courseHcp = handicapIndex !== null && handicapIndex !== undefined && tee
+                                  ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
+                                  : null;
+                                return (
+                                  <div key={pIdx} className="flex items-center justify-between gap-2 py-1">
+                                    <span className="font-medium text-sm truncate flex-1">{playerName}</span>
+                                    <Select
+                                      value={teeId?.toString() || ""}
+                                      onValueChange={(val) => sideB && updateSidePlayerMutation.mutate({
+                                        sideId: sideB.id,
+                                        playerNumber,
+                                        teeId: val ? parseInt(val) : null,
+                                      })}
+                                    >
+                                      <SelectTrigger className="h-6 w-20 text-xs" data-testid={`select-tee-${sideB?.id}-${playerNumber}`}>
+                                        <SelectValue placeholder="Tee" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {courseTees.map(t => (
+                                          <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {courseHcp !== null && (
+                                      <Badge variant="outline" className="text-xs w-8 justify-center">{courseHcp}</Badge>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                           <div className="ml-4 flex items-center gap-2">
