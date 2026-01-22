@@ -1395,8 +1395,43 @@ export default function RyderCupEvent() {
                                       <span className="font-semibold">{ps.playerName}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                      <Select
+                                        value={mapping ? `${mapping.sideId}-${mapping.playerNumber}` : "none"}
+                                        onValueChange={(value) => {
+                                          if (value === "none") {
+                                            setPlayerMappings(prev => ({ ...prev, [ps.playerName]: null }));
+                                          } else {
+                                            const [sideIdStr, playerNumStr] = value.split("-");
+                                            setPlayerMappings(prev => ({
+                                              ...prev,
+                                              [ps.playerName]: { sideId: parseInt(sideIdStr), playerNumber: parseInt(playerNumStr) as 1 | 2 }
+                                            }));
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger className="w-[180px]" data-testid={`select-player-mapping-${ps.playerName}`}>
+                                          <SelectValue placeholder="Choose golfer" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="none">No match</SelectItem>
+                                          {(() => {
+                                            // Get all player options from all pairings in the current day
+                                            const options: { sideId: number; playerNumber: 1 | 2; name: string }[] = [];
+                                            currentDay?.pairings.forEach(p => {
+                                              p.sides.forEach(side => {
+                                                if (side.player1Name) options.push({ sideId: side.id, playerNumber: 1, name: side.player1Name });
+                                                if (side.player2Name) options.push({ sideId: side.id, playerNumber: 2, name: side.player2Name });
+                                              });
+                                            });
+                                            return options.map(opt => (
+                                              <SelectItem key={`${opt.sideId}-${opt.playerNumber}`} value={`${opt.sideId}-${opt.playerNumber}`}>
+                                                {opt.name}
+                                              </SelectItem>
+                                            ));
+                                          })()}
+                                        </SelectContent>
+                                      </Select>
                                       {mapping ? <CheckCircle2 className="w-4 h-4 text-green-500" /> : <AlertCircle className="w-4 h-4 text-yellow-500" />}
-                                      <span className="text-sm">{mapping ? "Matched" : "No match"}</span>
                                     </div>
                                   </div>
                                   <div className="grid grid-cols-10 gap-1">
