@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
@@ -42,7 +42,16 @@ export default function RyderCupEvent() {
   const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
   const [editingTeamName, setEditingTeamName] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
+
+  // Focus the score input when editing starts
+  useEffect(() => {
+    if (editingScore && scoreInputRef.current) {
+      scoreInputRef.current.focus();
+      scoreInputRef.current.select();
+    }
+  }, [editingScore]);
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
@@ -1207,8 +1216,9 @@ export default function RyderCupEvent() {
                                       </div>
                                     )}
                                     <input
+                                      ref={isEditing ? scoreInputRef : undefined}
                                       type="text"
-                                      inputMode={isEditing ? "numeric" : "none"}
+                                      inputMode="numeric"
                                       pattern="[0-9]*"
                                       maxLength={2}
                                       readOnly={!isEditing}
@@ -1217,7 +1227,6 @@ export default function RyderCupEvent() {
                                       onBlur={() => isEditing && handleScoreSubmit(side, hole)}
                                       onKeyDown={(e) => isEditing && handleKeyDown(e, side, hole)}
                                       onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, hole, score)}
-                                      autoFocus={isEditing}
                                       className={`w-8 h-7 text-center text-sm font-medium border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded ${getScoreColor(score, holePar)}`}
                                       data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}-${hole}`}
                                     />
@@ -1242,8 +1251,9 @@ export default function RyderCupEvent() {
                                       </div>
                                     )}
                                     <input
+                                      ref={isEditing ? scoreInputRef : undefined}
                                       type="text"
-                                      inputMode={isEditing ? "numeric" : "none"}
+                                      inputMode="numeric"
                                       pattern="[0-9]*"
                                       maxLength={2}
                                       readOnly={!isEditing}
@@ -1252,7 +1262,6 @@ export default function RyderCupEvent() {
                                       onBlur={() => isEditing && handleScoreSubmit(side, hole)}
                                       onKeyDown={(e) => isEditing && handleKeyDown(e, side, hole)}
                                       onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, hole, score)}
-                                      autoFocus={isEditing}
                                       className={`w-8 h-7 text-center text-sm font-medium border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded ${getScoreColor(score, holePar)}`}
                                       data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}-${hole}`}
                                     />
