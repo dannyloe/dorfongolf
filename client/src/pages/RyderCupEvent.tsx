@@ -892,11 +892,22 @@ export default function RyderCupEvent() {
 
                   const getPlayerTee = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): CourseTee | undefined => {
                     const teeId = playerNumber === 1 ? side.player1TeeId : side.player2TeeId;
-                    return courseTees.find(t => t.id === teeId);
+                    if (teeId) return courseTees.find(t => t.id === teeId);
+                    // Fall back to first available tee for handicap calculations
+                    return courseTees[0];
                   };
 
                   const getPlayerHandicap = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): number | null => {
-                    return playerNumber === 1 ? side.player1HandicapIndex : side.player2HandicapIndex;
+                    // First check pairing-specific handicap
+                    const pairingHcp = playerNumber === 1 ? side.player1HandicapIndex : side.player2HandicapIndex;
+                    if (pairingHcp !== null) return pairingHcp;
+                    
+                    // Fall back to team member handicap
+                    const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
+                    if (!playerName) return null;
+                    const allMembers = [...(teamA?.members || []), ...(teamB?.members || [])];
+                    const member = allMembers.find(m => m.playerName === playerName);
+                    return member?.handicapIndex ?? null;
                   };
 
                   const getPlayerCourseHandicap = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): number | null => {
