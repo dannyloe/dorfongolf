@@ -1151,6 +1151,11 @@ export const api = {
           player1Strokes: z.number().nullable(),
           player2Strokes: z.number().nullable(),
         })),
+        matchResult: z.object({
+          winningSideId: z.number().nullable(),
+          winningMargin: z.string().nullable(),
+          isComplete: z.boolean(),
+        }).optional(),
       }),
       responses: {
         200: z.object({ success: z.boolean() }),

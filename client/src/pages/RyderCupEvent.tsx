@@ -261,11 +261,12 @@ export default function RyderCupEvent() {
   });
 
   const saveScoresMutation = useMutation({
-    mutationFn: async ({ sideId, scores }: {
+    mutationFn: async ({ sideId, scores, matchResult }: {
       sideId: number;
       scores: { holeNumber: number; player1Strokes: number | null; player2Strokes: number | null }[];
+      matchResult?: { winningSideId: number | null; winningMargin: string | null; isComplete: boolean };
     }) => {
-      return apiRequest("POST", `/api/ryder-cup/sides/${sideId}/scores`, { scores });
+      return apiRequest("POST", `/api/ryder-cup/sides/${sideId}/scores`, { scores, matchResult });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
@@ -1274,9 +1275,98 @@ export default function RyderCupEvent() {
                     const existingScore = side.scores.find(s => s.holeNumber === hole);
                     const player1Strokes = editingScore.playerNumber === 1 ? strokes : (existingScore?.player1Strokes ?? null);
                     const player2Strokes = editingScore.playerNumber === 2 ? strokes : (existingScore?.player2Strokes ?? null);
+                    
+                    // Calculate match result after this score is applied
+                    // Create simulated side data with the updated score
+                    const simulatedSideA: RyderCupPairingSideWithScores = sideA.id === side.id ? {
+                      ...sideA,
+                      scores: sideA.scores.some(s => s.holeNumber === hole)
+                        ? sideA.scores.map(s => s.holeNumber === hole ? { ...s, player1Strokes, player2Strokes } : s)
+                        : [...sideA.scores, { id: 0, sideId: sideA.id, holeNumber: hole, player1Strokes, player2Strokes }]
+                    } : sideA;
+                    
+                    const simulatedSideB: RyderCupPairingSideWithScores = sideB.id === side.id ? {
+                      ...sideB,
+                      scores: sideB.scores.some(s => s.holeNumber === hole)
+                        ? sideB.scores.map(s => s.holeNumber === hole ? { ...s, player1Strokes, player2Strokes } : s)
+                        : [...sideB.scores, { id: 0, sideId: sideB.id, holeNumber: hole, player1Strokes, player2Strokes }]
+                    } : sideB;
+                    
+                    // Recompute getTeamBestBall for simulated sides
+                    const getSimulatedTeamBestBall = (simSide: RyderCupPairingSideWithScores, h: number, origSide: RyderCupPairingSideWithScores): number | null => {
+                      const holeData = courseHoles.find(ch => ch.holeNumber === h);
+                      const holeHcp = holeData?.handicap || h;
+                      const scoreEntry = simSide.scores.find(s => s.holeNumber === h);
+                      const p1Score = scoreEntry?.player1Strokes ?? null;
+                      const p2Score = origSide.player2Name ? (scoreEntry?.player2Strokes ?? null) : null;
+                      
+                      if (pairing.useNetScoring) {
+                        const p1Hcp = getPlayerCourseHandicap(origSide, 1);
+                        const p2Hcp = origSide.player2Name ? getPlayerCourseHandicap(origSide, 2) : null;
+                        const p1Net = getNetScore(p1Score, p1Hcp, lowHandicap, holeHcp);
+                        const p2Net = p2Score !== null && p2Hcp !== null ? getNetScore(p2Score, p2Hcp, lowHandicap, holeHcp) : null;
+                        if (p1Net === null && p2Net === null) return null;
+                        if (p1Net === null) return p2Net;
+                        if (p2Net === null) return p1Net;
+                        return Math.min(p1Net, p2Net);
+                      } else {
+                        if (p1Score === null && p2Score === null) return null;
+                        if (p1Score === null) return p2Score;
+                        if (p2Score === null) return p1Score;
+                        return Math.min(p1Score, p2Score);
+                      }
+                    };
+                    
+                    // Calculate hole results with simulated data (same logic as calculateHoleResults)
+                    let matchResult: { winningSideId: number | null; winningMargin: string | null; isComplete: boolean } | undefined;
+                    let score = 0;
+                    let decidedOnHole: number | null = null;
+                    let allHolesComplete = true;
+                    
+                    for (let h = 1; h <= 18; h++) {
+                      const teamABest = getSimulatedTeamBestBall(simulatedSideA, h, sideA);
+                      const teamBBest = getSimulatedTeamBestBall(simulatedSideB, h, sideB);
+                      
+                      if (teamABest === null || teamBBest === null) {
+                        allHolesComplete = false;
+                        // If match not yet clinched, continue to check remaining holes
+                        if (decidedOnHole === null) continue;
+                        break;
+                      }
+                      
+                      if (teamABest < teamBBest) score++;
+                      else if (teamBBest < teamABest) score--;
+                      
+                      const holesRemaining = 18 - h;
+                      const lead = Math.abs(score);
+                      if (lead > holesRemaining && decidedOnHole === null) {
+                        decidedOnHole = h;
+                        break;
+                      }
+                    }
+                    
+                    const isComplete = decidedOnHole !== null || allHolesComplete;
+                    if (isComplete) {
+                      let winningSideId: number | null = null;
+                      let winningMargin: string | null = null;
+                      
+                      if (score > 0) winningSideId = sideA.id;
+                      else if (score < 0) winningSideId = sideB.id;
+                      
+                      const lead = Math.abs(score);
+                      if (decidedOnHole !== null) {
+                        winningMargin = `${lead}&${18 - decidedOnHole}`;
+                      } else if (lead > 0) {
+                        winningMargin = `${lead} up`;
+                      }
+                      
+                      matchResult = { winningSideId, winningMargin, isComplete: true };
+                    }
+                    
                     await saveScoresMutation.mutateAsync({
                       sideId: side.id,
                       scores: [{ holeNumber: hole, player1Strokes, player2Strokes }],
+                      matchResult,
                     });
                     setEditingScore(null);
                     setEditScoreValue("");
