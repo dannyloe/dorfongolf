@@ -1023,6 +1023,104 @@ export default function RyderCupEvent() {
                     return playerNumber === 1 ? scoreEntry?.player1Strokes ?? null : scoreEntry?.player2Strokes ?? null;
                   };
 
+                  const getNetScore = (grossScore: number | null, courseHcp: number | null, lowHandicap: number, holeHcp: number): number | null => {
+                    if (grossScore === null || courseHcp === null) return null;
+                    const strokes = getStrokesOnHole(courseHcp, lowHandicap, holeHcp);
+                    return grossScore - strokes;
+                  };
+
+                  const getTeamBestBall = (side: RyderCupPairingSideWithScores, hole: number, lowHandicap: number, useNet: boolean): number | null => {
+                    const holeData = courseHoles.find(h => h.holeNumber === hole);
+                    const holeHcp = holeData?.handicap || hole;
+                    const p1Score = getPlayerScore(side, 1, hole);
+                    const p2Score = side.player2Name ? getPlayerScore(side, 2, hole) : null;
+                    
+                    if (useNet) {
+                      const p1Hcp = getPlayerCourseHandicap(side, 1);
+                      const p2Hcp = side.player2Name ? getPlayerCourseHandicap(side, 2) : null;
+                      const p1Net = getNetScore(p1Score, p1Hcp, lowHandicap, holeHcp);
+                      const p2Net = p2Score !== null && p2Hcp !== null ? getNetScore(p2Score, p2Hcp, lowHandicap, holeHcp) : null;
+                      if (p1Net === null && p2Net === null) return null;
+                      if (p1Net === null) return p2Net;
+                      if (p2Net === null) return p1Net;
+                      return Math.min(p1Net, p2Net);
+                    } else {
+                      if (p1Score === null && p2Score === null) return null;
+                      if (p1Score === null) return p2Score;
+                      if (p2Score === null) return p1Score;
+                      return Math.min(p1Score, p2Score);
+                    }
+                  };
+
+                  type HoleResult = { winner: 'A' | 'B' | 'tie' | null; winningPlayers: { sideId: number; playerNumber: 1 | 2 }[] };
+
+                  const calculateHoleResults = (sideA: RyderCupPairingSideWithScores, sideB: RyderCupPairingSideWithScores, lowHandicap: number, useNet: boolean): HoleResult[] => {
+                    const results: HoleResult[] = [];
+                    for (let hole = 1; hole <= 18; hole++) {
+                      const holeData = courseHoles.find(h => h.holeNumber === hole);
+                      const holeHcp = holeData?.handicap || hole;
+                      const teamABest = getTeamBestBall(sideA, hole, lowHandicap, useNet);
+                      const teamBBest = getTeamBestBall(sideB, hole, lowHandicap, useNet);
+
+                      if (teamABest === null || teamBBest === null) {
+                        results.push({ winner: null, winningPlayers: [] });
+                        continue;
+                      }
+
+                      const winningPlayers: { sideId: number; playerNumber: 1 | 2 }[] = [];
+                      
+                      if (teamABest < teamBBest) {
+                        // Find which player(s) on team A had the best ball
+                        const p1Score = getPlayerScore(sideA, 1, hole);
+                        const p2Score = sideA.player2Name ? getPlayerScore(sideA, 2, hole) : null;
+                        const p1Hcp = getPlayerCourseHandicap(sideA, 1);
+                        const p2Hcp = sideA.player2Name ? getPlayerCourseHandicap(sideA, 2) : null;
+                        const p1Net = useNet ? getNetScore(p1Score, p1Hcp, lowHandicap, holeHcp) : p1Score;
+                        const p2Net = useNet && p2Score !== null ? getNetScore(p2Score, p2Hcp, lowHandicap, holeHcp) : p2Score;
+                        if (p1Net === teamABest) winningPlayers.push({ sideId: sideA.id, playerNumber: 1 });
+                        if (p2Net === teamABest && sideA.player2Name) winningPlayers.push({ sideId: sideA.id, playerNumber: 2 });
+                        results.push({ winner: 'A', winningPlayers });
+                      } else if (teamBBest < teamABest) {
+                        // Find which player(s) on team B had the best ball
+                        const p1Score = getPlayerScore(sideB, 1, hole);
+                        const p2Score = sideB.player2Name ? getPlayerScore(sideB, 2, hole) : null;
+                        const p1Hcp = getPlayerCourseHandicap(sideB, 1);
+                        const p2Hcp = sideB.player2Name ? getPlayerCourseHandicap(sideB, 2) : null;
+                        const p1Net = useNet ? getNetScore(p1Score, p1Hcp, lowHandicap, holeHcp) : p1Score;
+                        const p2Net = useNet && p2Score !== null ? getNetScore(p2Score, p2Hcp, lowHandicap, holeHcp) : p2Score;
+                        if (p1Net === teamBBest) winningPlayers.push({ sideId: sideB.id, playerNumber: 1 });
+                        if (p2Net === teamBBest && sideB.player2Name) winningPlayers.push({ sideId: sideB.id, playerNumber: 2 });
+                        results.push({ winner: 'B', winningPlayers });
+                      } else {
+                        results.push({ winner: 'tie', winningPlayers: [] });
+                      }
+                    }
+                    return results;
+                  };
+
+                  const calculateRunningScore = (holeResults: HoleResult[]): { score: number; text: string }[] => {
+                    const running: { score: number; text: string }[] = [];
+                    let score = 0; // Positive = Team A up, Negative = Team B up
+                    for (let i = 0; i < 18; i++) {
+                      const result = holeResults[i];
+                      if (result.winner === 'A') score++;
+                      else if (result.winner === 'B') score--;
+                      
+                      let text = '';
+                      if (result.winner === null) {
+                        text = running.length > 0 ? running[running.length - 1].text : 'AS';
+                      } else if (score === 0) {
+                        text = 'AS';
+                      } else if (score > 0) {
+                        text = `${score}`;
+                      } else {
+                        text = `${Math.abs(score)}`;
+                      }
+                      running.push({ score, text });
+                    }
+                    return running;
+                  };
+
                   const handleScoreClick = (sideId: number, playerNumber: 1 | 2, hole: number, currentScore: number | null) => {
                     setEditScoreValue(currentScore?.toString() || "");
                     setEditingScore({ sideId, playerNumber, hole });
@@ -1185,11 +1283,19 @@ export default function RyderCupEvent() {
 
                         const isExpanded = expandedPairingId === pairing.id;
 
-                        const renderPlayerRow = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2, teamColor?: string) => {
+                        const holeResults = calculateHoleResults(sideA, sideB, lowHandicap, pairing.useNetScoring);
+                        const runningScore = calculateRunningScore(holeResults);
+
+                        const renderPlayerRow = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2, teamColor?: string, isTeamA?: boolean) => {
                           const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
                           if (!playerName) return null;
                           const courseHcp = getPlayerCourseHandicap(side, playerNumber);
                           const totals = calculateTotals(side, playerNumber);
+
+                          const isWinningPlayer = (hole: number) => {
+                            const result = holeResults[hole - 1];
+                            return result.winningPlayers.some(wp => wp.sideId === side.id && wp.playerNumber === playerNumber);
+                          };
 
                           return (
                             <tr key={`${side.id}-${playerNumber}`} className="border-b last:border-b-0">
@@ -1206,6 +1312,7 @@ export default function RyderCupEvent() {
                                 const score = getPlayerScore(side, playerNumber, hole);
                                 const strokes = courseHcp !== null ? getStrokesOnHole(courseHcp, lowHandicap, holeHcp) : 0;
                                 const isEditing = editingScore?.sideId === side.id && editingScore?.playerNumber === playerNumber && editingScore?.hole === hole;
+                                const isWinner = isWinningPlayer(hole);
                                 return (
                                   <td key={hole} className="text-center p-0 relative">
                                     {strokes > 0 && (
@@ -1228,6 +1335,7 @@ export default function RyderCupEvent() {
                                       onKeyDown={(e) => isEditing && handleKeyDown(e, side, hole)}
                                       onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, hole, score)}
                                       className={`w-8 h-7 text-center text-sm font-medium border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded ${getScoreColor(score, holePar)}`}
+                                      style={isWinner && teamColor ? { backgroundColor: `${teamColor}20`, fontWeight: 700 } : undefined}
                                       data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}-${hole}`}
                                     />
                                   </td>
@@ -1241,6 +1349,7 @@ export default function RyderCupEvent() {
                                 const score = getPlayerScore(side, playerNumber, hole);
                                 const strokes = courseHcp !== null ? getStrokesOnHole(courseHcp, lowHandicap, holeHcp) : 0;
                                 const isEditing = editingScore?.sideId === side.id && editingScore?.playerNumber === playerNumber && editingScore?.hole === hole;
+                                const isWinner = isWinningPlayer(hole);
                                 return (
                                   <td key={hole} className="text-center p-0 relative">
                                     {strokes > 0 && (
@@ -1263,6 +1372,7 @@ export default function RyderCupEvent() {
                                       onKeyDown={(e) => isEditing && handleKeyDown(e, side, hole)}
                                       onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, hole, score)}
                                       className={`w-8 h-7 text-center text-sm font-medium border-0 bg-transparent cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary rounded ${getScoreColor(score, holePar)}`}
+                                      style={isWinner && teamColor ? { backgroundColor: `${teamColor}20`, fontWeight: 700 } : undefined}
                                       data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}-${hole}`}
                                     />
                                   </td>
@@ -1270,6 +1380,44 @@ export default function RyderCupEvent() {
                               })}
                               <td className="text-center text-sm font-bold bg-muted/50 px-2">{totals.back9 ?? "-"}</td>
                               <td className="text-center text-sm font-bold bg-primary/10 text-primary px-2">{totals.total ?? "-"}</td>
+                            </tr>
+                          );
+                        };
+
+                        const renderMatchStatusRow = () => {
+                          const finalScore = runningScore[17]?.score ?? 0;
+                          const finalText = finalScore === 0 ? 'All Square' : 
+                            finalScore > 0 ? `${sideA.player1Name?.split(" ")[0]} ${finalScore} UP` : 
+                            `${sideB.player1Name?.split(" ")[0]} ${Math.abs(finalScore)} UP`;
+                          
+                          return (
+                            <tr className="bg-muted/20 border-t-2">
+                              <td className="py-1 px-2 text-xs font-semibold sticky left-0 bg-muted/20 z-10">Match</td>
+                              {[1,2,3,4,5,6,7,8,9].map(hole => {
+                                const result = holeResults[hole - 1];
+                                const run = runningScore[hole - 1];
+                                const color = run.score > 0 ? teamAColor : run.score < 0 ? teamBColor : undefined;
+                                return (
+                                  <td key={hole} className="text-center text-xs font-bold" style={{ color: color || undefined }}>
+                                    {result.winner === null ? '' : run.text}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center text-xs font-bold bg-muted/50"></td>
+                              {[10,11,12,13,14,15,16,17,18].map(hole => {
+                                const result = holeResults[hole - 1];
+                                const run = runningScore[hole - 1];
+                                const color = run.score > 0 ? teamAColor : run.score < 0 ? teamBColor : undefined;
+                                return (
+                                  <td key={hole} className="text-center text-xs font-bold" style={{ color: color || undefined }}>
+                                    {result.winner === null ? '' : run.text}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center text-xs font-bold bg-muted/50"></td>
+                              <td className="text-center text-[10px] font-bold bg-primary/10 px-1" style={{ color: finalScore > 0 ? (teamAColor || undefined) : finalScore < 0 ? (teamBColor || undefined) : undefined }}>
+                                {holeResults.some(r => r.winner !== null) ? finalText : ''}
+                              </td>
                             </tr>
                           );
                         };
@@ -1358,10 +1506,11 @@ export default function RyderCupEvent() {
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {renderPlayerRow(sideA, 1, teamAColor || undefined)}
-                                      {sideA.player2Name && renderPlayerRow(sideA, 2, teamAColor || undefined)}
-                                      {renderPlayerRow(sideB, 1, teamBColor || undefined)}
-                                      {sideB.player2Name && renderPlayerRow(sideB, 2, teamBColor || undefined)}
+                                      {renderPlayerRow(sideA, 1, teamAColor || undefined, true)}
+                                      {sideA.player2Name && renderPlayerRow(sideA, 2, teamAColor || undefined, true)}
+                                      {renderPlayerRow(sideB, 1, teamBColor || undefined, false)}
+                                      {sideB.player2Name && renderPlayerRow(sideB, 2, teamBColor || undefined, false)}
+                                      {renderMatchStatusRow()}
                                     </tbody>
                                   </table>
                                 </div>
