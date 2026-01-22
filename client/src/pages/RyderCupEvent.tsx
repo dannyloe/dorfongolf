@@ -348,6 +348,203 @@ export default function RyderCupEvent() {
 
   const payouts = calculatePayouts();
 
+  // Calculate skins for a specific day
+  interface DaySkinResult {
+    holeNumber: number;
+    winnerId: string | null; // player name as ID
+    winnerName: string | null;
+    lowestScore: number | null;
+    isSkin: boolean;
+  }
+
+  interface DaySkinsData {
+    players: { name: string; teamColor: string; scores: (number | null)[] }[];
+    holeResults: DaySkinResult[];
+    totalSkins: number;
+    skinWinners: { name: string; skinsWon: number; earnings: number }[];
+    skinValue: number;
+    totalPot: number;
+    isComplete: boolean;
+  }
+
+  const calculateDaySkins = (dayNumber: number): DaySkinsData | null => {
+    const day = event.days.find(d => d.dayNumber === dayNumber);
+    if (!day) return null;
+
+    // Gather all unique players and their scores from all pairings
+    const playerMap = new Map<string, { teamColor: string; scores: (number | null)[] }>();
+
+    for (const pairing of day.pairings) {
+      for (const side of pairing.sides) {
+        const team = getTeamById(side.teamId);
+        const color = team?.color || "#888";
+
+        // Player 1
+        if (side.player1Name) {
+          if (!playerMap.has(side.player1Name)) {
+            playerMap.set(side.player1Name, { teamColor: color, scores: Array(18).fill(null) });
+          }
+          // Fill in scores from this side
+          for (const score of side.scores) {
+            if (score.player1Strokes !== null) {
+              playerMap.get(side.player1Name)!.scores[score.holeNumber - 1] = score.player1Strokes;
+            }
+          }
+        }
+
+        // Player 2
+        if (side.player2Name) {
+          if (!playerMap.has(side.player2Name)) {
+            playerMap.set(side.player2Name, { teamColor: color, scores: Array(18).fill(null) });
+          }
+          for (const score of side.scores) {
+            if (score.player2Strokes !== null) {
+              playerMap.get(side.player2Name)!.scores[score.holeNumber - 1] = score.player2Strokes;
+            }
+          }
+        }
+      }
+    }
+
+    if (playerMap.size === 0) return null;
+
+    const players = Array.from(playerMap.entries()).map(([name, data]) => ({
+      name,
+      teamColor: data.teamColor,
+      scores: data.scores,
+    }));
+
+    // Calculate skins for each hole
+    const holeResults: DaySkinResult[] = [];
+    const skinCounts = new Map<string, number>();
+    players.forEach(p => skinCounts.set(p.name, 0));
+
+    // Check if all 18 holes have scores for all players
+    let allHolesComplete = true;
+    for (let hole = 0; hole < 18; hole++) {
+      const allHaveScores = players.every(p => p.scores[hole] !== null);
+      if (!allHaveScores) {
+        allHolesComplete = false;
+        break;
+      }
+    }
+
+    for (let hole = 0; hole < 18; hole++) {
+      const holeNumber = hole + 1;
+      const holeScores = players
+        .filter(p => p.scores[hole] !== null)
+        .map(p => ({ name: p.name, strokes: p.scores[hole]! }));
+
+      if (holeScores.length === 0) {
+        holeResults.push({
+          holeNumber,
+          winnerId: null,
+          winnerName: null,
+          lowestScore: null,
+          isSkin: false,
+        });
+        continue;
+      }
+
+      const minScore = Math.min(...holeScores.map(s => s.strokes));
+      const playersWithMinScore = holeScores.filter(s => s.strokes === minScore);
+
+      // Tie - no skin
+      if (playersWithMinScore.length !== 1) {
+        holeResults.push({
+          holeNumber,
+          winnerId: null,
+          winnerName: null,
+          lowestScore: minScore,
+          isSkin: false,
+        });
+        continue;
+      }
+
+      const potentialWinner = playersWithMinScore[0];
+
+      // For holes 1-17: must also tie or beat lowest on next hole
+      if (hole < 17) {
+        const nextHoleScores = players
+          .filter(p => p.scores[hole + 1] !== null)
+          .map(p => ({ name: p.name, strokes: p.scores[hole + 1]! }));
+
+        if (nextHoleScores.length === 0) {
+          // Next hole not played yet
+          holeResults.push({
+            holeNumber,
+            winnerId: potentialWinner.name,
+            winnerName: potentialWinner.name,
+            lowestScore: minScore,
+            isSkin: false,
+          });
+          continue;
+        }
+
+        const nextMinScore = Math.min(...nextHoleScores.map(s => s.strokes));
+        const winnerNextScore = nextHoleScores.find(s => s.name === potentialWinner.name);
+
+        if (winnerNextScore && winnerNextScore.strokes <= nextMinScore) {
+          // Winner tied or beat lowest on next hole - skin awarded
+          skinCounts.set(potentialWinner.name, (skinCounts.get(potentialWinner.name) || 0) + 1);
+          holeResults.push({
+            holeNumber,
+            winnerId: potentialWinner.name,
+            winnerName: potentialWinner.name,
+            lowestScore: minScore,
+            isSkin: true,
+          });
+        } else {
+          // Winner didn't tie/beat on next hole
+          holeResults.push({
+            holeNumber,
+            winnerId: potentialWinner.name,
+            winnerName: potentialWinner.name,
+            lowestScore: minScore,
+            isSkin: false,
+          });
+        }
+      } else {
+        // Hole 18: just needs lone low score
+        skinCounts.set(potentialWinner.name, (skinCounts.get(potentialWinner.name) || 0) + 1);
+        holeResults.push({
+          holeNumber,
+          winnerId: potentialWinner.name,
+          winnerName: potentialWinner.name,
+          lowestScore: minScore,
+          isSkin: true,
+        });
+      }
+    }
+
+    // Calculate totals
+    const totalSkins = Array.from(skinCounts.values()).reduce((sum, count) => sum + count, 0);
+    const totalPot = (event.dailySkinsPot + (day.skinsCarryover || 0)) / 100; // Convert cents to dollars
+    const skinValue = totalSkins > 0 ? totalPot / totalSkins : 0;
+
+    const skinWinners = Array.from(skinCounts.entries())
+      .filter(([_, count]) => count > 0)
+      .map(([name, skinsWon]) => ({
+        name,
+        skinsWon,
+        earnings: skinsWon * skinValue,
+      }))
+      .sort((a, b) => b.skinsWon - a.skinsWon);
+
+    return {
+      players,
+      holeResults,
+      totalSkins,
+      skinWinners,
+      skinValue: Math.round(skinValue * 100) / 100,
+      totalPot,
+      isComplete: allHolesComplete,
+    };
+  };
+
+  const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
+  const skinsData = calculateDaySkins(selectedSkinsDay);
+
   const openRecordResult = (pairingId: number) => {
     setSelectedPairingId(pairingId);
     setSelectedWinnerId(null);
@@ -2089,27 +2286,230 @@ export default function RyderCupEvent() {
                 {formatCurrency(event.dailySkinsPot)} pot per day (rolls over if no winner)
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="space-y-4">
+              {/* Day selector */}
+              <div className="flex flex-wrap gap-2">
                 {event.days.map((day) => (
-                  <div key={day.id} className="p-4 border rounded-lg">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold">Day {day.dayNumber}</h4>
-                      <Badge variant={day.skinsDistributed ? "secondary" : "outline"}>
-                        {day.skinsDistributed ? "Distributed" : "Pending"}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Pot: {formatCurrency(event.dailySkinsPot + day.skinsCarryover)}
-                      {day.skinsCarryover > 0 && (
-                        <span className="text-green-600 ml-2">
-                          (+{formatCurrency(day.skinsCarryover)} carryover)
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <Button
+                    key={day.id}
+                    variant={selectedSkinsDay === day.dayNumber ? "default" : "outline"}
+                    onClick={() => setSelectedSkinsDay(day.dayNumber)}
+                    data-testid={`button-skins-day-${day.dayNumber}`}
+                    className="flex-col h-auto py-2"
+                  >
+                    <span>Day {day.dayNumber}</span>
+                    <span className="text-xs opacity-75 font-normal">
+                      {formatCurrency(event.dailySkinsPot + (day.skinsCarryover || 0))} pot
+                    </span>
+                  </Button>
                 ))}
               </div>
+
+              {skinsData ? (
+                <div className="space-y-4">
+                  {/* Skins Summary */}
+                  <div className="flex flex-wrap gap-4 items-center">
+                    <div className="text-sm">
+                      <span className="font-medium">Total Pot:</span>{" "}
+                      ${skinsData.totalPot.toFixed(2)}
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-medium">Skins Won:</span>{" "}
+                      {skinsData.totalSkins}
+                    </div>
+                    <div className="text-sm">
+                      <span className="font-medium">Value per Skin:</span>{" "}
+                      ${skinsData.skinValue.toFixed(2)}
+                    </div>
+                    <Badge variant={skinsData.isComplete ? "secondary" : "outline"}>
+                      {skinsData.isComplete ? "Complete" : "In Progress"}
+                    </Badge>
+                  </div>
+
+                  {/* Winners Summary */}
+                  {skinsData.skinWinners.length > 0 && (
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <h4 className="font-semibold mb-2 flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-primary" /> Skin Winners
+                      </h4>
+                      <div className="flex flex-wrap gap-3">
+                        {skinsData.skinWinners.map((winner) => {
+                          const player = skinsData.players.find(p => p.name === winner.name);
+                          return (
+                            <div
+                              key={winner.name}
+                              className="flex items-center gap-2 px-3 py-2 bg-background rounded-md border"
+                            >
+                              <span
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: player?.teamColor }}
+                              />
+                              <span className="font-medium">{winner.name}</span>
+                              <Badge variant="secondary">{winner.skinsWon} skin{winner.skinsWon !== 1 ? 's' : ''}</Badge>
+                              <span className="text-green-600 font-semibold">
+                                ${winner.earnings.toFixed(2)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Skins Scorecard */}
+                  <div className="border rounded-lg overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/50">
+                          <th className="px-3 py-2 text-left font-medium sticky left-0 bg-muted/50 z-10">Player</th>
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((hole) => (
+                            <th key={hole} className="px-2 py-2 text-center font-medium min-w-[36px]">
+                              {hole}
+                            </th>
+                          ))}
+                          <th className="px-2 py-2 text-center font-medium bg-muted/30">OUT</th>
+                          {[10, 11, 12, 13, 14, 15, 16, 17, 18].map((hole) => (
+                            <th key={hole} className="px-2 py-2 text-center font-medium min-w-[36px]">
+                              {hole}
+                            </th>
+                          ))}
+                          <th className="px-2 py-2 text-center font-medium bg-muted/30">IN</th>
+                          <th className="px-2 py-2 text-center font-medium bg-muted/50">TOT</th>
+                          <th className="px-2 py-2 text-center font-medium bg-primary/10">Skins</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {skinsData.players.map((player) => {
+                          const front9 = player.scores.slice(0, 9).reduce((sum, s) => sum + (s ?? 0), 0);
+                          const back9 = player.scores.slice(9, 18).reduce((sum, s) => sum + (s ?? 0), 0);
+                          const total = front9 + back9;
+                          const skinCount = skinsData.skinWinners.find(w => w.name === player.name)?.skinsWon || 0;
+
+                          return (
+                            <tr key={player.name} className="border-t">
+                              <td className="px-3 py-2 font-medium sticky left-0 bg-background z-10">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: player.teamColor }}
+                                  />
+                                  {player.name}
+                                </div>
+                              </td>
+                              {player.scores.slice(0, 9).map((score, idx) => {
+                                const holeResult = skinsData.holeResults[idx];
+                                const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
+                                const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
+                                return (
+                                  <td
+                                    key={idx}
+                                    className={`px-2 py-2 text-center ${
+                                      isSkinWinner 
+                                        ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
+                                        : isLowScore && !holeResult?.isSkin
+                                          ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                                          : ''
+                                    }`}
+                                  >
+                                    {score ?? '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-2 py-2 text-center font-medium bg-muted/30">
+                                {front9 || '-'}
+                              </td>
+                              {player.scores.slice(9, 18).map((score, idx) => {
+                                const holeResult = skinsData.holeResults[idx + 9];
+                                const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
+                                const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
+                                return (
+                                  <td
+                                    key={idx + 9}
+                                    className={`px-2 py-2 text-center ${
+                                      isSkinWinner 
+                                        ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
+                                        : isLowScore && !holeResult?.isSkin
+                                          ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                                          : ''
+                                    }`}
+                                  >
+                                    {score ?? '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-2 py-2 text-center font-medium bg-muted/30">
+                                {back9 || '-'}
+                              </td>
+                              <td className="px-2 py-2 text-center font-bold bg-muted/50">
+                                {total || '-'}
+                              </td>
+                              <td className="px-2 py-2 text-center font-bold bg-primary/10">
+                                {skinCount > 0 ? (
+                                  <span className="text-green-600">{skinCount}</span>
+                                ) : '-'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {/* Skins row */}
+                        <tr className="border-t-2 border-primary/20 bg-primary/5">
+                          <td className="px-3 py-2 font-semibold sticky left-0 bg-primary/5 z-10">
+                            Skins
+                          </td>
+                          {skinsData.holeResults.slice(0, 9).map((result, idx) => (
+                            <td key={idx} className="px-2 py-2 text-center text-xs">
+                              {result.isSkin ? (
+                                <span className="text-green-600 font-bold">
+                                  {result.winnerName?.split(' ')[0]?.slice(0, 3)}
+                                </span>
+                              ) : result.winnerId ? (
+                                <span className="text-muted-foreground">-</span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          ))}
+                          <td className="px-2 py-2 text-center bg-muted/30" />
+                          {skinsData.holeResults.slice(9, 18).map((result, idx) => (
+                            <td key={idx + 9} className="px-2 py-2 text-center text-xs">
+                              {result.isSkin ? (
+                                <span className="text-green-600 font-bold">
+                                  {result.winnerName?.split(' ')[0]?.slice(0, 3)}
+                                </span>
+                              ) : result.winnerId ? (
+                                <span className="text-muted-foreground">-</span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                          ))}
+                          <td className="px-2 py-2 text-center bg-muted/30" />
+                          <td className="px-2 py-2 text-center bg-muted/50" />
+                          <td className="px-2 py-2 text-center font-bold bg-primary/10 text-primary">
+                            {skinsData.totalSkins}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Legend */}
+                  <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <span className="w-4 h-4 bg-green-100 dark:bg-green-900/30 rounded" />
+                      <span>Skin Won</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-4 h-4 bg-yellow-50 dark:bg-yellow-900/20 rounded border" />
+                      <span>Low Score (no skin)</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No scores entered for Day {selectedSkinsDay} yet
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
