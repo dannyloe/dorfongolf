@@ -1323,8 +1323,17 @@ export class DatabaseStorage implements IStorage {
         const pairingsWithDetails = await Promise.all(
           pairingsList.map(async (pairing) => {
             const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
+            const sidesWithScores = await Promise.all(
+              sides.map(async (side) => {
+                const scores = await db.select()
+                  .from(ryderCupPairingScores)
+                  .where(eq(ryderCupPairingScores.sideId, side.id))
+                  .orderBy(ryderCupPairingScores.holeNumber);
+                return { ...side, scores };
+              })
+            );
             const [result] = await db.select().from(ryderCupPairingResults).where(eq(ryderCupPairingResults.pairingId, pairing.id));
-            return { ...pairing, sides, result };
+            return { ...pairing, sides: sidesWithScores, result };
           })
         );
         return { ...day, pairings: pairingsWithDetails };

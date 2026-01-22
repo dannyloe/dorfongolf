@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import type { RyderCupEventResponse, RyderCupPairingSide, MATCH_TYPES, Match, Course } from "@shared/schema";
+import type { RyderCupEventResponse, RyderCupPairingSide, RyderCupPairingSideWithScores, RyderCupPairingScore, MATCH_TYPES, Match, Course, CourseTee, CourseHole } from "@shared/schema";
 
 export default function RyderCupEvent() {
   const { id } = useParams<{ id: string }>();
@@ -29,6 +29,9 @@ export default function RyderCupEvent() {
   const [editingDaySchedule, setEditingDaySchedule] = useState<number | null>(null);
   const [newTeeTime, setNewTeeTime] = useState("");
   const [draggingPairingId, setDraggingPairingId] = useState<number | null>(null);
+  const [currentHole, setCurrentHole] = useState(1);
+  const [editingScore, setEditingScore] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
+  const [editScoreValue, setEditScoreValue] = useState("");
 
   const { data: event, isLoading } = useQuery<RyderCupEventResponse>({
     queryKey: ["/api/ryder-cup", id],
@@ -41,6 +44,20 @@ export default function RyderCupEvent() {
 
   const { data: courses = [] } = useQuery<Course[]>({
     queryKey: ["/api/courses"],
+  });
+
+  // Get current day's course info for scorecard
+  const currentDay = event?.days.find(d => d.dayNumber === selectedDay);
+  const currentDayCourseId = currentDay?.courseId;
+
+  const { data: courseTees = [] } = useQuery<CourseTee[]>({
+    queryKey: ["/api/courses", currentDayCourseId, "tees"],
+    enabled: !!currentDayCourseId,
+  });
+
+  const { data: courseHoles = [] } = useQuery<CourseHole[]>({
+    queryKey: ["/api/courses", currentDayCourseId, "holes"],
+    enabled: !!currentDayCourseId,
   });
 
   const isCreatorOrAdmin = event && (event.creatorId === user?.id || user?.isAdmin);
@@ -159,6 +176,21 @@ export default function RyderCupEvent() {
     },
   });
 
+  const saveScoresMutation = useMutation({
+    mutationFn: async ({ sideId, scores }: {
+      sideId: number;
+      scores: { holeNumber: number; player1Strokes: number | null; player2Strokes: number | null }[];
+    }) => {
+      return apiRequest("POST", `/api/ryder-cup/sides/${sideId}/scores`, { scores });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save score", variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -177,7 +209,6 @@ export default function RyderCupEvent() {
 
   const teamA = event.teams[0];
   const teamB = event.teams[1];
-  const currentDay = event.days.find(d => d.dayNumber === selectedDay);
 
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -685,6 +716,213 @@ export default function RyderCupEvent() {
                           </CardContent>
                         </Card>
                       ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Inline Scorecard Section */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-semibold text-lg">Live Scorecards</h4>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={currentHole === 1}
+                      onClick={() => setCurrentHole(h => Math.max(1, h - 1))}
+                      data-testid="button-prev-hole"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </Button>
+                    <div className="text-center min-w-20">
+                      <span className="font-bold" data-testid="text-current-hole">Hole {currentHole}</span>
+                      {(() => {
+                        const holeData = courseHoles.find(h => h.holeNumber === currentHole);
+                        return holeData ? (
+                          <div className="text-xs text-muted-foreground">
+                            Par {holeData.par} | HCP {holeData.handicap}
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={currentHole === 18}
+                      onClick={() => setCurrentHole(h => Math.min(18, h + 1))}
+                      data-testid="button-next-hole"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </Button>
+                  </div>
+                </div>
+
+                {(() => {
+                  const sortedPairings = currentDay?.pairings
+                    ?.slice()
+                    .sort((a, b) => a.matchNumber - b.matchNumber) || [];
+
+                  if (sortedPairings.length === 0) {
+                    return <p className="text-sm text-muted-foreground">No matches for this day</p>;
+                  }
+
+                  const currentHoleData = courseHoles.find(h => h.holeNumber === currentHole);
+                  const holePar = currentHoleData?.par || 4;
+                  const holeHcp = currentHoleData?.handicap || currentHole;
+
+                  const getScoreColor = (score: number | null, par: number): string => {
+                    if (score === null) return "text-muted-foreground";
+                    const diff = score - par;
+                    if (diff <= -2) return "text-yellow-500";
+                    if (diff === -1) return "text-red-500";
+                    if (diff === 0) return "text-foreground";
+                    if (diff === 1) return "text-blue-500";
+                    return "text-blue-700";
+                  };
+
+                  const calculateCourseHandicap = (handicapIndex: number | null, tee: CourseTee | undefined): number | null => {
+                    if (handicapIndex === null || !tee) return null;
+                    const slopeRating = tee.slopeRating || 113;
+                    return Math.round(handicapIndex * (slopeRating / 113));
+                  };
+
+                  const getPlayerTee = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): CourseTee | undefined => {
+                    const teeId = playerNumber === 1 ? side.player1TeeId : side.player2TeeId;
+                    return courseTees.find(t => t.id === teeId);
+                  };
+
+                  const getPlayerHandicap = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): number | null => {
+                    return playerNumber === 1 ? side.player1HandicapIndex : side.player2HandicapIndex;
+                  };
+
+                  const getPlayerCourseHandicap = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): number | null => {
+                    const hcpIndex = getPlayerHandicap(side, playerNumber);
+                    if (hcpIndex === null) return null;
+                    const tee = getPlayerTee(side, playerNumber);
+                    if (!tee) return null;
+                    return calculateCourseHandicap(hcpIndex, tee);
+                  };
+
+                  const getStrokesOnHole = (courseHandicap: number, lowHandicap: number, holeHandicap: number): number => {
+                    const relativeHcp = courseHandicap - lowHandicap;
+                    if (relativeHcp <= 0) return 0;
+                    if (relativeHcp <= 18) return holeHandicap <= relativeHcp ? 1 : 0;
+                    const baseStrokes = Math.floor(relativeHcp / 18);
+                    const remainder = relativeHcp % 18;
+                    return baseStrokes + (holeHandicap <= remainder ? 1 : 0);
+                  };
+
+                  const getPlayerScore = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2, hole: number): number | null => {
+                    const scoreEntry = side.scores.find(s => s.holeNumber === hole);
+                    return playerNumber === 1 ? scoreEntry?.player1Strokes ?? null : scoreEntry?.player2Strokes ?? null;
+                  };
+
+                  const handleScoreClick = (sideId: number, playerNumber: 1 | 2, currentScore: number | null) => {
+                    setEditScoreValue(currentScore?.toString() || "");
+                    setEditingScore({ sideId, playerNumber });
+                  };
+
+                  const handleScoreSubmit = async (side: RyderCupPairingSideWithScores) => {
+                    if (!editingScore) return;
+                    const strokes = editScoreValue ? parseInt(editScoreValue) : null;
+                    if (editScoreValue && (isNaN(strokes!) || strokes! < 1 || strokes! > 15)) {
+                      toast({ title: "Invalid score", description: "Enter 1-15", variant: "destructive" });
+                      return;
+                    }
+                    const existingScore = side.scores.find(s => s.holeNumber === currentHole);
+                    const player1Strokes = editingScore.playerNumber === 1 ? strokes : (existingScore?.player1Strokes ?? null);
+                    const player2Strokes = editingScore.playerNumber === 2 ? strokes : (existingScore?.player2Strokes ?? null);
+                    await saveScoresMutation.mutateAsync({
+                      sideId: side.id,
+                      scores: [{ holeNumber: currentHole, player1Strokes, player2Strokes }],
+                    });
+                    setEditingScore(null);
+                    setEditScoreValue("");
+                  };
+
+                  const handleKeyDown = (e: React.KeyboardEvent, side: RyderCupPairingSideWithScores) => {
+                    if (e.key === "Enter") handleScoreSubmit(side);
+                    else if (e.key === "Escape") {
+                      setEditingScore(null);
+                      setEditScoreValue("");
+                    }
+                  };
+
+                  return (
+                    <div className="space-y-4">
+                      {sortedPairings.map((pairing) => {
+                        const sideA = pairing.sides[0];
+                        const sideB = pairing.sides[1];
+                        if (!sideA || !sideB) return null;
+
+                        const allHandicaps = [
+                          getPlayerCourseHandicap(sideA, 1),
+                          sideA.player2Name ? getPlayerCourseHandicap(sideA, 2) : null,
+                          getPlayerCourseHandicap(sideB, 1),
+                          sideB.player2Name ? getPlayerCourseHandicap(sideB, 2) : null,
+                        ].filter((h): h is number => h !== null);
+                        const lowHandicap = allHandicaps.length > 0 ? Math.min(...allHandicaps) : 0;
+
+                        const renderPlayer = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2) => {
+                          const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
+                          if (!playerName) return null;
+                          const score = getPlayerScore(side, playerNumber, currentHole);
+                          const courseHcp = getPlayerCourseHandicap(side, playerNumber);
+                          const strokes = courseHcp !== null ? getStrokesOnHole(courseHcp, lowHandicap, holeHcp) : 0;
+                          const isEditing = editingScore?.sideId === side.id && editingScore?.playerNumber === playerNumber;
+
+                          return (
+                            <div key={`${side.id}-${playerNumber}`} className="flex items-center justify-between py-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">{playerName.split(" ")[0]}</span>
+                                {strokes > 0 && (
+                                  <div className="flex gap-0.5">
+                                    {Array.from({ length: strokes }, (_, i) => (
+                                      <Circle key={i} className="w-2 h-2 fill-primary text-primary" />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <Input
+                                type="text"
+                                inputMode={isEditing ? "numeric" : "none"}
+                                pattern="[0-9]*"
+                                maxLength={2}
+                                readOnly={!isEditing}
+                                value={isEditing ? editScoreValue : (score?.toString() ?? "-")}
+                                onChange={(e) => setEditScoreValue(e.target.value)}
+                                onBlur={() => isEditing && handleScoreSubmit(side)}
+                                onKeyDown={(e) => isEditing && handleKeyDown(e, side)}
+                                onClick={() => !isEditing && handleScoreClick(side.id, playerNumber, score)}
+                                autoFocus={isEditing}
+                                className={`w-12 text-center font-bold cursor-pointer ${isEditing ? "" : getScoreColor(score, holePar)}`}
+                                data-testid={`input-score-${pairing.id}-${side.id}-${playerNumber}`}
+                              />
+                            </div>
+                          );
+                        };
+
+                        return (
+                          <Card key={pairing.id} data-testid={`scorecard-pairing-${pairing.id}`}>
+                            <CardContent className="py-3">
+                              <div className="text-xs text-muted-foreground mb-2">
+                                Match {pairing.matchNumber} - {pairing.matchFormat}
+                              </div>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1 border-r pr-4">
+                                  {renderPlayer(sideA, 1)}
+                                  {sideA.player2Name && renderPlayer(sideA, 2)}
+                                </div>
+                                <div className="space-y-1 pl-4">
+                                  {renderPlayer(sideB, 1)}
+                                  {sideB.player2Name && renderPlayer(sideB, 2)}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
                   );
                 })()}

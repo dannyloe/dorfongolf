@@ -830,11 +830,15 @@ export type CreateRyderCupEventRequest = {
   };
 };
 
+export type RyderCupPairingSideWithScores = RyderCupPairingSide & {
+  scores: RyderCupPairingScore[];
+};
+
 export type RyderCupEventResponse = RyderCupEvent & {
   teams: (RyderCupTeam & { members: RyderCupTeamMember[] })[];
   days: (RyderCupDay & { 
     pairings: (RyderCupPairing & { 
-      sides: RyderCupPairingSide[];
+      sides: RyderCupPairingSideWithScores[];
       result?: RyderCupPairingResult;
     })[];
   })[];
