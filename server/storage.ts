@@ -1707,6 +1707,14 @@ export class DatabaseStorage implements IStorage {
     return team || null;
   }
 
+  async updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null> {
+    const [updated] = await db.update(ryderCupTeamMembers)
+      .set({ handicapIndex })
+      .where(eq(ryderCupTeamMembers.id, memberId))
+      .returning();
+    return updated || null;
+  }
+
   async deleteRyderCupEvent(eventId: number): Promise<void> {
     // Delete all related data
     const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));

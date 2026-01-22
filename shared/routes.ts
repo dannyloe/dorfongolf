@@ -14,6 +14,7 @@ import {
   groups,
   ryderCupEvents,
   ryderCupTeams,
+  ryderCupTeamMembers,
   ryderCupPairings,
   ryderCupPairingSides,
   ryderCupSkins,
@@ -988,6 +989,17 @@ export const api = {
       }),
       responses: {
         200: z.custom<typeof ryderCupTeams.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateTeamMemberHandicap: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/members/:memberId/handicap',
+      input: z.object({
+        handicapIndex: z.number().nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupTeamMembers.$inferSelect>(),
         404: errorSchemas.notFound,
       },
     },

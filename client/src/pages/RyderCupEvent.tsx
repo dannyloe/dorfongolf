@@ -41,6 +41,8 @@ export default function RyderCupEvent() {
   const [playerMappings, setPlayerMappings] = useState<Record<string, { sideId: number; playerNumber: 1 | 2 } | null>>({});
   const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
   const [editingTeamName, setEditingTeamName] = useState("");
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
+  const [editingMemberHandicap, setEditingMemberHandicap] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -167,6 +169,21 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update team name", variant: "destructive" });
+    },
+  });
+
+  const updateMemberHandicapMutation = useMutation({
+    mutationFn: async ({ memberId, handicapIndex }: { memberId: number; handicapIndex: number | null }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/members/${memberId}/handicap`, { handicapIndex });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Handicap updated" });
+      setEditingMemberId(null);
+      setEditingMemberHandicap("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update handicap", variant: "destructive" });
     },
   });
 
@@ -1686,10 +1703,68 @@ export default function RyderCupEvent() {
               <CardContent className="pt-4">
                 <ul className="space-y-2">
                   {teamA?.members.map((member) => (
-                    <li key={member.id} className="flex justify-between items-center p-2 bg-muted/50 rounded">
+                    <li key={member.id} className="flex justify-between items-center gap-2 p-2 bg-muted/50 rounded">
                       <span>{member.playerName}</span>
-                      {member.handicapIndex !== null && (
-                        <Badge variant="outline">{(member.handicapIndex / 10).toFixed(1)}</Badge>
+                      {editingMemberId === member.id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="HCP"
+                            value={editingMemberHandicap}
+                            onChange={(e) => setEditingMemberHandicap(e.target.value)}
+                            className="w-16 h-7 text-xs"
+                            data-testid={`input-handicap-${member.id}`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const value = editingMemberHandicap.trim();
+                                const handicapIndex = value === "" ? null : Math.round(parseFloat(value) * 10);
+                                updateMemberHandicapMutation.mutate({ memberId: member.id, handicapIndex });
+                              } else if (e.key === "Escape") {
+                                setEditingMemberId(null);
+                                setEditingMemberHandicap("");
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              const value = editingMemberHandicap.trim();
+                              const handicapIndex = value === "" ? null : Math.round(parseFloat(value) * 10);
+                              updateMemberHandicapMutation.mutate({ memberId: member.id, handicapIndex });
+                            }}
+                            data-testid={`button-save-handicap-${member.id}`}
+                          >
+                            <Check className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setEditingMemberId(null);
+                              setEditingMemberHandicap("");
+                            }}
+                            data-testid={`button-cancel-handicap-${member.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="cursor-pointer hover-elevate"
+                          onClick={() => {
+                            setEditingMemberId(member.id);
+                            setEditingMemberHandicap(member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "");
+                          }}
+                          data-testid={`badge-handicap-${member.id}`}
+                        >
+                          {member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "Set HCP"}
+                        </Badge>
                       )}
                     </li>
                   ))}
@@ -1704,10 +1779,68 @@ export default function RyderCupEvent() {
               <CardContent className="pt-4">
                 <ul className="space-y-2">
                   {teamB?.members.map((member) => (
-                    <li key={member.id} className="flex justify-between items-center p-2 bg-muted/50 rounded">
+                    <li key={member.id} className="flex justify-between items-center gap-2 p-2 bg-muted/50 rounded">
                       <span>{member.playerName}</span>
-                      {member.handicapIndex !== null && (
-                        <Badge variant="outline">{(member.handicapIndex / 10).toFixed(1)}</Badge>
+                      {editingMemberId === member.id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="HCP"
+                            value={editingMemberHandicap}
+                            onChange={(e) => setEditingMemberHandicap(e.target.value)}
+                            className="w-16 h-7 text-xs"
+                            data-testid={`input-handicap-${member.id}`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const value = editingMemberHandicap.trim();
+                                const handicapIndex = value === "" ? null : Math.round(parseFloat(value) * 10);
+                                updateMemberHandicapMutation.mutate({ memberId: member.id, handicapIndex });
+                              } else if (e.key === "Escape") {
+                                setEditingMemberId(null);
+                                setEditingMemberHandicap("");
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              const value = editingMemberHandicap.trim();
+                              const handicapIndex = value === "" ? null : Math.round(parseFloat(value) * 10);
+                              updateMemberHandicapMutation.mutate({ memberId: member.id, handicapIndex });
+                            }}
+                            data-testid={`button-save-handicap-${member.id}`}
+                          >
+                            <Check className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setEditingMemberId(null);
+                              setEditingMemberHandicap("");
+                            }}
+                            data-testid={`button-cancel-handicap-${member.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="cursor-pointer hover-elevate"
+                          onClick={() => {
+                            setEditingMemberId(member.id);
+                            setEditingMemberHandicap(member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "");
+                          }}
+                          data-testid={`badge-handicap-${member.id}`}
+                        >
+                          {member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "Set HCP"}
+                        </Badge>
                       )}
                     </li>
                   ))}
