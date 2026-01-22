@@ -43,6 +43,8 @@ export default function RyderCupEvent() {
   const [editingTeamName, setEditingTeamName] = useState("");
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
   const [editingMemberHandicap, setEditingMemberHandicap] = useState("");
+  const [editingSideHandicap, setEditingSideHandicap] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
+  const [editingSideHandicapValue, setEditingSideHandicapValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -188,14 +190,19 @@ export default function RyderCupEvent() {
   });
 
   const updateSidePlayerMutation = useMutation({
-    mutationFn: async ({ sideId, playerNumber, teeId }: { sideId: number; playerNumber: 1 | 2; teeId: number | null }) => {
-      return apiRequest("PATCH", `/api/ryder-cup/sides/${sideId}/player`, { playerNumber, teeId });
+    mutationFn: async ({ sideId, playerNumber, teeId, handicapIndex }: { sideId: number; playerNumber: 1 | 2; teeId?: number | null; handicapIndex?: number | null }) => {
+      const payload: { playerNumber: number; teeId?: number | null; handicapIndex?: number | null } = { playerNumber };
+      if (teeId !== undefined) payload.teeId = teeId;
+      if (handicapIndex !== undefined) payload.handicapIndex = handicapIndex;
+      return apiRequest("PATCH", `/api/ryder-cup/sides/${sideId}/player`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      setEditingSideHandicap(null);
+      setEditingSideHandicapValue("");
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to update player tee", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to update player", variant: "destructive" });
     },
   });
 
@@ -801,13 +808,17 @@ export default function RyderCupEvent() {
                               {[sideA?.player1Name, sideA?.player2Name].filter(Boolean).map((playerName, pIdx) => {
                                 const playerNumber = (pIdx + 1) as 1 | 2;
                                 const teeId = playerNumber === 1 ? sideA?.player1TeeId : sideA?.player2TeeId;
+                                const sideHcpTenths = playerNumber === 1 ? sideA?.player1HandicapIndex : sideA?.player2HandicapIndex;
                                 const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
-                                const handicapIndexTenths = member?.handicapIndex;
+                                const memberHcpTenths = member?.handicapIndex;
+                                const hasOverride = sideHcpTenths !== null && sideHcpTenths !== undefined;
+                                const handicapIndexTenths = hasOverride ? sideHcpTenths : memberHcpTenths;
                                 const handicapIndex = handicapIndexTenths !== null && handicapIndexTenths !== undefined ? handicapIndexTenths / 10 : null;
                                 const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
                                 const courseHcp = handicapIndex !== null && tee
                                   ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
                                   : null;
+                                const isEditingThis = editingSideHandicap?.sideId === sideA?.id && editingSideHandicap?.playerNumber === playerNumber;
                                 return (
                                   <div key={pIdx} className="flex items-center justify-between gap-2 py-1">
                                     <span className="font-medium text-sm truncate flex-1">{playerName}</span>
@@ -828,8 +839,57 @@ export default function RyderCupEvent() {
                                         ))}
                                       </SelectContent>
                                     </Select>
-                                    {courseHcp !== null && (
-                                      <Badge variant="outline" className="text-xs w-8 justify-center">{courseHcp}</Badge>
+                                    {isEditingThis ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          type="number"
+                                          step="1"
+                                          placeholder="CH"
+                                          value={editingSideHandicapValue}
+                                          onChange={(e) => setEditingSideHandicapValue(e.target.value)}
+                                          className="w-12 h-6 text-xs text-center"
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && sideA) {
+                                              const val = editingSideHandicapValue.trim();
+                                              const handicapIndex = val === "" ? null : Math.round(parseFloat(val) * 10);
+                                              updateSidePlayerMutation.mutate({ sideId: sideA.id, playerNumber, handicapIndex });
+                                            } else if (e.key === "Escape") {
+                                              setEditingSideHandicap(null);
+                                              setEditingSideHandicapValue("");
+                                            }
+                                          }}
+                                          autoFocus
+                                          data-testid={`input-course-hcp-${sideA?.id}-${playerNumber}`}
+                                        />
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-5 w-5"
+                                          onClick={() => {
+                                            if (sideA) {
+                                              const val = editingSideHandicapValue.trim();
+                                              const handicapIndex = val === "" ? null : Math.round(parseFloat(val) * 10);
+                                              updateSidePlayerMutation.mutate({ sideId: sideA.id, playerNumber, handicapIndex });
+                                            }
+                                          }}
+                                        >
+                                          <Check className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`text-xs w-8 justify-center cursor-pointer hover-elevate ${hasOverride ? "border-primary" : ""}`}
+                                        onClick={() => {
+                                          if (sideA) {
+                                            setEditingSideHandicap({ sideId: sideA.id, playerNumber });
+                                            setEditingSideHandicapValue(courseHcp?.toString() || "");
+                                          }
+                                        }}
+                                        data-testid={`badge-course-hcp-${sideA?.id}-${playerNumber}`}
+                                      >
+                                        {courseHcp ?? "?"}
+                                      </Badge>
                                     )}
                                   </div>
                                 );
@@ -844,13 +904,17 @@ export default function RyderCupEvent() {
                               {[sideB?.player1Name, sideB?.player2Name].filter(Boolean).map((playerName, pIdx) => {
                                 const playerNumber = (pIdx + 1) as 1 | 2;
                                 const teeId = playerNumber === 1 ? sideB?.player1TeeId : sideB?.player2TeeId;
+                                const sideHcpTenths = playerNumber === 1 ? sideB?.player1HandicapIndex : sideB?.player2HandicapIndex;
                                 const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
-                                const handicapIndexTenths = member?.handicapIndex;
+                                const memberHcpTenths = member?.handicapIndex;
+                                const hasOverride = sideHcpTenths !== null && sideHcpTenths !== undefined;
+                                const handicapIndexTenths = hasOverride ? sideHcpTenths : memberHcpTenths;
                                 const handicapIndex = handicapIndexTenths !== null && handicapIndexTenths !== undefined ? handicapIndexTenths / 10 : null;
                                 const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
                                 const courseHcp = handicapIndex !== null && tee
                                   ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
                                   : null;
+                                const isEditingThis = editingSideHandicap?.sideId === sideB?.id && editingSideHandicap?.playerNumber === playerNumber;
                                 return (
                                   <div key={pIdx} className="flex items-center justify-between gap-2 py-1">
                                     <span className="font-medium text-sm truncate flex-1">{playerName}</span>
@@ -871,8 +935,57 @@ export default function RyderCupEvent() {
                                         ))}
                                       </SelectContent>
                                     </Select>
-                                    {courseHcp !== null && (
-                                      <Badge variant="outline" className="text-xs w-8 justify-center">{courseHcp}</Badge>
+                                    {isEditingThis ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          type="number"
+                                          step="1"
+                                          placeholder="CH"
+                                          value={editingSideHandicapValue}
+                                          onChange={(e) => setEditingSideHandicapValue(e.target.value)}
+                                          className="w-12 h-6 text-xs text-center"
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" && sideB) {
+                                              const val = editingSideHandicapValue.trim();
+                                              const handicapIndex = val === "" ? null : Math.round(parseFloat(val) * 10);
+                                              updateSidePlayerMutation.mutate({ sideId: sideB.id, playerNumber, handicapIndex });
+                                            } else if (e.key === "Escape") {
+                                              setEditingSideHandicap(null);
+                                              setEditingSideHandicapValue("");
+                                            }
+                                          }}
+                                          autoFocus
+                                          data-testid={`input-course-hcp-${sideB?.id}-${playerNumber}`}
+                                        />
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-5 w-5"
+                                          onClick={() => {
+                                            if (sideB) {
+                                              const val = editingSideHandicapValue.trim();
+                                              const handicapIndex = val === "" ? null : Math.round(parseFloat(val) * 10);
+                                              updateSidePlayerMutation.mutate({ sideId: sideB.id, playerNumber, handicapIndex });
+                                            }
+                                          }}
+                                        >
+                                          <Check className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`text-xs w-8 justify-center cursor-pointer hover-elevate ${hasOverride ? "border-primary" : ""}`}
+                                        onClick={() => {
+                                          if (sideB) {
+                                            setEditingSideHandicap({ sideId: sideB.id, playerNumber });
+                                            setEditingSideHandicapValue(courseHcp?.toString() || "");
+                                          }
+                                        }}
+                                        data-testid={`badge-course-hcp-${sideB?.id}-${playerNumber}`}
+                                      >
+                                        {courseHcp ?? "?"}
+                                      </Badge>
                                     )}
                                   </div>
                                 );
@@ -1308,6 +1421,8 @@ export default function RyderCupEvent() {
                           if (!playerName) return null;
                           const courseHcp = getPlayerCourseHandicap(side, playerNumber);
                           const totals = calculateTotals(side, playerNumber);
+                          const sideHcpTenths = playerNumber === 1 ? side.player1HandicapIndex : side.player2HandicapIndex;
+                          const hasOverride = sideHcpTenths !== null && sideHcpTenths !== undefined;
 
                           const isWinningPlayer = (hole: number) => {
                             const result = holeResults[hole - 1];
@@ -1319,7 +1434,11 @@ export default function RyderCupEvent() {
                               <td className="py-1 px-2 font-medium text-sm sticky left-0 bg-card z-10" style={{ borderLeft: teamColor ? `3px solid ${teamColor}` : undefined }}>
                                 <div className="flex items-center gap-1">
                                   <span className="truncate max-w-20">{playerName.split(" ")[0]}</span>
-                                  {courseHcp !== null && <span className="text-xs text-muted-foreground">({courseHcp})</span>}
+                                  {courseHcp !== null && (
+                                    <span className={`text-xs ${hasOverride ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                                      ({courseHcp})
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                               {[1,2,3,4,5,6,7,8,9].map(hole => {
