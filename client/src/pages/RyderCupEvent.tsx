@@ -776,9 +776,10 @@ export default function RyderCupEvent() {
                                 const playerNumber = (pIdx + 1) as 1 | 2;
                                 const teeId = playerNumber === 1 ? sideA?.player1TeeId : sideA?.player2TeeId;
                                 const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
-                                const handicapIndex = member?.handicapIndex;
+                                const handicapIndexTenths = member?.handicapIndex;
+                                const handicapIndex = handicapIndexTenths !== null && handicapIndexTenths !== undefined ? handicapIndexTenths / 10 : null;
                                 const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
-                                const courseHcp = handicapIndex !== null && handicapIndex !== undefined && tee
+                                const courseHcp = handicapIndex !== null && tee
                                   ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
                                   : null;
                                 return (
@@ -818,9 +819,10 @@ export default function RyderCupEvent() {
                                 const playerNumber = (pIdx + 1) as 1 | 2;
                                 const teeId = playerNumber === 1 ? sideB?.player1TeeId : sideB?.player2TeeId;
                                 const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
-                                const handicapIndex = member?.handicapIndex;
+                                const handicapIndexTenths = member?.handicapIndex;
+                                const handicapIndex = handicapIndexTenths !== null && handicapIndexTenths !== undefined ? handicapIndexTenths / 10 : null;
                                 const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
-                                const courseHcp = handicapIndex !== null && handicapIndex !== undefined && tee
+                                const courseHcp = handicapIndex !== null && tee
                                   ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
                                   : null;
                                 return (
@@ -978,16 +980,16 @@ export default function RyderCupEvent() {
                   };
 
                   const getPlayerHandicap = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): number | null => {
-                    // First check pairing-specific handicap
+                    // First check pairing-specific handicap (stored as tenths)
                     const pairingHcp = playerNumber === 1 ? side.player1HandicapIndex : side.player2HandicapIndex;
-                    if (pairingHcp !== null) return pairingHcp;
+                    if (pairingHcp !== null) return pairingHcp / 10;
                     
-                    // Fall back to team member handicap
+                    // Fall back to team member handicap (stored as tenths)
                     const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
                     if (!playerName) return null;
                     const allMembers = [...(teamA?.members || []), ...(teamB?.members || [])];
                     const member = allMembers.find(m => m.playerName === playerName);
-                    return member?.handicapIndex ?? null;
+                    return member?.handicapIndex != null ? member.handicapIndex / 10 : null;
                   };
 
                   const getPlayerCourseHandicap = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): number | null => {
