@@ -2044,6 +2044,156 @@ Rules:
       }
       
       await storage.saveRyderCupPairingScores(sideId, input.scores);
+      
+      // Auto-calculate match result after saving scores
+      try {
+        const scorecard = await storage.getRyderCupPairingScorecard(side.pairingId);
+        if (scorecard && scorecard.sides.length === 2) {
+          const sideA = scorecard.sides[0];
+          const sideB = scorecard.sides[1];
+          const courseHoles = scorecard.course?.holes || [];
+          
+          // Calculate course handicaps for each player
+          const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
+            const hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
+            if (hcpTenths !== null && hcpTenths !== undefined) {
+              return Math.round(hcpTenths / 10);
+            }
+            return null;
+          };
+          
+          // Get all course handicaps
+          const courseHcps = [
+            getPlayerCourseHcp(sideA, 1),
+            getPlayerCourseHcp(sideA, 2),
+            getPlayerCourseHcp(sideB, 1),
+            getPlayerCourseHcp(sideB, 2),
+          ].filter((h): h is number => h !== null);
+          
+          const lowHandicap = courseHcps.length > 0 ? Math.min(...courseHcps) : 0;
+          
+          // Calculate strokes given on each hole
+          const getStrokesOnHole = (courseHcp: number | null, holeHcp: number): number => {
+            if (courseHcp === null || !pairing.useNetScoring) return 0;
+            const relativeHcp = courseHcp - lowHandicap;
+            if (relativeHcp <= 0) return 0;
+            let strokes = 0;
+            if (holeHcp <= relativeHcp) strokes++;
+            if (relativeHcp > 18 && holeHcp <= (relativeHcp - 18)) strokes++;
+            return strokes;
+          };
+          
+          // Calculate hole results
+          type HoleResult = { winner: 'A' | 'B' | null; complete: boolean };
+          const holeResults: HoleResult[] = [];
+          
+          for (let hole = 1; hole <= 18; hole++) {
+            const holeData = courseHoles.find(h => h.holeNumber === hole);
+            const holeHcp = holeData?.handicap || hole;
+            
+            // Get scores for this hole
+            const scoreA = sideA.scores.find(s => s.holeNumber === hole);
+            const scoreB = sideB.scores.find(s => s.holeNumber === hole);
+            
+            // Best ball for each side (with net scoring)
+            const getBestNet = (s: typeof sideA, score: typeof scoreA): number | null => {
+              if (!score) return null;
+              let best: number | null = null;
+              
+              if (score.player1Strokes !== null && s.player1Name) {
+                const courseHcp = getPlayerCourseHcp(s, 1);
+                const strokes = getStrokesOnHole(courseHcp, holeHcp);
+                const net = score.player1Strokes - strokes;
+                if (best === null || net < best) best = net;
+              }
+              if (score.player2Strokes !== null && s.player2Name) {
+                const courseHcp = getPlayerCourseHcp(s, 2);
+                const strokes = getStrokesOnHole(courseHcp, holeHcp);
+                const net = score.player2Strokes - strokes;
+                if (best === null || net < best) best = net;
+              }
+              return best;
+            };
+            
+            const bestA = getBestNet(sideA, scoreA);
+            const bestB = getBestNet(sideB, scoreB);
+            
+            let winner: 'A' | 'B' | null = null;
+            let complete = false;
+            
+            if (bestA !== null && bestB !== null) {
+              complete = true;
+              if (bestA < bestB) winner = 'A';
+              else if (bestB < bestA) winner = 'B';
+            }
+            
+            holeResults.push({ winner, complete });
+          }
+          
+          // Iterate hole-by-hole sequentially to find match result
+          // Match can only be decided if all holes up to decision point are complete
+          let score = 0; // Positive = A up, Negative = B up
+          let decidedOnHole: number | null = null;
+          let allHolesComplete = true;
+          
+          for (let hole = 1; hole <= 18; hole++) {
+            const result = holeResults[hole - 1];
+            
+            if (!result.complete) {
+              allHolesComplete = false;
+              break; // Can't continue past incomplete hole
+            }
+            
+            if (result.winner === 'A') score++;
+            else if (result.winner === 'B') score--;
+            
+            // Check if match is clinched at this hole
+            const holesRemaining = 18 - hole;
+            const lead = Math.abs(score);
+            if (lead > holesRemaining) {
+              decidedOnHole = hole;
+              break;
+            }
+          }
+          
+          // Match is decided if clinched or all 18 holes complete
+          const isDecided = decidedOnHole !== null || (allHolesComplete && holeResults.every(r => r.complete));
+          
+          if (isDecided) {
+            // Determine winner and margin
+            let winningSideId: number | undefined = undefined;
+            let winningMargin: string | undefined = undefined;
+            
+            if (score > 0) {
+              winningSideId = sideA.id;
+            } else if (score < 0) {
+              winningSideId = sideB.id;
+            }
+            // score === 0 means tie (winningSideId stays undefined)
+            
+            const lead = Math.abs(score);
+            if (decidedOnHole !== null) {
+              // Match clinched before 18 holes - format as "X&Y"
+              const holesLeft = 18 - decidedOnHole;
+              winningMargin = String(lead) + "&" + String(holesLeft);
+            } else if (lead > 0) {
+              // All 18 holes completed - format as "X up"
+              winningMargin = String(lead) + " up";
+            }
+            // Tie: winningMargin stays undefined
+            
+            // Only record if not already recorded with same result
+            await storage.recordPairingResult(side.pairingId, {
+              winningSideId,
+              winningMargin,
+            });
+          }
+        }
+      } catch (autoCalcErr) {
+        // Don't fail the score save if auto-calc fails
+        console.error("Auto-calc match result error:", autoCalcErr);
+      }
+      
       res.json({ success: true });
     } catch (err) {
       if (err instanceof z.ZodError) {

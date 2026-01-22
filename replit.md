@@ -125,6 +125,16 @@ shared/           # Shared code between client and server
   - Yellow warning: Medium confidence
   - Red warning: Low confidence
 
+### Ryder Cup Match Auto-Results
+- **Auto-Calculation**: Match results are automatically calculated and recorded when scores are entered
+- **Sequential Completion**: Holes must be completed in order (1, 2, 3...) for auto-calculation to trigger
+- **Clinch Detection**: Match is decided when one team's lead exceeds the remaining holes
+- **Margin Format**: 
+  - Early finish: "X&Y" (e.g., "3&2" means 3 up with 2 to play)
+  - Full 18 holes: "X up" (e.g., "2 up")
+  - Ties: No margin recorded, points split
+- **Team Points**: Automatically updated when result is recorded
+
 ### SMS Integration (Twilio)
 - **Provider**: Twilio via Replit Connectors
 - **Environment Variables**:
