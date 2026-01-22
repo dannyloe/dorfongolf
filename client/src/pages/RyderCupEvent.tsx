@@ -45,6 +45,7 @@ export default function RyderCupEvent() {
   const [editingMemberHandicap, setEditingMemberHandicap] = useState("");
   const [editingSideHandicap, setEditingSideHandicap] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
   const [editingSideHandicapValue, setEditingSideHandicapValue] = useState("");
+  const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -549,7 +550,6 @@ export default function RyderCupEvent() {
     };
   };
 
-  const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
   const skinsData = calculateDaySkins(selectedSkinsDay);
 
   const openRecordResult = (pairingId: number) => {
