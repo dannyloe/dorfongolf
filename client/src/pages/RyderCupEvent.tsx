@@ -996,10 +996,10 @@ export default function RyderCupEvent() {
       <Tabs defaultValue="schedule">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>
+          <TabsTrigger value="ledger" data-testid="tab-ledger">Ledger</TabsTrigger>
           <TabsTrigger value="skins" data-testid="tab-skins">Skins</TabsTrigger>
           <TabsTrigger value="payouts" data-testid="tab-payouts">Payouts</TabsTrigger>
-          <TabsTrigger value="ledger" data-testid="tab-ledger">Ledger</TabsTrigger>
+          <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedule" className="space-y-4">
