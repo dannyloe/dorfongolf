@@ -1723,11 +1723,60 @@ export class DatabaseStorage implements IStorage {
       courseData[courseId] = data;
     });
 
+    // Get Ryder Cup pairing scores for this event
+    // Build a map of player name -> scores per hole, grouped by day number
+    const ryderCupScoresByDay: Record<number, Record<string, Record<number, number>>> = {};
+    
+    // Get all days for this event
+    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    
+    for (const day of days) {
+      ryderCupScoresByDay[day.dayNumber] = {};
+      
+      // Get all pairings for this day
+      const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
+      
+      for (const pairing of pairings) {
+        // Get all sides for this pairing
+        const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
+        
+        for (const side of sides) {
+          // Get scores for this side
+          const scores = await db.select().from(ryderCupPairingScores).where(eq(ryderCupPairingScores.sideId, side.id));
+          
+          // Map player1 scores
+          if (side.player1Name) {
+            if (!ryderCupScoresByDay[day.dayNumber][side.player1Name]) {
+              ryderCupScoresByDay[day.dayNumber][side.player1Name] = {};
+            }
+            for (const score of scores) {
+              if (score.player1Strokes !== null) {
+                ryderCupScoresByDay[day.dayNumber][side.player1Name][score.holeNumber] = score.player1Strokes;
+              }
+            }
+          }
+          
+          // Map player2 scores
+          if (side.player2Name) {
+            if (!ryderCupScoresByDay[day.dayNumber][side.player2Name]) {
+              ryderCupScoresByDay[day.dayNumber][side.player2Name] = {};
+            }
+            for (const score of scores) {
+              if (score.player2Strokes !== null) {
+                ryderCupScoresByDay[day.dayNumber][side.player2Name][score.holeNumber] = score.player2Strokes;
+              }
+            }
+          }
+        }
+      }
+    }
+
     return {
       matches: allMatches,
       eventMatches: allEventMatches,
       scores: allScores,
       courseData,
+      ryderCupScoresByDay,
     };
   }
 

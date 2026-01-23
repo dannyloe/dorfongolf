@@ -20,9 +20,10 @@ import type { RyderCupEventResponse, RyderCupPairingSide, RyderCupPairingSideWit
 
 type SideMatchLedgerData = {
   matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; isHandicapped?: boolean; ryderCupDayNumber?: number | null }>;
-  eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null } }> }>; [key: string]: any }>;
+  eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null; name?: string } }> }>; [key: string]: any }>;
   scores: Array<any>;
   courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
+  ryderCupScoresByDay?: Record<number, Record<string, Record<number, number>>>;
 };
 
 export default function RyderCupEvent() {
@@ -452,8 +453,41 @@ export default function RyderCupEvent() {
 
   // Calculate side bet earnings from side matches (computed inline to avoid hook issues)
   const computeSideBetData = (): { balances: Record<string, number>; entries: LedgerEntry[] } => {
-    if (!sideMatchLedger?.eventMatches || !sideMatchLedger?.scores) {
+    if (!sideMatchLedger?.eventMatches) {
       return { balances: {}, entries: [] };
+    }
+
+    // Convert Ryder Cup scores to the format expected by calculateLedger
+    // Build a map of playerId -> scores by hole from Ryder Cup pairings
+    const convertedScores: Array<{ playerId: number; matchId: number; holeNumber: number; strokes: number }> = [];
+    
+    for (const em of sideMatchLedger.eventMatches) {
+      // Find the match to get the day number
+      const match = sideMatchLedger.matches.find((m: { id: number }) => m.id === em.eventId);
+      const dayNumber = match?.ryderCupDayNumber;
+      
+      if (dayNumber && sideMatchLedger.ryderCupScoresByDay?.[dayNumber]) {
+        const dayScores = sideMatchLedger.ryderCupScoresByDay[dayNumber];
+        
+        // For each team member, get their Ryder Cup scores
+        for (const team of em.teams || []) {
+          for (const member of team.members || []) {
+            const playerName = member.player?.name;
+            if (playerName && dayScores[playerName]) {
+              // Convert player's Ryder Cup scores to the expected format
+              for (const [holeStr, strokes] of Object.entries(dayScores[playerName])) {
+                const holeNumber = parseInt(holeStr);
+                convertedScores.push({
+                  playerId: member.playerId,
+                  matchId: em.eventId,
+                  holeNumber,
+                  strokes: strokes as number,
+                });
+              }
+            }
+          }
+        }
+      }
     }
 
     // Build net context map for net scoring calculations
@@ -495,9 +529,12 @@ export default function RyderCupEvent() {
       }
     }
 
+    // Use converted Ryder Cup scores instead of separate side match scores
+    const scoresToUse = convertedScores.length > 0 ? convertedScores : sideMatchLedger.scores;
+
     const { entries, balances: playerBalances } = calculateLedger(
       sideMatchLedger.eventMatches as any,
-      sideMatchLedger.scores,
+      scoresToUse,
       netContextMap.size > 0 ? netContextMap : null
     );
 
