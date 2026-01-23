@@ -1016,7 +1016,7 @@ export default function RyderCupEvent() {
                 {day.date && (
                   <span className="text-xs opacity-75 font-normal">{new Date(day.date).toLocaleDateString()}</span>
                 )}
-                {day.courseName && !day.date && (
+                {day.courseName && (
                   <span className="text-xs opacity-75 font-normal">{day.courseName}</span>
                 )}
               </Button>
