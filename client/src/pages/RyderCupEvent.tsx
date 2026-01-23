@@ -301,6 +301,27 @@ export default function RyderCupEvent() {
       const courseName = currentDayData?.courseName || event?.courseName || "";
       const courseId = currentDayData?.courseId || event?.courseId;
       
+      // Build a map of player names to their tee and handicap info from Ryder Cup pairings
+      const playerTeeInfo: Record<string, { teeId: number | null; handicapIndex: number | null }> = {};
+      if (currentDayData?.pairings) {
+        for (const pairing of currentDayData.pairings) {
+          for (const side of pairing.sides) {
+            if (side.player1Name) {
+              playerTeeInfo[side.player1Name] = {
+                teeId: side.player1TeeId ?? null,
+                handicapIndex: side.player1HandicapIndex ?? null,
+              };
+            }
+            if (side.player2Name) {
+              playerTeeInfo[side.player2Name] = {
+                teeId: side.player2TeeId ?? null,
+                handicapIndex: side.player2HandicapIndex ?? null,
+              };
+            }
+          }
+        }
+      }
+      
       // Create the match (inherit handicap setting from Ryder Cup event)
       const res = await apiRequest("POST", "/api/matches", {
         name: `Day ${selectedDay} Side Match`,
@@ -319,9 +340,14 @@ export default function RyderCupEvent() {
         ...(event?.teams[1]?.members || []).map(m => m.playerName),
       ];
       
-      // Add all tournament players to the match
+      // Add all tournament players to the match with their tee/handicap info from the day's pairings
       for (const playerName of allPlayerNames) {
-        await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { name: playerName });
+        const teeInfo = playerTeeInfo[playerName] || { teeId: null, handicapIndex: null };
+        await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { 
+          name: playerName,
+          teeId: teeInfo.teeId,
+          handicapIndex: teeInfo.handicapIndex,
+        });
       }
       
       return newMatch;
@@ -1463,10 +1489,9 @@ export default function RyderCupEvent() {
                   const getMatchResults = (matchId: number) => {
                     if (!sideBetData.entries.length) return [];
                     return sideBetData.entries.filter(e => {
-                      const matchData = sideMatchLedger?.matches.find((m: { id: number }) => m.id === matchId);
-                      const eventIds = sideMatchLedger?.eventMatches
-                        .filter((em: { eventId: number }) => em.eventId === matchId)
-                        .map((em: { id: number }) => em.id) || [];
+                      const eventIds = (sideMatchLedger?.eventMatches || [])
+                        .filter((em: any) => em.eventId === matchId)
+                        .map((em: any) => em.id) || [];
                       return eventIds.includes(e.matchId) && e.isComplete;
                     });
                   };

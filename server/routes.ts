@@ -177,6 +177,8 @@ export async function registerRoutes(
         matchId,
         name: input.name,
         userId: input.userId,
+        teeId: input.teeId ?? null,
+        handicapIndex: input.handicapIndex ?? null,
       }, match?.courseId ?? undefined);
       
       // Send notification to newly added player (non-blocking)

@@ -77,6 +77,8 @@ export const api = {
       input: z.object({
         name: z.string().min(1),
         userId: z.string().optional(),
+        teeId: z.number().nullable().optional(),
+        handicapIndex: z.number().nullable().optional(),
       }),
       responses: {
         201: z.custom<typeof players.$inferSelect>(),
