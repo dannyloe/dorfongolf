@@ -1080,6 +1080,22 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    getSideMatchLedger: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/:id/side-match-ledger',
+      responses: {
+        200: z.object({
+          matches: z.array(z.any()),
+          eventMatches: z.array(z.any()),
+          scores: z.array(z.any()),
+          courseData: z.record(z.string(), z.object({
+            holes: z.array(z.any()),
+            tees: z.array(z.any()),
+          })).optional(),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
     updateDayCourse: {
       method: 'PATCH' as const,
       path: '/api/ryder-cup/days/:dayId/course',

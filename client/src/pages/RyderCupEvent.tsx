@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2 } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,7 +14,16 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { calculateLedger, type LedgerEntry, type NetScoringContext } from "@/lib/matchplay";
+import { calculateCourseHandicap } from "@/lib/handicap";
 import type { RyderCupEventResponse, RyderCupPairingSide, RyderCupPairingSideWithScores, RyderCupPairingScore, MATCH_TYPES, Match, Course, CourseTee, CourseHole } from "@shared/schema";
+
+type SideMatchLedgerData = {
+  matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; isHandicapped?: boolean; ryderCupDayNumber?: number | null }>;
+  eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null } }> }>; [key: string]: any }>;
+  scores: Array<any>;
+  courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
+};
 
 export default function RyderCupEvent() {
   const { id } = useParams<{ id: string }>();
@@ -51,6 +60,8 @@ export default function RyderCupEvent() {
   const [transactionDescription, setTransactionDescription] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionSplitPlayers, setTransactionSplitPlayers] = useState<string[]>([]);
+  const [earningsBreakdownPlayer, setEarningsBreakdownPlayer] = useState<string | null>(null);
+  const [sideBetsBreakdownPlayer, setSideBetsBreakdownPlayer] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -69,6 +80,11 @@ export default function RyderCupEvent() {
 
   const { data: sideMatches = [] } = useQuery<Match[]>({
     queryKey: ["/api/ryder-cup", id, "matches"],
+    enabled: !!id,
+  });
+
+  const { data: sideMatchLedger } = useQuery<SideMatchLedgerData>({
+    queryKey: ["/api/ryder-cup", id, "side-match-ledger"],
     enabled: !!id,
   });
 
@@ -407,6 +423,123 @@ export default function RyderCupEvent() {
   };
 
   const payouts = calculatePayouts();
+
+  // Calculate side bet earnings from side matches
+  const sideBetData = useMemo(() => {
+    if (!sideMatchLedger?.eventMatches || !sideMatchLedger?.scores) {
+      return { balances: {} as Record<string, number>, entries: [] as LedgerEntry[] };
+    }
+
+    // Build net context map for net scoring calculations
+    const netContextMap = new Map<number, NetScoringContext>();
+    for (const em of sideMatchLedger.eventMatches) {
+      if (em.useNetScoring && sideMatchLedger.courseData) {
+        const match = sideMatchLedger.matches.find((m: { id: number }) => m.id === em.eventId);
+        const courseId = match?.courseId;
+        if (courseId && sideMatchLedger.courseData[courseId]) {
+          const courseData = sideMatchLedger.courseData[courseId];
+          const holeHandicaps = new Map<number, number>();
+          for (const hole of courseData.holes) {
+            if (hole.handicap !== null) {
+              holeHandicaps.set(hole.holeNumber, hole.handicap);
+            }
+          }
+          
+          const courseHandicaps = new Map<number, number>();
+          const playerHandicaps = new Map<number, number>();
+          for (const team of em.teams || []) {
+            for (const member of team.members || []) {
+              const handicapIndex = member.player?.handicapIndex;
+              const teeId = member.player?.teeId;
+              if (handicapIndex !== null && handicapIndex !== undefined) {
+                const tee = courseData.tees.find((t: { id: number }) => t.id === teeId) || courseData.tees[0];
+                if (tee) {
+                  const courseHcp = calculateCourseHandicap(handicapIndex / 10, tee.slopeRating);
+                  if (courseHcp !== null) {
+                    courseHandicaps.set(member.playerId, courseHcp);
+                    playerHandicaps.set(member.playerId, courseHcp);
+                  }
+                }
+              }
+            }
+          }
+
+          netContextMap.set(em.eventId, { holeHandicaps, playerHandicaps, courseHandicaps });
+        }
+      }
+    }
+
+    const { entries, balances: playerBalances } = calculateLedger(
+      sideMatchLedger.eventMatches as any,
+      sideMatchLedger.scores,
+      netContextMap.size > 0 ? netContextMap : null
+    );
+
+    // Aggregate balances by player name (normalize to handle duplicates)
+    const balancesByName: Record<string, number> = {};
+    for (const balance of playerBalances) {
+      const name = balance.playerName;
+      balancesByName[name] = (balancesByName[name] || 0) + balance.netBalance;
+    }
+
+    return { balances: balancesByName, entries };
+  }, [sideMatchLedger]);
+
+  // Get entries for a specific player's earnings breakdown (from Ryder Cup matches)
+  const getEarningsBreakdown = (playerName: string) => {
+    const breakdown: { description: string; amount: number }[] = [];
+    
+    for (const day of event?.days || []) {
+      for (const pairing of day.pairings) {
+        if (!pairing.result || !pairing.isPrimary) continue;
+        
+        for (const side of pairing.sides) {
+          const players = [side.player1Name, side.player2Name].filter((n): n is string => n !== null);
+          if (!players.includes(playerName)) continue;
+          
+          const isWinner = pairing.result.winningSideId === side.id;
+          const isTie = !pairing.result.winningSideId;
+          const otherSide = pairing.sides.find(s => s.id !== side.id);
+          const opponents = [otherSide?.player1Name, otherSide?.player2Name].filter((n): n is string => n !== null).join(" & ");
+          
+          if (isWinner) {
+            breakdown.push({
+              description: `Day ${day.dayNumber}: Won vs ${opponents}`,
+              amount: event!.matchWinBonus,
+            });
+          } else if (isTie) {
+            breakdown.push({
+              description: `Day ${day.dayNumber}: Tied vs ${opponents}`,
+              amount: event!.matchTieBonus,
+            });
+          }
+        }
+      }
+    }
+    
+    if (event?.status === "completed" && event.winningTeamId) {
+      const winningTeam = event.teams.find(t => t.id === event.winningTeamId);
+      const isOnWinningTeam = winningTeam?.members.some(m => m.playerName === playerName);
+      if (isOnWinningTeam) {
+        breakdown.push({
+          description: `Overall team win bonus (${winningTeam?.name})`,
+          amount: event.teamWinBonus,
+        });
+      }
+    }
+    
+    return breakdown;
+  };
+
+  // Get entries for a specific player's side bet breakdown
+  const getSideBetBreakdown = (playerName: string) => {
+    if (!sideBetData.entries) return [];
+    
+    const normalized = playerName.toLowerCase().trim();
+    return sideBetData.entries.filter(e => 
+      e.playerName.toLowerCase().trim() === normalized && e.isComplete
+    );
+  };
 
   // Calculate skins for a specific day
   interface DaySkinResult {
@@ -1324,30 +1457,70 @@ export default function RyderCupEvent() {
                   if (daySideMatches.length === 0) {
                     return <p className="text-sm text-muted-foreground">No side matches for this day</p>;
                   }
+
+                  const getMatchResults = (matchId: number) => {
+                    if (!sideBetData.entries.length) return [];
+                    return sideBetData.entries.filter(e => {
+                      const matchData = sideMatchLedger?.matches.find((m: { id: number }) => m.id === matchId);
+                      const eventIds = sideMatchLedger?.eventMatches
+                        .filter((em: { eventId: number }) => em.eventId === matchId)
+                        .map((em: { id: number }) => em.id) || [];
+                      return eventIds.includes(e.matchId) && e.isComplete;
+                    });
+                  };
+
                   return (
                     <div className="space-y-2">
-                      {daySideMatches.map((match) => (
-                        <Card 
-                          key={match.id} 
-                          className="border-dashed cursor-pointer hover-elevate"
-                          onClick={() => setLocation(`/match/${match.id}`)}
-                          data-testid={`card-side-match-${match.id}`}
-                        >
-                          <CardContent className="py-3">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium">{match.name || "Side Match"}</span>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">{match.courseName}</Badge>
-                                {match.completed && (
-                                  <Badge variant="secondary">
-                                    <Check className="w-3 h-3 mr-1" /> Complete
-                                  </Badge>
-                                )}
+                      {daySideMatches.map((match) => {
+                        const matchResults = getMatchResults(match.id);
+                        const playerEarnings: Record<string, number> = {};
+                        matchResults.forEach(r => {
+                          playerEarnings[r.playerName] = (playerEarnings[r.playerName] || 0) + r.amount;
+                        });
+                        const sortedEarnings = Object.entries(playerEarnings).sort((a, b) => b[1] - a[1]);
+
+                        return (
+                          <Card 
+                            key={match.id} 
+                            className="border-dashed cursor-pointer hover-elevate"
+                            onClick={() => setLocation(`/match/${match.id}`)}
+                            data-testid={`card-side-match-${match.id}`}
+                          >
+                            <CardContent className="py-3">
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="font-medium">{match.name || "Side Match"}</span>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline">{match.courseName}</Badge>
+                                  {match.completed && (
+                                    <Badge variant="secondary">
+                                      <Check className="w-3 h-3 mr-1" /> Complete
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                              {match.completed && sortedEarnings.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-dashed">
+                                  <div className="flex flex-wrap gap-2">
+                                    {sortedEarnings.slice(0, 4).map(([name, amount]) => (
+                                      <div key={name} className="flex items-center gap-1 text-xs">
+                                        <span className="text-muted-foreground">{name}:</span>
+                                        <span className={`font-medium ${amount > 0 ? "text-green-600" : amount < 0 ? "text-red-600" : ""}`}>
+                                          {amount > 0 ? "+" : ""}{formatCurrency(amount)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {sortedEarnings.length > 4 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        +{sortedEarnings.length - 4} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
                     </div>
                   );
                 })()}
@@ -2671,22 +2844,24 @@ export default function RyderCupEvent() {
                   });
                 });
 
-                // Calculate net position (payouts + expense balances)
+                // Calculate net position (payouts + side bets + expense balances)
                 const netPosition: Record<string, number> = {};
                 allPlayers.forEach(name => {
-                  netPosition[name] = (payouts[name] || 0) + (expenseBalances[name] || 0);
+                  const sideBets = sideBetData.balances[name] || 0;
+                  netPosition[name] = (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0);
                 });
 
                 return (
                   <div className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-semibold mb-3">Net Position (Earnings + Expenses)</h4>
+                      <h4 className="text-sm font-semibold mb-3">Net Position (Earnings + Side Bets + Expenses)</h4>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2 pr-4">Player</th>
                               <th className="text-right py-2 px-2">Earnings</th>
+                              <th className="text-right py-2 px-2">Side Bets</th>
                               <th className="text-right py-2 px-2">Expenses</th>
                               <th className="text-right py-2 pl-2 font-bold">Net</th>
                             </tr>
@@ -2697,6 +2872,7 @@ export default function RyderCupEvent() {
                               .map(playerName => {
                                 const team = teamA?.members.find(m => m.playerName === playerName) ? teamA : teamB;
                                 const earnings = payouts[playerName] || 0;
+                                const sideBets = sideBetData.balances[playerName] || 0;
                                 const expenses = expenseBalances[playerName] || 0;
                                 const net = netPosition[playerName] || 0;
                                 return (
@@ -2710,8 +2886,23 @@ export default function RyderCupEvent() {
                                         <span className="font-medium">{playerName}</span>
                                       </div>
                                     </td>
-                                    <td className={`text-right py-2 px-2 ${earnings > 0 ? "text-green-600" : ""}`}>
-                                      {formatCurrency(earnings)}
+                                    <td className="text-right py-2 px-2">
+                                      <button
+                                        onClick={() => setEarningsBreakdownPlayer(playerName)}
+                                        className={`hover:underline cursor-pointer ${earnings > 0 ? "text-green-600" : ""}`}
+                                        data-testid={`button-earnings-breakdown-${playerName}`}
+                                      >
+                                        {formatCurrency(earnings)}
+                                      </button>
+                                    </td>
+                                    <td className="text-right py-2 px-2">
+                                      <button
+                                        onClick={() => setSideBetsBreakdownPlayer(playerName)}
+                                        className={`hover:underline cursor-pointer ${sideBets > 0 ? "text-green-600" : sideBets < 0 ? "text-red-600" : ""}`}
+                                        data-testid={`button-sidebets-breakdown-${playerName}`}
+                                      >
+                                        {sideBets > 0 ? "+" : ""}{formatCurrency(sideBets)}
+                                      </button>
                                     </td>
                                     <td className={`text-right py-2 px-2 ${expenses > 0 ? "text-green-600" : expenses < 0 ? "text-red-600" : ""}`}>
                                       {expenses > 0 ? "+" : ""}{formatCurrency(expenses)}
@@ -2957,6 +3148,81 @@ export default function RyderCupEvent() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!earningsBreakdownPlayer} onOpenChange={(open) => !open && setEarningsBreakdownPlayer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Earnings Breakdown - {earningsBreakdownPlayer}</DialogTitle>
+          </DialogHeader>
+          {earningsBreakdownPlayer && (() => {
+            const breakdown = getEarningsBreakdown(earningsBreakdownPlayer);
+            const total = breakdown.reduce((sum, b) => sum + b.amount, 0);
+            return (
+              <div className="space-y-3">
+                {breakdown.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No earnings yet</p>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      {breakdown.map((b, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span>{b.description}</span>
+                          <span className="font-medium text-green-600">{formatCurrency(b.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t pt-2 flex justify-between items-center font-semibold">
+                      <span>Total</span>
+                      <span className="text-green-600">{formatCurrency(total)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!sideBetsBreakdownPlayer} onOpenChange={(open) => !open && setSideBetsBreakdownPlayer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Side Bets Breakdown - {sideBetsBreakdownPlayer}</DialogTitle>
+          </DialogHeader>
+          {sideBetsBreakdownPlayer && (() => {
+            const entries = getSideBetBreakdown(sideBetsBreakdownPlayer);
+            const total = entries.reduce((sum, e) => sum + e.amount, 0);
+            return (
+              <div className="space-y-3">
+                {entries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No side bet results yet</p>
+                ) : (
+                  <>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {entries.map((e, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
+                          <div>
+                            <span className="font-medium">{e.matchName}</span>
+                            {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
+                          </div>
+                          <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
+                            {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t pt-2 flex justify-between items-center font-semibold">
+                      <span>Total</span>
+                      <span className={total > 0 ? "text-green-600" : total < 0 ? "text-red-600" : ""}>
+                        {total > 0 ? "+" : ""}{formatCurrency(total)}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

@@ -1693,6 +1693,44 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt);
   }
 
+  async getSideMatchLedgerData(eventId: number) {
+    const allMatches = await db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt);
+
+    const allEventMatches: any[] = [];
+    const allScores: Score[] = [];
+    const courseDataMap: Map<number, { holes: CourseHole[]; tees: CourseTee[] }> = new Map();
+
+    for (const match of allMatches) {
+      const eventMatchesList = await this.getEventMatches(match.id);
+      for (const em of eventMatchesList) {
+        const withTeams = await this.getEventMatchWithTeams(em.id);
+        if (withTeams) {
+          allEventMatches.push(withTeams);
+        }
+      }
+      const matchScores = await this.getMatchScores(match.id);
+      allScores.push(...matchScores);
+      
+      if (match.courseId && !courseDataMap.has(match.courseId)) {
+        const holes = await this.getCourseHoles(match.courseId);
+        const tees = await this.getCourseTees(match.courseId);
+        courseDataMap.set(match.courseId, { holes, tees });
+      }
+    }
+
+    const courseData: Record<number, { holes: CourseHole[]; tees: CourseTee[] }> = {};
+    courseDataMap.forEach((data, courseId) => {
+      courseData[courseId] = data;
+    });
+
+    return {
+      matches: allMatches,
+      eventMatches: allEventMatches,
+      scores: allScores,
+      courseData,
+    };
+  }
+
   async updateRyderCupEventHandicaps(eventId: number, useHandicaps: boolean): Promise<RyderCupEvent> {
     const [updated] = await db.update(ryderCupEvents)
       .set({ useHandicaps })

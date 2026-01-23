@@ -1984,6 +1984,16 @@ Rules:
     res.json(matches);
   });
 
+  app.get(api.ryderCup.getSideMatchLedger.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    try {
+      const ledgerData = await storage.getSideMatchLedgerData(eventId);
+      res.json(ledgerData);
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.patch(api.ryderCup.updateDayCourse.path, isAuthenticated, async (req, res) => {
     const dayId = parseInt(req.params.dayId);
     try {
