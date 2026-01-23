@@ -43,6 +43,9 @@ export interface IStorage {
   // Ryder Cup Team methods
   getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null>;
   updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
+  
+  // Ryder Cup scores for side matches
+  getRyderCupScoresForSideMatch(eventId: number, dayNumber: number, players: Player[]): Promise<Score[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2082,6 +2085,81 @@ export class DatabaseStorage implements IStorage {
     const [transaction] = await db.select().from(ryderCupTransactions)
       .where(eq(ryderCupTransactions.id, transactionId));
     return transaction || null;
+  }
+
+  async getRyderCupScoresForSideMatch(eventId: number, dayNumber: number, matchPlayers: Player[]): Promise<Score[]> {
+    const convertedScores: Score[] = [];
+    
+    // Get the day for this event
+    const [day] = await db.select().from(ryderCupDays)
+      .where(and(
+        eq(ryderCupDays.eventId, eventId),
+        eq(ryderCupDays.dayNumber, dayNumber)
+      ));
+    
+    if (!day) return [];
+    
+    // Get all pairings for this day
+    const pairingsForDay = await db.select().from(ryderCupPairings)
+      .where(eq(ryderCupPairings.dayId, day.id));
+    
+    // Build a map of player name -> their scores by hole
+    const scoresByPlayerName: Record<string, Record<number, number>> = {};
+    
+    for (const pairing of pairingsForDay) {
+      // Get all sides for this pairing
+      const sides = await db.select().from(ryderCupPairingSides)
+        .where(eq(ryderCupPairingSides.pairingId, pairing.id));
+      
+      for (const side of sides) {
+        // Get scores for this side
+        const sideScores = await db.select().from(ryderCupPairingScores)
+          .where(eq(ryderCupPairingScores.sideId, side.id));
+        
+        // Map player1 scores
+        if (side.player1Name) {
+          if (!scoresByPlayerName[side.player1Name]) {
+            scoresByPlayerName[side.player1Name] = {};
+          }
+          for (const score of sideScores) {
+            if (score.player1Strokes !== null) {
+              scoresByPlayerName[side.player1Name][score.holeNumber] = score.player1Strokes;
+            }
+          }
+        }
+        
+        // Map player2 scores
+        if (side.player2Name) {
+          if (!scoresByPlayerName[side.player2Name]) {
+            scoresByPlayerName[side.player2Name] = {};
+          }
+          for (const score of sideScores) {
+            if (score.player2Strokes !== null) {
+              scoresByPlayerName[side.player2Name][score.holeNumber] = score.player2Strokes;
+            }
+          }
+        }
+      }
+    }
+    
+    // Convert to Score format by matching player names to match player IDs
+    for (const player of matchPlayers) {
+      const playerScores = scoresByPlayerName[player.name];
+      if (playerScores) {
+        for (const [holeStr, strokes] of Object.entries(playerScores)) {
+          const holeNumber = parseInt(holeStr);
+          convertedScores.push({
+            id: 0, // Virtual score, not in database
+            playerId: player.id,
+            matchId: player.matchId,
+            holeNumber,
+            strokes,
+          });
+        }
+      }
+    }
+    
+    return convertedScores;
   }
 }
 

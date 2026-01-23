@@ -118,7 +118,7 @@ export async function registerRoutes(
     if (!match) return res.status(404).json({ message: "Match not found" });
 
     const players = await storage.getMatchPlayers(matchId);
-    const scores = await storage.getMatchScores(matchId);
+    let scores = await storage.getMatchScores(matchId);
     const creator = await storage.getUser(match.creatorId);
     
     // Get event matches with teams
@@ -126,6 +126,16 @@ export async function registerRoutes(
     const eventMatchesWithTeams = await Promise.all(
       eventMatchesList.map(async (em) => storage.getEventMatchWithTeams(em.id))
     );
+
+    // For side matches (linked to Ryder Cup events), fetch scores from Ryder Cup pairings
+    if (match.ryderCupEventId && match.ryderCupDayNumber && scores.length === 0) {
+      const ryderCupScores = await storage.getRyderCupScoresForSideMatch(
+        match.ryderCupEventId,
+        match.ryderCupDayNumber,
+        players
+      );
+      scores = ryderCupScores;
+    }
 
     res.json({
       ...match,
