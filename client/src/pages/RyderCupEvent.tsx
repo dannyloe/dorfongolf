@@ -539,13 +539,20 @@ export default function RyderCupEvent() {
     );
 
     // Aggregate balances by player name (normalize to handle duplicates)
+    // Convert from dollars to cents to match other amounts (payouts, expenses)
     const balancesByName: Record<string, number> = {};
     for (const balance of playerBalances) {
       const name = balance.playerName;
-      balancesByName[name] = (balancesByName[name] || 0) + balance.netBalance;
+      balancesByName[name] = (balancesByName[name] || 0) + Math.round(balance.netBalance * 100);
     }
 
-    return { balances: balancesByName, entries };
+    // Also convert entry amounts from dollars to cents
+    const entriesInCents = entries.map(e => ({
+      ...e,
+      amount: Math.round(e.amount * 100),
+    }));
+
+    return { balances: balancesByName, entries: entriesInCents };
   };
 
   const sideBetData = computeSideBetData();
