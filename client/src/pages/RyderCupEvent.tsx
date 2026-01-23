@@ -1530,25 +1530,30 @@ export default function RyderCupEvent() {
                     return <p className="text-sm text-muted-foreground">No side matches for this day</p>;
                   }
 
-                  const getMatchResults = (matchId: number) => {
-                    if (!sideBetData.entries.length) return [];
-                    return sideBetData.entries.filter(e => {
-                      const eventIds = (sideMatchLedger?.eventMatches || [])
-                        .filter((em: any) => em.eventId === matchId)
-                        .map((em: any) => em.id) || [];
-                      return eventIds.includes(e.matchId) && e.isComplete;
-                    });
-                  };
-
                   return (
                     <div className="space-y-2">
                       {daySideMatches.map((match) => {
-                        const matchResults = getMatchResults(match.id);
+                        // Get all event match IDs for this side match
+                        const matchEventIds = (sideMatchLedger?.eventMatches || [])
+                          .filter((em: any) => em.eventId === match.id)
+                          .map((em: any) => em.id);
+                        
+                        // Get ALL entries for this match (not filtered by isComplete)
+                        const allMatchEntries = sideBetData.entries.filter(e => 
+                          matchEventIds.includes(e.matchId)
+                        );
+                        
+                        // Calculate player earnings from all entries
                         const playerEarnings: Record<string, number> = {};
-                        matchResults.forEach(r => {
+                        allMatchEntries.forEach(r => {
                           playerEarnings[r.playerName] = (playerEarnings[r.playerName] || 0) + r.amount;
                         });
-                        const sortedEarnings = Object.entries(playerEarnings).sort((a, b) => b[1] - a[1]);
+                        const sortedEarnings = Object.entries(playerEarnings)
+                          .filter(([_, amount]) => amount !== 0)  // Only show non-zero amounts
+                          .sort((a, b) => b[1] - a[1]);
+                        
+                        // Consider match complete if flag is set OR if there are calculated results
+                        const isComplete = match.completed || allMatchEntries.length > 0;
 
                         return (
                           <Card 
@@ -1562,14 +1567,14 @@ export default function RyderCupEvent() {
                                 <span className="font-medium">{match.name || "Side Match"}</span>
                                 <div className="flex items-center gap-2">
                                   <Badge variant="outline">{match.courseName}</Badge>
-                                  {match.completed && (
+                                  {isComplete && (
                                     <Badge variant="secondary">
                                       <Check className="w-3 h-3 mr-1" /> Complete
                                     </Badge>
                                   )}
                                 </div>
                               </div>
-                              {match.completed && sortedEarnings.length > 0 && (
+                              {isComplete && sortedEarnings.length > 0 && (
                                 <div className="mt-2 pt-2 border-t border-dashed">
                                   <div className="flex flex-wrap gap-2">
                                     {sortedEarnings.slice(0, 4).map(([name, amount]) => (
