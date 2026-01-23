@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye } from "lucide-react";
@@ -424,10 +424,10 @@ export default function RyderCupEvent() {
 
   const payouts = calculatePayouts();
 
-  // Calculate side bet earnings from side matches
-  const sideBetData = useMemo(() => {
+  // Calculate side bet earnings from side matches (computed inline to avoid hook issues)
+  const computeSideBetData = (): { balances: Record<string, number>; entries: LedgerEntry[] } => {
     if (!sideMatchLedger?.eventMatches || !sideMatchLedger?.scores) {
-      return { balances: {} as Record<string, number>, entries: [] as LedgerEntry[] };
+      return { balances: {}, entries: [] };
     }
 
     // Build net context map for net scoring calculations
@@ -483,7 +483,9 @@ export default function RyderCupEvent() {
     }
 
     return { balances: balancesByName, entries };
-  }, [sideMatchLedger]);
+  };
+
+  const sideBetData = computeSideBetData();
 
   // Get entries for a specific player's earnings breakdown (from Ryder Cup matches)
   const getEarningsBreakdown = (playerName: string) => {
