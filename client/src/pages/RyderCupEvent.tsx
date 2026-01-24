@@ -95,7 +95,7 @@ export default function RyderCupEvent() {
 
   // Get current day's course info for scorecard
   const currentDay = event?.days.find(d => d.dayNumber === selectedDay);
-  const currentDayCourseId = currentDay?.courseId;
+  const currentDayCourseId = currentDay?.courseId || event?.courseId;
 
   const { data: courseTees = [] } = useQuery<CourseTee[]>({
     queryKey: ["/api/courses", currentDayCourseId, "tees"],
