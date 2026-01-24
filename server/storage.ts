@@ -44,6 +44,16 @@ export interface IStorage {
   getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null>;
   updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
   
+  // Ryder Cup Payout methods
+  updateRyderCupEventPayouts(eventId: number, payouts: {
+    buyInAmount?: number;
+    teamWinBonus?: number;
+    matchWinBonus?: number;
+    matchTieBonus?: number;
+    dailySkinsPot?: number;
+    closestToHolePayout?: number;
+  }): Promise<RyderCupEvent>;
+  
   // Ryder Cup scores for side matches
   getRyderCupScoresForSideMatch(eventId: number, dayNumber: number, players: Player[]): Promise<Score[]>;
   
@@ -1841,6 +1851,21 @@ export class DatabaseStorage implements IStorage {
   async updateRyderCupEventClosestToHolePayout(eventId: number, closestToHolePayout: number): Promise<RyderCupEvent> {
     const [updated] = await db.update(ryderCupEvents)
       .set({ closestToHolePayout })
+      .where(eq(ryderCupEvents.id, eventId))
+      .returning();
+    return updated;
+  }
+
+  async updateRyderCupEventPayouts(eventId: number, payouts: {
+    buyInAmount?: number;
+    teamWinBonus?: number;
+    matchWinBonus?: number;
+    matchTieBonus?: number;
+    dailySkinsPot?: number;
+    closestToHolePayout?: number;
+  }): Promise<RyderCupEvent> {
+    const [updated] = await db.update(ryderCupEvents)
+      .set(payouts)
       .where(eq(ryderCupEvents.id, eventId))
       .returning();
     return updated;

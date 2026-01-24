@@ -999,6 +999,22 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updatePayouts: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/:id/payouts',
+      input: z.object({
+        buyInAmount: z.number().min(0).optional(),
+        teamWinBonus: z.number().min(0).optional(),
+        matchWinBonus: z.number().min(0).optional(),
+        matchTieBonus: z.number().min(0).optional(),
+        dailySkinsPot: z.number().min(0).optional(),
+        closestToHolePayout: z.number().min(0).optional(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupEvents.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
     updateTeam: {
       method: 'PATCH' as const,
       path: '/api/ryder-cup/teams/:teamId',

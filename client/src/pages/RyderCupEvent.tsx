@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -2968,38 +2968,137 @@ export default function RyderCupEvent() {
         </TabsContent>
 
         <TabsContent value="payouts">
-          {/* CTH Payout Configuration */}
+          {/* Payout Settings Configuration */}
           {isCreatorOrAdmin && (
             <Card className="mb-4">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Flag className="w-4 h-4" /> Closest to Hole Payout
+                  <Settings className="w-4 h-4" /> Payout Settings
                 </CardTitle>
+                <CardDescription>Configure event payouts (amounts in dollars)</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">$ per winner:</span>
-                  <Input
-                    type="number"
-                    className="w-24"
-                    value={event.closestToHolePayout / 100 || ""}
-                    onChange={async (e) => {
-                      const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                      try {
-                        await apiRequest("PATCH", `/api/ryder-cup/${event.id}/closest-to-hole-payout`, {
-                          closestToHolePayout: Math.round(value * 100),
-                        });
-                        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                      } catch (err) {
-                        console.error("Failed to update CTH payout:", err);
-                      }
-                    }}
-                    placeholder="0"
-                    data-testid="input-cth-payout"
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    (Set winners in Schedule tab on par 3 holes)
-                  </span>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm text-muted-foreground block mb-1">Buy-in</label>
+                    <Input
+                      type="number"
+                      value={event.buyInAmount / 100 || ""}
+                      onChange={async (e) => {
+                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                        try {
+                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                            buyInAmount: Math.round(value * 100),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                        } catch (err) {
+                          console.error("Failed to update payout:", err);
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-buy-in"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground block mb-1">Team Win Bonus</label>
+                    <Input
+                      type="number"
+                      value={event.teamWinBonus / 100 || ""}
+                      onChange={async (e) => {
+                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                        try {
+                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                            teamWinBonus: Math.round(value * 100),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                        } catch (err) {
+                          console.error("Failed to update payout:", err);
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-team-win-bonus"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground block mb-1">Match Win</label>
+                    <Input
+                      type="number"
+                      value={event.matchWinBonus / 100 || ""}
+                      onChange={async (e) => {
+                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                        try {
+                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                            matchWinBonus: Math.round(value * 100),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                        } catch (err) {
+                          console.error("Failed to update payout:", err);
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-match-win-bonus"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground block mb-1">Match Tie</label>
+                    <Input
+                      type="number"
+                      value={event.matchTieBonus / 100 || ""}
+                      onChange={async (e) => {
+                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                        try {
+                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                            matchTieBonus: Math.round(value * 100),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                        } catch (err) {
+                          console.error("Failed to update payout:", err);
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-match-tie-bonus"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground block mb-1">Daily Skins Pot</label>
+                    <Input
+                      type="number"
+                      value={event.dailySkinsPot / 100 || ""}
+                      onChange={async (e) => {
+                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                        try {
+                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                            dailySkinsPot: Math.round(value * 100),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                        } catch (err) {
+                          console.error("Failed to update payout:", err);
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-daily-skins-pot"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground block mb-1">CTH (per winner)</label>
+                    <Input
+                      type="number"
+                      value={event.closestToHolePayout / 100 || ""}
+                      onChange={async (e) => {
+                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                        try {
+                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                            closestToHolePayout: Math.round(value * 100),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                        } catch (err) {
+                          console.error("Failed to update payout:", err);
+                        }
+                      }}
+                      placeholder="0"
+                      data-testid="input-cth-payout"
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>

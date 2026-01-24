@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Trophy, Users, ArrowLeft, ArrowRight, DollarSign, ChevronLeft, ChevronRight, Check, Flag, CalendarDays, Clock, Plus, X } from "lucide-react";
+import { Trophy, Users, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Check, Flag, CalendarDays, Clock, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -347,66 +347,9 @@ export default function RyderCupCreate() {
       </div>
 
       <div className="border-t pt-4">
-        <h3 className="font-semibold flex items-center gap-2 mb-4">
-          <DollarSign className="w-5 h-5" /> Prize Configuration
-        </h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label>Buy-in ($)</Label>
-            <Input
-              type="number"
-              value={buyInAmount}
-              onChange={(e) => setBuyInAmount(parseFloat(e.target.value) || 0)}
-              data-testid="input-buy-in"
-            />
-          </div>
-          <div>
-            <Label>Team Win Bonus ($)</Label>
-            <Input
-              type="number"
-              value={teamWinBonus}
-              onChange={(e) => setTeamWinBonus(parseFloat(e.target.value) || 0)}
-              data-testid="input-team-win"
-            />
-          </div>
-          <div>
-            <Label>Match Win ($)</Label>
-            <Input
-              type="number"
-              value={matchWinBonus}
-              onChange={(e) => setMatchWinBonus(parseFloat(e.target.value) || 0)}
-              data-testid="input-match-win"
-            />
-          </div>
-          <div>
-            <Label>Match Tie ($)</Label>
-            <Input
-              type="number"
-              value={matchTieBonus}
-              onChange={(e) => setMatchTieBonus(parseFloat(e.target.value) || 0)}
-              data-testid="input-match-tie"
-            />
-          </div>
-          <div>
-            <Label>Daily Skins Pot ($)</Label>
-            <Input
-              type="number"
-              value={dailySkinsPot}
-              onChange={(e) => setDailySkinsPot(parseFloat(e.target.value) || 0)}
-              data-testid="input-skins-pot"
-            />
-          </div>
-          <div>
-            <Label>Closest to Hole ($ per winner)</Label>
-            <Input
-              type="number"
-              value={closestToHolePayout || ""}
-              onChange={(e) => setClosestToHolePayout(e.target.value === "" ? 0 : parseFloat(e.target.value))}
-              placeholder="0"
-              data-testid="input-closest-to-hole"
-            />
-          </div>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Payout settings can be configured after event creation in the Payouts tab.
+        </p>
       </div>
     </div>
   );
@@ -613,14 +556,9 @@ export default function RyderCupCreate() {
           </div>
 
           <div className="border-t pt-4">
-            <h4 className="font-semibold mb-2">Prize Structure</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
-              <div>Team Win: ${teamWinBonus}/player</div>
-              <div>Match Win: ${matchWinBonus}/player</div>
-              <div>Match Tie: ${matchTieBonus}/player</div>
-              <div>Daily Skins: ${dailySkinsPot}</div>
-              {closestToHolePayout > 0 && <div>CTH: ${closestToHolePayout}/winner</div>}
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Payouts can be configured after event creation in the Payouts tab.
+            </p>
           </div>
 
           <div className="bg-muted/50 p-4 rounded-lg">
