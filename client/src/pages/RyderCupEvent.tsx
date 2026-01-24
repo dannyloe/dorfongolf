@@ -2992,7 +2992,8 @@ export default function RyderCupEvent() {
                   const totalPar3s = par3sByDay.reduce((sum, d) => sum + d.par3Count, 0);
                   
                   const totalTeamWin = event.teamWinBonus * 6;
-                  const totalMatchWins = event.matchWinBonus * matchesPerDay * numDays;
+                  const playersPerMatch = 2;
+                  const totalMatchWins = event.matchWinBonus * playersPerMatch * matchesPerDay * numDays;
                   const totalSkins = event.dailySkinsPot * numDays;
                   const totalCTH = event.closestToHolePayout * totalPar3s;
                   const totalPot = totalTeamWin + totalMatchWins + totalSkins + totalCTH;
@@ -3041,7 +3042,7 @@ export default function RyderCupEvent() {
                             placeholder="0"
                             data-testid="input-match-win-bonus"
                           />
-                          <p className="text-xs text-muted-foreground mt-1">× {matchesPerDay * numDays} matches = {formatCurrency(totalMatchWins)}</p>
+                          <p className="text-xs text-muted-foreground mt-1">× 2 players × {matchesPerDay * numDays} matches = {formatCurrency(totalMatchWins)}</p>
                         </div>
                         <div>
                           <label className="text-sm text-muted-foreground block mb-1">Match Tie (per player)</label>
@@ -3147,7 +3148,8 @@ export default function RyderCupEvent() {
                     return dayCourse?.holes?.filter(h => h.par === 3).length || 0;
                   });
                   const totalPar3s = par3sByDay.reduce((sum, p) => sum + p, 0);
-                  const totalPot = (event.teamWinBonus * 6) + (event.matchWinBonus * matchesPerDay * numDays) + (event.dailySkinsPot * numDays) + (event.closestToHolePayout * totalPar3s);
+                  const playersPerMatch = 2;
+                  const totalPot = (event.teamWinBonus * 6) + (event.matchWinBonus * playersPerMatch * matchesPerDay * numDays) + (event.dailySkinsPot * numDays) + (event.closestToHolePayout * totalPar3s);
                   const calculatedBuyIn = Math.ceil(totalPot / numPlayers);
                   return `Buy-in: ${formatCurrency(calculatedBuyIn)} | Total pot: ${formatCurrency(totalPot)}`;
                 })()}
