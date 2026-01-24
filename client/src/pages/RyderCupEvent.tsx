@@ -89,7 +89,8 @@ export default function RyderCupEvent() {
     enabled: !!id,
   });
 
-  const { data: courses = [] } = useQuery<Course[]>({
+  type CourseWithHoles = Course & { holes: CourseHole[]; totalPar?: number };
+  const { data: courses = [] } = useQuery<CourseWithHoles[]>({
     queryKey: ["/api/courses"],
   });
 
@@ -102,10 +103,9 @@ export default function RyderCupEvent() {
     enabled: !!currentDayCourseId,
   });
 
-  const { data: courseHoles = [] } = useQuery<CourseHole[]>({
-    queryKey: ["/api/courses", currentDayCourseId, "holes"],
-    enabled: !!currentDayCourseId,
-  });
+  // Get holes from the already-loaded courses data
+  const currentCourse = courses.find(c => c.id === currentDayCourseId);
+  const courseHoles: CourseHole[] = currentCourse?.holes || [];
 
   // CTH winners for current day
   type ClosestToHoleWinner = {
