@@ -400,8 +400,9 @@ export default function RyderCupCreate() {
             <Label>Closest to Hole ($ per winner)</Label>
             <Input
               type="number"
-              value={closestToHolePayout}
-              onChange={(e) => setClosestToHolePayout(parseFloat(e.target.value) || 0)}
+              value={closestToHolePayout || ""}
+              onChange={(e) => setClosestToHolePayout(e.target.value === "" ? 0 : parseFloat(e.target.value))}
+              placeholder="0"
               data-testid="input-closest-to-hole"
             />
           </div>
