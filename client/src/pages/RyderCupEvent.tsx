@@ -35,7 +35,6 @@ function PayoutSettingsForm({ event, courses, eventId }: {
 }) {
   const [teamWinBonus, setTeamWinBonus] = useState(String(event.teamWinBonus / 100));
   const [matchWinBonus, setMatchWinBonus] = useState(String(event.matchWinBonus / 100));
-  const [matchTieBonus, setMatchTieBonus] = useState(String(event.matchTieBonus / 100));
   const [dailySkinsPot, setDailySkinsPot] = useState(String(event.dailySkinsPot / 100));
   const [closestToHolePayout, setClosestToHolePayout] = useState(String(event.closestToHolePayout / 100));
 
@@ -100,22 +99,27 @@ function PayoutSettingsForm({ event, courses, eventId }: {
             type="number"
             value={matchWinBonus}
             onChange={(e) => setMatchWinBonus(e.target.value)}
-            onBlur={() => savePayout("matchWinBonus", parseFloat(matchWinBonus) || 0)}
+            onBlur={async () => {
+              const winValue = parseFloat(matchWinBonus) || 0;
+              const tieValue = winValue / 2;
+              try {
+                await apiRequest("PATCH", `/api/ryder-cup/${eventId}/payouts`, {
+                  matchWinBonus: Math.round(winValue * 100),
+                  matchTieBonus: Math.round(tieValue * 100),
+                });
+                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", eventId] });
+              } catch (err) {
+                console.error("Failed to update payout:", err);
+              }
+            }}
             placeholder="0"
             data-testid="input-match-win-bonus"
           />
-          <p className="text-xs text-muted-foreground mt-1">× 2 players × {matchesPerDay * numDays} matches = {formatCurrency(totalMatchWins)}</p>
-        </div>
-        <div>
-          <label className="text-sm text-muted-foreground block mb-1">Match Tie (per player)</label>
-          <Input
-            type="number"
-            value={matchTieBonus}
-            onChange={(e) => setMatchTieBonus(e.target.value)}
-            onBlur={() => savePayout("matchTieBonus", parseFloat(matchTieBonus) || 0)}
-            placeholder="0"
-            data-testid="input-match-tie-bonus"
-          />
+          <p className="text-xs text-muted-foreground mt-1">
+            × 2 players × {matchesPerDay * numDays} matches = {formatCurrency(totalMatchWins)}
+            <br />
+            <span className="text-muted-foreground/70">Tie = {formatCurrency(matchWinValue * 50)}/player</span>
+          </p>
         </div>
         <div>
           <label className="text-sm text-muted-foreground block mb-1">Daily Skins Pot</label>
