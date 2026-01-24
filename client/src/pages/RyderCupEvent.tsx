@@ -1661,14 +1661,20 @@ export default function RyderCupEvent() {
               </div>
 
               {/* Closest to Hole Section */}
-              {event.closestToHolePayout > 0 && currentDayCourseId && courseHoles.length > 0 && (
+              {currentDayCourseId && courseHoles.length > 0 && courseHoles.some(h => h.par === 3) && (
                 <div className="mt-6">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-semibold text-lg flex items-center gap-2">
                       <Flag className="w-4 h-4" /> Closest to Hole
-                      <span className="text-sm font-normal text-muted-foreground">
-                        ({formatCurrency(event.closestToHolePayout)} per winner)
-                      </span>
+                      {event.closestToHolePayout > 0 ? (
+                        <span className="text-sm font-normal text-muted-foreground">
+                          ({formatCurrency(event.closestToHolePayout)} per winner)
+                        </span>
+                      ) : (
+                        <span className="text-sm font-normal text-yellow-600">
+                          (Set payout in Payouts tab)
+                        </span>
+                      )}
                     </h4>
                   </div>
                   <Card>
