@@ -107,6 +107,25 @@ export default function RyderCupEvent() {
     enabled: !!currentDayCourseId,
   });
 
+  // CTH winners for current day
+  type ClosestToHoleWinner = {
+    id: number;
+    dayId: number;
+    holeNumber: number;
+    winnerName: string | null;
+  };
+
+  const { data: cthWinners = [] } = useQuery<ClosestToHoleWinner[]>({
+    queryKey: ["/api/ryder-cup/days", currentDay?.id, "closest-to-hole"],
+    enabled: !!currentDay?.id,
+  });
+
+  // All CTH winners for the entire event (for ledger calculations)
+  const { data: allCthWinners = [] } = useQuery<ClosestToHoleWinner[]>({
+    queryKey: ["/api/ryder-cup", id, "closest-to-hole"],
+    enabled: !!id,
+  });
+
   // Transaction types
   type TransactionSplit = {
     id: number;
@@ -379,6 +398,24 @@ export default function RyderCupEvent() {
     },
   });
 
+  const recordCTHWinnerMutation = useMutation({
+    mutationFn: async ({ dayId, holeNumber, winnerName }: {
+      dayId: number;
+      holeNumber: number;
+      winnerName: string | null;
+    }) => {
+      return apiRequest("POST", `/api/ryder-cup/days/${dayId}/closest-to-hole`, { holeNumber, winnerName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup/days", currentDay?.id, "closest-to-hole"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "closest-to-hole"] });
+      toast({ title: "Saved", description: "Closest to hole winner updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save CTH winner", variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -444,6 +481,15 @@ export default function RyderCupEvent() {
       winningTeam?.members.forEach(m => {
         payouts[m.playerName] = (payouts[m.playerName] || 0) + event.teamWinBonus;
       });
+    }
+
+    // Add CTH winnings
+    if (event.closestToHolePayout > 0) {
+      for (const cth of allCthWinners) {
+        if (cth.winnerName) {
+          payouts[cth.winnerName] = (payouts[cth.winnerName] || 0) + event.closestToHolePayout;
+        }
+      }
     }
 
     return payouts;
@@ -596,6 +642,18 @@ export default function RyderCupEvent() {
         breakdown.push({
           description: `Overall team win bonus (${winningTeam?.name})`,
           amount: event.teamWinBonus,
+        });
+      }
+    }
+    
+    // Add CTH winnings to breakdown
+    if (event?.closestToHolePayout > 0) {
+      const playerCthWins = allCthWinners.filter(cth => cth.winnerName === playerName);
+      for (const cth of playerCthWins) {
+        const day = event.days.find(d => d.id === cth.dayId);
+        breakdown.push({
+          description: `Day ${day?.dayNumber || '?'}: Closest to hole #${cth.holeNumber}`,
+          amount: event.closestToHolePayout,
         });
       }
     }
@@ -1601,6 +1659,71 @@ export default function RyderCupEvent() {
                   );
                 })()}
               </div>
+
+              {/* Closest to Hole Section */}
+              {event.closestToHolePayout > 0 && currentDayCourseId && courseHoles.length > 0 && (
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-semibold text-lg flex items-center gap-2">
+                      <Flag className="w-4 h-4" /> Closest to Hole
+                      <span className="text-sm font-normal text-muted-foreground">
+                        ({formatCurrency(event.closestToHolePayout)} per winner)
+                      </span>
+                    </h4>
+                  </div>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {courseHoles
+                          .filter(h => h.par === 3)
+                          .sort((a, b) => a.holeNumber - b.holeNumber)
+                          .map(hole => {
+                            const existingWinner = cthWinners.find(w => w.holeNumber === hole.holeNumber);
+                            const allPlayers = [
+                              ...(teamA?.members.map(m => m.playerName) || []),
+                              ...(teamB?.members.map(m => m.playerName) || []),
+                            ];
+                            
+                            return (
+                              <div key={hole.holeNumber} className="flex items-center gap-2 p-2 rounded-md border bg-muted/30">
+                                <div className="min-w-[60px]">
+                                  <span className="font-medium">Hole {hole.holeNumber}</span>
+                                  <span className="text-xs text-muted-foreground ml-1">(Par 3)</span>
+                                </div>
+                                <Select
+                                  value={existingWinner?.winnerName || "none"}
+                                  onValueChange={(value) => {
+                                    if (!currentDay?.id) return;
+                                    recordCTHWinnerMutation.mutate({
+                                      dayId: currentDay.id,
+                                      holeNumber: hole.holeNumber,
+                                      winnerName: value === "none" ? null : value,
+                                    });
+                                  }}
+                                  disabled={!isCreatorOrAdmin}
+                                  data-testid={`select-cth-hole-${hole.holeNumber}`}
+                                >
+                                  <SelectTrigger className="flex-1">
+                                    <SelectValue placeholder="Select winner" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">No winner</SelectItem>
+                                    {allPlayers.map(name => (
+                                      <SelectItem key={name} value={name}>{name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            );
+                          })}
+                      </div>
+                      {courseHoles.filter(h => h.par === 3).length === 0 && (
+                        <p className="text-sm text-muted-foreground">No par 3 holes found for this course</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               {/* Full 18-Hole Scorecards Section */}
               <div className="mt-6">

@@ -30,6 +30,7 @@ export default function RyderCupCreate() {
   const [matchWinBonus, setMatchWinBonus] = useState(25);
   const [matchTieBonus, setMatchTieBonus] = useState(12.5);
   const [dailySkinsPot, setDailySkinsPot] = useState(212.5);
+  const [closestToHolePayout, setClosestToHolePayout] = useState(0);
 
   const [useDifferentCourses, setUseDifferentCourses] = useState(false);
   const [dayConfigs, setDayConfigs] = useState<{ 
@@ -83,6 +84,7 @@ export default function RyderCupCreate() {
         matchWinBonus: Math.round(matchWinBonus * 100),
         matchTieBonus: Math.round(matchTieBonus * 100),
         dailySkinsPot: Math.round(dailySkinsPot * 100),
+        closestToHolePayout: Math.round(closestToHolePayout * 100),
         targetPoints: 65,
         useHandicaps,
         numberOfDays: 4,
@@ -394,6 +396,15 @@ export default function RyderCupCreate() {
               data-testid="input-skins-pot"
             />
           </div>
+          <div>
+            <Label>Closest to Hole ($ per winner)</Label>
+            <Input
+              type="number"
+              value={closestToHolePayout}
+              onChange={(e) => setClosestToHolePayout(parseFloat(e.target.value) || 0)}
+              data-testid="input-closest-to-hole"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -602,11 +613,12 @@ export default function RyderCupCreate() {
 
           <div className="border-t pt-4">
             <h4 className="font-semibold mb-2">Prize Structure</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-sm">
               <div>Team Win: ${teamWinBonus}/player</div>
               <div>Match Win: ${matchWinBonus}/player</div>
               <div>Match Tie: ${matchTieBonus}/player</div>
               <div>Daily Skins: ${dailySkinsPot}</div>
+              {closestToHolePayout > 0 && <div>CTH: ${closestToHolePayout}/winner</div>}
             </div>
           </div>
 

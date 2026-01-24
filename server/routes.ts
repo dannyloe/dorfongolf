@@ -1990,6 +1990,32 @@ Rules:
     res.json(skins);
   });
 
+  app.post(api.ryderCup.recordClosestToHole.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    try {
+      const input = api.ryderCup.recordClosestToHole.input.parse(req.body);
+      const cth = await storage.recordClosestToHoleWinner(dayId, input.holeNumber, input.winnerName);
+      res.json(cth);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.ryderCup.getClosestToHoleWinners.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    const winners = await storage.getClosestToHoleWinners(dayId);
+    res.json(winners);
+  });
+
+  app.get(api.ryderCup.getAllClosestToHoleWinners.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    const winners = await storage.getAllClosestToHoleWinners(eventId);
+    res.json(winners);
+  });
+
   app.get(api.ryderCup.getSideMatches.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
     const matches = await storage.getMatchesByRyderCupEvent(eventId);

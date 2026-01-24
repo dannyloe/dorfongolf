@@ -2,7 +2,7 @@ import { db } from "./db";
 import { 
   matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   verificationCodes, notificationPreferences, messages,
-  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits,
+  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -17,7 +17,7 @@ import {
   type VerificationCode, type NotificationPreferences, type Message,
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
-  type RyderCupTransaction, type RyderCupTransactionSplit,
+  type RyderCupTransaction, type RyderCupTransactionSplit, type RyderCupClosestToHole,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
@@ -46,6 +46,11 @@ export interface IStorage {
   
   // Ryder Cup scores for side matches
   getRyderCupScoresForSideMatch(eventId: number, dayNumber: number, players: Player[]): Promise<Score[]>;
+  
+  // Closest to Hole methods
+  recordClosestToHoleWinner(dayId: number, holeNumber: number, winnerName: string): Promise<RyderCupClosestToHole>;
+  getClosestToHoleWinners(dayId: number): Promise<RyderCupClosestToHole[]>;
+  getAllClosestToHoleWinners(eventId: number): Promise<RyderCupClosestToHole[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1382,6 +1387,7 @@ export class DatabaseStorage implements IStorage {
       matchWinBonus: data.matchWinBonus ?? 2500,
       matchTieBonus: data.matchTieBonus ?? 1250,
       dailySkinsPot: data.dailySkinsPot ?? 21250,
+      closestToHolePayout: data.closestToHolePayout ?? 0,
       targetPoints: data.targetPoints ?? 65,
       useHandicaps: data.useHandicaps ?? false,
     }).returning();
@@ -1690,6 +1696,47 @@ export class DatabaseStorage implements IStorage {
 
   async getRyderCupDaySkins(dayId: number): Promise<RyderCupSkin[]> {
     return db.select().from(ryderCupSkins).where(eq(ryderCupSkins.dayId, dayId)).orderBy(ryderCupSkins.holeNumber);
+  }
+
+  async recordClosestToHoleWinner(dayId: number, holeNumber: number, winnerName: string | null): Promise<RyderCupClosestToHole> {
+    // Check if entry exists
+    const [existing] = await db.select().from(ryderCupClosestToHole)
+      .where(and(
+        eq(ryderCupClosestToHole.dayId, dayId),
+        eq(ryderCupClosestToHole.holeNumber, holeNumber)
+      ));
+    
+    if (existing) {
+      const [updated] = await db.update(ryderCupClosestToHole)
+        .set({ winnerName })
+        .where(eq(ryderCupClosestToHole.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    const [cth] = await db.insert(ryderCupClosestToHole).values({
+      dayId,
+      holeNumber,
+      winnerName,
+    }).returning();
+
+    return cth;
+  }
+
+  async getClosestToHoleWinners(dayId: number): Promise<RyderCupClosestToHole[]> {
+    return db.select().from(ryderCupClosestToHole)
+      .where(eq(ryderCupClosestToHole.dayId, dayId))
+      .orderBy(ryderCupClosestToHole.holeNumber);
+  }
+
+  async getAllClosestToHoleWinners(eventId: number): Promise<RyderCupClosestToHole[]> {
+    // Get all days for this event, then all CTH winners for those days
+    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    const dayIds = days.map(d => d.id);
+    if (dayIds.length === 0) return [];
+    return db.select().from(ryderCupClosestToHole)
+      .where(inArray(ryderCupClosestToHole.dayId, dayIds))
+      .orderBy(ryderCupClosestToHole.dayId, ryderCupClosestToHole.holeNumber);
   }
 
   async getMatchesByRyderCupEvent(eventId: number): Promise<Match[]> {

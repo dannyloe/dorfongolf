@@ -541,6 +541,7 @@ export const ryderCupEvents = pgTable("ryder_cup_events", {
   matchWinBonus: integer("match_win_bonus").notNull().default(2500), // in cents ($25)
   matchTieBonus: integer("match_tie_bonus").notNull().default(1250), // in cents ($12.50)
   dailySkinsPot: integer("daily_skins_pot").notNull().default(21250), // in cents ($212.50)
+  closestToHolePayout: integer("closest_to_hole_payout").notNull().default(0), // in cents, per winner
   targetPoints: integer("target_points").notNull().default(65), // 6.5 * 10 for precision
   useHandicaps: boolean("use_handicaps").notNull().default(false),
   status: text("status").notNull().default("setup"), // setup, active, completed
@@ -649,6 +650,14 @@ export const ryderCupTransactionSplits = pgTable("ryder_cup_transaction_splits",
   amount: integer("amount").notNull(), // Amount owed in cents
 });
 
+// Closest to Hole winners for each par 3 on each day
+export const ryderCupClosestToHole = pgTable("ryder_cup_closest_to_hole", {
+  id: serial("id").primaryKey(),
+  dayId: integer("day_id").notNull(), // References ryderCupDays
+  holeNumber: integer("hole_number").notNull(), // Par 3 hole number
+  winnerName: text("winner_name"), // Player name who won CTH (null if no winner set)
+});
+
 // === RYDER CUP RELATIONS ===
 
 export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many }) => ({
@@ -753,6 +762,13 @@ export const ryderCupTransactionSplitsRelations = relations(ryderCupTransactionS
   }),
 }));
 
+export const ryderCupClosestToHoleRelations = relations(ryderCupClosestToHole, ({ one }) => ({
+  day: one(ryderCupDays, {
+    fields: [ryderCupClosestToHole.dayId],
+    references: [ryderCupDays.id],
+  }),
+}));
+
 // === RYDER CUP SCHEMAS ===
 
 export const insertRyderCupEventSchema = createInsertSchema(ryderCupEvents).omit({
@@ -810,6 +826,10 @@ export const insertRyderCupTransactionSplitSchema = createInsertSchema(ryderCupT
   id: true,
 });
 
+export const insertRyderCupClosestToHoleSchema = createInsertSchema(ryderCupClosestToHole).omit({
+  id: true,
+});
+
 // === RYDER CUP TYPES ===
 
 export type RyderCupEvent = typeof ryderCupEvents.$inferSelect;
@@ -845,6 +865,9 @@ export type InsertRyderCupTransaction = z.infer<typeof insertRyderCupTransaction
 export type RyderCupTransactionSplit = typeof ryderCupTransactionSplits.$inferSelect;
 export type InsertRyderCupTransactionSplit = z.infer<typeof insertRyderCupTransactionSplitSchema>;
 
+export type RyderCupClosestToHole = typeof ryderCupClosestToHole.$inferSelect;
+export type InsertRyderCupClosestToHole = z.infer<typeof insertRyderCupClosestToHoleSchema>;
+
 // === RYDER CUP API TYPES ===
 
 export type CreateRyderCupEventRequest = {
@@ -856,6 +879,7 @@ export type CreateRyderCupEventRequest = {
   matchWinBonus?: number;
   matchTieBonus?: number;
   dailySkinsPot?: number;
+  closestToHolePayout?: number; // in cents, per winner
   targetPoints?: number;
   useHandicaps?: boolean;
   numberOfDays?: number; // defaults to 4

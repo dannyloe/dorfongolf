@@ -21,6 +21,7 @@ import {
   ryderCupDays,
   ryderCupTransactions,
   ryderCupTransactionSplits,
+  ryderCupClosestToHole,
 } from './schema';
 import { PRESET_PLAYERS, users } from './models/auth';
 
@@ -1071,6 +1072,35 @@ export const api = {
       path: '/api/ryder-cup/days/:dayId/skins',
       responses: {
         200: z.array(z.custom<typeof ryderCupSkins.$inferSelect>()),
+        404: errorSchemas.notFound,
+      },
+    },
+    recordClosestToHole: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/days/:dayId/closest-to-hole',
+      input: z.object({
+        holeNumber: z.number().min(1).max(18),
+        winnerName: z.string().nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupClosestToHole.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    getClosestToHoleWinners: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/days/:dayId/closest-to-hole',
+      responses: {
+        200: z.array(z.custom<typeof ryderCupClosestToHole.$inferSelect>()),
+        404: errorSchemas.notFound,
+      },
+    },
+    getAllClosestToHoleWinners: {
+      method: 'GET' as const,
+      path: '/api/ryder-cup/:id/closest-to-hole',
+      responses: {
+        200: z.array(z.custom<typeof ryderCupClosestToHole.$inferSelect>()),
         404: errorSchemas.notFound,
       },
     },
