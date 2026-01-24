@@ -2978,128 +2978,155 @@ export default function RyderCupEvent() {
                 <CardDescription>Configure event payouts (amounts in dollars)</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm text-muted-foreground block mb-1">Buy-in</label>
-                    <Input
-                      type="number"
-                      value={event.buyInAmount / 100 || ""}
-                      onChange={async (e) => {
-                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                        try {
-                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
-                            buyInAmount: Math.round(value * 100),
-                          });
-                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                        } catch (err) {
-                          console.error("Failed to update payout:", err);
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-buy-in"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground block mb-1">Team Win Bonus</label>
-                    <Input
-                      type="number"
-                      value={event.teamWinBonus / 100 || ""}
-                      onChange={async (e) => {
-                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                        try {
-                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
-                            teamWinBonus: Math.round(value * 100),
-                          });
-                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                        } catch (err) {
-                          console.error("Failed to update payout:", err);
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-team-win-bonus"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground block mb-1">Match Win</label>
-                    <Input
-                      type="number"
-                      value={event.matchWinBonus / 100 || ""}
-                      onChange={async (e) => {
-                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                        try {
-                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
-                            matchWinBonus: Math.round(value * 100),
-                          });
-                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                        } catch (err) {
-                          console.error("Failed to update payout:", err);
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-match-win-bonus"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground block mb-1">Match Tie</label>
-                    <Input
-                      type="number"
-                      value={event.matchTieBonus / 100 || ""}
-                      onChange={async (e) => {
-                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                        try {
-                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
-                            matchTieBonus: Math.round(value * 100),
-                          });
-                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                        } catch (err) {
-                          console.error("Failed to update payout:", err);
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-match-tie-bonus"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground block mb-1">Daily Skins Pot</label>
-                    <Input
-                      type="number"
-                      value={event.dailySkinsPot / 100 || ""}
-                      onChange={async (e) => {
-                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                        try {
-                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
-                            dailySkinsPot: Math.round(value * 100),
-                          });
-                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                        } catch (err) {
-                          console.error("Failed to update payout:", err);
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-daily-skins-pot"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground block mb-1">CTH (per winner)</label>
-                    <Input
-                      type="number"
-                      value={event.closestToHolePayout / 100 || ""}
-                      onChange={async (e) => {
-                        const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                        try {
-                          await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
-                            closestToHolePayout: Math.round(value * 100),
-                          });
-                          queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
-                        } catch (err) {
-                          console.error("Failed to update payout:", err);
-                        }
-                      }}
-                      placeholder="0"
-                      data-testid="input-cth-payout"
-                    />
-                  </div>
-                </div>
+                {(() => {
+                  const numPlayers = 12;
+                  const numDays = event.days.length || 4;
+                  const matchesPerDay = 3;
+                  
+                  const par3sByDay = event.days.map(day => {
+                    const dayCourseId = day.courseId || event.courseId;
+                    const dayCourse = courses.find(c => c.id === dayCourseId);
+                    const par3Count = dayCourse?.holes?.filter(h => h.par === 3).length || 0;
+                    return { dayNumber: day.dayNumber, par3Count, courseName: dayCourse?.name || day.courseName };
+                  });
+                  const totalPar3s = par3sByDay.reduce((sum, d) => sum + d.par3Count, 0);
+                  
+                  const totalTeamWin = event.teamWinBonus * 6;
+                  const totalMatchWins = event.matchWinBonus * matchesPerDay * numDays;
+                  const totalSkins = event.dailySkinsPot * numDays;
+                  const totalCTH = event.closestToHolePayout * totalPar3s;
+                  const totalPot = totalTeamWin + totalMatchWins + totalSkins + totalCTH;
+                  const calculatedBuyIn = Math.ceil(totalPot / numPlayers);
+                  
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Team Win Bonus (per player)</label>
+                          <Input
+                            type="number"
+                            value={event.teamWinBonus / 100 || ""}
+                            onChange={async (e) => {
+                              const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                              try {
+                                await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                                  teamWinBonus: Math.round(value * 100),
+                                });
+                                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                              } catch (err) {
+                                console.error("Failed to update payout:", err);
+                              }
+                            }}
+                            placeholder="0"
+                            data-testid="input-team-win-bonus"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">× 6 = {formatCurrency(totalTeamWin)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Match Win (per player)</label>
+                          <Input
+                            type="number"
+                            value={event.matchWinBonus / 100 || ""}
+                            onChange={async (e) => {
+                              const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                              try {
+                                await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                                  matchWinBonus: Math.round(value * 100),
+                                });
+                                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                              } catch (err) {
+                                console.error("Failed to update payout:", err);
+                              }
+                            }}
+                            placeholder="0"
+                            data-testid="input-match-win-bonus"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">× {matchesPerDay * numDays} matches = {formatCurrency(totalMatchWins)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Match Tie (per player)</label>
+                          <Input
+                            type="number"
+                            value={event.matchTieBonus / 100 || ""}
+                            onChange={async (e) => {
+                              const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                              try {
+                                await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                                  matchTieBonus: Math.round(value * 100),
+                                });
+                                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                              } catch (err) {
+                                console.error("Failed to update payout:", err);
+                              }
+                            }}
+                            placeholder="0"
+                            data-testid="input-match-tie-bonus"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">Daily Skins Pot</label>
+                          <Input
+                            type="number"
+                            value={event.dailySkinsPot / 100 || ""}
+                            onChange={async (e) => {
+                              const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                              try {
+                                await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                                  dailySkinsPot: Math.round(value * 100),
+                                });
+                                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                              } catch (err) {
+                                console.error("Failed to update payout:", err);
+                              }
+                            }}
+                            placeholder="0"
+                            data-testid="input-daily-skins-pot"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">× {numDays} days = {formatCurrency(totalSkins)}</p>
+                        </div>
+                        <div>
+                          <label className="text-sm text-muted-foreground block mb-1">CTH (per winner)</label>
+                          <Input
+                            type="number"
+                            value={event.closestToHolePayout / 100 || ""}
+                            onChange={async (e) => {
+                              const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                              try {
+                                await apiRequest("PATCH", `/api/ryder-cup/${event.id}/payouts`, {
+                                  closestToHolePayout: Math.round(value * 100),
+                                });
+                                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                              } catch (err) {
+                                console.error("Failed to update payout:", err);
+                              }
+                            }}
+                            placeholder="0"
+                            data-testid="input-cth-payout"
+                          />
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {par3sByDay.map(d => (
+                              <div key={d.dayNumber}>Day {d.dayNumber}: {d.par3Count} par 3s = {formatCurrency(event.closestToHolePayout * d.par3Count)}</div>
+                            ))}
+                            <div className="font-medium mt-1">Total CTH: {formatCurrency(totalCTH)}</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="border-t pt-4 mt-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="text-sm font-medium">Calculated Buy-in</span>
+                            <p className="text-xs text-muted-foreground">Total pot ÷ {numPlayers} players</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-2xl font-bold">{formatCurrency(calculatedBuyIn)}</span>
+                            <p className="text-xs text-muted-foreground">Total pot: {formatCurrency(totalPot)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           )}
@@ -3110,7 +3137,20 @@ export default function RyderCupEvent() {
                 <DollarSign className="w-5 h-5" /> Payout Summary
               </CardTitle>
               <CardDescription>
-                Buy-in: {formatCurrency(event.buyInAmount)} | Total pot: {formatCurrency(event.buyInAmount * 12)}
+                {(() => {
+                  const numPlayers = 12;
+                  const numDays = event.days.length || 4;
+                  const matchesPerDay = 3;
+                  const par3sByDay = event.days.map(day => {
+                    const dayCourseId = day.courseId || event.courseId;
+                    const dayCourse = courses.find(c => c.id === dayCourseId);
+                    return dayCourse?.holes?.filter(h => h.par === 3).length || 0;
+                  });
+                  const totalPar3s = par3sByDay.reduce((sum, p) => sum + p, 0);
+                  const totalPot = (event.teamWinBonus * 6) + (event.matchWinBonus * matchesPerDay * numDays) + (event.dailySkinsPot * numDays) + (event.closestToHolePayout * totalPar3s);
+                  const calculatedBuyIn = Math.ceil(totalPot / numPlayers);
+                  return `Buy-in: ${formatCurrency(calculatedBuyIn)} | Total pot: ${formatCurrency(totalPot)}`;
+                })()}
               </CardDescription>
             </CardHeader>
             <CardContent>
