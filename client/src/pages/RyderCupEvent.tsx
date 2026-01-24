@@ -2962,6 +2962,43 @@ export default function RyderCupEvent() {
         </TabsContent>
 
         <TabsContent value="payouts">
+          {/* CTH Payout Configuration */}
+          {isCreatorOrAdmin && (
+            <Card className="mb-4">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Flag className="w-4 h-4" /> Closest to Hole Payout
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">$ per winner:</span>
+                  <Input
+                    type="number"
+                    className="w-24"
+                    value={event.closestToHolePayout / 100 || ""}
+                    onChange={async (e) => {
+                      const value = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                      try {
+                        await apiRequest("PATCH", `/api/ryder-cup/${event.id}/closest-to-hole-payout`, {
+                          closestToHolePayout: Math.round(value * 100),
+                        });
+                        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+                      } catch (err) {
+                        console.error("Failed to update CTH payout:", err);
+                      }
+                    }}
+                    placeholder="0"
+                    data-testid="input-cth-payout"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    (Set winners in Schedule tab on par 3 holes)
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

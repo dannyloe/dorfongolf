@@ -988,6 +988,17 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateClosestToHolePayout: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/:id/closest-to-hole-payout',
+      input: z.object({
+        closestToHolePayout: z.number().min(0),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupEvents.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
     updateTeam: {
       method: 'PATCH' as const,
       path: '/api/ryder-cup/teams/:teamId',

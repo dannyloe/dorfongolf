@@ -1838,6 +1838,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateRyderCupEventClosestToHolePayout(eventId: number, closestToHolePayout: number): Promise<RyderCupEvent> {
+    const [updated] = await db.update(ryderCupEvents)
+      .set({ closestToHolePayout })
+      .where(eq(ryderCupEvents.id, eventId))
+      .returning();
+    return updated;
+  }
+
   async updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null> {
     const [updated] = await db.update(ryderCupTeams)
       .set(updates)
