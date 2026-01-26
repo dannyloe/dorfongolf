@@ -1473,10 +1473,23 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Each team must have exactly 6 players");
     }
 
+    // Shuffle players randomly to assign slots (A1, A2, etc.)
+    const shuffleArray = <T>(array: T[]): T[] => {
+      const shuffled = [...array];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    };
+
+    const shuffledTeamA = shuffleArray(teamAPlayers);
+    const shuffledTeamB = shuffleArray(teamBPlayers);
+
     // Generate pairings using rotation algorithm
     // Each player plays with 4 of 5 teammates over 4 days (3 matches per day = 12 total)
     // Partner rotation ensures variety
-    const schedule = this.generateRotationSchedule(teamAPlayers, teamBPlayers);
+    const schedule = this.generateRotationSchedule(shuffledTeamA, shuffledTeamB);
 
     for (let dayIdx = 0; dayIdx < 4; dayIdx++) {
       const day = event.days[dayIdx];
