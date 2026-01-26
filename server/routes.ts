@@ -2592,12 +2592,14 @@ Rules:
       console.log(`[SMS Route] Generated code: ${code}`);
       await storage.createVerificationCode(phone, code);
       
-      console.log(`[SMS Route] Sending verification code to ${phone}`);
+      console.error(`[SMS Route] Sending verification code to ${phone}`);
       
       // Send the code
+      const startTime = Date.now();
       const result = await sendVerificationCode(phone, code);
+      const duration = Date.now() - startTime;
       
-      console.log(`[SMS Route] Send result:`, JSON.stringify(result));
+      console.error(`[SMS Route] Send result (took ${duration}ms):`, JSON.stringify(result));
       
       if (result.success) {
         // Update rate limit tracking
