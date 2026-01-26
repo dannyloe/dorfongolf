@@ -142,6 +142,7 @@ shared/           # Shared code between client and server
   - `TWILIO_AUTH_TOKEN`: Twilio auth token
   - `TWILIO_PHONE_NUMBER`: Twilio phone number for sending SMS
 - **Features**:
+  - **Required Phone Verification**: All users must verify their phone number after login before accessing the app
   - **Phone Verification**: 6-digit SMS codes with 10-minute expiration
   - **Match Notifications**: SMS when added to matches (if enabled)
   - **Notification Preferences**: User-configurable settings for match invitations, score updates, bet results, match reminders
