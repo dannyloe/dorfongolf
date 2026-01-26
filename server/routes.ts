@@ -2563,9 +2563,11 @@ Rules:
   const SMS_MAX_ATTEMPTS = 5; // Max 5 attempts per verification session
   
   app.post(api.sms.sendVerification.path, isAuthenticated, async (req, res) => {
+    console.log('[SMS Route] Received send-verification request');
     try {
       const input = api.sms.sendVerification.input.parse(req.body);
       const phone = input.phone;
+      console.log(`[SMS Route] Phone: ${phone}`);
       
       // Rate limit check
       const rateLimit = smsRateLimits.get(phone);
@@ -2575,6 +2577,7 @@ Rules:
         const timeSinceLastSend = now - rateLimit.lastSent;
         if (timeSinceLastSend < SMS_RATE_LIMIT_WINDOW) {
           const waitTime = Math.ceil((SMS_RATE_LIMIT_WINDOW - timeSinceLastSend) / 1000);
+          console.log(`[SMS Route] Rate limited, wait ${waitTime}s`);
           return res.status(429).json({ 
             message: `Please wait ${waitTime} seconds before requesting another code` 
           });
@@ -2582,30 +2585,34 @@ Rules:
       }
       
       // Generate and store verification code
+      console.log('[SMS Route] Importing twilio module...');
       const { generateVerificationCode, sendVerificationCode } = await import('./twilio');
+      console.log('[SMS Route] Twilio module imported');
       const code = generateVerificationCode();
+      console.log(`[SMS Route] Generated code: ${code}`);
       await storage.createVerificationCode(phone, code);
       
-      console.log(`[SMS] Sending verification code to ${phone}`);
+      console.log(`[SMS Route] Sending verification code to ${phone}`);
       
       // Send the code
       const result = await sendVerificationCode(phone, code);
       
-      console.log(`[SMS] Send result:`, JSON.stringify(result));
+      console.log(`[SMS Route] Send result:`, JSON.stringify(result));
       
       if (result.success) {
         // Update rate limit tracking
         smsRateLimits.set(phone, { lastSent: now, attempts: 0 });
         res.json({ success: true, message: "Verification code sent", sid: result.sid });
       } else {
-        console.error(`[SMS] Failed to send: ${result.error}`);
+        console.error(`[SMS Route] Failed to send: ${result.error}`);
         res.status(500).json({ message: result.error || "Failed to send verification code", details: result.error });
       }
     } catch (err) {
       if (err instanceof z.ZodError) {
+        console.error('[SMS Route] Zod validation error:', err.errors);
         return res.status(400).json({ message: err.errors[0].message });
       }
-      console.error('SMS verification error:', err);
+      console.error('[SMS Route] Error:', err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
