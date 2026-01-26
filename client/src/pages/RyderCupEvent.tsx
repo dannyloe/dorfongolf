@@ -3281,7 +3281,7 @@ export default function RyderCupEvent() {
                             <tr className="border-b">
                               <th className="text-left py-2 pr-4">Player</th>
                               <th className="text-right py-2 px-2">Earnings</th>
-                              <th className="text-right py-2 px-2">Side Bets</th>
+                              <th className={`text-right py-2 px-2 ${!includeBuyIn ? "border-l-2 border-muted-foreground/30" : ""}`}>Side Bets</th>
                               <th className="text-right py-2 px-2">Expenses</th>
                               <th className="text-right py-2 pl-2 font-bold">
                                 {includeBuyIn ? "Net" : "Owed"}
@@ -3317,7 +3317,7 @@ export default function RyderCupEvent() {
                                         {formatCurrency(earnings)}
                                       </button>
                                     </td>
-                                    <td className="text-right py-2 px-2">
+                                    <td className={`text-right py-2 px-2 ${!includeBuyIn ? "border-l-2 border-muted-foreground/30" : ""}`}>
                                       <button
                                         onClick={() => setSideBetsBreakdownPlayer(playerName)}
                                         className={`hover:underline cursor-pointer ${sideBets > 0 ? "text-green-600" : sideBets < 0 ? "text-red-600" : ""}`}
