@@ -1559,13 +1559,13 @@ export default function RyderCupEvent() {
                                         teeId: val ? parseInt(val) : null,
                                       })}
                                     >
-                                      <SelectTrigger className="h-6 w-20 text-xs" data-testid={`select-tee-${sideA?.id}-${playerNumber}`}>
+                                      <SelectTrigger className="h-6 w-28 text-xs" data-testid={`select-tee-${sideA?.id}-${playerNumber}`}>
                                         <SelectValue placeholder="Tee" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {courseTees.map(t => (
                                           <SelectItem key={t.id} value={t.id.toString()}>
-                                            {t.name}{t.yardage ? ` (${t.yardage.toLocaleString()})` : ''}
+                                            {t.name}{t.yardage ? ` (${t.yardage.toLocaleString()})` : ''}{t.slopeRating ? ` / ${t.slopeRating}` : ''}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>
@@ -1657,13 +1657,13 @@ export default function RyderCupEvent() {
                                         teeId: val ? parseInt(val) : null,
                                       })}
                                     >
-                                      <SelectTrigger className="h-6 w-20 text-xs" data-testid={`select-tee-${sideB?.id}-${playerNumber}`}>
+                                      <SelectTrigger className="h-6 w-28 text-xs" data-testid={`select-tee-${sideB?.id}-${playerNumber}`}>
                                         <SelectValue placeholder="Tee" />
                                       </SelectTrigger>
                                       <SelectContent>
                                         {courseTees.map(t => (
                                           <SelectItem key={t.id} value={t.id.toString()}>
-                                            {t.name}{t.yardage ? ` (${t.yardage.toLocaleString()})` : ''}
+                                            {t.name}{t.yardage ? ` (${t.yardage.toLocaleString()})` : ''}{t.slopeRating ? ` / ${t.slopeRating}` : ''}
                                           </SelectItem>
                                         ))}
                                       </SelectContent>

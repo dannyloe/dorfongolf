@@ -547,7 +547,7 @@ function PlayerSettingsForm({
                 <SelectContent>
                   {courseTees.map(tee => (
                     <SelectItem key={tee.id} value={tee.id.toString()} data-testid={`select-tee-option-${tee.id}`}>
-                      {tee.name}{tee.yardage ? ` (${tee.yardage.toLocaleString()})` : ''}
+                      {tee.name}{tee.yardage ? ` (${tee.yardage.toLocaleString()})` : ''}{tee.slopeRating ? ` / ${tee.slopeRating}` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
