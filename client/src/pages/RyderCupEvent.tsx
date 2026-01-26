@@ -191,10 +191,10 @@ function PayoutSettingsForm({ event, courses, eventId }: {
               htmlFor="include-buy-in"
               className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              Include Buy-In payouts in Ledger totals
+              Include Buy-in and payouts in Ledger totals
             </label>
             <p className="text-xs text-muted-foreground">
-              When unchecked, Buy-In earnings (match wins, skins, CTH) are shown separately from side bets and expenses
+              When checked, Buy-In costs and earnings are included in Net totals
             </p>
           </div>
         </div>
@@ -3256,13 +3256,28 @@ export default function RyderCupEvent() {
 
                 // Calculate net position based on includeBuyInInLedger setting
                 const includeBuyIn = event?.includeBuyInInLedger ?? true;
+                
+                // Calculate buy-in amount
+                const numPlayers = 12;
+                const numDays = event.days.length || 4;
+                const matchesPerDay = 6;
+                const par3sByDay = event.days.map(day => {
+                  const dayCourse = courses?.find((c: { id: number }) => c.id === day.courseId);
+                  return dayCourse?.holes?.filter((h: { par: number }) => h.par === 3).length || 0;
+                });
+                const totalPar3s = par3sByDay.reduce((sum: number, p: number) => sum + p, 0);
+                const playersPerMatch = 2;
+                const totalPot = (event.teamWinBonus * 6) + (event.matchWinBonus * playersPerMatch * matchesPerDay * numDays) + (event.dailySkinsPot * numDays) + (event.closestToHolePayout * totalPar3s);
+                const buyInAmount = Math.ceil(totalPot / numPlayers);
+                
                 const netPosition: Record<string, number> = {};
                 allPlayers.forEach(name => {
                   const sideBets = sideBetData.balances[name] || 0;
                   if (includeBuyIn) {
-                    netPosition[name] = (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0);
+                    // Include buy-in (negative) + earnings + side bets + expenses
+                    netPosition[name] = -buyInAmount + (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0);
                   } else {
-                    // Exclude earnings from net - show side bets + expenses only
+                    // Exclude earnings and buy-in from net - show side bets + expenses only
                     netPosition[name] = sideBets + (expenseBalances[name] || 0);
                   }
                 });
@@ -3272,7 +3287,7 @@ export default function RyderCupEvent() {
                     <div>
                       <h4 className="text-sm font-semibold mb-3">
                         {includeBuyIn 
-                          ? "Net Position (Earnings + Side Bets + Expenses)" 
+                          ? "Net Position (Buy-In + Earnings + Side Bets + Expenses)" 
                           : "Position Summary (Earnings shown separately)"}
                       </h4>
                       <div className="overflow-x-auto">
@@ -3280,6 +3295,7 @@ export default function RyderCupEvent() {
                           <thead>
                             <tr className="border-b">
                               <th className="text-left py-2 pr-4">Player</th>
+                              {includeBuyIn && <th className="text-right py-2 px-2">Buy-In</th>}
                               <th className="text-right py-2 px-2">Earnings</th>
                               <th className={`text-right py-2 px-2 ${!includeBuyIn ? "border-l-2 border-muted-foreground/30" : ""}`}>Side Bets</th>
                               <th className="text-right py-2 px-2">Expenses</th>
@@ -3308,6 +3324,11 @@ export default function RyderCupEvent() {
                                         <span className="font-medium">{playerName}</span>
                                       </div>
                                     </td>
+                                    {includeBuyIn && (
+                                      <td className="text-right py-2 px-2 text-red-600">
+                                        {formatCurrency(-buyInAmount)}
+                                      </td>
+                                    )}
                                     <td className="text-right py-2 px-2">
                                       <button
                                         onClick={() => setEarningsBreakdownPlayer(playerName)}
