@@ -340,8 +340,8 @@ function TeeManagement({ courseId }: { courseId: number }) {
   const { toast } = useToast();
 
   const [isAddingTee, setIsAddingTee] = useState(false);
-  const [newTee, setNewTee] = useState({ name: "", slopeRating: "113", courseRating: "72.0", color: "#ffffff" });
-  const [editingTee, setEditingTee] = useState<{ id: number; name: string; slopeRating: string; courseRating: string; color: string } | null>(null);
+  const [newTee, setNewTee] = useState({ name: "", slopeRating: "113", courseRating: "72.0", yardage: "", color: "#ffffff" });
+  const [editingTee, setEditingTee] = useState<{ id: number; name: string; slopeRating: string; courseRating: string; yardage: string; color: string } | null>(null);
 
   const handleCreateTee = async () => {
     if (!newTee.name.trim()) {
@@ -350,14 +350,15 @@ function TeeManagement({ courseId }: { courseId: number }) {
     }
     const slope = parseInt(newTee.slopeRating) || 113;
     const rating = parseFloat(newTee.courseRating) || 72.0;
+    const yardage = newTee.yardage ? parseInt(newTee.yardage) : null;
     if (rating < 55 || rating > 80) {
       toast({ title: "Error", description: "Course rating must be between 55.0 and 80.0", variant: "destructive" });
       return;
     }
     try {
-      await createTee.mutateAsync({ name: newTee.name, slopeRating: slope, courseRating: Math.round(rating * 10), color: newTee.color });
+      await createTee.mutateAsync({ name: newTee.name, slopeRating: slope, courseRating: Math.round(rating * 10), yardage, color: newTee.color });
       toast({ title: "Success", description: `${newTee.name} tee created` });
-      setNewTee({ name: "", slopeRating: "113", courseRating: "72.0", color: "#ffffff" });
+      setNewTee({ name: "", slopeRating: "113", courseRating: "72.0", yardage: "", color: "#ffffff" });
       setIsAddingTee(false);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -368,12 +369,13 @@ function TeeManagement({ courseId }: { courseId: number }) {
     if (!editingTee) return;
     const slope = parseInt(editingTee.slopeRating) || 113;
     const rating = parseFloat(editingTee.courseRating) || 72.0;
+    const yardage = editingTee.yardage ? parseInt(editingTee.yardage) : null;
     if (rating < 55 || rating > 80) {
       toast({ title: "Error", description: "Course rating must be between 55.0 and 80.0", variant: "destructive" });
       return;
     }
     try {
-      await updateTee.mutateAsync({ teeId: editingTee.id, name: editingTee.name, slopeRating: slope, courseRating: Math.round(rating * 10), color: editingTee.color });
+      await updateTee.mutateAsync({ teeId: editingTee.id, name: editingTee.name, slopeRating: slope, courseRating: Math.round(rating * 10), yardage, color: editingTee.color });
       toast({ title: "Success", description: "Tee updated" });
       setEditingTee(null);
     } catch (err: any) {
@@ -441,6 +443,18 @@ function TeeManagement({ courseId }: { courseId: number }) {
               data-testid="input-new-tee-rating"
             />
           </div>
+          <div className="w-20">
+            <label className="text-xs text-muted-foreground">Yards</label>
+            <Input
+              type="text"
+              inputMode="numeric"
+              value={newTee.yardage}
+              onChange={(e) => setNewTee(prev => ({ ...prev, yardage: e.target.value }))}
+              className="h-8"
+              placeholder="6500"
+              data-testid="input-new-tee-yardage"
+            />
+          </div>
           <div className="w-24">
             <label className="text-xs text-muted-foreground">Color</label>
             <select
@@ -499,6 +513,15 @@ function TeeManagement({ courseId }: { courseId: number }) {
                     placeholder="72.0"
                     data-testid={`input-edit-tee-rating-${tee.id}`}
                   />
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={editingTee.yardage}
+                    onChange={(e) => setEditingTee(prev => prev ? { ...prev, yardage: e.target.value } : null)}
+                    className="h-7 w-16"
+                    placeholder="6500"
+                    data-testid={`input-edit-tee-yardage-${tee.id}`}
+                  />
                   <select
                     value={editingTee.color}
                     onChange={(e) => setEditingTee(prev => prev ? { ...prev, color: e.target.value } : null)}
@@ -519,13 +542,14 @@ function TeeManagement({ courseId }: { courseId: number }) {
               ) : (
                 <>
                   <span className="font-medium text-sm flex-1">{tee.name}</span>
+                  {tee.yardage && <span className="text-xs text-muted-foreground">{tee.yardage.toLocaleString()} yds</span>}
                   <span className="text-xs text-muted-foreground">Slope: {tee.slopeRating}</span>
                   <span className="text-xs text-muted-foreground">Rating: {(tee.courseRating / 10).toFixed(1)}</span>
                   <Button
                     size="icon"
                     variant="ghost"
                     className="h-6 w-6"
-                    onClick={() => setEditingTee({ id: tee.id, name: tee.name, slopeRating: String(tee.slopeRating), courseRating: (tee.courseRating / 10).toFixed(1), color: tee.color || '#ffffff' })}
+                    onClick={() => setEditingTee({ id: tee.id, name: tee.name, slopeRating: String(tee.slopeRating), courseRating: (tee.courseRating / 10).toFixed(1), yardage: tee.yardage ? String(tee.yardage) : '', color: tee.color || '#ffffff' })}
                     data-testid={`button-edit-tee-${tee.id}`}
                   >
                     <Save className="w-3 h-3" />

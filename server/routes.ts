@@ -1382,6 +1382,7 @@ export async function registerRoutes(
         name: input.name,
         slopeRating: input.slopeRating,
         courseRating: input.courseRating,
+        yardage: input.yardage || null,
         color: input.color || null,
       });
       res.status(201).json(tee);
@@ -1645,6 +1646,7 @@ Rules:
             name: tee.tee_name,
             slopeRating: Math.round(tee.slope_rating),
             courseRating: Math.round(tee.course_rating * 10), // Store as tenths
+            yardage: tee.total_yards ? Math.round(tee.total_yards) : null,
             color: null,
           });
           teesImported++;

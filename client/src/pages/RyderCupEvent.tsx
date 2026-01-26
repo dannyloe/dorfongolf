@@ -1564,7 +1564,9 @@ export default function RyderCupEvent() {
                                       </SelectTrigger>
                                       <SelectContent>
                                         {courseTees.map(t => (
-                                          <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+                                          <SelectItem key={t.id} value={t.id.toString()}>
+                                            {t.name}{t.yardage ? ` (${t.yardage.toLocaleString()})` : ''}
+                                          </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>
@@ -1660,7 +1662,9 @@ export default function RyderCupEvent() {
                                       </SelectTrigger>
                                       <SelectContent>
                                         {courseTees.map(t => (
-                                          <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+                                          <SelectItem key={t.id} value={t.id.toString()}>
+                                            {t.name}{t.yardage ? ` (${t.yardage.toLocaleString()})` : ''}
+                                          </SelectItem>
                                         ))}
                                       </SelectContent>
                                     </Select>

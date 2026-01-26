@@ -544,7 +544,7 @@ export class DatabaseStorage implements IStorage {
     return newTee;
   }
 
-  async seedCourseTeesIfNotExist(courseId: number, tees: { name: string; slopeRating: number; courseRating: number; color?: string }[]): Promise<void> {
+  async seedCourseTeesIfNotExist(courseId: number, tees: { name: string; slopeRating: number; courseRating: number; yardage?: number | null; color?: string }[]): Promise<void> {
     const existingTees = await this.getCourseTees(courseId);
     if (existingTees.length === 0) {
       for (const tee of tees) {
@@ -553,6 +553,7 @@ export class DatabaseStorage implements IStorage {
           name: tee.name,
           slopeRating: tee.slopeRating,
           courseRating: tee.courseRating,
+          yardage: tee.yardage || null,
           color: tee.color || null,
         });
       }
@@ -567,7 +568,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateCourseTee(courseId: number, teeId: number, data: { name?: string; slopeRating?: number; courseRating?: number; color?: string | null }): Promise<CourseTee | undefined> {
+  async updateCourseTee(courseId: number, teeId: number, data: { name?: string; slopeRating?: number; courseRating?: number; yardage?: number | null; color?: string | null }): Promise<CourseTee | undefined> {
     const [updated] = await db.update(courseTees)
       .set(data)
       .where(and(eq(courseTees.id, teeId), eq(courseTees.courseId, courseId)))

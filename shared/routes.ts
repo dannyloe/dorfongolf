@@ -640,6 +640,7 @@ export const api = {
         name: z.string().min(1),
         slopeRating: z.number().min(55).max(155),
         courseRating: z.number().min(550).max(800), // Stored as tenths (e.g., 721 = 72.1)
+        yardage: z.number().nullable().optional(),
         color: z.string().nullable().optional(),
       }),
       responses: {
@@ -649,6 +650,7 @@ export const api = {
           name: z.string(),
           slopeRating: z.number(),
           courseRating: z.number(),
+          yardage: z.number().nullable(),
           color: z.string().nullable(),
         }),
         400: errorSchemas.validation,
@@ -661,6 +663,7 @@ export const api = {
         name: z.string().min(1).optional(),
         slopeRating: z.number().min(55).max(155).optional(),
         courseRating: z.number().min(550).max(800).optional(),
+        yardage: z.number().nullable().optional(),
         color: z.string().nullable().optional(),
       }),
       responses: {
@@ -670,6 +673,7 @@ export const api = {
           name: z.string(),
           slopeRating: z.number(),
           courseRating: z.number(),
+          yardage: z.number().nullable(),
           color: z.string().nullable(),
         }),
         404: errorSchemas.notFound,

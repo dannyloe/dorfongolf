@@ -3675,7 +3675,7 @@ export default function MatchDetail() {
                               <SelectContent>
                                 {courseTees.map((tee) => (
                                   <SelectItem key={tee.id} value={tee.id.toString()} className="text-xs">
-                                    {tee.name}
+                                    {tee.name}{tee.yardage ? ` (${tee.yardage.toLocaleString()})` : ''}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

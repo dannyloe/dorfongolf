@@ -550,6 +550,7 @@ export function useCourseTees(courseId: number | null | undefined) {
         name: string;
         slopeRating: number;
         courseRating: number;
+        yardage: number | null;
         color: string | null;
       }>>;
     },
@@ -584,13 +585,14 @@ export type CourseTee = {
   name: string;
   slopeRating: number;
   courseRating: number;
+  yardage: number | null;
   color: string | null;
 };
 
 export function useCreateCourseTee(courseId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (tee: { name: string; slopeRating: number; courseRating: number; color?: string | null }) => {
+    mutationFn: async (tee: { name: string; slopeRating: number; courseRating: number; yardage?: number | null; color?: string | null }) => {
       const res = await fetch(`/api/courses/${courseId}/tees`, {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
@@ -612,7 +614,7 @@ export function useCreateCourseTee(courseId: number) {
 export function useUpdateCourseTee(courseId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ teeId, ...data }: { teeId: number; name?: string; slopeRating?: number; courseRating?: number; color?: string | null }) => {
+    mutationFn: async ({ teeId, ...data }: { teeId: number; name?: string; slopeRating?: number; courseRating?: number; yardage?: number | null; color?: string | null }) => {
       const res = await fetch(`/api/courses/${courseId}/tees/${teeId}`, {
         method: 'PUT',
         headers: { "Content-Type": "application/json" },

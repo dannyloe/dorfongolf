@@ -34,6 +34,7 @@ export const courseTees = pgTable("course_tees", {
   name: text("name").notNull(), // e.g., "Blue", "White", "Gold", "Red"
   slopeRating: integer("slope_rating").notNull(), // e.g., 131
   courseRating: integer("course_rating").notNull(), // Stored as tenths (e.g., 721 = 72.1)
+  yardage: integer("yardage"), // Total yardage for the tee
   color: text("color"), // Optional hex color for display
 });
 
