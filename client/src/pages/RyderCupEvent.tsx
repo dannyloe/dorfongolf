@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -37,6 +38,7 @@ function PayoutSettingsForm({ event, courses, eventId }: {
   const [matchWinBonus, setMatchWinBonus] = useState(String(event.matchWinBonus / 100));
   const [dailySkinsPot, setDailySkinsPot] = useState(String(event.dailySkinsPot / 100));
   const [closestToHolePayout, setClosestToHolePayout] = useState(String(event.closestToHolePayout / 100));
+  const [includeBuyInInLedger, setIncludeBuyInInLedger] = useState(event.includeBuyInInLedger ?? true);
 
   const numPlayers = 12;
   const numDays = event.days.length || 4;
@@ -161,6 +163,39 @@ function PayoutSettingsForm({ event, courses, eventId }: {
           <div className="text-right">
             <span className="text-2xl font-bold">{formatCurrency(calculatedBuyIn)}</span>
             <p className="text-xs text-muted-foreground">Total pot: {formatCurrency(totalPot)}</p>
+          </div>
+        </div>
+      </div>
+      
+      <div className="border-t pt-4 mt-4">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="include-buy-in"
+            checked={includeBuyInInLedger}
+            onCheckedChange={async (checked) => {
+              const newValue = checked === true;
+              setIncludeBuyInInLedger(newValue);
+              try {
+                await apiRequest("PATCH", `/api/ryder-cup/${eventId}/payouts`, {
+                  includeBuyInInLedger: newValue,
+                });
+                queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", eventId] });
+              } catch (err) {
+                console.error("Failed to update setting:", err);
+              }
+            }}
+            data-testid="checkbox-include-buy-in"
+          />
+          <div className="grid gap-1.5 leading-none">
+            <label
+              htmlFor="include-buy-in"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Include Buy-In payouts in Ledger totals
+            </label>
+            <p className="text-xs text-muted-foreground">
+              When unchecked, Buy-In earnings (match wins, skins, CTH) are shown separately from side bets and expenses
+            </p>
           </div>
         </div>
       </div>
@@ -3219,17 +3254,27 @@ export default function RyderCupEvent() {
                   });
                 });
 
-                // Calculate net position (payouts + side bets + expense balances)
+                // Calculate net position based on includeBuyInInLedger setting
+                const includeBuyIn = event?.includeBuyInInLedger ?? true;
                 const netPosition: Record<string, number> = {};
                 allPlayers.forEach(name => {
                   const sideBets = sideBetData.balances[name] || 0;
-                  netPosition[name] = (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0);
+                  if (includeBuyIn) {
+                    netPosition[name] = (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0);
+                  } else {
+                    // Exclude earnings from net - show side bets + expenses only
+                    netPosition[name] = sideBets + (expenseBalances[name] || 0);
+                  }
                 });
 
                 return (
                   <div className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-semibold mb-3">Net Position (Earnings + Side Bets + Expenses)</h4>
+                      <h4 className="text-sm font-semibold mb-3">
+                        {includeBuyIn 
+                          ? "Net Position (Earnings + Side Bets + Expenses)" 
+                          : "Position Summary (Earnings shown separately)"}
+                      </h4>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
@@ -3238,7 +3283,9 @@ export default function RyderCupEvent() {
                               <th className="text-right py-2 px-2">Earnings</th>
                               <th className="text-right py-2 px-2">Side Bets</th>
                               <th className="text-right py-2 px-2">Expenses</th>
-                              <th className="text-right py-2 pl-2 font-bold">Net</th>
+                              <th className="text-right py-2 pl-2 font-bold">
+                                {includeBuyIn ? "Net" : "Owed"}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>

@@ -542,6 +542,7 @@ export const ryderCupEvents = pgTable("ryder_cup_events", {
   matchTieBonus: integer("match_tie_bonus").notNull().default(1250), // in cents ($12.50)
   dailySkinsPot: integer("daily_skins_pot").notNull().default(21250), // in cents ($212.50)
   closestToHolePayout: integer("closest_to_hole_payout").notNull().default(0), // in cents, per winner
+  includeBuyInInLedger: boolean("include_buy_in_in_ledger").notNull().default(true), // true = include in totals, false = show separately
   targetPoints: integer("target_points").notNull().default(65), // 6.5 * 10 for precision
   useHandicaps: boolean("use_handicaps").notNull().default(false),
   status: text("status").notNull().default("setup"), // setup, active, completed

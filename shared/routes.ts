@@ -1009,6 +1009,7 @@ export const api = {
         matchTieBonus: z.number().min(0).optional(),
         dailySkinsPot: z.number().min(0).optional(),
         closestToHolePayout: z.number().min(0).optional(),
+        includeBuyInInLedger: z.boolean().optional(),
       }),
       responses: {
         200: z.custom<typeof ryderCupEvents.$inferSelect>(),

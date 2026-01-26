@@ -52,6 +52,7 @@ export interface IStorage {
     matchTieBonus?: number;
     dailySkinsPot?: number;
     closestToHolePayout?: number;
+    includeBuyInInLedger?: boolean;
   }): Promise<RyderCupEvent>;
   
   // Ryder Cup scores for side matches
@@ -1863,6 +1864,7 @@ export class DatabaseStorage implements IStorage {
     matchTieBonus?: number;
     dailySkinsPot?: number;
     closestToHolePayout?: number;
+    includeBuyInInLedger?: boolean;
   }): Promise<RyderCupEvent> {
     const [updated] = await db.update(ryderCupEvents)
       .set(payouts)
