@@ -2557,6 +2557,27 @@ Rules:
 
   // === SMS ROUTES ===
   
+  // Debug endpoint to check message status
+  app.get('/api/sms/check-message/:sid', async (req, res) => {
+    try {
+      const { getTwilioClient } = await import('./twilio');
+      const client = await getTwilioClient();
+      const message = await client.messages(req.params.sid).fetch();
+      res.json({
+        sid: message.sid,
+        status: message.status,
+        errorCode: message.errorCode,
+        errorMessage: message.errorMessage,
+        from: message.from,
+        to: message.to,
+        dateSent: message.dateSent,
+        dateCreated: message.dateCreated
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
   // Rate limiting map for SMS verification (phone -> { lastSent, attempts })
   const smsRateLimits = new Map<string, { lastSent: number; attempts: number }>();
   const SMS_RATE_LIMIT_WINDOW = 60 * 1000; // 60 seconds between sends
