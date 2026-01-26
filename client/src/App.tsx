@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/Layout";
@@ -19,24 +19,12 @@ import RyderCupCreate from "@/pages/RyderCupCreate";
 import RyderCupEvent from "@/pages/RyderCupEvent";
 import RyderCupScorecard from "@/pages/RyderCupScorecard";
 import Profile from "@/pages/Profile";
-import PhoneVerification from "@/pages/PhoneVerification";
 import NotFound from "@/pages/not-found";
 
-interface ProfileData {
-  id: string;
-  phoneVerified?: boolean;
-}
-
-function PrivateRoute({ component: Component, skipPhoneCheck = false }: { component: React.ComponentType; skipPhoneCheck?: boolean }) {
+function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
-  
-  const { data: profile, isLoading: profileLoading, isError } = useQuery<ProfileData>({
-    queryKey: ['/api/profile'],
-    enabled: !!user,
-    retry: 2,
-  });
 
-  if (isLoading || (user && profileLoading)) {
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -46,10 +34,6 @@ function PrivateRoute({ component: Component, skipPhoneCheck = false }: { compon
 
   if (!user) {
     return <Redirect to="/" />;
-  }
-
-  if (!skipPhoneCheck && (!profile || isError || !profile.phoneVerified)) {
-    return <Redirect to="/verify-phone" />;
   }
 
   return (
@@ -57,33 +41,6 @@ function PrivateRoute({ component: Component, skipPhoneCheck = false }: { compon
       <Component />
     </Layout>
   );
-}
-
-function PhoneVerificationRoute() {
-  const { user, isLoading } = useAuth();
-  
-  const { data: profile, isLoading: profileLoading } = useQuery<ProfileData>({
-    queryKey: ['/api/profile'],
-    enabled: !!user,
-  });
-
-  if (isLoading || (user && profileLoading)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Redirect to="/" />;
-  }
-
-  if (profile?.phoneVerified) {
-    return <Redirect to="/dashboard" />;
-  }
-
-  return <PhoneVerification />;
 }
 
 function PublicRoute() {
@@ -102,7 +59,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={PublicRoute} />
-      <Route path="/verify-phone" component={PhoneVerificationRoute} />
       <Route path="/dashboard">
         <PrivateRoute component={Dashboard} />
       </Route>
