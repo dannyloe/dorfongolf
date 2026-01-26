@@ -1521,24 +1521,24 @@ export class DatabaseStorage implements IStorage {
     // Pre-defined rotation that ensures:
     // - Each player plays with 4 of 5 teammates
     // - Maximum variety in opponents
-    // Player indices: 0-5 for each team
+    // Player indices: 0-5 for each team (A1=0, A2=1, ... A6=5, B1=0, B2=1, ... B6=5)
     const pairingPattern = [
       // Day 1
-      { a: [0, 1], b: [0, 1] },
-      { a: [2, 3], b: [2, 3] },
-      { a: [4, 5], b: [4, 5] },
+      { a: [0, 1], b: [0, 1] }, // A1-A2 vs B1-B2
+      { a: [2, 3], b: [2, 3] }, // A3-A4 vs B3-B4
+      { a: [4, 5], b: [4, 5] }, // A5-A6 vs B5-B6
       // Day 2
-      { a: [0, 2], b: [1, 3] },
-      { a: [1, 4], b: [0, 5] },
-      { a: [3, 5], b: [2, 4] },
+      { a: [0, 2], b: [1, 4] }, // A1-A3 vs B2-B5
+      { a: [1, 4], b: [0, 2] }, // A2-A5 vs B1-B3
+      { a: [3, 5], b: [3, 5] }, // A4-A6 vs B4-B6
       // Day 3
-      { a: [0, 3], b: [2, 5] },
-      { a: [1, 5], b: [1, 4] },
-      { a: [2, 4], b: [0, 3] },
+      { a: [0, 3], b: [0, 3] }, // A1-A4 vs B1-B4
+      { a: [1, 5], b: [2, 4] }, // A2-A6 vs B3-B5
+      { a: [2, 4], b: [1, 5] }, // A3-A5 vs B2-B6
       // Day 4
-      { a: [0, 4], b: [3, 5] },
-      { a: [1, 3], b: [0, 2] },
-      { a: [2, 5], b: [1, 4] },
+      { a: [0, 4], b: [2, 5] }, // A1-A5 vs B3-B6
+      { a: [1, 3], b: [1, 3] }, // A2-A4 vs B2-B4
+      { a: [2, 5], b: [0, 4] }, // A3-A6 vs B1-B5
     ];
 
     return pairingPattern.map(p => ({
