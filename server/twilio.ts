@@ -59,18 +59,24 @@ export async function getTwilioFromPhoneNumber() {
 
 // Send an SMS message
 export async function sendSMS(to: string, message: string): Promise<{ success: boolean; sid?: string; error?: string }> {
+  console.error('[Twilio sendSMS] Starting SMS send to:', to);
   try {
+    console.error('[Twilio sendSMS] Getting Twilio client...');
     const client = await getTwilioClient();
+    console.error('[Twilio sendSMS] Got client, getting from number...');
     const fromNumber = await getTwilioFromPhoneNumber();
+    console.error('[Twilio sendSMS] From number:', fromNumber);
     
     if (!fromNumber) {
+      console.error('[Twilio sendSMS] ERROR: No from number configured');
       throw new Error('Twilio phone number not configured');
     }
     
     // Format phone number if needed (ensure it has country code)
     const formattedTo = formatPhoneNumber(to);
     
-    console.log(`[Twilio] Sending SMS from ${fromNumber} to ${formattedTo}`);
+    console.error(`[Twilio sendSMS] Sending SMS from ${fromNumber} to ${formattedTo}`);
+    console.error(`[Twilio sendSMS] Message: ${message.substring(0, 50)}...`);
     
     const result = await client.messages.create({
       body: message,
@@ -78,10 +84,13 @@ export async function sendSMS(to: string, message: string): Promise<{ success: b
       to: formattedTo
     });
     
-    console.log(`[Twilio] SMS sent successfully, SID: ${result.sid}, Status: ${result.status}`);
+    console.error(`[Twilio sendSMS] SUCCESS - SID: ${result.sid}, Status: ${result.status}`);
     return { success: true, sid: result.sid };
   } catch (error: any) {
-    console.error('[Twilio] SMS send error:', error.message, error.code, error.moreInfo);
+    console.error('[Twilio sendSMS] ERROR:', error.message);
+    console.error('[Twilio sendSMS] Error code:', error.code);
+    console.error('[Twilio sendSMS] More info:', error.moreInfo);
+    console.error('[Twilio sendSMS] Full error:', JSON.stringify(error, null, 2));
     return { success: false, error: error.message };
   }
 }
