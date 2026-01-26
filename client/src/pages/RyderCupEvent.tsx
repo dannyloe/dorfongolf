@@ -3257,17 +3257,22 @@ export default function RyderCupEvent() {
                 // Calculate net position based on includeBuyInInLedger setting
                 const includeBuyIn = event?.includeBuyInInLedger ?? true;
                 
-                // Calculate buy-in amount
+                // Calculate buy-in amount (must match PayoutsTab calculation exactly)
                 const numPlayers = 12;
                 const numDays = event.days.length || 4;
-                const matchesPerDay = 6;
+                const matchesPerDay = 3;
+                const playersPerMatch = 2;
                 const par3sByDay = event.days.map(day => {
-                  const dayCourse = courses?.find((c: { id: number }) => c.id === day.courseId);
+                  const dayCourseId = day.courseId || event.courseId;
+                  const dayCourse = courses?.find((c: { id: number }) => c.id === dayCourseId);
                   return dayCourse?.holes?.filter((h: { par: number }) => h.par === 3).length || 0;
                 });
                 const totalPar3s = par3sByDay.reduce((sum: number, p: number) => sum + p, 0);
-                const playersPerMatch = 2;
-                const totalPot = (event.teamWinBonus * 6) + (event.matchWinBonus * playersPerMatch * matchesPerDay * numDays) + (event.dailySkinsPot * numDays) + (event.closestToHolePayout * totalPar3s);
+                const totalTeamWin = event.teamWinBonus * 6;
+                const totalMatchWins = event.matchWinBonus * playersPerMatch * matchesPerDay * numDays;
+                const totalSkins = event.dailySkinsPot * numDays;
+                const totalCTH = event.closestToHolePayout * totalPar3s;
+                const totalPot = totalTeamWin + totalMatchWins + totalSkins + totalCTH;
                 const buyInAmount = Math.ceil(totalPot / numPlayers);
                 
                 const netPosition: Record<string, number> = {};
