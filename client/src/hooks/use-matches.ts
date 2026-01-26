@@ -300,6 +300,27 @@ export function useUpdateNetScoring(matchId: number) {
   });
 }
 
+export function useUpdateUnitAmount(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, unitAmount }: { eventMatchId: number; unitAmount: number }) => {
+      const url = buildUrl(api.eventMatches.updateUnitAmount.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.updateUnitAmount.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitAmount }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update unit amount");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
 // Course types
 export interface CourseHole {
   id: number;

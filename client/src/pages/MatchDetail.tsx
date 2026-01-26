@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -155,7 +155,10 @@ export default function MatchDetail() {
   const createPress = useCreatePress(matchId);
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
+  const updateUnitAmount = useUpdateUnitAmount(matchId);
   const updateHandicapped = useUpdateHandicapped(matchId);
+  const [editingUnitAmountId, setEditingUnitAmountId] = useState<number | null>(null);
+  const [editUnitAmountValue, setEditUnitAmountValue] = useState("");
   const updateMatchDetails = useUpdateMatchDetails(matchId);
   const { data: playerHandicaps } = usePlayerHandicaps();
   const { data: fullPlayerData = [] } = useFullPlayerData();
@@ -2210,10 +2213,53 @@ export default function MatchDetail() {
                         <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
                           {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
                         </span>
-                        {em.unitAmount > 0 && (
-                          <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-muted rounded-full font-medium">
+                        {editingUnitAmountId === em.id ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="w-16 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-muted rounded-full font-medium text-center border-0 focus:ring-1 focus:ring-primary"
+                            value={editUnitAmountValue}
+                            onChange={(e) => setEditUnitAmountValue(e.target.value)}
+                            onBlur={() => {
+                              const value = parseFloat(editUnitAmountValue) || 0;
+                              updateUnitAmount.mutate({ 
+                                eventMatchId: em.id, 
+                                unitAmount: Math.round(value * 100) 
+                              });
+                              setEditingUnitAmountId(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const value = parseFloat(editUnitAmountValue) || 0;
+                                updateUnitAmount.mutate({ 
+                                  eventMatchId: em.id, 
+                                  unitAmount: Math.round(value * 100) 
+                                });
+                                setEditingUnitAmountId(null);
+                              }
+                              if (e.key === 'Escape') {
+                                setEditingUnitAmountId(null);
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                            data-testid={`input-unit-amount-${em.id}`}
+                          />
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (canEditScoresAndBets) {
+                                setEditUnitAmountValue(String(em.unitAmount / 100));
+                                setEditingUnitAmountId(em.id);
+                              }
+                            }}
+                            className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-muted rounded-full font-medium ${canEditScoresAndBets ? "hover:bg-muted/80 cursor-pointer" : "cursor-default"}`}
+                            title={canEditScoresAndBets ? "Click to edit wager amount" : undefined}
+                            data-testid={`button-edit-unit-amount-${em.id}`}
+                          >
                             ${(em.unitAmount / 100).toFixed(2)}
-                          </span>
+                          </button>
                         )}
                         {match.isHandicapped && (() => {
                           const netContext = buildMatchNetContext(em);

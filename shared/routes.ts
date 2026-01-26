@@ -347,6 +347,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateUnitAmount: {
+      method: 'PATCH' as const,
+      path: '/api/event-matches/:id/unit-amount',
+      input: z.object({
+        unitAmount: z.number().min(0),
+      }),
+      responses: {
+        200: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
   },
   presetPlayers: {
     list: {
