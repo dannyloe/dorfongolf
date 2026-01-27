@@ -10,6 +10,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -20,6 +26,8 @@ import {
 import { calculateLedger, NetScoringContext } from "@/lib/matchplay";
 import { useCourses, useGroups, useMatches } from "@/hooks/use-matches";
 import { calculateCourseHandicap } from "@/lib/handicap";
+
+type DetailType = "won" | "lost" | "net" | null;
 
 type DateRange = {
   from: Date | undefined;
@@ -34,6 +42,11 @@ export default function Ledger() {
   const [selectedEventId, setSelectedEventId] = useState<string>("all");
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [selectedCourseId, setSelectedCourseId] = useState<string>("all");
+  const [detailModal, setDetailModal] = useState<{
+    playerId: number;
+    playerName: string;
+    type: DetailType;
+  } | null>(null);
 
   const { data: courses } = useCourses();
   const { data: groups } = useGroups();
@@ -415,13 +428,25 @@ export default function Ledger() {
                   <TableRow key={balance.playerId} data-testid={`row-player-${balance.playerId}`}>
                     <TableCell className="font-medium whitespace-nowrap">{balance.playerName}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">{balance.matchesPlayed}</TableCell>
-                    <TableCell className="text-right text-green-600 whitespace-nowrap">
+                    <TableCell 
+                      className="text-right text-green-600 whitespace-nowrap cursor-pointer hover:underline"
+                      onClick={() => setDetailModal({ playerId: balance.playerId, playerName: balance.playerName, type: "won" })}
+                      data-testid={`cell-won-${balance.playerId}`}
+                    >
                       +${balance.totalWon.toFixed(2)}
                     </TableCell>
-                    <TableCell className="text-right text-red-600 whitespace-nowrap">
+                    <TableCell 
+                      className="text-right text-red-600 whitespace-nowrap cursor-pointer hover:underline"
+                      onClick={() => setDetailModal({ playerId: balance.playerId, playerName: balance.playerName, type: "lost" })}
+                      data-testid={`cell-lost-${balance.playerId}`}
+                    >
                       -${balance.totalLost.toFixed(2)}
                     </TableCell>
-                    <TableCell className={`text-right font-bold whitespace-nowrap ${balance.netBalance >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <TableCell 
+                      className={`text-right font-bold whitespace-nowrap cursor-pointer hover:underline ${balance.netBalance >= 0 ? "text-green-600" : "text-red-600"}`}
+                      onClick={() => setDetailModal({ playerId: balance.playerId, playerName: balance.playerName, type: "net" })}
+                      data-testid={`cell-net-${balance.playerId}`}
+                    >
                       {balance.netBalance >= 0 ? "+" : ""}${balance.netBalance.toFixed(2)}
                     </TableCell>
                   </TableRow>
@@ -691,6 +716,79 @@ export default function Ledger() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={detailModal !== null} onOpenChange={(open) => !open && setDetailModal(null)}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" data-testid="dialog-ledger-detail">
+          <DialogHeader>
+            <DialogTitle data-testid="dialog-title">
+              {detailModal?.playerName} - {detailModal?.type === "won" ? "Winnings" : detailModal?.type === "lost" ? "Losses" : "All Transactions"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {detailModal && ledgerResults?.entries && (() => {
+              const playerEntries = ledgerResults.entries.filter(e => e.playerId === detailModal.playerId);
+              const filteredEntries = detailModal.type === "won" 
+                ? playerEntries.filter(e => e.amount > 0)
+                : detailModal.type === "lost"
+                ? playerEntries.filter(e => e.amount < 0)
+                : playerEntries;
+              
+              if (filteredEntries.length === 0) {
+                return <div className="text-muted-foreground text-center py-4" data-testid="text-no-transactions">No transactions</div>;
+              }
+              
+              const total = filteredEntries.reduce((sum, e) => sum + e.amount, 0);
+              
+              return (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Match</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredEntries.map((entry, idx) => (
+                        <TableRow key={`${entry.matchId}-${entry.betType}-${idx}`}>
+                          <TableCell className="text-sm">
+                            <div className="flex flex-col">
+                              <span>{entry.matchName?.split(' - ')[0]}</span>
+                              {entry.createdAt && (
+                                <span className="text-xs text-muted-foreground">
+                                  {format(new Date(entry.createdAt), "MMM d, yyyy")}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <div className="flex flex-col">
+                              <span>{entry.betType || 'Match Play'}</span>
+                              {entry.pressHole && (
+                                <span className="text-xs text-muted-foreground">Press #{entry.pressHole}</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className={`text-right font-medium ${entry.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {entry.amount >= 0 ? "+" : ""}${entry.amount.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="border-t pt-2 flex justify-between items-center font-bold" data-testid="row-total">
+                    <span>Total</span>
+                    <span className={total >= 0 ? "text-green-600" : "text-red-600"} data-testid="text-total-amount">
+                      {total >= 0 ? "+" : ""}${total.toFixed(2)}
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
