@@ -240,6 +240,7 @@ export default function RyderCupEvent() {
   const [transactionSplitPlayers, setTransactionSplitPlayers] = useState<string[]>([]);
   const [earningsBreakdownPlayer, setEarningsBreakdownPlayer] = useState<string | null>(null);
   const [sideBetsBreakdownPlayer, setSideBetsBreakdownPlayer] = useState<string | null>(null);
+  const [expensesBreakdownPlayer, setExpensesBreakdownPlayer] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -3356,8 +3357,14 @@ export default function RyderCupEvent() {
                                         {sideBets > 0 ? "+" : ""}{formatCurrency(sideBets)}
                                       </button>
                                     </td>
-                                    <td className={`text-right py-2 px-2 ${expenses > 0 ? "text-green-600" : expenses < 0 ? "text-red-600" : ""}`}>
-                                      {expenses > 0 ? "+" : ""}{formatCurrency(expenses)}
+                                    <td className={`text-right py-2 px-2`}>
+                                      <button
+                                        onClick={() => setExpensesBreakdownPlayer(playerName)}
+                                        className={`hover:underline cursor-pointer ${expenses > 0 ? "text-green-600" : expenses < 0 ? "text-red-600" : ""}`}
+                                        data-testid={`button-expenses-breakdown-${playerName}`}
+                                      >
+                                        {expenses > 0 ? "+" : ""}{formatCurrency(expenses)}
+                                      </button>
                                     </td>
                                     <td className={`text-right py-2 pl-2 font-bold ${net > 0 ? "text-green-600" : net < 0 ? "text-red-600" : ""}`}>
                                       {net > 0 ? "+" : ""}{formatCurrency(net)}
@@ -3657,6 +3664,74 @@ export default function RyderCupEvent() {
                           <div>
                             <span className="font-medium">{e.matchName}</span>
                             {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
+                          </div>
+                          <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
+                            {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t pt-2 flex justify-between items-center font-semibold">
+                      <span>Total</span>
+                      <span className={total > 0 ? "text-green-600" : total < 0 ? "text-red-600" : ""}>
+                        {total > 0 ? "+" : ""}{formatCurrency(total)}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!expensesBreakdownPlayer} onOpenChange={(open) => !open && setExpensesBreakdownPlayer(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Expenses Breakdown - {expensesBreakdownPlayer}</DialogTitle>
+          </DialogHeader>
+          {expensesBreakdownPlayer && (() => {
+            // Filter transactions where this player is the payer or is in the splits
+            const playerTransactions = transactions.filter(t => 
+              t.payerName === expensesBreakdownPlayer || 
+              t.splits.some(s => s.playerName === expensesBreakdownPlayer)
+            );
+            
+            // Calculate expense entries for this player
+            const entries = playerTransactions.map(t => {
+              let amount = 0;
+              if (t.payerName === expensesBreakdownPlayer) {
+                // Player paid, so they get credit
+                amount += t.amount;
+              }
+              const split = t.splits.find(s => s.playerName === expensesBreakdownPlayer);
+              if (split) {
+                // Player owes their share
+                amount -= split.amount;
+              }
+              return {
+                description: t.description,
+                amount,
+                date: t.createdAt ? new Date(t.createdAt).toLocaleDateString() : null,
+                isPayer: t.payerName === expensesBreakdownPlayer,
+              };
+            }).filter(e => e.amount !== 0);
+            
+            const total = entries.reduce((sum, e) => sum + e.amount, 0);
+            
+            return (
+              <div className="space-y-3">
+                {entries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No expense transactions</p>
+                ) : (
+                  <>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {entries.map((e, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
+                          <div>
+                            <span className="font-medium">{e.description}</span>
+                            {e.isPayer && <Badge variant="outline" className="ml-2">Paid</Badge>}
+                            {e.date && <span className="text-xs text-muted-foreground ml-2">{e.date}</span>}
                           </div>
                           <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
                             {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
