@@ -248,6 +248,8 @@ export default function RyderCupEvent() {
   const [expensesBreakdownPlayer, setExpensesBreakdownPlayer] = useState<string | null>(null);
   const [earningsExpanded, setEarningsExpanded] = useState(false);
   const [sideBetsExpanded, setSideBetsExpanded] = useState(false);
+  const [dayEarningsBreakdown, setDayEarningsBreakdown] = useState<{ player: string; day: number } | null>(null);
+  const [daySideBetsBreakdown, setDaySideBetsBreakdown] = useState<{ player: string; day: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -994,6 +996,67 @@ export default function RyderCupEvent() {
     return sideBetData.entries.filter(e => 
       e.playerName.toLowerCase().trim() === normalized && e.isComplete
     );
+  };
+
+  // Get per-day earnings breakdown for a specific player and day
+  const getDayEarningsBreakdown = (playerName: string, dayNumber: number) => {
+    const breakdown: { description: string; amount: number }[] = [];
+    const day = event?.days?.find(d => d.dayNumber === dayNumber);
+    if (!day) return breakdown;
+    
+    for (const pairing of day.pairings) {
+      if (!pairing.result || !pairing.isPrimary) continue;
+      
+      for (const side of pairing.sides) {
+        const players = [side.player1Name, side.player2Name].filter((n): n is string => n !== null);
+        if (!players.includes(playerName)) continue;
+        
+        const isWinner = pairing.result.winningSideId === side.id;
+        const isTie = !pairing.result.winningSideId;
+        const otherSide = pairing.sides.find(s => s.id !== side.id);
+        const opponents = [otherSide?.player1Name, otherSide?.player2Name].filter((n): n is string => n !== null).join(" & ");
+        
+        if (isWinner) {
+          breakdown.push({
+            description: `Won vs ${opponents}`,
+            amount: event!.matchWinBonus,
+          });
+        } else if (isTie) {
+          breakdown.push({
+            description: `Tied vs ${opponents}`,
+            amount: event!.matchTieBonus,
+          });
+        }
+      }
+    }
+    
+    // Add CTH winnings for this day
+    if (event?.closestToHolePayout > 0) {
+      const dayCthWins = allCthWinners.filter(cth => cth.dayId === day.id && cth.winnerName === playerName);
+      for (const cth of dayCthWins) {
+        breakdown.push({
+          description: `Closest to hole #${cth.holeNumber}`,
+          amount: event.closestToHolePayout,
+        });
+      }
+    }
+    
+    return breakdown;
+  };
+
+  // Get per-day side bet breakdown for a specific player and day
+  const getDaySideBetBreakdown = (playerName: string, dayNumber: number) => {
+    if (!sideBetData.entries || !sideMatchLedger?.eventMatches || !sideMatchLedger?.matches) return [];
+    
+    const normalized = playerName.toLowerCase().trim();
+    return sideBetData.entries.filter(e => {
+      if (e.playerName.toLowerCase().trim() !== normalized || !e.isComplete) return false;
+      
+      // Find which day this entry belongs to
+      const eventMatch = sideMatchLedger.eventMatches.find((em: any) => em.id === e.matchId);
+      const match = sideMatchLedger.matches.find((m: any) => m.id === eventMatch?.eventId);
+      return match?.ryderCupDayNumber === dayNumber;
+    });
   };
 
   // Calculate skins for a specific day
@@ -3727,9 +3790,15 @@ export default function RyderCupEvent() {
                                       return (
                                         <td 
                                           key={`earn-${playerName}-${day.dayNumber}`} 
-                                          className={`text-right py-2 px-2 text-xs ${dayEarning > 0 ? "text-green-600" : "text-muted-foreground"}`}
+                                          className="text-right py-2 px-2 text-xs"
                                         >
-                                          {formatCurrency(dayEarning)}
+                                          <button
+                                            onClick={() => setDayEarningsBreakdown({ player: playerName, day: day.dayNumber })}
+                                            className={`hover:underline cursor-pointer ${dayEarning > 0 ? "text-green-600" : "text-muted-foreground"}`}
+                                            data-testid={`button-day-earnings-${playerName}-${day.dayNumber}`}
+                                          >
+                                            {formatCurrency(dayEarning)}
+                                          </button>
                                         </td>
                                       );
                                     })}
@@ -3747,9 +3816,15 @@ export default function RyderCupEvent() {
                                       return (
                                         <td 
                                           key={`side-${playerName}-${day.dayNumber}`} 
-                                          className={`text-right py-2 px-2 text-xs ${daySideBet > 0 ? "text-green-600" : daySideBet < 0 ? "text-red-600" : "text-muted-foreground"}`}
+                                          className="text-right py-2 px-2 text-xs"
                                         >
-                                          {daySideBet !== 0 ? (daySideBet > 0 ? "+" : "") : ""}{formatCurrency(daySideBet)}
+                                          <button
+                                            onClick={() => setDaySideBetsBreakdown({ player: playerName, day: day.dayNumber })}
+                                            className={`hover:underline cursor-pointer ${daySideBet > 0 ? "text-green-600" : daySideBet < 0 ? "text-red-600" : "text-muted-foreground"}`}
+                                            data-testid={`button-day-sidebets-${playerName}-${day.dayNumber}`}
+                                          >
+                                            {daySideBet !== 0 ? (daySideBet > 0 ? "+" : "") : ""}{formatCurrency(daySideBet)}
+                                          </button>
                                         </td>
                                       );
                                     })}
@@ -4128,6 +4203,81 @@ export default function RyderCupEvent() {
                             <span className="font-medium">{e.description}</span>
                             {e.isPayer && <Badge variant="outline" className="ml-2">Paid</Badge>}
                             {e.date && <span className="text-xs text-muted-foreground ml-2">{e.date}</span>}
+                          </div>
+                          <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
+                            {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t pt-2 flex justify-between items-center font-semibold">
+                      <span>Total</span>
+                      <span className={total > 0 ? "text-green-600" : total < 0 ? "text-red-600" : ""}>
+                        {total > 0 ? "+" : ""}{formatCurrency(total)}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!dayEarningsBreakdown} onOpenChange={(open) => !open && setDayEarningsBreakdown(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Day {dayEarningsBreakdown?.day} Earnings - {dayEarningsBreakdown?.player}</DialogTitle>
+          </DialogHeader>
+          {dayEarningsBreakdown && (() => {
+            const breakdown = getDayEarningsBreakdown(dayEarningsBreakdown.player, dayEarningsBreakdown.day);
+            const total = breakdown.reduce((sum, b) => sum + b.amount, 0);
+            return (
+              <div className="space-y-3">
+                {breakdown.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No earnings for Day {dayEarningsBreakdown.day}</p>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      {breakdown.map((b, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span>{b.description}</span>
+                          <span className="font-medium text-green-600">{formatCurrency(b.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t pt-2 flex justify-between items-center font-semibold">
+                      <span>Total</span>
+                      <span className="text-green-600">{formatCurrency(total)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!daySideBetsBreakdown} onOpenChange={(open) => !open && setDaySideBetsBreakdown(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Day {daySideBetsBreakdown?.day} Side Bets - {daySideBetsBreakdown?.player}</DialogTitle>
+          </DialogHeader>
+          {daySideBetsBreakdown && (() => {
+            const entries = getDaySideBetBreakdown(daySideBetsBreakdown.player, daySideBetsBreakdown.day);
+            const total = entries.reduce((sum, e) => sum + e.amount, 0);
+            return (
+              <div className="space-y-3">
+                {entries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No side bet results for Day {daySideBetsBreakdown.day}</p>
+                ) : (
+                  <>
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {entries.map((e, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
+                          <div>
+                            <span className="font-medium">{e.matchName}</span>
+                            {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
                           </div>
                           <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
                             {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
