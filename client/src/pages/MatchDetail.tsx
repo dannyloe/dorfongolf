@@ -2298,8 +2298,8 @@ export default function MatchDetail() {
                     {isCreator && match?.ryderCupEventId && match?.name?.includes("Side Matches") && (
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="mr-1"
+                        size="sm"
+                        className="mr-1 h-7 px-2 text-xs gap-1"
                         onClick={(e) => {
                           e.stopPropagation();
                           replicateEventMatch.mutate(em.id, {
@@ -2312,10 +2312,11 @@ export default function MatchDetail() {
                           });
                         }}
                         disabled={replicateEventMatch.isPending}
-                        title="Replicate to all days"
+                        title="Copy this betting game to all future days"
                         data-testid={`button-replicate-match-${em.id}`}
                       >
-                        <Copy className="w-4 h-4" />
+                        <Copy className="w-3 h-3" />
+                        <span>Copy forward</span>
                       </Button>
                     )}
                     {isCreator && (
