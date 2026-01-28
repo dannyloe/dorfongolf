@@ -1317,10 +1317,14 @@ export default function RyderCupEvent() {
                     <Badge variant="outline" className="text-xs" data-testid={`badge-day-course-${currentDay.id}`}>
                       <Flag className="w-3 h-3 mr-1" /> <span data-testid={`text-day-course-${currentDay.id}`}>{currentDay.courseName || "No course set"}</span>
                     </Badge>
-                    {editingDayDate === currentDay.id ? (
-                      <Popover open={true} onOpenChange={(open) => !open && setEditingDayDate(null)}>
+                    {isCreatorOrAdmin ? (
+                      <Popover>
                         <PopoverTrigger asChild>
-                          <Badge variant="outline" className="text-xs cursor-pointer">
+                          <Badge 
+                            variant="outline" 
+                            className="text-xs cursor-pointer hover:bg-accent"
+                            data-testid={`badge-day-date-${currentDay.id}`}
+                          >
                             <Calendar className="w-3 h-3 mr-1" /> {currentDay.date ? new Date(currentDay.date).toLocaleDateString() : "Set date"}
                           </Badge>
                         </PopoverTrigger>
@@ -1328,7 +1332,7 @@ export default function RyderCupEvent() {
                           <CalendarComponent
                             mode="single"
                             selected={currentDay.date ? new Date(currentDay.date) : undefined}
-                            onSelect={(date) => {
+                            onSelect={(date: Date | undefined) => {
                               if (date) {
                                 updateDayScheduleMutation.mutate({
                                   dayId: currentDay.id,
@@ -1336,7 +1340,6 @@ export default function RyderCupEvent() {
                                   teeTimes: currentDay.teeTimes || [],
                                 });
                               }
-                              setEditingDayDate(null);
                             }}
                             initialFocus
                           />
@@ -1345,8 +1348,7 @@ export default function RyderCupEvent() {
                     ) : (
                       <Badge 
                         variant="outline" 
-                        className={`text-xs ${isCreatorOrAdmin ? "cursor-pointer hover:bg-accent" : ""}`}
-                        onClick={() => isCreatorOrAdmin && setEditingDayDate(currentDay.id)}
+                        className="text-xs"
                         data-testid={`badge-day-date-${currentDay.id}`}
                       >
                         <Calendar className="w-3 h-3 mr-1" /> {currentDay.date ? new Date(currentDay.date).toLocaleDateString() : "No date set"}
