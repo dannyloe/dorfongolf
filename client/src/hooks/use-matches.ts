@@ -194,7 +194,7 @@ export function useUpdateMatchDetails(matchId: number) {
 
 type CreateEventMatchInput = z.infer<typeof api.eventMatches.create.input>;
 
-export function useCreateEventMatch(matchId: number) {
+export function useCreateEventMatch(matchId: number, ryderCupEventId?: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: CreateEventMatchInput) => {
@@ -211,11 +211,15 @@ export function useCreateEventMatch(matchId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+      // Also invalidate ryder cup queries so the side match summary updates
+      if (ryderCupEventId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", ryderCupEventId, "side-match-ledger"] });
+      }
     },
   });
 }
 
-export function useDeleteEventMatch(matchId: number) {
+export function useDeleteEventMatch(matchId: number, ryderCupEventId?: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (eventMatchId: number) => {
@@ -229,11 +233,15 @@ export function useDeleteEventMatch(matchId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+      // Also invalidate ryder cup queries so the side match summary updates
+      if (ryderCupEventId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", ryderCupEventId, "side-match-ledger"] });
+      }
     },
   });
 }
 
-export function useReplicateEventMatchToSiblings(matchId: number) {
+export function useReplicateEventMatchToSiblings(matchId: number, ryderCupEventId?: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (eventMatchId: number) => {
@@ -251,6 +259,12 @@ export function useReplicateEventMatchToSiblings(matchId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+      // Also invalidate ryder cup queries so the side match summary updates
+      if (ryderCupEventId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", ryderCupEventId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", ryderCupEventId, "matches"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", ryderCupEventId, "side-match-ledger"] });
+      }
     },
   });
 }

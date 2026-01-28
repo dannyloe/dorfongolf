@@ -150,9 +150,9 @@ export default function MatchDetail() {
   const addPlayer = useAddPlayer(matchId);
   const submitScore = useSubmitScore(matchId);
   const deleteMatch = useDeleteMatch();
-  const createEventMatch = useCreateEventMatch(matchId);
-  const deleteEventMatch = useDeleteEventMatch(matchId);
-  const replicateEventMatch = useReplicateEventMatchToSiblings(matchId);
+  const createEventMatch = useCreateEventMatch(matchId, match?.ryderCupEventId);
+  const deleteEventMatch = useDeleteEventMatch(matchId, match?.ryderCupEventId);
+  const replicateEventMatch = useReplicateEventMatchToSiblings(matchId, match?.ryderCupEventId);
   const createPress = useCreatePress(matchId);
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
