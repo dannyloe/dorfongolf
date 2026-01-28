@@ -293,8 +293,8 @@ export default function MatchDetail() {
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   const currentPlayer = players.find((p: Player) => p.userId === user?.id);
   
-  // Daily match containers (e.g., "D1 Side Matches") should have limited editing - no add player, no manage access, read-only header
-  const isDailyMatchContainer = !!(match?.ryderCupEventId && match?.name?.includes("Side Matches"));
+  // Daily match containers (e.g., "Day 1 Side Match") should have limited editing - no add player, no manage access, read-only header
+  const isDailyMatchContainer = !!(match?.ryderCupEventId && match?.name?.includes("Side Match"));
   
   // Find course par data for this match
   const matchCourse = coursesList?.find(c => c.name === match.courseName);
