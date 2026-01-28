@@ -1240,6 +1240,18 @@ export class DatabaseStorage implements IStorage {
       .set({ courseId, courseName })
       .where(eq(ryderCupDays.id, dayId))
       .returning();
+    
+    // Also update all side matches linked to this day
+    // Get the event ID and day number from the day record
+    if (updated) {
+      await db.update(matches)
+        .set({ courseId, courseName })
+        .where(and(
+          eq(matches.ryderCupEventId, updated.eventId),
+          eq(matches.ryderCupDayNumber, updated.dayNumber)
+        ));
+    }
+    
     return updated;
   }
 

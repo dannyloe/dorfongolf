@@ -516,66 +516,81 @@ export default function RyderCupEvent() {
   });
 
   const createSideMatchMutation = useMutation({
-    mutationFn: async (): Promise<Match> => {
-      const currentDayData = event?.days.find(d => d.dayNumber === selectedDay);
-      const courseName = currentDayData?.courseName || event?.courseName || "";
-      const courseId = currentDayData?.courseId || event?.courseId;
+    mutationFn: async ({ forAllDays = false }: { forAllDays?: boolean } = {}): Promise<Match | null> => {
+      const daysToCreate = forAllDays 
+        ? (event?.days || []).map(d => d.dayNumber)
+        : [selectedDay];
       
-      // Build a map of player names to their tee and handicap info from Ryder Cup pairings
-      const playerTeeInfo: Record<string, { teeId: number | null; handicapIndex: number | null }> = {};
-      if (currentDayData?.pairings) {
-        for (const pairing of currentDayData.pairings) {
-          for (const side of pairing.sides) {
-            if (side.player1Name) {
-              playerTeeInfo[side.player1Name] = {
-                teeId: side.player1TeeId ?? null,
-                handicapIndex: side.player1HandicapIndex ?? null,
-              };
-            }
-            if (side.player2Name) {
-              playerTeeInfo[side.player2Name] = {
-                teeId: side.player2TeeId ?? null,
-                handicapIndex: side.player2HandicapIndex ?? null,
-              };
+      let lastMatch: Match | null = null;
+      
+      for (const dayNumber of daysToCreate) {
+        const dayData = event?.days.find(d => d.dayNumber === dayNumber);
+        const courseName = dayData?.courseName || event?.courseName || "";
+        const courseId = dayData?.courseId || event?.courseId;
+        
+        // Build a map of player names to their tee and handicap info from Ryder Cup pairings
+        const playerTeeInfo: Record<string, { teeId: number | null; handicapIndex: number | null }> = {};
+        if (dayData?.pairings) {
+          for (const pairing of dayData.pairings) {
+            for (const side of pairing.sides) {
+              if (side.player1Name) {
+                playerTeeInfo[side.player1Name] = {
+                  teeId: side.player1TeeId ?? null,
+                  handicapIndex: side.player1HandicapIndex ?? null,
+                };
+              }
+              if (side.player2Name) {
+                playerTeeInfo[side.player2Name] = {
+                  teeId: side.player2TeeId ?? null,
+                  handicapIndex: side.player2HandicapIndex ?? null,
+                };
+              }
             }
           }
         }
-      }
-      
-      // Create the match (inherit handicap setting from Ryder Cup event)
-      const res = await apiRequest("POST", "/api/matches", {
-        name: `Day ${selectedDay} Side Match`,
-        courseName,
-        courseId,
-        ryderCupEventId: parseInt(id!),
-        ryderCupDayNumber: selectedDay,
-        groupId: null,
-        isHandicapped: event?.useHandicaps ?? true,
-      });
-      const newMatch = await res.json();
-      
-      // Get all player names from both teams
-      const allPlayerNames = [
-        ...(event?.teams[0]?.members || []).map(m => m.playerName),
-        ...(event?.teams[1]?.members || []).map(m => m.playerName),
-      ];
-      
-      // Add all tournament players to the match with their tee/handicap info from the day's pairings
-      for (const playerName of allPlayerNames) {
-        const teeInfo = playerTeeInfo[playerName] || { teeId: null, handicapIndex: null };
-        await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { 
-          name: playerName,
-          teeId: teeInfo.teeId,
-          handicapIndex: teeInfo.handicapIndex,
+        
+        // Create the match (inherit handicap setting from Ryder Cup event)
+        const res = await apiRequest("POST", "/api/matches", {
+          name: `Day ${dayNumber} Side Match`,
+          courseName,
+          courseId,
+          ryderCupEventId: parseInt(id!),
+          ryderCupDayNumber: dayNumber,
+          groupId: null,
+          isHandicapped: event?.useHandicaps ?? true,
         });
+        const newMatch = await res.json();
+        lastMatch = newMatch;
+        
+        // Get all player names from both teams
+        const allPlayerNames = [
+          ...(event?.teams[0]?.members || []).map(m => m.playerName),
+          ...(event?.teams[1]?.members || []).map(m => m.playerName),
+        ];
+        
+        // Add all tournament players to the match with their tee/handicap info from the day's pairings
+        for (const playerName of allPlayerNames) {
+          const teeInfo = playerTeeInfo[playerName] || { teeId: null, handicapIndex: null };
+          await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { 
+            name: playerName,
+            teeId: teeInfo.teeId,
+            handicapIndex: teeInfo.handicapIndex,
+          });
+        }
       }
       
-      return newMatch;
+      return lastMatch;
     },
-    onSuccess: (newMatch) => {
+    onSuccess: (newMatch, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "matches"] });
-      toast({ title: "Side match created with all players" });
-      setLocation(`/match/${newMatch.id}`);
+      if (variables?.forAllDays) {
+        toast({ title: `Side matches created for all ${event?.days.length || 4} days` });
+      } else {
+        toast({ title: "Side match created with all players" });
+        if (newMatch) {
+          setLocation(`/match/${newMatch.id}`);
+        }
+      }
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to create side match", variant: "destructive" });
@@ -1811,15 +1826,42 @@ export default function RyderCupEvent() {
               <div className="mt-6">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-sm text-muted-foreground">Side Matches</h4>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => createSideMatchMutation.mutate()}
-                    disabled={createSideMatchMutation.isPending}
-                    data-testid="button-add-side-match"
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> Add Side Match
-                  </Button>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={createSideMatchMutation.isPending}
+                        data-testid="button-add-side-match"
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add Side Match
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-2" align="end">
+                      <div className="flex flex-col gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="justify-start"
+                          onClick={() => createSideMatchMutation.mutate({ forAllDays: false })}
+                          disabled={createSideMatchMutation.isPending}
+                          data-testid="button-add-side-match-this-day"
+                        >
+                          Add for Day {selectedDay} only
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="justify-start"
+                          onClick={() => createSideMatchMutation.mutate({ forAllDays: true })}
+                          disabled={createSideMatchMutation.isPending}
+                          data-testid="button-add-side-match-all-days"
+                        >
+                          Add for all {event?.days.length || 4} days
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 {(() => {
                   const daySideMatches = sideMatches.filter(m => m.ryderCupDayNumber === selectedDay);
