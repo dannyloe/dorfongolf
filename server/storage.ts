@@ -1384,7 +1384,17 @@ export class DatabaseStorage implements IStorage {
     const teamsList = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, id));
     const teamsWithMembers = await Promise.all(
       teamsList.map(async (team) => {
-        const members = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, team.id));
+        const membersRaw = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, team.id));
+        const members = await Promise.all(
+          membersRaw.map(async (member) => {
+            let displayName = member.playerName;
+            if (member.presetPlayerId) {
+              const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, member.presetPlayerId));
+              if (preset) displayName = preset.name;
+            }
+            return { ...member, playerName: displayName };
+          })
+        );
         return { ...team, members };
       })
     );
@@ -1403,17 +1413,31 @@ export class DatabaseStorage implements IStorage {
                   .where(eq(ryderCupPairingScores.sideId, side.id))
                   .orderBy(ryderCupPairingScores.holeNumber);
                 
-                // Look up current player names from team members if IDs are set
+                // Look up current player names from presetPlayers via team members if IDs are set
                 let player1Name = side.player1Name;
                 let player2Name = side.player2Name;
                 
                 if (side.player1Id) {
                   const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
-                  if (member1) player1Name = member1.playerName;
+                  if (member1) {
+                    if (member1.presetPlayerId) {
+                      const [preset1] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, member1.presetPlayerId));
+                      if (preset1) player1Name = preset1.name;
+                    } else {
+                      player1Name = member1.playerName;
+                    }
+                  }
                 }
                 if (side.player2Id) {
                   const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
-                  if (member2) player2Name = member2.playerName;
+                  if (member2) {
+                    if (member2.presetPlayerId) {
+                      const [preset2] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, member2.presetPlayerId));
+                      if (preset2) player2Name = preset2.name;
+                    } else {
+                      player2Name = member2.playerName;
+                    }
+                  }
                 }
                 
                 return { ...side, player1Name, player2Name, scores };
@@ -1461,9 +1485,11 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     for (const member of data.teamA.members) {
+      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
       await db.insert(ryderCupTeamMembers).values({
         teamId: teamA.id,
         playerName: member.playerName,
+        presetPlayerId: preset?.id ?? null,
         handicapIndex: member.handicapIndex ?? null,
       });
     }
@@ -1476,9 +1502,11 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     for (const member of data.teamB.members) {
+      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
       await db.insert(ryderCupTeamMembers).values({
         teamId: teamB.id,
         playerName: member.playerName,
+        presetPlayerId: preset?.id ?? null,
         handicapIndex: member.handicapIndex ?? null,
       });
     }
@@ -2000,8 +2028,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null> {
+    const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, playerName));
     const [updated] = await db.update(ryderCupTeamMembers)
-      .set({ playerName })
+      .set({ playerName, presetPlayerId: preset?.id ?? null })
       .where(eq(ryderCupTeamMembers.id, memberId))
       .returning();
     return updated || null;
