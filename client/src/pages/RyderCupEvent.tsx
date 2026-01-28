@@ -588,9 +588,21 @@ export default function RyderCupEvent() {
   };
 
   const createSideMatchMutation = useMutation({
-    mutationFn: async ({ forAllDays = false }: { forAllDays?: boolean } = {}): Promise<Match | null> => {
+    mutationFn: async ({ forAllDays = false }: { forAllDays?: boolean } = {}): Promise<{ container: Match | null; daysCreated: number }> => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Filter to only include today or future days when creating for all days
       const daysToCreate = forAllDays 
-        ? (event?.days || []).map(d => d.dayNumber).sort((a, b) => a - b)
+        ? (event?.days || [])
+            .filter(d => {
+              if (!d.date) return true; // Include days without dates
+              const dayDate = new Date(d.date);
+              dayDate.setHours(0, 0, 0, 0);
+              return dayDate >= today;
+            })
+            .map(d => d.dayNumber)
+            .sort((a, b) => a - b)
         : [selectedDay];
       
       let firstContainer: Match | null = null;
@@ -603,18 +615,18 @@ export default function RyderCupEvent() {
         }
       }
       
-      return firstContainer;
+      return { container: firstContainer, daysCreated: daysToCreate.length };
     },
-    onSuccess: (container, variables) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "matches"] });
       if (variables?.forAllDays) {
-        toast({ title: `Side match containers ready for all ${event?.days.length || 4} days` });
+        toast({ title: `Side match containers ready for ${result.daysCreated} day${result.daysCreated !== 1 ? 's' : ''} (today and future)` });
       } else {
         toast({ title: "Side match container ready" });
       }
       // Navigate to the container to add betting games
-      if (container) {
-        setLocation(`/match/${container.id}`);
+      if (result.container) {
+        setLocation(`/match/${result.container.id}`);
       }
     },
     onError: () => {

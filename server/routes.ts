@@ -565,13 +565,32 @@ export async function registerRoutes(
       
       // Get all sibling side match containers for this Ryder Cup event
       const siblingMatches = await storage.getMatchesByRyderCupEvent(sourceMatch.ryderCupEventId);
-      const siblingContainers = siblingMatches.filter(m => 
-        m.id !== sourceMatch.id && 
-        m.name?.includes("Side Matches")
-      );
+      
+      // Get the Ryder Cup event to check day dates
+      const ryderCupEvent = await storage.getRyderCupEventFull(sourceMatch.ryderCupEventId);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Filter to sibling containers that are for today or future days only
+      const siblingContainers = siblingMatches.filter(m => {
+        if (m.id === sourceMatch.id) return false;
+        if (!m.name?.includes("Side Matches")) return false;
+        
+        // Check if the day is today or in the future
+        if (ryderCupEvent && m.ryderCupDayNumber) {
+          const dayData = ryderCupEvent.days?.find((d: any) => d.dayNumber === m.ryderCupDayNumber);
+          if (dayData?.date) {
+            const dayDate = new Date(dayData.date);
+            dayDate.setHours(0, 0, 0, 0);
+            return dayDate >= today;
+          }
+        }
+        // Include if no date info available
+        return true;
+      });
       
       if (siblingContainers.length === 0) {
-        return res.status(400).json({ message: "No sibling day containers found to replicate to" });
+        return res.status(400).json({ message: "No future day containers found to replicate to" });
       }
       
       let replicatedCount = 0;
@@ -632,7 +651,9 @@ export async function registerRoutes(
       
       res.json({
         replicatedCount,
-        message: `Replicated betting game to ${replicatedCount} other day${replicatedCount !== 1 ? 's' : ''}`,
+        message: replicatedCount > 0 
+          ? `Replicated betting game to ${replicatedCount} future day${replicatedCount !== 1 ? 's' : ''}`
+          : "No future days to replicate to",
       });
     } catch (err) {
       console.error("Error replicating event match:", err);
