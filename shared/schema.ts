@@ -57,6 +57,7 @@ export const players = pgTable("players", {
   matchId: integer("match_id").notNull(),
   userId: text("user_id"), 
   name: text("name").notNull(),
+  presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name updates
   handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4), copied from player_handicaps on add
   teeId: integer("tee_id"), // References courseTees for handicap calculations
 });
@@ -634,6 +635,7 @@ export const ryderCupSkins = pgTable("ryder_cup_skins", {
   dayId: integer("day_id").notNull(),
   holeNumber: integer("hole_number").notNull(),
   winnerName: text("winner_name"), // null if no winner (skin carries)
+  winnerPresetPlayerId: integer("winner_preset_player_id"), // References presetPlayers.id for dynamic name updates
   skinValue: integer("skin_value").notNull().default(1), // base value, multiplied by carryover
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
 });
@@ -662,6 +664,7 @@ export const ryderCupClosestToHole = pgTable("ryder_cup_closest_to_hole", {
   dayId: integer("day_id").notNull(), // References ryderCupDays
   holeNumber: integer("hole_number").notNull(), // Par 3 hole number
   winnerName: text("winner_name"), // Player name who won CTH (null if no winner set)
+  winnerPresetPlayerId: integer("winner_preset_player_id"), // References presetPlayers.id for dynamic name updates
 });
 
 // === RYDER CUP RELATIONS ===
