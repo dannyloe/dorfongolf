@@ -1,0 +1,20 @@
+{
+  "name": "Golf Betting",
+  "short_name": "Golf Betting",
+  "description": "Track golf matches, scores, and bets with friends",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["sports", "lifestyle"]
+}
