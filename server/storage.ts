@@ -1151,6 +1151,11 @@ export class DatabaseStorage implements IStorage {
       .set({ presetPlayerName: newName })
       .where(eq(users.presetPlayerName, oldName));
     
+    // Update ryderCupTeamMembers to cascade name changes to existing events
+    await db.update(ryderCupTeamMembers)
+      .set({ playerName: newName })
+      .where(eq(ryderCupTeamMembers.playerName, oldName));
+    
     return { oldName, newName };
   }
 
