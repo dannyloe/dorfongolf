@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -246,6 +246,8 @@ export default function RyderCupEvent() {
   const [earningsBreakdownPlayer, setEarningsBreakdownPlayer] = useState<string | null>(null);
   const [sideBetsBreakdownPlayer, setSideBetsBreakdownPlayer] = useState<string | null>(null);
   const [expensesBreakdownPlayer, setExpensesBreakdownPlayer] = useState<string | null>(null);
+  const [earningsExpanded, setEarningsExpanded] = useState(false);
+  const [sideBetsExpanded, setSideBetsExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -749,6 +751,49 @@ export default function RyderCupEvent() {
 
   const payouts = calculatePayouts();
 
+  // Calculate per-day earnings breakdown
+  const calculateEarningsByDay = (): Record<number, Record<string, number>> => {
+    const earningsByDay: Record<number, Record<string, number>> = {};
+    
+    for (const day of event.days) {
+      earningsByDay[day.dayNumber] = {};
+      const allPlayers = [...(teamA?.members || []), ...(teamB?.members || [])];
+      allPlayers.forEach(m => { earningsByDay[day.dayNumber][m.playerName] = 0; });
+      
+      for (const pairing of day.pairings) {
+        if (!pairing.result || !pairing.isPrimary) continue;
+        
+        for (const side of pairing.sides) {
+          const players = [side.player1Name, side.player2Name].filter((n): n is string => n !== null);
+          const isWinner = pairing.result.winningSideId === side.id;
+          const isTie = !pairing.result.winningSideId;
+          
+          for (const playerName of players) {
+            if (isWinner) {
+              earningsByDay[day.dayNumber][playerName] = (earningsByDay[day.dayNumber][playerName] || 0) + event.matchWinBonus;
+            } else if (isTie) {
+              earningsByDay[day.dayNumber][playerName] = (earningsByDay[day.dayNumber][playerName] || 0) + event.matchTieBonus;
+            }
+          }
+        }
+      }
+      
+      // Add CTH winnings for this day
+      if (event.closestToHolePayout > 0) {
+        const dayCthWinners = allCthWinners.filter(cth => cth.dayId === day.id);
+        for (const cth of dayCthWinners) {
+          if (cth.winnerName) {
+            earningsByDay[day.dayNumber][cth.winnerName] = (earningsByDay[day.dayNumber][cth.winnerName] || 0) + event.closestToHolePayout;
+          }
+        }
+      }
+    }
+    
+    return earningsByDay;
+  };
+  
+  const earningsByDay = calculateEarningsByDay();
+
   // Calculate side bet earnings from side matches (computed inline to avoid hook issues)
   const computeSideBetData = (): { balances: Record<string, number>; entries: LedgerEntry[] } => {
     if (!sideMatchLedger?.eventMatches) {
@@ -854,6 +899,34 @@ export default function RyderCupEvent() {
   };
 
   const sideBetData = computeSideBetData();
+
+  // Calculate per-day side bet breakdown
+  const computeSideBetsByDay = (): Record<number, Record<string, number>> => {
+    const sideBetsByDay: Record<number, Record<string, number>> = {};
+    
+    // Initialize all days with all players
+    for (const day of event?.days || []) {
+      sideBetsByDay[day.dayNumber] = {};
+      const allPlayers = [...(teamA?.members || []), ...(teamB?.members || [])];
+      allPlayers.forEach(m => { sideBetsByDay[day.dayNumber][m.playerName] = 0; });
+    }
+    
+    // Group entries by day
+    for (const entry of sideBetData.entries) {
+      // Find which day this entry belongs to
+      const eventMatch = sideMatchLedger?.eventMatches?.find((em: any) => em.id === entry.matchId);
+      const match = sideMatchLedger?.matches?.find((m: any) => m.id === eventMatch?.eventId);
+      const dayNumber = match?.ryderCupDayNumber;
+      
+      if (dayNumber && sideBetsByDay[dayNumber]) {
+        sideBetsByDay[dayNumber][entry.playerName] = (sideBetsByDay[dayNumber][entry.playerName] || 0) + entry.amount;
+      }
+    }
+    
+    return sideBetsByDay;
+  };
+  
+  const sideBetsByDay = computeSideBetsByDay();
 
   // Get entries for a specific player's earnings breakdown (from Ryder Cup matches)
   const getEarningsBreakdown = (playerName: string) => {
@@ -3579,8 +3652,36 @@ export default function RyderCupEvent() {
                             <tr className="border-b">
                               <th className="text-left py-2 pr-4">Player</th>
                               {includeBuyIn && <th className="text-right py-2 px-2">Buy-In</th>}
-                              <th className="text-right py-2 px-2">Earnings</th>
-                              <th className={`text-right py-2 px-2 ${!includeBuyIn ? "border-l-2 border-muted-foreground/30" : ""}`}>Side Bets</th>
+                              <th 
+                                className="text-right py-2 px-2 cursor-pointer hover-elevate select-none"
+                                onClick={() => setEarningsExpanded(!earningsExpanded)}
+                                data-testid="header-earnings-toggle"
+                              >
+                                <div className="flex items-center justify-end gap-1">
+                                  <span>Earnings</span>
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${earningsExpanded ? 'rotate-180' : ''}`} />
+                                </div>
+                              </th>
+                              {earningsExpanded && event.days.map(day => (
+                                <th key={`earn-day-${day.dayNumber}`} className="text-right py-2 px-2 text-xs text-muted-foreground">
+                                  D{day.dayNumber}
+                                </th>
+                              ))}
+                              <th 
+                                className={`text-right py-2 px-2 cursor-pointer hover-elevate select-none ${!includeBuyIn ? "border-l-2 border-muted-foreground/30" : ""}`}
+                                onClick={() => setSideBetsExpanded(!sideBetsExpanded)}
+                                data-testid="header-sidebets-toggle"
+                              >
+                                <div className="flex items-center justify-end gap-1">
+                                  <span>Side Bets</span>
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${sideBetsExpanded ? 'rotate-180' : ''}`} />
+                                </div>
+                              </th>
+                              {sideBetsExpanded && event.days.map(day => (
+                                <th key={`side-day-${day.dayNumber}`} className="text-right py-2 px-2 text-xs text-muted-foreground">
+                                  D{day.dayNumber}
+                                </th>
+                              ))}
                               <th className="text-right py-2 px-2">Expenses</th>
                               <th className="text-right py-2 pl-2 font-bold">
                                 {includeBuyIn ? "Net" : "Owed"}
@@ -3621,6 +3722,17 @@ export default function RyderCupEvent() {
                                         {formatCurrency(earnings)}
                                       </button>
                                     </td>
+                                    {earningsExpanded && event.days.map(day => {
+                                      const dayEarning = earningsByDay[day.dayNumber]?.[playerName] || 0;
+                                      return (
+                                        <td 
+                                          key={`earn-${playerName}-${day.dayNumber}`} 
+                                          className={`text-right py-2 px-2 text-xs ${dayEarning > 0 ? "text-green-600" : "text-muted-foreground"}`}
+                                        >
+                                          {formatCurrency(dayEarning)}
+                                        </td>
+                                      );
+                                    })}
                                     <td className={`text-right py-2 px-2 ${!includeBuyIn ? "border-l-2 border-muted-foreground/30" : ""}`}>
                                       <button
                                         onClick={() => setSideBetsBreakdownPlayer(playerName)}
@@ -3630,6 +3742,17 @@ export default function RyderCupEvent() {
                                         {sideBets > 0 ? "+" : ""}{formatCurrency(sideBets)}
                                       </button>
                                     </td>
+                                    {sideBetsExpanded && event.days.map(day => {
+                                      const daySideBet = sideBetsByDay[day.dayNumber]?.[playerName] || 0;
+                                      return (
+                                        <td 
+                                          key={`side-${playerName}-${day.dayNumber}`} 
+                                          className={`text-right py-2 px-2 text-xs ${daySideBet > 0 ? "text-green-600" : daySideBet < 0 ? "text-red-600" : "text-muted-foreground"}`}
+                                        >
+                                          {daySideBet !== 0 ? (daySideBet > 0 ? "+" : "") : ""}{formatCurrency(daySideBet)}
+                                        </td>
+                                      );
+                                    })}
                                     <td className={`text-right py-2 px-2`}>
                                       <button
                                         onClick={() => setExpensesBreakdownPlayer(playerName)}
