@@ -40,6 +40,20 @@ Preferred communication style: Simple, everyday language.
 - **Scores**: Hole-by-hole stroke counts for each player
 - **MatchPlayerHandicaps**: Per-match course handicap overrides for individual players
 
+### Player Name Architecture
+- **Single Source of Truth**: The `presetPlayers` table is the authoritative source for player names
+- **ID References**: All tables store both the name AND a `presetPlayerId` foreign key:
+  - `players.presetPlayerId` - Links regular match players to preset players
+  - `ryderCupTeamMembers.presetPlayerId` - Links team members to preset players
+  - `ryderCupSkins.winnerPresetPlayerId` - Links skin winners to preset players
+  - `ryderCupClosestToHole.winnerPresetPlayerId` - Links CTH winners to preset players
+- **Rename Flow**: When `renamePresetPlayer()` is called:
+  1. Updates the name in `presetPlayers` table
+  2. Cascades updates via `presetPlayerId` to all linked records
+  3. Also updates by name matching for legacy records without IDs
+- **Auto-Population**: Storage methods (`addPlayer`, `recordRyderCupSkin`, `recordClosestToHoleWinner`) automatically look up and set the `presetPlayerId` when creating new records
+- **Migration**: Run `migrations/backfill_preset_player_ids.sql` in production to populate IDs for existing records
+
 ### Match-Specific Course Handicap Overrides
 - In expanded match view for net matches, course handicaps are displayed for each player
 - Creators can click on any player's course handicap to override it for that specific match
