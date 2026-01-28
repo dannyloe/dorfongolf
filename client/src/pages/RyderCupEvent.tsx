@@ -518,10 +518,10 @@ export default function RyderCupEvent() {
   const createSideMatchMutation = useMutation({
     mutationFn: async ({ forAllDays = false }: { forAllDays?: boolean } = {}): Promise<Match | null> => {
       const daysToCreate = forAllDays 
-        ? (event?.days || []).map(d => d.dayNumber)
+        ? (event?.days || []).map(d => d.dayNumber).sort((a, b) => a - b)
         : [selectedDay];
       
-      let lastMatch: Match | null = null;
+      let firstMatch: Match | null = null;
       
       for (const dayNumber of daysToCreate) {
         const dayData = event?.days.find(d => d.dayNumber === dayNumber);
@@ -560,7 +560,9 @@ export default function RyderCupEvent() {
           isHandicapped: event?.useHandicaps ?? true,
         });
         const newMatch = await res.json();
-        lastMatch = newMatch;
+        if (!firstMatch) {
+          firstMatch = newMatch;
+        }
         
         // Get all player names from both teams
         const allPlayerNames = [
@@ -579,12 +581,16 @@ export default function RyderCupEvent() {
         }
       }
       
-      return lastMatch;
+      return firstMatch;
     },
     onSuccess: (newMatch, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "matches"] });
       if (variables?.forAllDays) {
         toast({ title: `Side matches created for all ${event?.days.length || 4} days` });
+        // Navigate to the first day's match so user can configure it
+        if (newMatch) {
+          setLocation(`/match/${newMatch.id}`);
+        }
       } else {
         toast({ title: "Side match created with all players" });
         if (newMatch) {
