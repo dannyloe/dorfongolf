@@ -1320,13 +1320,14 @@ export default function RyderCupEvent() {
                     {isCreatorOrAdmin ? (
                       <Popover>
                         <PopoverTrigger asChild>
-                          <Badge 
-                            variant="outline" 
-                            className="text-xs cursor-pointer hover:bg-accent"
-                            data-testid={`badge-day-date-${currentDay.id}`}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            data-testid={`button-day-date-${currentDay.id}`}
                           >
                             <Calendar className="w-3 h-3 mr-1" /> {currentDay.date ? new Date(currentDay.date).toLocaleDateString() : "Set date"}
-                          </Badge>
+                          </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                           <CalendarComponent
@@ -1346,13 +1347,15 @@ export default function RyderCupEvent() {
                         </PopoverContent>
                       </Popover>
                     ) : (
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs"
-                        data-testid={`badge-day-date-${currentDay.id}`}
-                      >
-                        <Calendar className="w-3 h-3 mr-1" /> {currentDay.date ? new Date(currentDay.date).toLocaleDateString() : "No date set"}
-                      </Badge>
+                      currentDay.date && (
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs"
+                          data-testid={`badge-day-date-${currentDay.id}`}
+                        >
+                          <Calendar className="w-3 h-3 mr-1" /> {new Date(currentDay.date).toLocaleDateString()}
+                        </Badge>
+                      )
                     )}
                     {isCreatorOrAdmin && (
                       <Button 
