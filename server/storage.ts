@@ -134,7 +134,15 @@ export class DatabaseStorage implements IStorage {
     // Copy default handicap and tee from player_handicaps if not already provided
     let handicapIndex: number | null = player.handicapIndex ?? null;
     let teeId: number | null = player.teeId ?? null;
+    let presetPlayerId: number | null = null;
+    
     if (player.name) {
+      // Look up preset player ID for dynamic name updates
+      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, player.name));
+      if (preset) {
+        presetPlayerId = preset.id;
+      }
+      
       const defaultHandicap = await this.getPlayerHandicap(player.name);
       // Only use defaults if not explicitly provided
       if (handicapIndex === null && defaultHandicap?.handicapIndex !== undefined) {
@@ -156,6 +164,7 @@ export class DatabaseStorage implements IStorage {
       ...player,
       handicapIndex,
       teeId,
+      presetPlayerId,
     }).returning();
     return newPlayer;
   }
@@ -1177,15 +1186,35 @@ export class DatabaseStorage implements IStorage {
       .set({ player2Name: newName })
       .where(eq(ryderCupPairingSides.player2Name, oldName));
     
-    // Update ryderCupSkins winnerName
+    // Update ryderCupSkins winnerName by name AND by presetPlayerId
     await db.update(ryderCupSkins)
-      .set({ winnerName: newName })
+      .set({ winnerName: newName, winnerPresetPlayerId: presetPlayerId })
       .where(eq(ryderCupSkins.winnerName, oldName));
+    if (presetPlayerId) {
+      await db.update(ryderCupSkins)
+        .set({ winnerName: newName })
+        .where(eq(ryderCupSkins.winnerPresetPlayerId, presetPlayerId));
+    }
     
-    // Update ryderCupClosestToHole winnerName
+    // Update ryderCupClosestToHole winnerName by name AND by presetPlayerId
     await db.update(ryderCupClosestToHole)
-      .set({ winnerName: newName })
+      .set({ winnerName: newName, winnerPresetPlayerId: presetPlayerId })
       .where(eq(ryderCupClosestToHole.winnerName, oldName));
+    if (presetPlayerId) {
+      await db.update(ryderCupClosestToHole)
+        .set({ winnerName: newName })
+        .where(eq(ryderCupClosestToHole.winnerPresetPlayerId, presetPlayerId));
+    }
+    
+    // Update regular match players by name AND by presetPlayerId
+    await db.update(players)
+      .set({ name: newName, presetPlayerId })
+      .where(eq(players.name, oldName));
+    if (presetPlayerId) {
+      await db.update(players)
+        .set({ name: newName })
+        .where(eq(players.presetPlayerId, presetPlayerId));
+    }
     
     return { oldName, newName };
   }
@@ -1812,6 +1841,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recordRyderCupSkin(dayId: number, holeNumber: number, winnerName: string | null): Promise<RyderCupSkin> {
+    // Look up preset player ID for dynamic name updates
+    let winnerPresetPlayerId: number | null = null;
+    if (winnerName) {
+      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, winnerName));
+      if (preset) {
+        winnerPresetPlayerId = preset.id;
+      }
+    }
+    
     // Check if skin already recorded
     const [existing] = await db.select().from(ryderCupSkins)
       .where(and(
@@ -1821,7 +1859,7 @@ export class DatabaseStorage implements IStorage {
 
     if (existing) {
       const [updated] = await db.update(ryderCupSkins)
-        .set({ winnerName })
+        .set({ winnerName, winnerPresetPlayerId })
         .where(eq(ryderCupSkins.id, existing.id))
         .returning();
       return updated;
@@ -1831,6 +1869,7 @@ export class DatabaseStorage implements IStorage {
       dayId,
       holeNumber,
       winnerName,
+      winnerPresetPlayerId,
     }).returning();
 
     return skin;
@@ -1841,6 +1880,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recordClosestToHoleWinner(dayId: number, holeNumber: number, winnerName: string | null): Promise<RyderCupClosestToHole> {
+    // Look up preset player ID for dynamic name updates
+    let winnerPresetPlayerId: number | null = null;
+    if (winnerName) {
+      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, winnerName));
+      if (preset) {
+        winnerPresetPlayerId = preset.id;
+      }
+    }
+    
     // Check if entry exists
     const [existing] = await db.select().from(ryderCupClosestToHole)
       .where(and(
@@ -1850,7 +1898,7 @@ export class DatabaseStorage implements IStorage {
     
     if (existing) {
       const [updated] = await db.update(ryderCupClosestToHole)
-        .set({ winnerName })
+        .set({ winnerName, winnerPresetPlayerId })
         .where(eq(ryderCupClosestToHole.id, existing.id))
         .returning();
       return updated;
@@ -1860,6 +1908,7 @@ export class DatabaseStorage implements IStorage {
       dayId,
       holeNumber,
       winnerName,
+      winnerPresetPlayerId,
     }).returning();
 
     return cth;
