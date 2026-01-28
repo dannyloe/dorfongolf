@@ -1156,6 +1156,26 @@ export class DatabaseStorage implements IStorage {
       .set({ playerName: newName })
       .where(eq(ryderCupTeamMembers.playerName, oldName));
     
+    // Update ryderCupPairingSides player1Name
+    await db.update(ryderCupPairingSides)
+      .set({ player1Name: newName })
+      .where(eq(ryderCupPairingSides.player1Name, oldName));
+    
+    // Update ryderCupPairingSides player2Name
+    await db.update(ryderCupPairingSides)
+      .set({ player2Name: newName })
+      .where(eq(ryderCupPairingSides.player2Name, oldName));
+    
+    // Update ryderCupSkins winnerName
+    await db.update(ryderCupSkins)
+      .set({ winnerName: newName })
+      .where(eq(ryderCupSkins.winnerName, oldName));
+    
+    // Update ryderCupClosestToHole winnerName
+    await db.update(ryderCupClosestToHole)
+      .set({ winnerName: newName })
+      .where(eq(ryderCupClosestToHole.winnerName, oldName));
+    
     return { oldName, newName };
   }
 
