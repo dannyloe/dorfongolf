@@ -563,6 +563,7 @@ export const ryderCupTeamMembers = pgTable("ryder_cup_team_members", {
   id: serial("id").primaryKey(),
   teamId: integer("team_id").notNull(),
   playerName: text("player_name").notNull(),
+  presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name lookups
   handicapIndex: integer("handicap_index"), // stored as tenths
   courseHandicap: integer("course_handicap"), // calculated from index + course
 });
