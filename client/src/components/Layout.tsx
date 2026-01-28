@@ -184,8 +184,8 @@ export function Layout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      {/* Mobile Create Button FAB */}
-      {user && (
+      {/* Mobile Create Button FAB - hidden inside events */}
+      {user && !location.startsWith('/ryder-cup/') && !location.startsWith('/matches/') && (
         <button
           onClick={() => setIsCreateOpen(true)}
           className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-accent text-accent-foreground rounded-full shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-transform z-40"
