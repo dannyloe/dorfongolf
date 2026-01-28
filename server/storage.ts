@@ -1151,10 +1151,21 @@ export class DatabaseStorage implements IStorage {
       .set({ presetPlayerName: newName })
       .where(eq(users.presetPlayerName, oldName));
     
-    // Update ryderCupTeamMembers to cascade name changes to existing events
+    // Get the preset player ID for the new name
+    const [presetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, newName));
+    const presetPlayerId = presetPlayer?.id ?? null;
+    
+    // Update ryderCupTeamMembers to cascade name changes AND link presetPlayerId
     await db.update(ryderCupTeamMembers)
-      .set({ playerName: newName })
+      .set({ playerName: newName, presetPlayerId })
       .where(eq(ryderCupTeamMembers.playerName, oldName));
+    
+    // Also update members that have this presetPlayerId to get the new name
+    if (presetPlayerId) {
+      await db.update(ryderCupTeamMembers)
+        .set({ playerName: newName })
+        .where(eq(ryderCupTeamMembers.presetPlayerId, presetPlayerId));
+    }
     
     // Update ryderCupPairingSides player1Name
     await db.update(ryderCupPairingSides)
