@@ -649,6 +649,11 @@ export async function registerRoutes(
         }
       }
       
+      // Mark the source event match as replicated
+      if (replicatedCount > 0) {
+        await storage.markEventMatchReplicated(eventMatchId);
+      }
+      
       res.json({
         replicatedCount,
         message: replicatedCount > 0 

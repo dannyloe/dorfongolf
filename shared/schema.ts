@@ -85,6 +85,7 @@ export const eventMatches = pgTable("event_matches", {
   autoPressNassauBack9: boolean("auto_press_nassau_back9").notNull().default(true),
   autoPressNassauOverall: boolean("auto_press_nassau_overall").notNull().default(true),
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
+  hasBeenReplicated: boolean("has_been_replicated").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

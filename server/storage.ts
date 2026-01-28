@@ -353,6 +353,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async markEventMatchReplicated(eventMatchId: number): Promise<EventMatch> {
+    const [updated] = await db.update(eventMatches)
+      .set({ hasBeenReplicated: true })
+      .where(eq(eventMatches.id, eventMatchId))
+      .returning();
+    return updated;
+  }
+
   async updateEventMatchUnitAmount(eventMatchId: number, unitAmount: number): Promise<EventMatch> {
     const [updated] = await db.update(eventMatches)
       .set({ unitAmount })

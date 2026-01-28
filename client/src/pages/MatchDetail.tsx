@@ -2297,8 +2297,8 @@ export default function MatchDetail() {
                         <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>
                       </div>
                     </button>
-                    {/* Replicate to sibling days button - only for Ryder Cup side match containers */}
-                    {isCreator && match?.ryderCupEventId && match?.name?.includes("Side Matches") && (
+                    {/* Replicate to sibling days button - only for Ryder Cup side match containers, hide if already replicated */}
+                    {isCreator && match?.ryderCupEventId && match?.name?.includes("Side Matches") && !em.hasBeenReplicated && (
                       <Button
                         variant="ghost"
                         size="sm"
