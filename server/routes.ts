@@ -667,6 +667,24 @@ export async function registerRoutes(
     }
   });
 
+  app.put(api.presetPlayers.rename.path, isAuthenticated, async (req, res) => {
+    try {
+      const oldName = decodeURIComponent(req.params.name);
+      const input = api.presetPlayers.rename.input.parse(req.body);
+      
+      const result = await storage.renamePresetPlayer(oldName, input.newName);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message.includes("already exists")) {
+        return res.status(409).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.presetPlayers.create.path, isAuthenticated, async (req, res) => {
     try {
       // Admin-only endpoint
