@@ -293,6 +293,9 @@ export default function MatchDetail() {
   const isPlayer = players.some((p: Player) => p.userId === user?.id);
   const currentPlayer = players.find((p: Player) => p.userId === user?.id);
   
+  // Daily match containers (e.g., "D1 Side Matches") should have limited editing - no add player, no manage access, read-only header
+  const isDailyMatchContainer = !!(match?.ryderCupEventId && match?.name?.includes("Side Matches"));
+  
   // Find course par data for this match
   const matchCourse = coursesList?.find(c => c.name === match.courseName);
   const getHolePar = (hole: number) => matchCourse?.holes.find(h => h.holeNumber === hole)?.par ?? 4;
@@ -928,7 +931,7 @@ export default function MatchDetail() {
       {/* Header - Compact */}
       <div className="bg-white dark:bg-card rounded-xl px-4 py-3 shadow-md border border-border/50 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4 flex-wrap">
-          {editingName && isCreator ? (
+          {editingName && isCreator && !isDailyMatchContainer ? (
             <div className="flex items-center gap-1">
               <Input
                 value={headerNameValue}
@@ -959,9 +962,9 @@ export default function MatchDetail() {
             </div>
           ) : (
             <h1 
-              className={`text-xl font-display font-bold text-foreground ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+              className={`text-xl font-display font-bold text-foreground ${isCreator && !isDailyMatchContainer ? 'cursor-pointer hover:text-primary' : ''}`}
               onClick={() => {
-                if (isCreator) {
+                if (isCreator && !isDailyMatchContainer) {
                   setHeaderNameValue(match.name || "");
                   setEditingName(true);
                 }
@@ -969,11 +972,11 @@ export default function MatchDetail() {
               data-testid="text-event-name"
             >
               {match.name || (match.createdAt ? format(new Date(match.createdAt), "MMMM d, yyyy") : "Untitled Event")}
-              {isCreator && <Pencil className="w-3 h-3 inline ml-1 text-muted-foreground" />}
+              {isCreator && !isDailyMatchContainer && <Pencil className="w-3 h-3 inline ml-1 text-muted-foreground" />}
             </h1>
           )}
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            {editingCourse && isCreator ? (
+            {editingCourse && isCreator && !isDailyMatchContainer ? (
               <div className="flex items-center gap-1">
                 <Select
                   value={match.courseId?.toString() || ""}
@@ -1007,16 +1010,16 @@ export default function MatchDetail() {
               </div>
             ) : (
               <span 
-                className={`flex items-center gap-1 ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
-                onClick={() => isCreator && setEditingCourse(true)}
+                className={`flex items-center gap-1 ${isCreator && !isDailyMatchContainer ? 'cursor-pointer hover:text-primary' : ''}`}
+                onClick={() => isCreator && !isDailyMatchContainer && setEditingCourse(true)}
                 data-testid="text-event-course"
               >
                 <MapPin className="w-4 h-4 text-accent" />
                 {match.courseName}
-                {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
+                {isCreator && !isDailyMatchContainer && <Pencil className="w-3 h-3 text-muted-foreground" />}
               </span>
             )}
-            {editingDate && isCreator ? (
+            {editingDate && isCreator && !isDailyMatchContainer ? (
               <div className="flex items-center gap-1">
                 <Input
                   type="date"
@@ -1049,9 +1052,9 @@ export default function MatchDetail() {
               </div>
             ) : (
               <span 
-                className={`flex items-center gap-1 ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+                className={`flex items-center gap-1 ${isCreator && !isDailyMatchContainer ? 'cursor-pointer hover:text-primary' : ''}`}
                 onClick={() => {
-                  if (isCreator && match.createdAt) {
+                  if (isCreator && !isDailyMatchContainer && match.createdAt) {
                     setHeaderDateValue(format(new Date(match.createdAt), "yyyy-MM-dd"));
                     setEditingDate(true);
                   }
@@ -1060,10 +1063,10 @@ export default function MatchDetail() {
               >
                 <Calendar className="w-4 h-4 text-primary" />
                 {match.createdAt && format(new Date(match.createdAt), "MMM d, yyyy")}
-                {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
+                {isCreator && !isDailyMatchContainer && <Pencil className="w-3 h-3 text-muted-foreground" />}
               </span>
             )}
-            {editingGroup && isCreator ? (
+            {editingGroup && isCreator && !isDailyMatchContainer ? (
               showNewGroupInput ? (
                 <div className="flex items-center gap-1">
                   <Input
@@ -1160,9 +1163,9 @@ export default function MatchDetail() {
               )
             ) : (
               <span 
-                className={`flex items-center gap-1 ${isCreator ? 'cursor-pointer hover:text-primary' : ''}`}
+                className={`flex items-center gap-1 ${isCreator && !isDailyMatchContainer ? 'cursor-pointer hover:text-primary' : ''}`}
                 onClick={() => {
-                  if (isCreator) {
+                  if (isCreator && !isDailyMatchContainer) {
                     setEditingGroup(true);
                   }
                 }}
@@ -1174,7 +1177,7 @@ export default function MatchDetail() {
                 ) : (
                   <span className="text-muted-foreground italic">No Group</span>
                 )}
-                {isCreator && <Pencil className="w-3 h-3 text-muted-foreground" />}
+                {isCreator && !isDailyMatchContainer && <Pencil className="w-3 h-3 text-muted-foreground" />}
               </span>
             )}
             {isCreator ? (
@@ -1246,8 +1249,8 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      {/* Role Management Section (visible only to actual creator, not organizers) */}
-      {isCreator && (
+      {/* Role Management Section (visible only to actual creator, not organizers, hidden for daily match containers) */}
+      {isCreator && !isDailyMatchContainer && (
         <div className="bg-card rounded-xl shadow-md border border-border/50 overflow-hidden mb-4">
           <button
             onClick={() => setShowRoleManagement(!showRoleManagement)}
@@ -1368,8 +1371,8 @@ export default function MatchDetail() {
         </div>
       )}
 
-      {/* Add Player Section (visible to creator) - Collapsible */}
-      {isCreator && (() => {
+      {/* Add Player Section (visible to creator, hidden for daily match containers) - Collapsible */}
+      {isCreator && !isDailyMatchContainer && (() => {
         const existingPlayerNames = players.map(p => p.name.toLowerCase());
         
         return (
