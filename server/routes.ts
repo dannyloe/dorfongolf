@@ -1850,6 +1850,21 @@ Rules:
     }
   });
 
+  app.patch(api.ryderCup.updateTeamMemberName.path, isAuthenticated, async (req, res) => {
+    const memberId = parseInt(req.params.memberId);
+    try {
+      const input = api.ryderCup.updateTeamMemberName.input.parse(req.body);
+      const updated = await storage.updateRyderCupTeamMemberName(memberId, input.playerName);
+      if (!updated) return res.status(404).json({ message: "Team member not found" });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.ryderCup.addSideMatch.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
     try {

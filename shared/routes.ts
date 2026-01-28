@@ -1055,6 +1055,17 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateTeamMemberName: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/members/:memberId/name',
+      input: z.object({
+        playerName: z.string().min(1),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupTeamMembers.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
     addSideMatch: {
       method: 'POST' as const,
       path: '/api/ryder-cup/:id/side-matches',

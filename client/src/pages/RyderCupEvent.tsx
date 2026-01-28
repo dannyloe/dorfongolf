@@ -233,6 +233,8 @@ export default function RyderCupEvent() {
   const [editingTeamName, setEditingTeamName] = useState("");
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
   const [editingMemberHandicap, setEditingMemberHandicap] = useState("");
+  const [editingMemberNameId, setEditingMemberNameId] = useState<number | null>(null);
+  const [editingMemberName, setEditingMemberName] = useState("");
   const [editingSideHandicap, setEditingSideHandicap] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
   const [editingSideHandicapValue, setEditingSideHandicapValue] = useState("");
   const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
@@ -475,6 +477,24 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update handicap", variant: "destructive" });
+    },
+  });
+
+  const updateMemberNameMutation = useMutation({
+    mutationFn: async ({ memberId, playerName }: { memberId: number; playerName: string }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/members/${memberId}/name`, { playerName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "side-match-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "cth-winners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "Player name updated" });
+      setEditingMemberNameId(null);
+      setEditingMemberName("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update player name", variant: "destructive" });
     },
   });
 
@@ -2796,7 +2816,62 @@ export default function RyderCupEvent() {
                 <ul className="space-y-2">
                   {teamA?.members.map((member) => (
                     <li key={member.id} className="flex justify-between items-center gap-2 p-2 bg-muted/50 rounded">
-                      <span>{member.playerName}</span>
+                      {editingMemberNameId === member.id ? (
+                        <div className="flex items-center gap-1 flex-1">
+                          <Input
+                            type="text"
+                            value={editingMemberName}
+                            onChange={(e) => setEditingMemberName(e.target.value)}
+                            className="h-7 text-sm flex-1"
+                            data-testid={`input-name-${member.id}`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && editingMemberName.trim()) {
+                                updateMemberNameMutation.mutate({ memberId: member.id, playerName: editingMemberName.trim() });
+                              } else if (e.key === "Escape") {
+                                setEditingMemberNameId(null);
+                                setEditingMemberName("");
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              if (editingMemberName.trim()) {
+                                updateMemberNameMutation.mutate({ memberId: member.id, playerName: editingMemberName.trim() });
+                              }
+                            }}
+                            data-testid={`button-save-name-${member.id}`}
+                          >
+                            <Check className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setEditingMemberNameId(null);
+                              setEditingMemberName("");
+                            }}
+                            data-testid={`button-cancel-name-${member.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:underline"
+                          onClick={() => {
+                            setEditingMemberNameId(member.id);
+                            setEditingMemberName(member.playerName);
+                          }}
+                          data-testid={`text-member-name-${member.id}`}
+                        >
+                          {member.playerName}
+                        </span>
+                      )}
                       {editingMemberId === member.id ? (
                         <div className="flex items-center gap-1">
                           <Input
@@ -2872,7 +2947,62 @@ export default function RyderCupEvent() {
                 <ul className="space-y-2">
                   {teamB?.members.map((member) => (
                     <li key={member.id} className="flex justify-between items-center gap-2 p-2 bg-muted/50 rounded">
-                      <span>{member.playerName}</span>
+                      {editingMemberNameId === member.id ? (
+                        <div className="flex items-center gap-1 flex-1">
+                          <Input
+                            type="text"
+                            value={editingMemberName}
+                            onChange={(e) => setEditingMemberName(e.target.value)}
+                            className="h-7 text-sm flex-1"
+                            data-testid={`input-name-${member.id}`}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && editingMemberName.trim()) {
+                                updateMemberNameMutation.mutate({ memberId: member.id, playerName: editingMemberName.trim() });
+                              } else if (e.key === "Escape") {
+                                setEditingMemberNameId(null);
+                                setEditingMemberName("");
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              if (editingMemberName.trim()) {
+                                updateMemberNameMutation.mutate({ memberId: member.id, playerName: editingMemberName.trim() });
+                              }
+                            }}
+                            data-testid={`button-save-name-${member.id}`}
+                          >
+                            <Check className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setEditingMemberNameId(null);
+                              setEditingMemberName("");
+                            }}
+                            data-testid={`button-cancel-name-${member.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span
+                          className="cursor-pointer hover:underline"
+                          onClick={() => {
+                            setEditingMemberNameId(member.id);
+                            setEditingMemberName(member.playerName);
+                          }}
+                          data-testid={`text-member-name-${member.id}`}
+                        >
+                          {member.playerName}
+                        </span>
+                      )}
                       {editingMemberId === member.id ? (
                         <div className="flex items-center gap-1">
                           <Input

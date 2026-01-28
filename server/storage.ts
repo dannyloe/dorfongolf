@@ -43,6 +43,8 @@ export interface IStorage {
   // Ryder Cup Team methods
   getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null>;
   updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
+  updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
+  updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
   
   // Ryder Cup Payout methods
   updateRyderCupEventPayouts(eventId: number, payouts: {
@@ -1375,7 +1377,21 @@ export class DatabaseStorage implements IStorage {
                   .from(ryderCupPairingScores)
                   .where(eq(ryderCupPairingScores.sideId, side.id))
                   .orderBy(ryderCupPairingScores.holeNumber);
-                return { ...side, scores };
+                
+                // Look up current player names from team members if IDs are set
+                let player1Name = side.player1Name;
+                let player2Name = side.player2Name;
+                
+                if (side.player1Id) {
+                  const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+                  if (member1) player1Name = member1.playerName;
+                }
+                if (side.player2Id) {
+                  const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+                  if (member2) player2Name = member2.playerName;
+                }
+                
+                return { ...side, player1Name, player2Name, scores };
               })
             );
             const [result] = await db.select().from(ryderCupPairingResults).where(eq(ryderCupPairingResults.pairingId, pairing.id));
@@ -1460,6 +1476,16 @@ export class DatabaseStorage implements IStorage {
     return event;
   }
 
+  private async getPlayerIdByName(teamId: number, playerName: string): Promise<number | null> {
+    const [member] = await db.select()
+      .from(ryderCupTeamMembers)
+      .where(and(
+        eq(ryderCupTeamMembers.teamId, teamId),
+        eq(ryderCupTeamMembers.playerName, playerName)
+      ));
+    return member?.id || null;
+  }
+
   async generateRyderCupSchedule(eventId: number): Promise<void> {
     const event = await this.getRyderCupEventFull(eventId);
     if (!event) throw new Error("Event not found");
@@ -1510,12 +1536,19 @@ export class DatabaseStorage implements IStorage {
           pointValue: 10, // 1.0 point
         }).returning();
 
-        // Create sides
+        // Create sides with player IDs for dynamic name updates
+        const player1IdA = await this.getPlayerIdByName(teamA.id, matchPairing.teamA[0]);
+        const player2IdA = await this.getPlayerIdByName(teamA.id, matchPairing.teamA[1]);
+        const player1IdB = await this.getPlayerIdByName(teamB.id, matchPairing.teamB[0]);
+        const player2IdB = await this.getPlayerIdByName(teamB.id, matchPairing.teamB[1]);
+
         await db.insert(ryderCupPairingSides).values({
           pairingId: pairing.id,
           teamId: teamA.id,
           player1Name: matchPairing.teamA[0],
           player2Name: matchPairing.teamA[1],
+          player1Id: player1IdA,
+          player2Id: player2IdA,
         });
 
         await db.insert(ryderCupPairingSides).values({
@@ -1523,6 +1556,8 @@ export class DatabaseStorage implements IStorage {
           teamId: teamB.id,
           player1Name: matchPairing.teamB[0],
           player2Name: matchPairing.teamB[1],
+          player1Id: player1IdB,
+          player2Id: player2IdB,
         });
       }
     }
@@ -1583,11 +1618,19 @@ export class DatabaseStorage implements IStorage {
     const teamA = event.teams[0];
     const teamB = event.teams[1];
 
+    // Look up player IDs for dynamic name updates
+    const player1IdA = await this.getPlayerIdByName(teamA.id, data.sideA.playerNames[0]);
+    const player2IdA = data.sideA.playerNames[1] ? await this.getPlayerIdByName(teamA.id, data.sideA.playerNames[1]) : null;
+    const player1IdB = await this.getPlayerIdByName(teamB.id, data.sideB.playerNames[0]);
+    const player2IdB = data.sideB.playerNames[1] ? await this.getPlayerIdByName(teamB.id, data.sideB.playerNames[1]) : null;
+
     await db.insert(ryderCupPairingSides).values({
       pairingId: pairing.id,
       teamId: teamA.id,
       player1Name: data.sideA.playerNames[0],
       player2Name: data.sideA.playerNames[1] || null,
+      player1Id: player1IdA,
+      player2Id: player2IdA,
     });
 
     await db.insert(ryderCupPairingSides).values({
@@ -1595,6 +1638,8 @@ export class DatabaseStorage implements IStorage {
       teamId: teamB.id,
       player1Name: data.sideB.playerNames[0],
       player2Name: data.sideB.playerNames[1] || null,
+      player1Id: player1IdB,
+      player2Id: player2IdB,
     });
 
     return pairing;
@@ -1827,26 +1872,39 @@ export class DatabaseStorage implements IStorage {
           // Get scores for this side
           const scores = await db.select().from(ryderCupPairingScores).where(eq(ryderCupPairingScores.sideId, side.id));
           
+          // Look up current player names from team members if IDs are set
+          let player1Name = side.player1Name;
+          let player2Name = side.player2Name;
+          
+          if (side.player1Id) {
+            const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+            if (member1) player1Name = member1.playerName;
+          }
+          if (side.player2Id) {
+            const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+            if (member2) player2Name = member2.playerName;
+          }
+          
           // Map player1 scores
-          if (side.player1Name) {
-            if (!ryderCupScoresByDay[day.dayNumber][side.player1Name]) {
-              ryderCupScoresByDay[day.dayNumber][side.player1Name] = {};
+          if (player1Name) {
+            if (!ryderCupScoresByDay[day.dayNumber][player1Name]) {
+              ryderCupScoresByDay[day.dayNumber][player1Name] = {};
             }
             for (const score of scores) {
               if (score.player1Strokes !== null) {
-                ryderCupScoresByDay[day.dayNumber][side.player1Name][score.holeNumber] = score.player1Strokes;
+                ryderCupScoresByDay[day.dayNumber][player1Name][score.holeNumber] = score.player1Strokes;
               }
             }
           }
           
           // Map player2 scores
-          if (side.player2Name) {
-            if (!ryderCupScoresByDay[day.dayNumber][side.player2Name]) {
-              ryderCupScoresByDay[day.dayNumber][side.player2Name] = {};
+          if (player2Name) {
+            if (!ryderCupScoresByDay[day.dayNumber][player2Name]) {
+              ryderCupScoresByDay[day.dayNumber][player2Name] = {};
             }
             for (const score of scores) {
               if (score.player2Strokes !== null) {
-                ryderCupScoresByDay[day.dayNumber][side.player2Name][score.holeNumber] = score.player2Strokes;
+                ryderCupScoresByDay[day.dayNumber][player2Name][score.holeNumber] = score.player2Strokes;
               }
             }
           }
@@ -1911,6 +1969,14 @@ export class DatabaseStorage implements IStorage {
   async updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null> {
     const [updated] = await db.update(ryderCupTeamMembers)
       .set({ handicapIndex })
+      .where(eq(ryderCupTeamMembers.id, memberId))
+      .returning();
+    return updated || null;
+  }
+
+  async updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null> {
+    const [updated] = await db.update(ryderCupTeamMembers)
+      .set({ playerName })
       .where(eq(ryderCupTeamMembers.id, memberId))
       .returning();
     return updated || null;
@@ -2220,26 +2286,39 @@ export class DatabaseStorage implements IStorage {
         const sideScores = await db.select().from(ryderCupPairingScores)
           .where(eq(ryderCupPairingScores.sideId, side.id));
         
+        // Look up current player names from team members if IDs are set
+        let player1Name = side.player1Name;
+        let player2Name = side.player2Name;
+        
+        if (side.player1Id) {
+          const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+          if (member1) player1Name = member1.playerName;
+        }
+        if (side.player2Id) {
+          const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+          if (member2) player2Name = member2.playerName;
+        }
+        
         // Map player1 scores
-        if (side.player1Name) {
-          if (!scoresByPlayerName[side.player1Name]) {
-            scoresByPlayerName[side.player1Name] = {};
+        if (player1Name) {
+          if (!scoresByPlayerName[player1Name]) {
+            scoresByPlayerName[player1Name] = {};
           }
           for (const score of sideScores) {
             if (score.player1Strokes !== null) {
-              scoresByPlayerName[side.player1Name][score.holeNumber] = score.player1Strokes;
+              scoresByPlayerName[player1Name][score.holeNumber] = score.player1Strokes;
             }
           }
         }
         
         // Map player2 scores
-        if (side.player2Name) {
-          if (!scoresByPlayerName[side.player2Name]) {
-            scoresByPlayerName[side.player2Name] = {};
+        if (player2Name) {
+          if (!scoresByPlayerName[player2Name]) {
+            scoresByPlayerName[player2Name] = {};
           }
           for (const score of sideScores) {
             if (score.player2Strokes !== null) {
-              scoresByPlayerName[side.player2Name][score.holeNumber] = score.player2Strokes;
+              scoresByPlayerName[player2Name][score.holeNumber] = score.player2Strokes;
             }
           }
         }

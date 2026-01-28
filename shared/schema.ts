@@ -599,6 +599,9 @@ export const ryderCupPairingSides = pgTable("ryder_cup_pairing_sides", {
   teamId: integer("team_id").notNull(), // which ryder cup team this side belongs to
   player1Name: text("player1_name").notNull(),
   player2Name: text("player2_name"),
+  // Player IDs for name lookups (references ryderCupTeamMembers)
+  player1Id: integer("player1_id"), // References ryderCupTeamMembers.id for dynamic name updates
+  player2Id: integer("player2_id"), // References ryderCupTeamMembers.id for dynamic name updates
   // Player 1 handicap/tee
   player1HandicapIndex: integer("player1_handicap_index"), // Stored as tenths (e.g., 124 = 12.4)
   player1TeeId: integer("player1_tee_id"), // References courseTees
@@ -720,6 +723,16 @@ export const ryderCupPairingSidesRelations = relations(ryderCupPairingSides, ({ 
   team: one(ryderCupTeams, {
     fields: [ryderCupPairingSides.teamId],
     references: [ryderCupTeams.id],
+  }),
+  player1: one(ryderCupTeamMembers, {
+    fields: [ryderCupPairingSides.player1Id],
+    references: [ryderCupTeamMembers.id],
+    relationName: "player1",
+  }),
+  player2: one(ryderCupTeamMembers, {
+    fields: [ryderCupPairingSides.player2Id],
+    references: [ryderCupTeamMembers.id],
+    relationName: "player2",
   }),
   scores: many(ryderCupPairingScores),
 }));
