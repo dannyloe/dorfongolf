@@ -515,91 +515,110 @@ export default function RyderCupEvent() {
     },
   });
 
+  // Helper to get or create a side match container for a specific day
+  const getOrCreateDaySideMatchContainer = async (dayNumber: number): Promise<Match> => {
+    const eventName = event?.name || "Ryder Cup";
+    const containerName = `${eventName} - Day ${dayNumber} Side Matches`;
+    
+    // Check if container already exists for this day
+    const existingContainer = sideMatches.find(m => 
+      m.ryderCupDayNumber === dayNumber && 
+      m.name?.includes("Side Matches")
+    );
+    
+    if (existingContainer) {
+      return existingContainer;
+    }
+    
+    // Create new container for this day
+    const dayData = event?.days.find(d => d.dayNumber === dayNumber);
+    const courseName = dayData?.courseName || event?.courseName || "";
+    const courseId = dayData?.courseId || event?.courseId;
+    
+    // Build a map of player names to their tee and handicap info from Ryder Cup pairings
+    const playerTeeInfo: Record<string, { teeId: number | null; handicapIndex: number | null }> = {};
+    if (dayData?.pairings) {
+      for (const pairing of dayData.pairings) {
+        for (const side of pairing.sides) {
+          if (side.player1Name) {
+            playerTeeInfo[side.player1Name] = {
+              teeId: side.player1TeeId ?? null,
+              handicapIndex: side.player1HandicapIndex ?? null,
+            };
+          }
+          if (side.player2Name) {
+            playerTeeInfo[side.player2Name] = {
+              teeId: side.player2TeeId ?? null,
+              handicapIndex: side.player2HandicapIndex ?? null,
+            };
+          }
+        }
+      }
+    }
+    
+    // Create the container match
+    const res = await apiRequest("POST", "/api/matches", {
+      name: containerName,
+      courseName,
+      courseId,
+      ryderCupEventId: parseInt(id!),
+      ryderCupDayNumber: dayNumber,
+      groupId: null,
+      isHandicapped: event?.useHandicaps ?? true,
+    });
+    const newMatch = await res.json();
+    
+    // Get all player names from both teams
+    const allPlayerNames = [
+      ...(event?.teams[0]?.members || []).map(m => m.playerName),
+      ...(event?.teams[1]?.members || []).map(m => m.playerName),
+    ];
+    
+    // Add all tournament players to the match with their tee/handicap info from the day's pairings
+    for (const playerName of allPlayerNames) {
+      const teeInfo = playerTeeInfo[playerName] || { teeId: null, handicapIndex: null };
+      await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { 
+        name: playerName,
+        teeId: teeInfo.teeId,
+        handicapIndex: teeInfo.handicapIndex,
+      });
+    }
+    
+    return newMatch;
+  };
+
   const createSideMatchMutation = useMutation({
     mutationFn: async ({ forAllDays = false }: { forAllDays?: boolean } = {}): Promise<Match | null> => {
       const daysToCreate = forAllDays 
         ? (event?.days || []).map(d => d.dayNumber).sort((a, b) => a - b)
         : [selectedDay];
       
-      let firstMatch: Match | null = null;
+      let firstContainer: Match | null = null;
       
+      // Get or create containers for each day
       for (const dayNumber of daysToCreate) {
-        const dayData = event?.days.find(d => d.dayNumber === dayNumber);
-        const courseName = dayData?.courseName || event?.courseName || "";
-        const courseId = dayData?.courseId || event?.courseId;
-        
-        // Build a map of player names to their tee and handicap info from Ryder Cup pairings
-        const playerTeeInfo: Record<string, { teeId: number | null; handicapIndex: number | null }> = {};
-        if (dayData?.pairings) {
-          for (const pairing of dayData.pairings) {
-            for (const side of pairing.sides) {
-              if (side.player1Name) {
-                playerTeeInfo[side.player1Name] = {
-                  teeId: side.player1TeeId ?? null,
-                  handicapIndex: side.player1HandicapIndex ?? null,
-                };
-              }
-              if (side.player2Name) {
-                playerTeeInfo[side.player2Name] = {
-                  teeId: side.player2TeeId ?? null,
-                  handicapIndex: side.player2HandicapIndex ?? null,
-                };
-              }
-            }
-          }
-        }
-        
-        // Create the match (inherit handicap setting from Ryder Cup event)
-        const res = await apiRequest("POST", "/api/matches", {
-          name: `Day ${dayNumber} Side Match`,
-          courseName,
-          courseId,
-          ryderCupEventId: parseInt(id!),
-          ryderCupDayNumber: dayNumber,
-          groupId: null,
-          isHandicapped: event?.useHandicaps ?? true,
-        });
-        const newMatch = await res.json();
-        if (!firstMatch) {
-          firstMatch = newMatch;
-        }
-        
-        // Get all player names from both teams
-        const allPlayerNames = [
-          ...(event?.teams[0]?.members || []).map(m => m.playerName),
-          ...(event?.teams[1]?.members || []).map(m => m.playerName),
-        ];
-        
-        // Add all tournament players to the match with their tee/handicap info from the day's pairings
-        for (const playerName of allPlayerNames) {
-          const teeInfo = playerTeeInfo[playerName] || { teeId: null, handicapIndex: null };
-          await apiRequest("POST", `/api/matches/${newMatch.id}/players`, { 
-            name: playerName,
-            teeId: teeInfo.teeId,
-            handicapIndex: teeInfo.handicapIndex,
-          });
+        const container = await getOrCreateDaySideMatchContainer(dayNumber);
+        if (!firstContainer) {
+          firstContainer = container;
         }
       }
       
-      return firstMatch;
+      return firstContainer;
     },
-    onSuccess: (newMatch, variables) => {
+    onSuccess: (container, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "matches"] });
       if (variables?.forAllDays) {
-        toast({ title: `Side matches created for all ${event?.days.length || 4} days` });
-        // Navigate to the first day's match so user can configure it
-        if (newMatch) {
-          setLocation(`/match/${newMatch.id}`);
-        }
+        toast({ title: `Side match containers ready for all ${event?.days.length || 4} days` });
       } else {
-        toast({ title: "Side match created with all players" });
-        if (newMatch) {
-          setLocation(`/match/${newMatch.id}`);
-        }
+        toast({ title: "Side match container ready" });
+      }
+      // Navigate to the container to add betting games
+      if (container) {
+        setLocation(`/match/${container.id}`);
       }
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to create side match", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to create side match container", variant: "destructive" });
     },
   });
 
@@ -1832,117 +1851,143 @@ export default function RyderCupEvent() {
               <div className="mt-6">
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-sm text-muted-foreground">Side Matches</h4>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={createSideMatchMutation.isPending}
-                        data-testid="button-add-side-match"
-                      >
-                        <Plus className="w-3 h-3 mr-1" /> Add Side Match
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-48 p-2" align="end">
-                      <div className="flex flex-col gap-1">
+                  {(() => {
+                    // Check if a container already exists for this day
+                    const existingContainer = sideMatches.find(m => 
+                      m.ryderCupDayNumber === selectedDay && 
+                      m.name?.includes("Side Matches")
+                    );
+                    
+                    if (existingContainer) {
+                      // Container exists - just show button to go to it
+                      return (
                         <Button
                           size="sm"
-                          variant="ghost"
-                          className="justify-start"
-                          onClick={() => createSideMatchMutation.mutate({ forAllDays: false })}
-                          disabled={createSideMatchMutation.isPending}
-                          data-testid="button-add-side-match-this-day"
+                          variant="outline"
+                          onClick={() => setLocation(`/match/${existingContainer.id}`)}
+                          data-testid="button-go-to-side-match"
                         >
-                          Add for Day {selectedDay} only
+                          <Plus className="w-3 h-3 mr-1" /> Add Betting Game
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="justify-start"
-                          onClick={() => createSideMatchMutation.mutate({ forAllDays: true })}
-                          disabled={createSideMatchMutation.isPending}
-                          data-testid="button-add-side-match-all-days"
-                        >
-                          Add for all {event?.days.length || 4} days
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                      );
+                    }
+                    
+                    // No container - show options to create
+                    return (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={createSideMatchMutation.isPending}
+                            data-testid="button-add-side-match"
+                          >
+                            <Plus className="w-3 h-3 mr-1" /> Set Up Side Matches
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-2" align="end">
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="justify-start"
+                              onClick={() => createSideMatchMutation.mutate({ forAllDays: false })}
+                              disabled={createSideMatchMutation.isPending}
+                              data-testid="button-add-side-match-this-day"
+                            >
+                              Set up Day {selectedDay} only
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="justify-start"
+                              onClick={() => createSideMatchMutation.mutate({ forAllDays: true })}
+                              disabled={createSideMatchMutation.isPending}
+                              data-testid="button-add-side-match-all-days"
+                            >
+                              Set up all {event?.days.length || 4} days
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    );
+                  })()}
                 </div>
                 {(() => {
-                  const daySideMatches = sideMatches.filter(m => m.ryderCupDayNumber === selectedDay);
-                  if (daySideMatches.length === 0) {
-                    return <p className="text-sm text-muted-foreground">No side matches for this day</p>;
+                  // Find the single container for this day (should only be one)
+                  const dayContainer = sideMatches.find(m => 
+                    m.ryderCupDayNumber === selectedDay && 
+                    m.name?.includes("Side Matches")
+                  );
+                  
+                  if (!dayContainer) {
+                    return <p className="text-sm text-muted-foreground">No side matches set up for this day</p>;
                   }
 
-                  return (
-                    <div className="space-y-2">
-                      {daySideMatches.map((match) => {
-                        // Get all event match IDs for this side match
-                        const matchEventIds = (sideMatchLedger?.eventMatches || [])
-                          .filter((em: any) => em.eventId === match.id)
-                          .map((em: any) => em.id);
-                        
-                        // Get ALL entries for this match (not filtered by isComplete)
-                        const allMatchEntries = sideBetData.entries.filter(e => 
-                          matchEventIds.includes(e.matchId)
-                        );
-                        
-                        // Calculate player earnings from all entries
-                        const playerEarnings: Record<string, number> = {};
-                        allMatchEntries.forEach(r => {
-                          playerEarnings[r.playerName] = (playerEarnings[r.playerName] || 0) + r.amount;
-                        });
-                        const sortedEarnings = Object.entries(playerEarnings)
-                          .filter(([_, amount]) => amount !== 0)  // Only show non-zero amounts
-                          .sort((a, b) => b[1] - a[1]);
-                        
-                        // Consider match complete if flag is set OR if there are calculated results
-                        const isComplete = match.completed || allMatchEntries.length > 0;
+                  // Get all event match IDs (betting games) for this container
+                  const containerEventMatches = (sideMatchLedger?.eventMatches || [])
+                    .filter((em: any) => em.eventId === dayContainer.id);
+                  
+                  // Get ALL entries for this container
+                  const allMatchEntries = sideBetData.entries.filter(e => 
+                    containerEventMatches.map((em: any) => em.id).includes(e.matchId)
+                  );
+                  
+                  // Calculate player earnings from all entries
+                  const playerEarnings: Record<string, number> = {};
+                  allMatchEntries.forEach(r => {
+                    playerEarnings[r.playerName] = (playerEarnings[r.playerName] || 0) + r.amount;
+                  });
+                  const sortedEarnings = Object.entries(playerEarnings)
+                    .filter(([_, amount]) => amount !== 0)
+                    .sort((a, b) => b[1] - a[1]);
+                  
+                  const isComplete = dayContainer.completed || allMatchEntries.length > 0;
 
-                        return (
-                          <Card 
-                            key={match.id} 
-                            className="border-dashed cursor-pointer hover-elevate"
-                            onClick={() => setLocation(`/match/${match.id}`)}
-                            data-testid={`card-side-match-${match.id}`}
-                          >
-                            <CardContent className="py-3">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="font-medium">{match.name || "Side Match"}</span>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline">{match.courseName}</Badge>
-                                  {isComplete && (
-                                    <Badge variant="secondary">
-                                      <Check className="w-3 h-3 mr-1" /> Complete
-                                    </Badge>
-                                  )}
+                  return (
+                    <Card 
+                      className="border-dashed cursor-pointer hover-elevate"
+                      onClick={() => setLocation(`/match/${dayContainer.id}`)}
+                      data-testid={`card-side-match-${dayContainer.id}`}
+                    >
+                      <CardContent className="py-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-medium">{dayContainer.name || "Side Matches"}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {containerEventMatches.length} betting game{containerEventMatches.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{dayContainer.courseName}</Badge>
+                            {isComplete && (
+                              <Badge variant="secondary">
+                                <Check className="w-3 h-3 mr-1" /> Complete
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        {isComplete && sortedEarnings.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-dashed">
+                            <div className="flex flex-wrap gap-2">
+                              {sortedEarnings.slice(0, 4).map(([name, amount]) => (
+                                <div key={name} className="flex items-center gap-1 text-xs">
+                                  <span className="text-muted-foreground">{name}:</span>
+                                  <span className={`font-medium ${amount > 0 ? "text-green-600" : amount < 0 ? "text-red-600" : ""}`}>
+                                    {amount > 0 ? "+" : ""}{formatCurrency(amount)}
+                                  </span>
                                 </div>
-                              </div>
-                              {isComplete && sortedEarnings.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-dashed">
-                                  <div className="flex flex-wrap gap-2">
-                                    {sortedEarnings.slice(0, 4).map(([name, amount]) => (
-                                      <div key={name} className="flex items-center gap-1 text-xs">
-                                        <span className="text-muted-foreground">{name}:</span>
-                                        <span className={`font-medium ${amount > 0 ? "text-green-600" : amount < 0 ? "text-red-600" : ""}`}>
-                                          {amount > 0 ? "+" : ""}{formatCurrency(amount)}
-                                        </span>
-                                      </div>
-                                    ))}
-                                    {sortedEarnings.length > 4 && (
-                                      <span className="text-xs text-muted-foreground">
-                                        +{sortedEarnings.length - 4} more
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
+                              ))}
+                              {sortedEarnings.length > 4 && (
+                                <span className="text-xs text-muted-foreground">
+                                  +{sortedEarnings.length - 4} more
+                                </span>
                               )}
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   );
                 })()}
               </div>
