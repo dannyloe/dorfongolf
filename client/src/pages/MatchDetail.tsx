@@ -1,4 +1,4 @@
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -152,6 +152,7 @@ export default function MatchDetail() {
   const deleteMatch = useDeleteMatch();
   const createEventMatch = useCreateEventMatch(matchId);
   const deleteEventMatch = useDeleteEventMatch(matchId);
+  const replicateEventMatch = useReplicateEventMatchToSiblings(matchId);
   const createPress = useCreatePress(matchId);
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
@@ -2293,6 +2294,30 @@ export default function MatchDetail() {
                         <span className="text-xs sm:text-sm font-medium text-primary">{status}</span>
                       </div>
                     </button>
+                    {/* Replicate to sibling days button - only for Ryder Cup side match containers */}
+                    {isCreator && match?.ryderCupEventId && match?.name?.includes("Side Matches") && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="mr-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          replicateEventMatch.mutate(em.id, {
+                            onSuccess: (result) => {
+                              toast({ title: result.message });
+                            },
+                            onError: (error) => {
+                              toast({ title: "Error", description: error.message, variant: "destructive" });
+                            },
+                          });
+                        }}
+                        disabled={replicateEventMatch.isPending}
+                        title="Replicate to all days"
+                        data-testid={`button-replicate-match-${em.id}`}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                    )}
                     {isCreator && (
                       <Button
                         variant="ghost"

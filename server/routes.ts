@@ -529,6 +529,117 @@ export async function registerRoutes(
     }
   });
 
+  // Replicate event match to sibling Ryder Cup day containers
+  app.post(api.eventMatches.replicateToSiblingDays.path, isAuthenticated, async (req, res) => {
+    const eventMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
+    try {
+      // Get the event match with teams
+      const sourceEventMatch = await storage.getEventMatchWithTeams(eventMatchId);
+      if (!sourceEventMatch) {
+        return res.status(404).json({ message: "Event match not found" });
+      }
+      
+      // Get the parent match (container)
+      const sourceMatch = await storage.getMatch(sourceEventMatch.eventId);
+      if (!sourceMatch) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      // Check if this is a Ryder Cup side match
+      if (!sourceMatch.ryderCupEventId || !sourceMatch.ryderCupDayNumber) {
+        return res.status(400).json({ message: "This match is not part of a Ryder Cup event" });
+      }
+      
+      // Permission check
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = sourceMatch.creatorId === userId;
+      const matchRole = await storage.getMatchRole(sourceMatch.id, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can replicate betting games" });
+      }
+      
+      // Get all sibling side match containers for this Ryder Cup event
+      const siblingMatches = await storage.getMatchesByRyderCupEvent(sourceMatch.ryderCupEventId);
+      const siblingContainers = siblingMatches.filter(m => 
+        m.id !== sourceMatch.id && 
+        m.name?.includes("Side Matches")
+      );
+      
+      if (siblingContainers.length === 0) {
+        return res.status(400).json({ message: "No sibling day containers found to replicate to" });
+      }
+      
+      let replicatedCount = 0;
+      
+      for (const siblingContainer of siblingContainers) {
+        // Get players from sibling container
+        const siblingPlayers = await storage.getMatchPlayers(siblingContainer.id);
+        
+        // Map player names from source to sibling player IDs
+        const teamAPlayerIds: number[] = [];
+        const teamBPlayerIds: number[] = [];
+        
+        if (sourceEventMatch.teams && sourceEventMatch.teams.length >= 2) {
+          // Get source player names from teams
+          const sourceTeamA = sourceEventMatch.teams[0];
+          const sourceTeamB = sourceEventMatch.teams[1];
+          
+          // Map to sibling player IDs by name
+          for (const member of sourceTeamA.members || []) {
+            const siblingPlayer = siblingPlayers.find((p: { name: string }) => p.name === member.player?.name);
+            if (siblingPlayer) {
+              teamAPlayerIds.push(siblingPlayer.id);
+            }
+          }
+          
+          for (const member of sourceTeamB.members || []) {
+            const siblingPlayer = siblingPlayers.find((p: { name: string }) => p.name === member.player?.name);
+            if (siblingPlayer) {
+              teamBPlayerIds.push(siblingPlayer.id);
+            }
+          }
+        }
+        
+        // Only create if we have valid teams
+        if (teamAPlayerIds.length > 0 && teamBPlayerIds.length > 0) {
+          await storage.createEventMatch(siblingContainer.id, {
+            name: sourceEventMatch.name,
+            matchType: sourceEventMatch.matchType,
+            unitAmount: sourceEventMatch.unitAmount,
+            autoPressOriginal: sourceEventMatch.autoPressOriginal,
+            autoPressAllPresses: sourceEventMatch.autoPressAllPresses,
+            autoPressNassauFront9: sourceEventMatch.autoPressNassauFront9,
+            autoPressNassauBack9: sourceEventMatch.autoPressNassauBack9,
+            autoPressNassauOverall: sourceEventMatch.autoPressNassauOverall,
+            useNetScoring: sourceEventMatch.useNetScoring,
+            teamA: {
+              name: sourceEventMatch.teams?.[0]?.name || "Team A",
+              playerIds: teamAPlayerIds,
+            },
+            teamB: {
+              name: sourceEventMatch.teams?.[1]?.name || "Team B",
+              playerIds: teamBPlayerIds,
+            },
+          });
+          replicatedCount++;
+        }
+      }
+      
+      res.json({
+        replicatedCount,
+        message: `Replicated betting game to ${replicatedCount} other day${replicatedCount !== 1 ? 's' : ''}`,
+      });
+    } catch (err) {
+      console.error("Error replicating event match:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Ledger Route
   app.get(api.ledger.get.path, isAuthenticated, async (req, res) => {
     try {

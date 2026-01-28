@@ -359,6 +359,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    replicateToSiblingDays: {
+      method: 'POST' as const,
+      path: '/api/event-matches/:id/replicate-to-siblings',
+      responses: {
+        200: z.object({
+          replicatedCount: z.number(),
+          message: z.string(),
+        }),
+        400: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
   },
   presetPlayers: {
     list: {

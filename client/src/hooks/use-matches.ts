@@ -233,6 +233,28 @@ export function useDeleteEventMatch(matchId: number) {
   });
 }
 
+export function useReplicateEventMatchToSiblings(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (eventMatchId: number) => {
+      const url = buildUrl(api.eventMatches.replicateToSiblingDays.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.replicateToSiblingDays.method,
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to replicate betting game");
+      }
+      return res.json() as Promise<{ replicatedCount: number; message: string }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
 type CreatePressInput = z.infer<typeof api.eventMatches.createPress.input>;
 
 export function useCreatePress(matchId: number) {
