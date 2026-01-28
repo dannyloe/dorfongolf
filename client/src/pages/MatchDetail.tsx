@@ -1180,7 +1180,7 @@ export default function MatchDetail() {
                 {isCreator && !isDailyMatchContainer && <Pencil className="w-3 h-3 text-muted-foreground" />}
               </span>
             )}
-            {isCreator ? (
+            {isCreator && !isDailyMatchContainer ? (
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <Checkbox
                   checked={match.isHandicapped || false}
