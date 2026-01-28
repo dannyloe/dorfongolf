@@ -1774,10 +1774,10 @@ export default function RyderCupEvent() {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-4 flex-1">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
+                          <div className="flex-1 min-w-0">
                             <div 
-                              className="flex-1 p-3 rounded-lg"
+                              className="p-3 rounded-lg"
                               style={{ backgroundColor: `${displayA?.color}20` }}
                             >
                               <p className="text-xs text-muted-foreground mb-1 text-center">{displayA?.teamName}</p>
@@ -1796,8 +1796,8 @@ export default function RyderCupEvent() {
                                   : null;
                                 const isEditingThis = editingSideHandicap?.sideId === sideA?.id && editingSideHandicap?.playerNumber === playerNumber;
                                 return (
-                                  <div key={pIdx} className="flex items-center justify-between gap-2 py-1">
-                                    <span className="font-medium text-sm truncate flex-1">{playerName}</span>
+                                  <div key={pIdx} className="flex items-center justify-between gap-1 sm:gap-2 py-1 min-w-0">
+                                    <span className="font-medium text-xs sm:text-sm truncate flex-1 min-w-0">{playerName}</span>
                                     <Select
                                       value={teeId?.toString() || ""}
                                       onValueChange={(val) => sideA && updateSidePlayerMutation.mutate({
@@ -1806,7 +1806,7 @@ export default function RyderCupEvent() {
                                         teeId: val ? parseInt(val) : null,
                                       })}
                                     >
-                                      <SelectTrigger className="h-6 w-28 text-xs" data-testid={`select-tee-${sideA?.id}-${playerNumber}`}>
+                                      <SelectTrigger className="h-6 w-16 sm:w-28 text-xs shrink-0" data-testid={`select-tee-${sideA?.id}-${playerNumber}`}>
                                         <SelectValue placeholder="Tee" />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1857,7 +1857,7 @@ export default function RyderCupEvent() {
                                     ) : (
                                       <Badge 
                                         variant="outline" 
-                                        className={`text-xs w-8 justify-center cursor-pointer hover-elevate ${hasOverride ? "border-primary" : ""}`}
+                                        className={`text-xs w-8 justify-center cursor-pointer hover-elevate shrink-0 ${hasOverride ? "border-primary" : ""}`}
                                         onClick={() => {
                                           if (sideA) {
                                             setEditingSideHandicap({ sideId: sideA.id, playerNumber });
@@ -1873,9 +1873,11 @@ export default function RyderCupEvent() {
                                 );
                               })}
                             </div>
-                            <span className="text-muted-foreground font-semibold">vs</span>
+                          </div>
+                          <span className="hidden sm:block text-muted-foreground font-semibold text-center">vs</span>
+                          <div className="flex-1 min-w-0">
                             <div 
-                              className="flex-1 p-3 rounded-lg"
+                              className="p-3 rounded-lg"
                               style={{ backgroundColor: `${displayB?.color}20` }}
                             >
                               <p className="text-xs text-muted-foreground mb-1 text-center">{displayB?.teamName}</p>
@@ -1894,8 +1896,8 @@ export default function RyderCupEvent() {
                                   : null;
                                 const isEditingThis = editingSideHandicap?.sideId === sideB?.id && editingSideHandicap?.playerNumber === playerNumber;
                                 return (
-                                  <div key={pIdx} className="flex items-center justify-between gap-2 py-1">
-                                    <span className="font-medium text-sm truncate flex-1">{playerName}</span>
+                                  <div key={pIdx} className="flex items-center justify-between gap-1 sm:gap-2 py-1 min-w-0">
+                                    <span className="font-medium text-xs sm:text-sm truncate flex-1 min-w-0">{playerName}</span>
                                     <Select
                                       value={teeId?.toString() || ""}
                                       onValueChange={(val) => sideB && updateSidePlayerMutation.mutate({
@@ -1904,7 +1906,7 @@ export default function RyderCupEvent() {
                                         teeId: val ? parseInt(val) : null,
                                       })}
                                     >
-                                      <SelectTrigger className="h-6 w-28 text-xs" data-testid={`select-tee-${sideB?.id}-${playerNumber}`}>
+                                      <SelectTrigger className="h-6 w-16 sm:w-28 text-xs shrink-0" data-testid={`select-tee-${sideB?.id}-${playerNumber}`}>
                                         <SelectValue placeholder="Tee" />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1955,7 +1957,7 @@ export default function RyderCupEvent() {
                                     ) : (
                                       <Badge 
                                         variant="outline" 
-                                        className={`text-xs w-8 justify-center cursor-pointer hover-elevate ${hasOverride ? "border-primary" : ""}`}
+                                        className={`text-xs w-8 justify-center cursor-pointer hover-elevate shrink-0 ${hasOverride ? "border-primary" : ""}`}
                                         onClick={() => {
                                           if (sideB) {
                                             setEditingSideHandicap({ sideId: sideB.id, playerNumber });
