@@ -3423,13 +3423,18 @@ export default function RyderCupEvent() {
                   </Button>
                   <Button
                     onClick={() => {
+                      console.log("Replace button clicked, replacementPlayerId:", replacementPlayerId, "replacingPlayer:", replacingPlayer);
                       const oldId = replacingPlayer?.presetPlayerId;
                       const newId = parseInt(replacementPlayerId);
+                      console.log("Parsed values - oldId:", oldId, "newId:", newId, "isNaN(newId):", isNaN(newId));
                       if (typeof oldId === 'number' && !isNaN(newId)) {
+                        console.log("Calling mutation with:", { oldPresetPlayerId: oldId, newPresetPlayerId: newId });
                         replacePlayerMutation.mutate({ 
                           oldPresetPlayerId: oldId, 
                           newPresetPlayerId: newId 
                         });
+                      } else {
+                        console.log("Validation failed - not calling mutation");
                       }
                     }}
                     disabled={!replacementPlayerId || !replacingPlayer?.presetPlayerId || replacePlayerMutation.isPending}
