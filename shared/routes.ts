@@ -1078,6 +1078,19 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    replacePlayer: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/:id/replace-player',
+      input: z.object({
+        oldPlayerName: z.string().min(1),
+        newPlayerName: z.string().min(1),
+      }),
+      responses: {
+        200: z.object({ oldPlayerName: z.string(), newPlayerName: z.string() }),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
     addSideMatch: {
       method: 'POST' as const,
       path: '/api/ryder-cup/:id/side-matches',

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -235,6 +235,8 @@ export default function RyderCupEvent() {
   const [editingMemberHandicap, setEditingMemberHandicap] = useState("");
   const [editingMemberNameId, setEditingMemberNameId] = useState<number | null>(null);
   const [editingMemberName, setEditingMemberName] = useState("");
+  const [replacingPlayer, setReplacingPlayer] = useState<string | null>(null);
+  const [replacementPlayerName, setReplacementPlayerName] = useState("");
   const [editingSideHandicap, setEditingSideHandicap] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
   const [editingSideHandicapValue, setEditingSideHandicapValue] = useState("");
   const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
@@ -278,6 +280,10 @@ export default function RyderCupEvent() {
 
   const { data: courses = [] } = useQuery<CourseWithHoles[]>({
     queryKey: ["/api/courses"],
+  });
+
+  const { data: presetPlayers = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/preset-players"],
   });
 
   // Get current day's course info for scorecard
@@ -499,6 +505,24 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to update player name", variant: "destructive" });
+    },
+  });
+
+  const replacePlayerMutation = useMutation({
+    mutationFn: async ({ oldPlayerName, newPlayerName }: { oldPlayerName: string; newPlayerName: string }) => {
+      return apiRequest("POST", `/api/ryder-cup/${id}/replace-player`, { oldPlayerName, newPlayerName });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "side-match-ledger"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "cth-winners"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
+      toast({ title: "Player replaced successfully" });
+      setReplacingPlayer(null);
+      setReplacementPlayerName("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to replace player", variant: "destructive" });
     },
   });
 
@@ -3164,17 +3188,29 @@ export default function RyderCupEvent() {
                           </Button>
                         </div>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="cursor-pointer hover-elevate"
-                          onClick={() => {
-                            setEditingMemberId(member.id);
-                            setEditingMemberHandicap(member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "");
-                          }}
-                          data-testid={`badge-handicap-${member.id}`}
-                        >
-                          {member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "Set HCP"}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className="cursor-pointer hover-elevate"
+                            onClick={() => {
+                              setEditingMemberId(member.id);
+                              setEditingMemberHandicap(member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "");
+                            }}
+                            data-testid={`badge-handicap-${member.id}`}
+                          >
+                            {member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "Set HCP"}
+                          </Badge>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => setReplacingPlayer(member.playerName)}
+                            title="Replace player"
+                            data-testid={`button-replace-${member.id}`}
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                          </Button>
+                        </div>
                       )}
                     </li>
                   ))}
@@ -3295,17 +3331,29 @@ export default function RyderCupEvent() {
                           </Button>
                         </div>
                       ) : (
-                        <Badge
-                          variant="outline"
-                          className="cursor-pointer hover-elevate"
-                          onClick={() => {
-                            setEditingMemberId(member.id);
-                            setEditingMemberHandicap(member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "");
-                          }}
-                          data-testid={`badge-handicap-${member.id}`}
-                        >
-                          {member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "Set HCP"}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className="cursor-pointer hover-elevate"
+                            onClick={() => {
+                              setEditingMemberId(member.id);
+                              setEditingMemberHandicap(member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "");
+                            }}
+                            data-testid={`badge-handicap-${member.id}`}
+                          >
+                            {member.handicapIndex !== null ? (member.handicapIndex / 10).toFixed(1) : "Set HCP"}
+                          </Badge>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => setReplacingPlayer(member.playerName)}
+                            title="Replace player"
+                            data-testid={`button-replace-${member.id}`}
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                          </Button>
+                        </div>
                       )}
                     </li>
                   ))}
@@ -3313,6 +3361,56 @@ export default function RyderCupEvent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Replace Player Dialog */}
+          <Dialog open={!!replacingPlayer} onOpenChange={(open) => { if (!open) { setReplacingPlayer(null); setReplacementPlayerName(""); } }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Replace {replacingPlayer}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <p className="text-sm text-muted-foreground">
+                  Select a player from your roster to replace {replacingPlayer}. All tee times, expenses, skins wins, and CTH wins will be transferred to the new player.
+                </p>
+                <Select value={replacementPlayerName} onValueChange={setReplacementPlayerName}>
+                  <SelectTrigger data-testid="select-replacement-player">
+                    <SelectValue placeholder="Select replacement player" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {presetPlayers
+                      ?.filter(p => {
+                        const currentPlayers = [
+                          ...(teamA?.members.map(m => m.playerName) || []),
+                          ...(teamB?.members.map(m => m.playerName) || [])
+                        ];
+                        return !currentPlayers.includes(p.name);
+                      })
+                      .map(p => (
+                        <SelectItem key={p.id} value={p.name} data-testid={`option-player-${p.id}`}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => { setReplacingPlayer(null); setReplacementPlayerName(""); }} data-testid="button-cancel-replace">
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (replacingPlayer && replacementPlayerName) {
+                        replacePlayerMutation.mutate({ oldPlayerName: replacingPlayer, newPlayerName: replacementPlayerName });
+                      }
+                    }}
+                    disabled={!replacementPlayerName || replacePlayerMutation.isPending}
+                    data-testid="button-confirm-replace"
+                  >
+                    {replacePlayerMutation.isPending ? "Replacing..." : "Replace Player"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="skins">

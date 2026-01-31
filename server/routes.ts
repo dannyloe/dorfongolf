@@ -2020,6 +2020,23 @@ Rules:
     }
   });
 
+  app.post(api.ryderCup.replacePlayer.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.replacePlayer.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+
+      const result = await storage.replacePlayerInRyderCupEvent(eventId, input.oldPlayerName, input.newPlayerName);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.ryderCup.addSideMatch.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
     try {

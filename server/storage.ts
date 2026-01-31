@@ -1263,6 +1263,164 @@ export class DatabaseStorage implements IStorage {
     return day;
   }
 
+  async replacePlayerInRyderCupEvent(
+    eventId: number,
+    oldPlayerName: string,
+    newPlayerName: string
+  ): Promise<{ oldPlayerName: string; newPlayerName: string }> {
+    // Get the new player's presetPlayerId
+    const [newPresetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, newPlayerName));
+    const newPresetPlayerId = newPresetPlayer?.id ?? null;
+
+    // Get the old player's presetPlayerId for matching
+    const [oldPresetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, oldPlayerName));
+    const oldPresetPlayerId = oldPresetPlayer?.id ?? null;
+
+    // Get teams for this event
+    const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    const teamIds = teams.map(t => t.id);
+
+    // Update ryderCupTeamMembers - replace old player with new player
+    if (teamIds.length > 0) {
+      await db.update(ryderCupTeamMembers)
+        .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupTeamMembers.teamId, teamIds),
+          eq(ryderCupTeamMembers.playerName, oldPlayerName)
+        ));
+      // Also update by presetPlayerId if available
+      if (oldPresetPlayerId) {
+        await db.update(ryderCupTeamMembers)
+          .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
+          .where(and(
+            inArray(ryderCupTeamMembers.teamId, teamIds),
+            eq(ryderCupTeamMembers.presetPlayerId, oldPresetPlayerId)
+          ));
+      }
+    }
+
+    // Get days for this event to scope pairing updates
+    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    const dayIds = days.map(d => d.id);
+
+    if (dayIds.length > 0) {
+      // Get pairings for these days
+      const pairings = await db.select().from(ryderCupPairings).where(inArray(ryderCupPairings.dayId, dayIds));
+      const pairingIds = pairings.map(p => p.id);
+
+      if (pairingIds.length > 0) {
+        // Update ryderCupPairingSides player1Name
+        await db.update(ryderCupPairingSides)
+          .set({ player1Name: newPlayerName })
+          .where(and(
+            inArray(ryderCupPairingSides.pairingId, pairingIds),
+            eq(ryderCupPairingSides.player1Name, oldPlayerName)
+          ));
+
+        // Update ryderCupPairingSides player2Name
+        await db.update(ryderCupPairingSides)
+          .set({ player2Name: newPlayerName })
+          .where(and(
+            inArray(ryderCupPairingSides.pairingId, pairingIds),
+            eq(ryderCupPairingSides.player2Name, oldPlayerName)
+          ));
+      }
+
+      // Update ryderCupSkins winnerName
+      await db.update(ryderCupSkins)
+        .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupSkins.dayId, dayIds),
+          eq(ryderCupSkins.winnerName, oldPlayerName)
+        ));
+      if (oldPresetPlayerId) {
+        await db.update(ryderCupSkins)
+          .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
+          .where(and(
+            inArray(ryderCupSkins.dayId, dayIds),
+            eq(ryderCupSkins.winnerPresetPlayerId, oldPresetPlayerId)
+          ));
+      }
+
+      // Update ryderCupClosestToHole winnerName
+      await db.update(ryderCupClosestToHole)
+        .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupClosestToHole.dayId, dayIds),
+          eq(ryderCupClosestToHole.winnerName, oldPlayerName)
+        ));
+      if (oldPresetPlayerId) {
+        await db.update(ryderCupClosestToHole)
+          .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
+          .where(and(
+            inArray(ryderCupClosestToHole.dayId, dayIds),
+            eq(ryderCupClosestToHole.winnerPresetPlayerId, oldPresetPlayerId)
+          ));
+      }
+    }
+
+    // Update ryderCupTransactions payerName
+    await db.update(ryderCupTransactions)
+      .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
+      .where(and(
+        eq(ryderCupTransactions.eventId, eventId),
+        eq(ryderCupTransactions.payerName, oldPlayerName)
+      ));
+    if (oldPresetPlayerId) {
+      await db.update(ryderCupTransactions)
+        .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
+        .where(and(
+          eq(ryderCupTransactions.eventId, eventId),
+          eq(ryderCupTransactions.payerPresetPlayerId, oldPresetPlayerId)
+        ));
+    }
+
+    // Update ryderCupTransactionSplits playerName
+    // Need to get transaction IDs for this event first
+    const transactions = await db.select().from(ryderCupTransactions).where(eq(ryderCupTransactions.eventId, eventId));
+    const transactionIds = transactions.map(t => t.id);
+
+    if (transactionIds.length > 0) {
+      await db.update(ryderCupTransactionSplits)
+        .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupTransactionSplits.transactionId, transactionIds),
+          eq(ryderCupTransactionSplits.playerName, oldPlayerName)
+        ));
+      if (oldPresetPlayerId) {
+        await db.update(ryderCupTransactionSplits)
+          .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
+          .where(and(
+            inArray(ryderCupTransactionSplits.transactionId, transactionIds),
+            eq(ryderCupTransactionSplits.presetPlayerId, oldPresetPlayerId)
+          ));
+      }
+    }
+
+    // Update players in side matches linked to this Ryder Cup event
+    const sideMatchContainers = await db.select().from(matches).where(eq(matches.ryderCupEventId, eventId));
+    const sideMatchIds = sideMatchContainers.map(m => m.id);
+    
+    if (sideMatchIds.length > 0) {
+      await db.update(players)
+        .set({ name: newPlayerName, presetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(players.matchId, sideMatchIds),
+          eq(players.name, oldPlayerName)
+        ));
+      if (oldPresetPlayerId) {
+        await db.update(players)
+          .set({ name: newPlayerName, presetPlayerId: newPresetPlayerId })
+          .where(and(
+            inArray(players.matchId, sideMatchIds),
+            eq(players.presetPlayerId, oldPresetPlayerId)
+          ));
+      }
+    }
+
+    return { oldPlayerName, newPlayerName };
+  }
+
   async updateRyderCupDayCourse(dayId: number, courseId: number, courseName: string): Promise<RyderCupDay> {
     const [updated] = await db.update(ryderCupDays)
       .set({ courseId, courseName })
