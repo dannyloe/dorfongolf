@@ -646,6 +646,7 @@ export const ryderCupTransactions = pgTable("ryder_cup_transactions", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull(), // References ryderCupEvents
   payerName: text("payer_name").notNull(), // Player who paid
+  payerPresetPlayerId: integer("payer_preset_player_id"), // References presetPlayers.id for dynamic name updates
   description: text("description").notNull(),
   amount: integer("amount").notNull(), // Amount in cents
   createdAt: timestamp("created_at").defaultNow(),
@@ -656,6 +657,7 @@ export const ryderCupTransactionSplits = pgTable("ryder_cup_transaction_splits",
   id: serial("id").primaryKey(),
   transactionId: integer("transaction_id").notNull(), // References ryderCupTransactions
   playerName: text("player_name").notNull(), // Player who owes
+  presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name updates
   amount: integer("amount").notNull(), // Amount owed in cents
 });
 

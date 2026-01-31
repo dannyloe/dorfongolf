@@ -47,12 +47,16 @@ Preferred communication style: Simple, everyday language.
   - `ryderCupTeamMembers.presetPlayerId` - Links team members to preset players
   - `ryderCupSkins.winnerPresetPlayerId` - Links skin winners to preset players
   - `ryderCupClosestToHole.winnerPresetPlayerId` - Links CTH winners to preset players
+  - `ryderCupTransactions.payerPresetPlayerId` - Links transaction payers to preset players
+  - `ryderCupTransactionSplits.presetPlayerId` - Links expense splits to preset players
 - **Rename Flow**: When `renamePresetPlayer()` is called:
   1. Updates the name in `presetPlayers` table
   2. Cascades updates via `presetPlayerId` to all linked records
   3. Also updates by name matching for legacy records without IDs
 - **Auto-Population**: Storage methods (`addPlayer`, `recordRyderCupSkin`, `recordClosestToHoleWinner`) automatically look up and set the `presetPlayerId` when creating new records
-- **Migration**: Run `migrations/backfill_preset_player_ids.sql` in production to populate IDs for existing records
+- **Migration**: Run these in production to populate IDs for existing records:
+  - `migrations/backfill_preset_player_ids.sql` - For players, team members, skins, CTH
+  - `migrations/backfill_transaction_preset_player_ids.sql` - For transactions and expense splits
 
 ### Match-Specific Course Handicap Overrides
 - In expanded match view for net matches, course handicaps are displayed for each player

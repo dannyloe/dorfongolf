@@ -1224,6 +1224,26 @@ export class DatabaseStorage implements IStorage {
         .where(eq(players.presetPlayerId, presetPlayerId));
     }
     
+    // Update ryderCupTransactions payerName by name AND by presetPlayerId
+    await db.update(ryderCupTransactions)
+      .set({ payerName: newName, payerPresetPlayerId: presetPlayerId })
+      .where(eq(ryderCupTransactions.payerName, oldName));
+    if (presetPlayerId) {
+      await db.update(ryderCupTransactions)
+        .set({ payerName: newName })
+        .where(eq(ryderCupTransactions.payerPresetPlayerId, presetPlayerId));
+    }
+    
+    // Update ryderCupTransactionSplits playerName by name AND by presetPlayerId
+    await db.update(ryderCupTransactionSplits)
+      .set({ playerName: newName, presetPlayerId })
+      .where(eq(ryderCupTransactionSplits.playerName, oldName));
+    if (presetPlayerId) {
+      await db.update(ryderCupTransactionSplits)
+        .set({ playerName: newName })
+        .where(eq(ryderCupTransactionSplits.presetPlayerId, presetPlayerId));
+    }
+    
     return { oldName, newName };
   }
 
@@ -2353,8 +2373,12 @@ export class DatabaseStorage implements IStorage {
     amount: number,
     splitPlayerNames: string[]
   ): Promise<RyderCupTransaction> {
+    // Look up payer's presetPlayerId
+    const [payerPreset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, payerName));
+    const payerPresetPlayerId = payerPreset?.id ?? null;
+    
     const [transaction] = await db.insert(ryderCupTransactions)
-      .values({ eventId, payerName, description, amount })
+      .values({ eventId, payerName, payerPresetPlayerId, description, amount })
       .returning();
     
     // Calculate split amount (evenly divided)
@@ -2364,10 +2388,15 @@ export class DatabaseStorage implements IStorage {
     // Create splits for each player
     for (let i = 0; i < splitPlayerNames.length; i++) {
       const playerAmount = splitAmount + (i < remainder ? 1 : 0); // Distribute remainder
+      // Look up each split player's presetPlayerId
+      const [splitPlayerPreset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, splitPlayerNames[i]));
+      const presetPlayerId = splitPlayerPreset?.id ?? null;
+      
       await db.insert(ryderCupTransactionSplits)
         .values({
           transactionId: transaction.id,
           playerName: splitPlayerNames[i],
+          presetPlayerId,
           amount: playerAmount,
         });
     }
