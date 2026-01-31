@@ -3382,26 +3382,42 @@ export default function RyderCupEvent() {
                 <p className="text-sm text-muted-foreground">
                   Select a player from your roster to replace {replacingPlayer?.name}. All tee times, expenses, skins wins, and CTH wins will be transferred to the new player.
                 </p>
-                <Select value={replacementPlayerId} onValueChange={setReplacementPlayerId}>
-                  <SelectTrigger data-testid="select-replacement-player">
-                    <SelectValue placeholder="Select replacement player" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {presetPlayers
-                      ?.filter(p => {
-                        const currentPlayerIds = [
-                          ...(teamA?.members.map(m => m.presetPlayerId) || []),
-                          ...(teamB?.members.map(m => m.presetPlayerId) || [])
-                        ];
-                        return !currentPlayerIds.includes(p.id);
-                      })
-                      .map(p => (
-                        <SelectItem key={p.id} value={String(p.id)} data-testid={`option-player-${p.id}`}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                <div className="max-h-60 overflow-y-auto border rounded-md p-2 space-y-1">
+                  {presetPlayers
+                    ?.filter(p => {
+                      const currentPlayerIds = [
+                        ...(teamA?.members.map(m => m.presetPlayerId) || []),
+                        ...(teamB?.members.map(m => m.presetPlayerId) || [])
+                      ];
+                      return !currentPlayerIds.includes(p.id);
+                    })
+                    .map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          replacementPlayerId === String(p.id) 
+                            ? "bg-primary text-primary-foreground" 
+                            : "hover:bg-muted"
+                        }`}
+                        onClick={() => setReplacementPlayerId(String(p.id))}
+                        data-testid={`option-player-${p.id}`}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  {presetPlayers?.filter(p => {
+                    const currentPlayerIds = [
+                      ...(teamA?.members.map(m => m.presetPlayerId) || []),
+                      ...(teamB?.members.map(m => m.presetPlayerId) || [])
+                    ];
+                    return !currentPlayerIds.includes(p.id);
+                  }).length === 0 && (
+                    <p className="text-sm text-muted-foreground py-2 text-center">
+                      No available players to select
+                    </p>
+                  )}
+                </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => { setReplacingPlayer(null); setReplacementPlayerId(""); }} data-testid="button-cancel-replace">
                     Cancel
