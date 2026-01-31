@@ -3423,14 +3423,16 @@ export default function RyderCupEvent() {
                   </Button>
                   <Button
                     onClick={() => {
-                      if (replacingPlayer && replacementPlayerId) {
+                      const oldId = replacingPlayer?.presetPlayerId;
+                      const newId = parseInt(replacementPlayerId);
+                      if (typeof oldId === 'number' && !isNaN(newId)) {
                         replacePlayerMutation.mutate({ 
-                          oldPresetPlayerId: replacingPlayer.presetPlayerId, 
-                          newPresetPlayerId: parseInt(replacementPlayerId) 
+                          oldPresetPlayerId: oldId, 
+                          newPresetPlayerId: newId 
                         });
                       }
                     }}
-                    disabled={!replacementPlayerId || replacePlayerMutation.isPending}
+                    disabled={!replacementPlayerId || !replacingPlayer?.presetPlayerId || replacePlayerMutation.isPending}
                     data-testid="button-confirm-replace"
                   >
                     {replacePlayerMutation.isPending ? "Replacing..." : "Replace Player"}
