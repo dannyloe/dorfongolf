@@ -3382,41 +3382,40 @@ export default function RyderCupEvent() {
                 <p className="text-sm text-muted-foreground">
                   Select a player from your roster to replace {replacingPlayer?.name}. All tee times, expenses, skins wins, and CTH wins will be transferred to the new player.
                 </p>
-                <div className="max-h-60 overflow-y-auto border rounded-md p-2 space-y-1">
-                  {presetPlayers
-                    ?.filter(p => {
-                      const currentPlayerIds = [
-                        ...(teamA?.members.map(m => m.presetPlayerId) || []),
-                        ...(teamB?.members.map(m => m.presetPlayerId) || [])
-                      ];
-                      return !currentPlayerIds.includes(p.id);
-                    })
-                    .map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                          replacementPlayerId === String(p.id) 
-                            ? "bg-primary text-primary-foreground" 
-                            : "hover:bg-muted"
-                        }`}
-                        onClick={() => setReplacementPlayerId(String(p.id))}
-                        data-testid={`option-player-${p.id}`}
-                      >
-                        {p.name}
-                      </button>
-                    ))}
-                  {presetPlayers?.filter(p => {
+                <div className="max-h-60 overflow-y-auto border rounded-md p-2 space-y-2">
+                  {(() => {
                     const currentPlayerIds = [
                       ...(teamA?.members.map(m => m.presetPlayerId) || []),
                       ...(teamB?.members.map(m => m.presetPlayerId) || [])
-                    ];
-                    return !currentPlayerIds.includes(p.id);
-                  }).length === 0 && (
-                    <p className="text-sm text-muted-foreground py-2 text-center">
-                      No available players to select
-                    </p>
-                  )}
+                    ].filter(id => id !== null);
+                    const availablePlayers = presetPlayers?.filter(p => !currentPlayerIds.includes(p.id)) || [];
+                    
+                    if (availablePlayers.length === 0) {
+                      return (
+                        <p className="text-sm text-muted-foreground py-2 text-center">
+                          No available players to select
+                        </p>
+                      );
+                    }
+                    
+                    return availablePlayers.map(p => (
+                      <label
+                        key={p.id}
+                        className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer hover:bg-muted"
+                        data-testid={`option-player-${p.id}`}
+                      >
+                        <input
+                          type="radio"
+                          name="replacementPlayer"
+                          value={String(p.id)}
+                          checked={replacementPlayerId === String(p.id)}
+                          onChange={(e) => setReplacementPlayerId(e.target.value)}
+                          className="h-4 w-4"
+                        />
+                        <span className="text-sm">{p.name}</span>
+                      </label>
+                    ));
+                  })()}
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => { setReplacingPlayer(null); setReplacementPlayerId(""); }} data-testid="button-cancel-replace">
