@@ -58,6 +58,24 @@ Preferred communication style: Simple, everyday language.
   - `migrations/backfill_preset_player_ids.sql` - For players, team members, skins, CTH
   - `migrations/backfill_transaction_preset_player_ids.sql` - For transactions and expense splits
 
+### Player Replacement in Ryder Cup Events
+- **Feature**: Organizers can replace one golfer with another within an event, transferring all event data
+- **API**: `POST /api/ryder-cup/:id/replace-player` with `{ oldPresetPlayerId, newPresetPlayerId }`
+- **Uses presetPlayerId as primary key**: All lookups and updates use the preset player ID, with name-based fallbacks for legacy data
+- **Validation**:
+  - Cannot replace a player with themselves
+  - Old player must be a member of a team in the event
+  - New player must not already be a member of any team in the event
+- **Tables Updated**:
+  - `ryderCupTeamMembers` - Team membership transferred
+  - `ryderCupPairingSides` - Tee time pairings updated (player1Name/player2Name)
+  - `ryderCupSkins` - Skins wins transferred
+  - `ryderCupClosestToHole` - CTH wins transferred
+  - `ryderCupTransactions` - Expense payer records updated
+  - `ryderCupTransactionSplits` - Expense allocations updated
+  - `players` - Side match players updated
+- **UI**: Replace button (refresh icon) in Teams tab for each player; opens dialog to select replacement from roster
+
 ### Match-Specific Course Handicap Overrides
 - In expanded match view for net matches, course handicaps are displayed for each player
 - Creators can click on any player's course handicap to override it for that specific match
