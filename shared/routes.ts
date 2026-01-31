@@ -1082,8 +1082,8 @@ export const api = {
       method: 'POST' as const,
       path: '/api/ryder-cup/:id/replace-player',
       input: z.object({
-        oldPlayerName: z.string().min(1),
-        newPlayerName: z.string().min(1),
+        oldPresetPlayerId: z.number(),
+        newPresetPlayerId: z.number(),
       }),
       responses: {
         200: z.object({ oldPlayerName: z.string(), newPlayerName: z.string() }),

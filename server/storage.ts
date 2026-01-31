@@ -1265,38 +1265,67 @@ export class DatabaseStorage implements IStorage {
 
   async replacePlayerInRyderCupEvent(
     eventId: number,
-    oldPlayerName: string,
-    newPlayerName: string
+    oldPresetPlayerId: number,
+    newPresetPlayerId: number
   ): Promise<{ oldPlayerName: string; newPlayerName: string }> {
-    // Get the new player's presetPlayerId
-    const [newPresetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, newPlayerName));
-    const newPresetPlayerId = newPresetPlayer?.id ?? null;
+    // Validate: Can't replace player with themselves
+    if (oldPresetPlayerId === newPresetPlayerId) {
+      throw new Error("Cannot replace a player with themselves");
+    }
 
-    // Get the old player's presetPlayerId for matching
-    const [oldPresetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, oldPlayerName));
-    const oldPresetPlayerId = oldPresetPlayer?.id ?? null;
+    // Look up both players by their preset IDs
+    const [oldPresetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, oldPresetPlayerId));
+    const [newPresetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, newPresetPlayerId));
+
+    if (!oldPresetPlayer) {
+      throw new Error("Old player not found in preset players");
+    }
+    if (!newPresetPlayer) {
+      throw new Error("New player not found in preset players");
+    }
+
+    const oldPlayerName = oldPresetPlayer.name;
+    const newPlayerName = newPresetPlayer.name;
 
     // Get teams for this event
     const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
     const teamIds = teams.map(t => t.id);
 
-    // Update ryderCupTeamMembers - replace old player with new player
+    // Validate: Check if old player is actually in the event
     if (teamIds.length > 0) {
+      const [oldMember] = await db.select().from(ryderCupTeamMembers).where(and(
+        inArray(ryderCupTeamMembers.teamId, teamIds),
+        eq(ryderCupTeamMembers.presetPlayerId, oldPresetPlayerId)
+      ));
+      if (!oldMember) {
+        throw new Error("Player to replace is not a member of any team in this event");
+      }
+
+      // Validate: Check if new player is already in the event
+      const [existingMember] = await db.select().from(ryderCupTeamMembers).where(and(
+        inArray(ryderCupTeamMembers.teamId, teamIds),
+        eq(ryderCupTeamMembers.presetPlayerId, newPresetPlayerId)
+      ));
+      if (existingMember) {
+        throw new Error("Replacement player is already a member of a team in this event");
+      }
+    }
+
+    // Update ryderCupTeamMembers - replace old player with new player using presetPlayerId (primary)
+    if (teamIds.length > 0) {
+      await db.update(ryderCupTeamMembers)
+        .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupTeamMembers.teamId, teamIds),
+          eq(ryderCupTeamMembers.presetPlayerId, oldPresetPlayerId)
+        ));
+      // Fallback: also update by name for legacy records without presetPlayerId
       await db.update(ryderCupTeamMembers)
         .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
           inArray(ryderCupTeamMembers.teamId, teamIds),
           eq(ryderCupTeamMembers.playerName, oldPlayerName)
         ));
-      // Also update by presetPlayerId if available
-      if (oldPresetPlayerId) {
-        await db.update(ryderCupTeamMembers)
-          .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
-          .where(and(
-            inArray(ryderCupTeamMembers.teamId, teamIds),
-            eq(ryderCupTeamMembers.presetPlayerId, oldPresetPlayerId)
-          ));
-      }
     }
 
     // Get days for this event to scope pairing updates
@@ -1326,57 +1355,53 @@ export class DatabaseStorage implements IStorage {
           ));
       }
 
-      // Update ryderCupSkins winnerName
+      // Update ryderCupSkins winnerName using presetPlayerId (primary)
+      await db.update(ryderCupSkins)
+        .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupSkins.dayId, dayIds),
+          eq(ryderCupSkins.winnerPresetPlayerId, oldPresetPlayerId)
+        ));
+      // Fallback: also update by name for legacy records without presetPlayerId
       await db.update(ryderCupSkins)
         .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
         .where(and(
           inArray(ryderCupSkins.dayId, dayIds),
           eq(ryderCupSkins.winnerName, oldPlayerName)
         ));
-      if (oldPresetPlayerId) {
-        await db.update(ryderCupSkins)
-          .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
-          .where(and(
-            inArray(ryderCupSkins.dayId, dayIds),
-            eq(ryderCupSkins.winnerPresetPlayerId, oldPresetPlayerId)
-          ));
-      }
 
-      // Update ryderCupClosestToHole winnerName
+      // Update ryderCupClosestToHole winnerName using presetPlayerId (primary)
+      await db.update(ryderCupClosestToHole)
+        .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupClosestToHole.dayId, dayIds),
+          eq(ryderCupClosestToHole.winnerPresetPlayerId, oldPresetPlayerId)
+        ));
+      // Fallback: also update by name for legacy records without presetPlayerId
       await db.update(ryderCupClosestToHole)
         .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
         .where(and(
           inArray(ryderCupClosestToHole.dayId, dayIds),
           eq(ryderCupClosestToHole.winnerName, oldPlayerName)
         ));
-      if (oldPresetPlayerId) {
-        await db.update(ryderCupClosestToHole)
-          .set({ winnerName: newPlayerName, winnerPresetPlayerId: newPresetPlayerId })
-          .where(and(
-            inArray(ryderCupClosestToHole.dayId, dayIds),
-            eq(ryderCupClosestToHole.winnerPresetPlayerId, oldPresetPlayerId)
-          ));
-      }
     }
 
-    // Update ryderCupTransactions payerName
+    // Update ryderCupTransactions payerName using presetPlayerId (primary)
+    await db.update(ryderCupTransactions)
+      .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
+      .where(and(
+        eq(ryderCupTransactions.eventId, eventId),
+        eq(ryderCupTransactions.payerPresetPlayerId, oldPresetPlayerId)
+      ));
+    // Fallback: also update by name for legacy records without presetPlayerId
     await db.update(ryderCupTransactions)
       .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
       .where(and(
         eq(ryderCupTransactions.eventId, eventId),
         eq(ryderCupTransactions.payerName, oldPlayerName)
       ));
-    if (oldPresetPlayerId) {
-      await db.update(ryderCupTransactions)
-        .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
-        .where(and(
-          eq(ryderCupTransactions.eventId, eventId),
-          eq(ryderCupTransactions.payerPresetPlayerId, oldPresetPlayerId)
-        ));
-    }
 
-    // Update ryderCupTransactionSplits playerName
-    // Need to get transaction IDs for this event first
+    // Update ryderCupTransactionSplits using presetPlayerId (primary)
     const transactions = await db.select().from(ryderCupTransactions).where(eq(ryderCupTransactions.eventId, eventId));
     const transactionIds = transactions.map(t => t.id);
 
@@ -1385,19 +1410,18 @@ export class DatabaseStorage implements IStorage {
         .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
           inArray(ryderCupTransactionSplits.transactionId, transactionIds),
+          eq(ryderCupTransactionSplits.presetPlayerId, oldPresetPlayerId)
+        ));
+      // Fallback: also update by name for legacy records without presetPlayerId
+      await db.update(ryderCupTransactionSplits)
+        .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(ryderCupTransactionSplits.transactionId, transactionIds),
           eq(ryderCupTransactionSplits.playerName, oldPlayerName)
         ));
-      if (oldPresetPlayerId) {
-        await db.update(ryderCupTransactionSplits)
-          .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
-          .where(and(
-            inArray(ryderCupTransactionSplits.transactionId, transactionIds),
-            eq(ryderCupTransactionSplits.presetPlayerId, oldPresetPlayerId)
-          ));
-      }
     }
 
-    // Update players in side matches linked to this Ryder Cup event
+    // Update players in side matches linked to this Ryder Cup event using presetPlayerId (primary)
     const sideMatchContainers = await db.select().from(matches).where(eq(matches.ryderCupEventId, eventId));
     const sideMatchIds = sideMatchContainers.map(m => m.id);
     
@@ -1406,16 +1430,15 @@ export class DatabaseStorage implements IStorage {
         .set({ name: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
           inArray(players.matchId, sideMatchIds),
+          eq(players.presetPlayerId, oldPresetPlayerId)
+        ));
+      // Fallback: also update by name for legacy records without presetPlayerId
+      await db.update(players)
+        .set({ name: newPlayerName, presetPlayerId: newPresetPlayerId })
+        .where(and(
+          inArray(players.matchId, sideMatchIds),
           eq(players.name, oldPlayerName)
         ));
-      if (oldPresetPlayerId) {
-        await db.update(players)
-          .set({ name: newPlayerName, presetPlayerId: newPresetPlayerId })
-          .where(and(
-            inArray(players.matchId, sideMatchIds),
-            eq(players.presetPlayerId, oldPresetPlayerId)
-          ));
-      }
     }
 
     return { oldPlayerName, newPlayerName };

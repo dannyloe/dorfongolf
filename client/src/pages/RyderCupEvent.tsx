@@ -235,8 +235,8 @@ export default function RyderCupEvent() {
   const [editingMemberHandicap, setEditingMemberHandicap] = useState("");
   const [editingMemberNameId, setEditingMemberNameId] = useState<number | null>(null);
   const [editingMemberName, setEditingMemberName] = useState("");
-  const [replacingPlayer, setReplacingPlayer] = useState<string | null>(null);
-  const [replacementPlayerName, setReplacementPlayerName] = useState("");
+  const [replacingPlayer, setReplacingPlayer] = useState<{ name: string; presetPlayerId: number } | null>(null);
+  const [replacementPlayerId, setReplacementPlayerId] = useState<string>("");
   const [editingSideHandicap, setEditingSideHandicap] = useState<{ sideId: number; playerNumber: 1 | 2 } | null>(null);
   const [editingSideHandicapValue, setEditingSideHandicapValue] = useState("");
   const [selectedSkinsDay, setSelectedSkinsDay] = useState<number>(1);
@@ -509,8 +509,8 @@ export default function RyderCupEvent() {
   });
 
   const replacePlayerMutation = useMutation({
-    mutationFn: async ({ oldPlayerName, newPlayerName }: { oldPlayerName: string; newPlayerName: string }) => {
-      return apiRequest("POST", `/api/ryder-cup/${id}/replace-player`, { oldPlayerName, newPlayerName });
+    mutationFn: async ({ oldPresetPlayerId, newPresetPlayerId }: { oldPresetPlayerId: number; newPresetPlayerId: number }) => {
+      return apiRequest("POST", `/api/ryder-cup/${id}/replace-player`, { oldPresetPlayerId, newPresetPlayerId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
@@ -519,10 +519,10 @@ export default function RyderCupEvent() {
       queryClient.invalidateQueries({ queryKey: ["/api/matches"] });
       toast({ title: "Player replaced successfully" });
       setReplacingPlayer(null);
-      setReplacementPlayerName("");
+      setReplacementPlayerId("");
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to replace player", variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message || "Failed to replace player", variant: "destructive" });
     },
   });
 
@@ -3203,9 +3203,9 @@ export default function RyderCupEvent() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="h-6 w-6"
-                            onClick={() => setReplacingPlayer(member.playerName)}
+                            onClick={() => member.presetPlayerId && setReplacingPlayer({ name: member.playerName, presetPlayerId: member.presetPlayerId })}
                             title="Replace player"
+                            disabled={!member.presetPlayerId}
                             data-testid={`button-replace-${member.id}`}
                           >
                             <RefreshCw className="w-3 h-3" />
@@ -3346,9 +3346,9 @@ export default function RyderCupEvent() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="h-6 w-6"
-                            onClick={() => setReplacingPlayer(member.playerName)}
+                            onClick={() => member.presetPlayerId && setReplacingPlayer({ name: member.playerName, presetPlayerId: member.presetPlayerId })}
                             title="Replace player"
+                            disabled={!member.presetPlayerId}
                             data-testid={`button-replace-${member.id}`}
                           >
                             <RefreshCw className="w-3 h-3" />
@@ -3363,46 +3363,49 @@ export default function RyderCupEvent() {
           </div>
 
           {/* Replace Player Dialog */}
-          <Dialog open={!!replacingPlayer} onOpenChange={(open) => { if (!open) { setReplacingPlayer(null); setReplacementPlayerName(""); } }}>
+          <Dialog open={!!replacingPlayer} onOpenChange={(open) => { if (!open) { setReplacingPlayer(null); setReplacementPlayerId(""); } }}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Replace {replacingPlayer}</DialogTitle>
+                <DialogTitle>Replace {replacingPlayer?.name}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <p className="text-sm text-muted-foreground">
-                  Select a player from your roster to replace {replacingPlayer}. All tee times, expenses, skins wins, and CTH wins will be transferred to the new player.
+                  Select a player from your roster to replace {replacingPlayer?.name}. All tee times, expenses, skins wins, and CTH wins will be transferred to the new player.
                 </p>
-                <Select value={replacementPlayerName} onValueChange={setReplacementPlayerName}>
+                <Select value={replacementPlayerId} onValueChange={setReplacementPlayerId}>
                   <SelectTrigger data-testid="select-replacement-player">
                     <SelectValue placeholder="Select replacement player" />
                   </SelectTrigger>
                   <SelectContent>
                     {presetPlayers
                       ?.filter(p => {
-                        const currentPlayers = [
-                          ...(teamA?.members.map(m => m.playerName) || []),
-                          ...(teamB?.members.map(m => m.playerName) || [])
+                        const currentPlayerIds = [
+                          ...(teamA?.members.map(m => m.presetPlayerId) || []),
+                          ...(teamB?.members.map(m => m.presetPlayerId) || [])
                         ];
-                        return !currentPlayers.includes(p.name);
+                        return !currentPlayerIds.includes(p.id);
                       })
                       .map(p => (
-                        <SelectItem key={p.id} value={p.name} data-testid={`option-player-${p.id}`}>
+                        <SelectItem key={p.id} value={String(p.id)} data-testid={`option-player-${p.id}`}>
                           {p.name}
                         </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => { setReplacingPlayer(null); setReplacementPlayerName(""); }} data-testid="button-cancel-replace">
+                  <Button variant="outline" onClick={() => { setReplacingPlayer(null); setReplacementPlayerId(""); }} data-testid="button-cancel-replace">
                     Cancel
                   </Button>
                   <Button
                     onClick={() => {
-                      if (replacingPlayer && replacementPlayerName) {
-                        replacePlayerMutation.mutate({ oldPlayerName: replacingPlayer, newPlayerName: replacementPlayerName });
+                      if (replacingPlayer && replacementPlayerId) {
+                        replacePlayerMutation.mutate({ 
+                          oldPresetPlayerId: replacingPlayer.presetPlayerId, 
+                          newPresetPlayerId: parseInt(replacementPlayerId) 
+                        });
                       }
                     }}
-                    disabled={!replacementPlayerName || replacePlayerMutation.isPending}
+                    disabled={!replacementPlayerId || replacePlayerMutation.isPending}
                     data-testid="button-confirm-replace"
                   >
                     {replacePlayerMutation.isPending ? "Replacing..." : "Replace Player"}
