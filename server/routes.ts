@@ -2022,6 +2022,7 @@ Rules:
 
   app.post(api.ryderCup.replacePlayer.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
+    console.log("Replace player request body:", JSON.stringify(req.body));
     try {
       const input = api.ryderCup.replacePlayer.input.parse(req.body);
       const event = await storage.getRyderCupEvent(eventId);
@@ -2031,6 +2032,7 @@ Rules:
       res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError) {
+        console.log("Zod validation error:", JSON.stringify(err.errors));
         return res.status(400).json({ message: err.errors[0].message });
       }
       if (err instanceof Error) {
