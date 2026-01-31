@@ -3203,7 +3203,12 @@ export default function RyderCupEvent() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => member.presetPlayerId && setReplacingPlayer({ name: member.playerName, presetPlayerId: member.presetPlayerId })}
+                            onClick={() => {
+                              if (member.presetPlayerId) {
+                                setReplacementPlayerId("");
+                                setReplacingPlayer({ name: member.playerName, presetPlayerId: member.presetPlayerId });
+                              }
+                            }}
                             title="Replace player"
                             disabled={!member.presetPlayerId}
                             data-testid={`button-replace-${member.id}`}
@@ -3346,7 +3351,12 @@ export default function RyderCupEvent() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            onClick={() => member.presetPlayerId && setReplacingPlayer({ name: member.playerName, presetPlayerId: member.presetPlayerId })}
+                            onClick={() => {
+                              if (member.presetPlayerId) {
+                                setReplacementPlayerId("");
+                                setReplacingPlayer({ name: member.playerName, presetPlayerId: member.presetPlayerId });
+                              }
+                            }}
                             title="Replace player"
                             disabled={!member.presetPlayerId}
                             data-testid={`button-replace-${member.id}`}
