@@ -4018,7 +4018,6 @@ export default function RyderCupEvent() {
                                 </th>
                               ))}
                               <th className="text-right py-2 px-2">Expenses</th>
-                              <th className="text-right py-2 px-2">Manual Bets</th>
                               <th className="text-right py-2 pl-2 font-bold">
                                 {includeBuyIn ? "Net" : "Owed"}
                               </th>
@@ -4030,9 +4029,10 @@ export default function RyderCupEvent() {
                               .map(playerName => {
                                 const team = teamA?.members.find(m => m.playerName === playerName) ? teamA : teamB;
                                 const earnings = payouts[playerName] || 0;
-                                const sideBets = sideBetData.balances[playerName] || 0;
-                                const expenses = expenseBalances[playerName] || 0;
+                                const sideBetsOnly = sideBetData.balances[playerName] || 0;
                                 const manualBetsAmount = manualBetBalances[playerName] || 0;
+                                const sideBets = sideBetsOnly + manualBetsAmount;
+                                const expenses = expenseBalances[playerName] || 0;
                                 const net = netPosition[playerName] || 0;
                                 return (
                                   <tr key={playerName} className="border-b border-muted/50">
@@ -4498,15 +4498,26 @@ export default function RyderCupEvent() {
           </DialogHeader>
           {sideBetsBreakdownPlayer && (() => {
             const entries = getSideBetBreakdown(sideBetsBreakdownPlayer);
-            const total = entries.reduce((sum, e) => sum + e.amount, 0);
+            const manualBetEntries = manualBets
+              .filter(bet => bet.entries.some(e => e.playerName === sideBetsBreakdownPlayer))
+              .map(bet => {
+                const entry = bet.entries.find(e => e.playerName === sideBetsBreakdownPlayer);
+                return {
+                  matchName: bet.description,
+                  betType: "Manual",
+                  amount: entry?.amount || 0
+                };
+              });
+            const allEntries = [...entries, ...manualBetEntries];
+            const total = allEntries.reduce((sum, e) => sum + e.amount, 0);
             return (
               <div className="space-y-3">
-                {entries.length === 0 ? (
+                {allEntries.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No side bet results yet</p>
                 ) : (
                   <>
                     <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {entries.map((e, i) => (
+                      {allEntries.map((e, i) => (
                         <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
                           <div>
                             <span className="font-medium">{e.matchName}</span>
