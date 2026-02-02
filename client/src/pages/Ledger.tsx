@@ -1,19 +1,22 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format, subDays, startOfYear } from "date-fns";
-import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy } from "lucide-react";
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Table,
@@ -23,9 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
 import { calculateLedger, NetScoringContext } from "@/lib/matchplay";
-import { useCourses, useGroups, useMatches } from "@/hooks/use-matches";
+import { useCourses, useGroups, useMatches, usePresetPlayers } from "@/hooks/use-matches";
 import { calculateCourseHandicap } from "@/lib/handicap";
+import { apiRequest } from "@/lib/queryClient";
 
 type DetailType = "won" | "lost" | "net" | null;
 
@@ -47,10 +52,126 @@ export default function Ledger() {
     playerName: string;
     type: DetailType;
   } | null>(null);
+  
+  // Manual bet dialog state
+  const [addBetOpen, setAddBetOpen] = useState(false);
+  const [betDescription, setBetDescription] = useState("");
+  const [betEntries, setBetEntries] = useState<{ presetPlayerId: number | null; playerName: string; amount: string }[]>([
+    { presetPlayerId: null, playerName: "", amount: "" },
+    { presetPlayerId: null, playerName: "", amount: "" },
+  ]);
 
   const { data: courses } = useCourses();
   const { data: groups } = useGroups();
   const { data: matches } = useMatches();
+  const { data: presetPlayers } = usePresetPlayers();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  // Query for manual bets
+  const { data: manualBets } = useQuery<{
+    id: number;
+    description: string;
+    createdAt: string | null;
+    entries: { id: number; playerName: string; presetPlayerId: number | null; amount: number }[];
+  }[]>({
+    queryKey: ["/api/manual-bets"],
+  });
+  
+  // Mutation to create manual bet
+  const createBetMutation = useMutation({
+    mutationFn: async (data: { description: string; entries: { playerName: string; presetPlayerId?: number; amount: number }[] }) => {
+      return apiRequest("POST", "/api/manual-bets", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets"] });
+      toast({ title: "Bet recorded successfully" });
+      setAddBetOpen(false);
+      setBetDescription("");
+      setBetEntries([{ presetPlayerId: null, playerName: "", amount: "" }, { presetPlayerId: null, playerName: "", amount: "" }]);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  // Mutation to delete manual bet
+  const deleteBetMutation = useMutation({
+    mutationFn: async (betId: number) => {
+      return apiRequest("DELETE", `/api/manual-bets/${betId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets"] });
+      toast({ title: "Bet deleted" });
+    },
+  });
+  
+  // Helper functions for add bet dialog
+  const addBetEntry = () => {
+    setBetEntries([...betEntries, { presetPlayerId: null, playerName: "", amount: "" }]);
+  };
+  
+  const removeBetEntry = (index: number) => {
+    if (betEntries.length > 2) {
+      setBetEntries(betEntries.filter((_, i) => i !== index));
+    }
+  };
+  
+  const updateBetEntryPlayer = (index: number, presetPlayerId: number) => {
+    const updated = [...betEntries];
+    const player = presetPlayers?.find((p: { id: number; name: string }) => p.id === presetPlayerId);
+    updated[index].presetPlayerId = presetPlayerId;
+    updated[index].playerName = player?.name || "";
+    setBetEntries(updated);
+  };
+  
+  const updateBetEntryAmount = (index: number, amount: string) => {
+    const updated = [...betEntries];
+    updated[index].amount = amount;
+    setBetEntries(updated);
+  };
+  
+  const calculateBetTotal = () => {
+    return betEntries.reduce((sum, e) => {
+      const amount = parseFloat(e.amount) || 0;
+      return sum + amount;
+    }, 0);
+  };
+  
+  const handleSubmitBet = () => {
+    if (!betDescription.trim()) {
+      toast({ title: "Please enter a description", variant: "destructive" });
+      return;
+    }
+    
+    const validEntries = betEntries.filter(e => e.presetPlayerId && e.playerName.trim() && e.amount);
+    if (validEntries.length < 2) {
+      toast({ title: "At least 2 players required", variant: "destructive" });
+      return;
+    }
+    
+    // Check for duplicate players by presetPlayerId
+    const playerIds = validEntries.map(e => e.presetPlayerId);
+    if (new Set(playerIds).size !== playerIds.length) {
+      toast({ title: "Each player can only appear once", variant: "destructive" });
+      return;
+    }
+    
+    const total = calculateBetTotal();
+    if (Math.abs(total) > 0.01) {
+      toast({ title: "Total must equal zero", description: `Current total: $${total.toFixed(2)}`, variant: "destructive" });
+      return;
+    }
+    
+    createBetMutation.mutate({
+      description: betDescription.trim(),
+      entries: validEntries.map(e => ({
+        playerName: e.playerName.trim(),
+        presetPlayerId: e.presetPlayerId!,
+        amount: Math.round(parseFloat(e.amount) * 100), // Convert to cents
+      })),
+    });
+  };
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -201,6 +322,79 @@ export default function Ledger() {
     }
     return calculateLedger(filteredEventMatches as any, data.scores, netContextMap);
   }, [filteredEventMatches, data?.scores, netContextMap]);
+  
+  // Combine ledger results with manual bets
+  const combinedLedgerResults = useMemo(() => {
+    const baseLedger = ledgerResults;
+    
+    // Create a map of player balances keyed by presetPlayerId (or playerName as fallback)
+    // Use a composite key: presetPlayerId if available, otherwise playerName
+    const balanceMap = new Map<string, { playerId: number; playerName: string; presetPlayerId?: number; won: number; lost: number; netBalance: number }>();
+    
+    const getPlayerKey = (playerId: number, playerName: string, presetPlayerId?: number | null): string => {
+      // Use presetPlayerId as primary key if available, fallback to playerName
+      return presetPlayerId ? `preset:${presetPlayerId}` : `name:${playerName.toLowerCase().trim()}`;
+    };
+    
+    // Add base ledger balances
+    for (const balance of baseLedger.balances) {
+      const key = getPlayerKey(balance.playerId, balance.playerName, (balance as any).presetPlayerId);
+      balanceMap.set(key, { ...balance });
+    }
+    
+    // Add manual bet entries
+    const manualBetEntries: typeof baseLedger.entries = [];
+    
+    if (manualBets) {
+      for (const bet of manualBets) {
+        for (const entry of bet.entries) {
+          const amountInDollars = entry.amount / 100; // Convert from cents
+          const presetPlayerId = (entry as any).presetPlayerId;
+          const key = getPlayerKey(entry.id, entry.playerName, presetPlayerId);
+          
+          // Get or create player balance entry
+          if (!balanceMap.has(key)) {
+            balanceMap.set(key, {
+              playerId: presetPlayerId || entry.id,
+              playerName: entry.playerName,
+              presetPlayerId: presetPlayerId || undefined,
+              won: 0,
+              lost: 0,
+              netBalance: 0,
+            });
+          }
+          
+          const playerBalance = balanceMap.get(key)!;
+          if (amountInDollars >= 0) {
+            playerBalance.won += amountInDollars;
+          } else {
+            playerBalance.lost += Math.abs(amountInDollars);
+          }
+          playerBalance.netBalance += amountInDollars;
+          
+          // Add to entries for detailed breakdown
+          manualBetEntries.push({
+            matchId: bet.id,
+            matchName: bet.description,
+            playerId: presetPlayerId || entry.id,
+            playerName: entry.playerName,
+            betType: 'Manual Bet',
+            result: amountInDollars >= 0 ? 'Won' : 'Lost',
+            amount: amountInDollars,
+          });
+        }
+      }
+    }
+    
+    // Convert balanceMap back to sorted array
+    const combinedBalances = Array.from(balanceMap.values())
+      .sort((a, b) => b.netBalance - a.netBalance);
+    
+    return {
+      balances: combinedBalances,
+      entries: [...baseLedger.entries, ...manualBetEntries],
+    };
+  }, [ledgerResults, manualBets]);
 
   const quickFilters = [
     { label: "Last 30 Days", days: 30 },
@@ -209,9 +403,9 @@ export default function Ledger() {
     { label: "All Time", action: () => setDateRange({ from: undefined, to: undefined }) },
   ];
 
-  const totalPot = ledgerResults.balances.reduce((sum, b) => sum + Math.abs(b.netBalance), 0);
-  const topWinner = ledgerResults.balances[0];
-  const topLoser = ledgerResults.balances[ledgerResults.balances.length - 1];
+  const totalPot = combinedLedgerResults.balances.reduce((sum, b) => sum + Math.abs(b.netBalance), 0);
+  const topWinner = combinedLedgerResults.balances[0];
+  const topLoser = combinedLedgerResults.balances[combinedLedgerResults.balances.length - 1];
 
   if (isLoading) {
     return (
@@ -358,7 +552,119 @@ export default function Ledger() {
             Clear Filters
           </Button>
         )}
+        
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAddBetOpen(true)}
+          data-testid="button-add-bet"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Add Bet
+        </Button>
       </div>
+      
+      {/* Add Bet Dialog */}
+      <Dialog open={addBetOpen} onOpenChange={setAddBetOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record Manual Bet</DialogTitle>
+            <DialogDescription>
+              Enter bet results. Amounts must sum to zero (what one loses, another gains).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="bet-description">Description</Label>
+              <Input
+                id="bet-description"
+                placeholder="e.g., Nassau bet at Torrey Pines"
+                value={betDescription}
+                onChange={(e) => setBetDescription(e.target.value)}
+                data-testid="input-bet-description"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Players & Amounts</Label>
+              {betEntries.map((entry, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <Select
+                    value={entry.presetPlayerId?.toString() || ""}
+                    onValueChange={(value) => updateBetEntryPlayer(index, parseInt(value))}
+                  >
+                    <SelectTrigger className="flex-1" data-testid={`select-bet-player-${index}`}>
+                      <SelectValue placeholder="Select player" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {presetPlayers?.map((p: { id: number; name: string }) => (
+                        <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Amount"
+                    className="w-24"
+                    value={entry.amount}
+                    onChange={(e) => updateBetEntryAmount(index, e.target.value)}
+                    data-testid={`input-bet-amount-${index}`}
+                  />
+                  {betEntries.length > 2 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeBetEntry(index)}
+                      data-testid={`button-remove-entry-${index}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={addBetEntry}
+                className="w-full"
+                data-testid="button-add-entry"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Player
+              </Button>
+            </div>
+            
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Total:</span>
+              <span className={calculateBetTotal() === 0 ? "text-green-600" : "text-red-600"}>
+                ${calculateBetTotal().toFixed(2)}
+                {calculateBetTotal() !== 0 && " (must be $0.00)"}
+              </span>
+            </div>
+            
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setAddBetOpen(false)}
+                data-testid="button-cancel-bet"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleSubmitBet}
+                disabled={createBetMutation.isPending || calculateBetTotal() !== 0}
+                data-testid="button-save-bet"
+              >
+                {createBetMutation.isPending ? "Saving..." : "Save Bet"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -418,7 +724,7 @@ export default function Ledger() {
           </CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {ledgerResults?.balances && ledgerResults.balances.length > 0 ? (
+          {combinedLedgerResults?.balances && combinedLedgerResults.balances.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -430,7 +736,7 @@ export default function Ledger() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ledgerResults.balances.map((balance) => (
+                {combinedLedgerResults.balances.map((balance) => (
                   <TableRow key={balance.playerId} data-testid={`row-player-${balance.playerId}`}>
                     <TableCell className="font-medium whitespace-nowrap">{balance.playerName}</TableCell>
                     <TableCell className="text-right whitespace-nowrap">{balance.matchesPlayed}</TableCell>
@@ -472,11 +778,11 @@ export default function Ledger() {
           <CardTitle>Transaction History</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          {ledgerResults?.entries && ledgerResults.entries.length > 0 ? (
+          {combinedLedgerResults?.entries && combinedLedgerResults.entries.length > 0 ? (
             (() => {
               // Separate individual bets (Skins) from team-based bets
-              const skinsEntries = ledgerResults.entries.filter(e => e.betType === 'Skins');
-              const teamEntries = ledgerResults.entries.filter(e => e.betType !== 'Skins');
+              const skinsEntries = combinedLedgerResults.entries.filter(e => e.betType === 'Skins');
+              const teamEntries = combinedLedgerResults.entries.filter(e => e.betType !== 'Skins');
               
               // Group team-based entries by match+betType to consolidate team view
               // Use teamIndex (0 or 1) as authoritative team identifier
@@ -722,6 +1028,63 @@ export default function Ledger() {
           )}
         </CardContent>
       </Card>
+      
+      {/* Manual Bets Section */}
+      {manualBets && manualBets.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-primary" />
+              Manual Bets
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="whitespace-nowrap">Date</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Players</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {manualBets.map((bet) => (
+                  <TableRow key={bet.id} data-testid={`row-manual-bet-${bet.id}`}>
+                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                      {bet.createdAt ? format(new Date(bet.createdAt), "MMM d, yyyy") : "-"}
+                    </TableCell>
+                    <TableCell className="font-medium">{bet.description}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {bet.entries.map((entry) => (
+                          <div key={entry.id} className="flex items-center gap-2">
+                            <span className="text-sm">{entry.playerName}</span>
+                            <span className={`text-sm font-medium ${entry.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {entry.amount >= 0 ? '+' : ''}${(entry.amount / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteBetMutation.mutate(bet.id)}
+                        disabled={deleteBetMutation.isPending}
+                        data-testid={`button-delete-bet-${bet.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={detailModal !== null} onOpenChange={(open) => !open && setDetailModal(null)}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" data-testid="dialog-ledger-detail">
@@ -731,8 +1094,8 @@ export default function Ledger() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            {detailModal && ledgerResults?.entries && (() => {
-              const playerEntries = ledgerResults.entries.filter(e => e.playerId === detailModal.playerId);
+            {detailModal && combinedLedgerResults?.entries && (() => {
+              const playerEntries = combinedLedgerResults.entries.filter(e => e.playerId === detailModal.playerId);
               const filteredEntries = detailModal.type === "won" 
                 ? playerEntries.filter(e => e.amount > 0)
                 : detailModal.type === "lost"

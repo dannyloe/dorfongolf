@@ -3080,5 +3080,78 @@ Rules:
     }
   });
 
+  // ===== MANUAL BETS =====
+  
+  app.get(api.manualBets.list.path, async (req, res) => {
+    try {
+      const bets = await storage.getManualBets();
+      res.json(bets.map(bet => ({
+        ...bet,
+        createdAt: bet.createdAt?.toISOString() || null,
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post(api.manualBets.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = parseInt(user.claims.sub);
+      
+      const result = api.manualBets.create.input.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+      
+      const { description, entries } = result.data;
+      
+      // Server-side validation: minimum 2 entries
+      if (entries.length < 2) {
+        return res.status(400).json({ message: "At least 2 players required" });
+      }
+      
+      // Server-side validation: amounts must sum to zero
+      const total = entries.reduce((sum, e) => sum + e.amount, 0);
+      if (Math.abs(total) > 1) { // Allow for 1 cent rounding difference
+        return res.status(400).json({ message: "Bet amounts must sum to zero" });
+      }
+      
+      // Server-side validation: no duplicate players in the same bet
+      // Prefer presetPlayerId if available, fallback to playerName
+      const playerKeys = entries.map(e => e.presetPlayerId ? `id:${e.presetPlayerId}` : `name:${e.playerName.toLowerCase().trim()}`);
+      if (new Set(playerKeys).size !== playerKeys.length) {
+        return res.status(400).json({ message: "Duplicate players not allowed in the same bet" });
+      }
+      
+      const bet = await storage.createManualBet(description, entries, isNaN(userId) ? undefined : userId);
+      
+      res.status(201).json({
+        ...bet,
+        createdAt: bet.createdAt?.toISOString() || null,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.delete(api.manualBets.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const betId = parseInt(req.params.id);
+      const success = await storage.deleteManualBet(betId);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Manual bet not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }

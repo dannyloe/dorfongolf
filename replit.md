@@ -76,6 +76,23 @@ Preferred communication style: Simple, everyday language.
   - `players` - Side match players updated
 - **UI**: Replace button (refresh icon) in Teams tab for each player; opens dialog to select replacement from roster
 
+### Manual Bet Entry
+- **Feature**: Users can record bets that occurred outside of tracked matches (e.g., bets at other courses)
+- **Tables**:
+  - `manualBets` - Stores bet metadata (description, creator, timestamp)
+  - `manualBetEntries` - Stores individual player amounts for each bet
+- **API Endpoints**:
+  - `GET /api/manual-bets` - List all manual bets with entries
+  - `POST /api/manual-bets` - Create a new manual bet
+  - `DELETE /api/manual-bets/:id` - Delete a manual bet
+- **Validation (Server-side)**:
+  - Amounts must sum to zero (what one loses, another gains)
+  - Minimum 2 players required
+  - No duplicate players in the same bet
+- **Data Format**: Amounts stored in cents (like other transaction amounts)
+- **Ledger Integration**: Manual bets are combined with match results in the ledger, using presetPlayerId for consistent player identification
+- **UI Location**: "Add Bet" button in Ledger page filters; recorded bets shown in dedicated "Manual Bets" section
+
 ### Match-Specific Course Handicap Overrides
 - In expanded match view for net matches, course handicaps are displayed for each player
 - Creators can click on any player's course handicap to override it for that specific match

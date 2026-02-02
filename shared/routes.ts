@@ -1538,6 +1538,70 @@ export const api = {
       },
     },
   },
+  
+  // Manual bets API
+  manualBets: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/manual-bets',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          description: z.string(),
+          createdAt: z.string().nullable(),
+          creatorId: z.number().nullable(),
+          entries: z.array(z.object({
+            id: z.number(),
+            betId: z.number(),
+            playerName: z.string(),
+            presetPlayerId: z.number().nullable(),
+            amount: z.number(),
+          })),
+        })),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/manual-bets',
+      input: z.object({
+        description: z.string().min(1),
+        entries: z.array(z.object({
+          playerName: z.string().min(1),
+          presetPlayerId: z.number().optional(),
+          amount: z.number(), // positive = won, negative = lost
+        })).min(2), // At least 2 players
+      }).refine(data => {
+        // Total amounts must sum to zero
+        const total = data.entries.reduce((sum, e) => sum + e.amount, 0);
+        return total === 0;
+      }, { message: "Total amounts must sum to zero" }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          description: z.string(),
+          createdAt: z.string().nullable(),
+          creatorId: z.number().nullable(),
+          entries: z.array(z.object({
+            id: z.number(),
+            betId: z.number(),
+            playerName: z.string(),
+            presetPlayerId: z.number().nullable(),
+            amount: z.number(),
+          })),
+        }),
+        400: z.object({ message: z.string() }),
+        401: z.object({ message: z.string() }),
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/manual-bets/:id',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

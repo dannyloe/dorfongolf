@@ -3,6 +3,7 @@ import {
   matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   verificationCodes, notificationPreferences, messages,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
+  manualBets, manualBetEntries,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -18,6 +19,7 @@ import {
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
   type RyderCupTransaction, type RyderCupTransactionSplit, type RyderCupClosestToHole,
+  type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
@@ -64,6 +66,11 @@ export interface IStorage {
   recordClosestToHoleWinner(dayId: number, holeNumber: number, winnerName: string): Promise<RyderCupClosestToHole>;
   getClosestToHoleWinners(dayId: number): Promise<RyderCupClosestToHole[]>;
   getAllClosestToHoleWinners(eventId: number): Promise<RyderCupClosestToHole[]>;
+  
+  // Manual Bet methods
+  getManualBets(): Promise<ManualBetWithEntries[]>;
+  createManualBet(description: string, entries: { playerName: string; presetPlayerId?: number; amount: number }[], creatorId?: number): Promise<ManualBetWithEntries>;
+  deleteManualBet(betId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2687,6 +2694,75 @@ export class DatabaseStorage implements IStorage {
     }
     
     return convertedScores;
+  }
+  
+  // Manual Bet methods
+  async getManualBets(): Promise<ManualBetWithEntries[]> {
+    const bets = await db.select().from(manualBets).orderBy(desc(manualBets.createdAt));
+    const entries = await db.select().from(manualBetEntries);
+    
+    // Group entries by betId
+    const entriesByBetId = new Map<number, ManualBetEntry[]>();
+    for (const entry of entries) {
+      if (!entriesByBetId.has(entry.betId)) {
+        entriesByBetId.set(entry.betId, []);
+      }
+      entriesByBetId.get(entry.betId)!.push(entry);
+    }
+    
+    return bets.map(bet => ({
+      ...bet,
+      entries: entriesByBetId.get(bet.id) || [],
+    }));
+  }
+  
+  async createManualBet(
+    description: string, 
+    entries: { playerName: string; presetPlayerId?: number; amount: number }[], 
+    creatorId?: number
+  ): Promise<ManualBetWithEntries> {
+    // Create the bet
+    const [bet] = await db.insert(manualBets).values({
+      description,
+      creatorId: creatorId ?? null,
+    }).returning();
+    
+    // Create entries, looking up presetPlayerId if not provided
+    const createdEntries: ManualBetEntry[] = [];
+    for (const entry of entries) {
+      let presetPlayerId = entry.presetPlayerId ?? null;
+      
+      // If no presetPlayerId provided, try to look it up by name
+      if (!presetPlayerId) {
+        const [preset] = await db.select()
+          .from(presetPlayers)
+          .where(eq(presetPlayers.name, entry.playerName));
+        if (preset) {
+          presetPlayerId = preset.id;
+        }
+      }
+      
+      const [created] = await db.insert(manualBetEntries).values({
+        betId: bet.id,
+        playerName: entry.playerName,
+        presetPlayerId,
+        amount: entry.amount,
+      }).returning();
+      createdEntries.push(created);
+    }
+    
+    return {
+      ...bet,
+      entries: createdEntries,
+    };
+  }
+  
+  async deleteManualBet(betId: number): Promise<boolean> {
+    // Delete entries first
+    await db.delete(manualBetEntries).where(eq(manualBetEntries.betId, betId));
+    // Delete the bet
+    const result = await db.delete(manualBets).where(eq(manualBets.id, betId)).returning();
+    return result.length > 0;
   }
 }
 

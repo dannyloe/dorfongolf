@@ -384,6 +384,17 @@ export function useCourses() {
   });
 }
 
+export function usePresetPlayers() {
+  return useQuery({
+    queryKey: [api.presetPlayers.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.presetPlayers.list.path, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch preset players");
+      return res.json() as Promise<{ id: number; name: string }[]>;
+    },
+  });
+}
+
 type CreateCourseInput = z.infer<typeof api.courses.create.input>;
 type UpdateHoleInput = z.infer<typeof api.courses.updateHole.input>;
 

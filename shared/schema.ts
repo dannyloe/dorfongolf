@@ -670,6 +670,40 @@ export const ryderCupClosestToHole = pgTable("ryder_cup_closest_to_hole", {
   winnerPresetPlayerId: integer("winner_preset_player_id"), // References presetPlayers.id for dynamic name updates
 });
 
+// === MANUAL BETS ===
+// For recording bet results that weren't tracked automatically
+
+export const manualBets = pgTable("manual_bets", {
+  id: serial("id").primaryKey(),
+  description: text("description").notNull(), // e.g. "Nassau side bet", "Putting contest"
+  createdAt: timestamp("created_at").defaultNow(),
+  creatorId: integer("creator_id"), // References users.id (optional)
+});
+
+export const manualBetEntries = pgTable("manual_bet_entries", {
+  id: serial("id").primaryKey(),
+  betId: integer("bet_id").notNull(), // References manualBets.id
+  playerName: text("player_name").notNull(),
+  presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name updates
+  amount: integer("amount").notNull(), // Amount in cents (positive = won, negative = lost)
+});
+
+// Manual bet relations
+export const manualBetsRelations = relations(manualBets, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [manualBets.creatorId],
+    references: [users.id],
+  }),
+  entries: many(manualBetEntries),
+}));
+
+export const manualBetEntriesRelations = relations(manualBetEntries, ({ one }) => ({
+  bet: one(manualBets, {
+    fields: [manualBetEntries.betId],
+    references: [manualBets.id],
+  }),
+}));
+
 // === RYDER CUP RELATIONS ===
 
 export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many }) => ({
@@ -889,6 +923,27 @@ export type InsertRyderCupTransactionSplit = z.infer<typeof insertRyderCupTransa
 
 export type RyderCupClosestToHole = typeof ryderCupClosestToHole.$inferSelect;
 export type InsertRyderCupClosestToHole = z.infer<typeof insertRyderCupClosestToHoleSchema>;
+
+// Manual bet insert schemas
+export const insertManualBetSchema = createInsertSchema(manualBets).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertManualBetEntrySchema = createInsertSchema(manualBetEntries).omit({
+  id: true,
+});
+
+export type ManualBet = typeof manualBets.$inferSelect;
+export type InsertManualBet = z.infer<typeof insertManualBetSchema>;
+
+export type ManualBetEntry = typeof manualBetEntries.$inferSelect;
+export type InsertManualBetEntry = z.infer<typeof insertManualBetEntrySchema>;
+
+// Manual bet with entries type
+export type ManualBetWithEntries = ManualBet & {
+  entries: ManualBetEntry[];
+};
 
 // === RYDER CUP API TYPES ===
 
