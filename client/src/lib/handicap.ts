@@ -21,19 +21,32 @@ export interface HoleHandicapData {
 
 export function calculateCourseHandicap(
   handicapIndex: number | null,
-  slopeRating: number | null
+  slopeRating: number | null,
+  courseRating: number | null = null,
+  par: number | null = null
 ): number {
   if (handicapIndex === null || slopeRating === null) {
     return 0;
   }
   const index = handicapIndex / 10;
-  const rawCourseHandicap = index * (slopeRating / 113);
+  const slopeAdjustment = index * (slopeRating / 113);
+  
+  // USGA formula: Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
+  // Course rating is stored as tenths (e.g., 721 = 72.1)
+  let courseRatingAdjustment = 0;
+  if (courseRating !== null && par !== null) {
+    const ratingValue = courseRating / 10;
+    courseRatingAdjustment = ratingValue - par;
+  }
+  
+  const rawCourseHandicap = slopeAdjustment + courseRatingAdjustment;
   return Math.round(rawCourseHandicap);
 }
 
 export function calculateRelativeHandicaps(
   players: PlayerHandicapInfo[],
-  tees: CourseTee[]
+  tees: CourseTee[],
+  holes: CourseHole[] = []
 ): PlayerCourseHandicap[] {
   if (players.length === 0) {
     return [];
@@ -41,10 +54,16 @@ export function calculateRelativeHandicaps(
   
   const teeMap = new Map(tees.map(t => [t.id, t]));
   
+  // Calculate course par from holes (sum of all hole pars)
+  const coursePar = holes.length > 0 
+    ? holes.reduce((sum, h) => sum + (h.par ?? 0), 0)
+    : null;
+  
   const courseHandicaps = players.map(player => {
     const tee = player.teeId ? teeMap.get(player.teeId) : null;
     const slopeRating = tee?.slopeRating ?? null;
-    const courseHandicap = calculateCourseHandicap(player.handicapIndex, slopeRating);
+    const courseRating = tee?.courseRating ?? null;
+    const courseHandicap = calculateCourseHandicap(player.handicapIndex, slopeRating, courseRating, coursePar);
     
     return {
       playerId: player.playerId,
@@ -125,8 +144,8 @@ export function buildNetScoringContext(
   holes: CourseHole[],
   courseHandicapOverrides?: CourseHandicapOverride[]
 ): NetScoringContext {
-  // Calculate course handicaps from handicap index and slope rating
-  const calculatedHandicaps = calculateRelativeHandicaps(players, tees);
+  // Calculate course handicaps from handicap index, slope rating, course rating, and par
+  const calculatedHandicaps = calculateRelativeHandicaps(players, tees, holes);
   
   // Create a map to track course handicaps (with overrides applied)
   const courseHandicaps = new Map<number, number>();

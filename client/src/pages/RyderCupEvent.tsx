@@ -874,6 +874,9 @@ export default function RyderCupEvent() {
             }
           }
           
+          // Calculate course par from holes (holes data includes par field at runtime)
+          const coursePar = (courseData.holes as Array<{ par?: number }>).reduce((sum: number, h) => sum + (h.par ?? 0), 0);
+          
           const courseHandicaps = new Map<number, number>();
           const playerHandicaps = new Map<number, number>();
           for (const team of em.teams || []) {
@@ -883,7 +886,8 @@ export default function RyderCupEvent() {
               if (handicapIndex !== null && handicapIndex !== undefined) {
                 const tee = courseData.tees.find((t: { id: number }) => t.id === teeId) || courseData.tees[0];
                 if (tee) {
-                  const courseHcp = calculateCourseHandicap(handicapIndex / 10, tee.slopeRating);
+                  // USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating - Par)
+                  const courseHcp = calculateCourseHandicap(handicapIndex, tee.slopeRating, tee.courseRating, coursePar);
                   if (courseHcp !== null) {
                     courseHandicaps.set(member.playerId, courseHcp);
                     playerHandicaps.set(member.playerId, courseHcp);
@@ -2262,10 +2266,17 @@ export default function RyderCupEvent() {
                     return "text-blue-800 font-bold";
                   };
 
+                  // USGA formula: Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
+                  const courseParTotal = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0);
                   const calculateCourseHandicap = (handicapIndex: number | null, tee: CourseTee | undefined): number | null => {
                     if (handicapIndex === null || !tee) return null;
                     const slopeRating = tee.slopeRating || 113;
-                    return Math.round(handicapIndex * (slopeRating / 113));
+                    const slopeAdjustment = handicapIndex * (slopeRating / 113);
+                    // Course rating is stored as tenths (e.g., 721 = 72.1)
+                    const courseRatingAdjustment = tee.courseRating && courseParTotal > 0 
+                      ? (tee.courseRating / 10) - courseParTotal 
+                      : 0;
+                    return Math.round(slopeAdjustment + courseRatingAdjustment);
                   };
 
                   const getPlayerTee = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): CourseTee | undefined => {

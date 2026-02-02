@@ -128,6 +128,9 @@ export default function RyderCupScorecard() {
   const currentHoleData = courseHoles.find(h => h.holeNumber === currentHole);
   const holePar = currentHoleData?.par || 4;
   const holeHandicap = currentHoleData?.handicap ?? currentHole;
+  
+  // Calculate course par from all holes for USGA formula
+  const coursePar = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0);
 
   const getPlayerScore = (side: typeof sideA, playerNumber: 1 | 2, holeNumber: number): number | null => {
     if (!side) return null;
@@ -146,10 +149,16 @@ export default function RyderCupScorecard() {
     return playerNumber === 1 ? side.player1HandicapIndex : side.player2HandicapIndex;
   };
 
+  // USGA formula: Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
   const calculateCourseHandicap = (handicapIndex: number | null, tee: CourseTee | undefined): number | null => {
     if (handicapIndex === null || !tee) return null;
     const slopeRating = tee.slopeRating || 113;
-    return Math.round(handicapIndex * (slopeRating / 113));
+    const slopeAdjustment = handicapIndex * (slopeRating / 113);
+    // Course rating is stored as tenths (e.g., 721 = 72.1)
+    const courseRatingAdjustment = tee.courseRating && coursePar > 0 
+      ? (tee.courseRating / 10) - coursePar 
+      : 0;
+    return Math.round(slopeAdjustment + courseRatingAdjustment);
   };
 
   const handleScoreClick = (sideIndex: number, playerNumber: 1 | 2) => {

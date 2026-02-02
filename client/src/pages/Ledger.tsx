@@ -144,6 +144,9 @@ export default function Ledger() {
         teeLookup.set(tee.id, { slopeRating: tee.slopeRating, courseRating: tee.courseRating });
       }
       
+      // Calculate course par from holes (holes data includes par field at runtime)
+      const coursePar = (courseInfo.holes as Array<{ par?: number }>).reduce((sum: number, h) => sum + (h.par ?? 0), 0);
+      
       // Get all players from event matches for this match and build player handicaps
       const courseHandicaps = new Map<number, number>();
       for (const em of data.eventMatches) {
@@ -161,9 +164,12 @@ export default function Ledger() {
             if (teeId && teeLookup.has(teeId)) {
               const teeInfo = teeLookup.get(teeId)!;
               // calculateCourseHandicap expects handicapIndex in stored format (already * 10)
+              // USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating - Par)
               const courseHandicap = calculateCourseHandicap(
                 player.handicapIndex,
-                teeInfo.slopeRating
+                teeInfo.slopeRating,
+                teeInfo.courseRating,
+                coursePar
               );
               courseHandicaps.set(member.playerId, courseHandicap);
             } else {
