@@ -245,6 +245,15 @@ export default function RyderCupEvent() {
   const [transactionDescription, setTransactionDescription] = useState("");
   const [transactionAmount, setTransactionAmount] = useState("");
   const [transactionSplitPlayers, setTransactionSplitPlayers] = useState<string[]>([]);
+  
+  // Manual bet state
+  const [addBetOpen, setAddBetOpen] = useState(false);
+  const [betDescription, setBetDescription] = useState("");
+  const [betEntries, setBetEntries] = useState<{ presetPlayerId: number | null; playerName: string; amount: string }[]>([
+    { presetPlayerId: null, playerName: "", amount: "" },
+    { presetPlayerId: null, playerName: "", amount: "" },
+  ]);
+  
   const [earningsBreakdownPlayer, setEarningsBreakdownPlayer] = useState<string | null>(null);
   const [sideBetsBreakdownPlayer, setSideBetsBreakdownPlayer] = useState<string | null>(null);
   const [expensesBreakdownPlayer, setExpensesBreakdownPlayer] = useState<string | null>(null);
@@ -459,6 +468,23 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to add transaction", variant: "destructive" });
+    },
+  });
+  
+  // Manual bet mutation
+  const createManualBetMutation = useMutation({
+    mutationFn: async (data: { description: string; entries: { playerName: string; presetPlayerId?: number; amount: number }[] }) => {
+      return apiRequest("POST", "/api/manual-bets", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets"] });
+      toast({ title: "Bet recorded successfully" });
+      setAddBetOpen(false);
+      setBetDescription("");
+      setBetEntries([{ presetPlayerId: null, playerName: "", amount: "" }, { presetPlayerId: null, playerName: "", amount: "" }]);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -714,6 +740,75 @@ export default function RyderCupEvent() {
 
   const teamA = event.teams[0];
   const teamB = event.teams[1];
+  
+  // Helper functions for manual bet dialog
+  const allEventPlayers = [...(teamA?.members || []), ...(teamB?.members || [])];
+  
+  const addBetEntry = () => {
+    setBetEntries([...betEntries, { presetPlayerId: null, playerName: "", amount: "" }]);
+  };
+  
+  const removeBetEntry = (index: number) => {
+    if (betEntries.length > 2) {
+      setBetEntries(betEntries.filter((_, i) => i !== index));
+    }
+  };
+  
+  const updateBetEntryPlayer = (index: number, playerName: string) => {
+    const updated = [...betEntries];
+    const player = allEventPlayers.find(p => p.playerName === playerName);
+    updated[index].presetPlayerId = player?.presetPlayerId || null;
+    updated[index].playerName = playerName;
+    setBetEntries(updated);
+  };
+  
+  const updateBetEntryAmount = (index: number, amount: string) => {
+    const updated = [...betEntries];
+    updated[index].amount = amount;
+    setBetEntries(updated);
+  };
+  
+  const calculateBetTotal = () => {
+    return betEntries.reduce((sum, e) => {
+      const amount = parseFloat(e.amount) || 0;
+      return sum + amount;
+    }, 0);
+  };
+  
+  const handleSubmitBet = () => {
+    if (!betDescription.trim()) {
+      toast({ title: "Please enter a description", variant: "destructive" });
+      return;
+    }
+    
+    const validEntries = betEntries.filter(e => e.playerName.trim() && e.amount);
+    if (validEntries.length < 2) {
+      toast({ title: "At least 2 players required", variant: "destructive" });
+      return;
+    }
+    
+    // Check for duplicate players
+    const playerNames = validEntries.map(e => e.playerName);
+    if (new Set(playerNames).size !== playerNames.length) {
+      toast({ title: "Each player can only appear once", variant: "destructive" });
+      return;
+    }
+    
+    const total = calculateBetTotal();
+    if (Math.abs(total) > 0.01) {
+      toast({ title: "Total must equal zero", description: `Current total: $${total.toFixed(2)}`, variant: "destructive" });
+      return;
+    }
+    
+    createManualBetMutation.mutate({
+      description: betDescription.trim(),
+      entries: validEntries.map(e => ({
+        playerName: e.playerName.trim(),
+        presetPlayerId: e.presetPlayerId || undefined,
+        amount: Math.round(parseFloat(e.amount) * 100), // Convert to cents
+      })),
+    });
+  };
 
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -3787,13 +3882,23 @@ export default function RyderCupEvent() {
                 </CardDescription>
               </div>
               {isCreatorOrAdmin && (
-                <Button
-                  size="sm"
-                  onClick={() => setAddTransactionOpen(true)}
-                  data-testid="button-add-transaction"
-                >
-                  <Plus className="w-4 h-4 mr-1" /> Add Expense
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => setAddTransactionOpen(true)}
+                    data-testid="button-add-transaction"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add Expense
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAddBetOpen(true)}
+                    data-testid="button-add-bet"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add Bet
+                  </Button>
+                </div>
               )}
             </CardHeader>
             <CardContent>
@@ -4154,6 +4259,108 @@ export default function RyderCupEvent() {
                 data-testid="button-save-transaction"
               >
                 Add Expense
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Add Manual Bet Dialog */}
+      <Dialog open={addBetOpen} onOpenChange={setAddBetOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record Manual Bet</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="bet-description">Description</Label>
+              <Input
+                id="bet-description"
+                placeholder="e.g., Nassau bet at Torrey Pines"
+                value={betDescription}
+                onChange={(e) => setBetDescription(e.target.value)}
+                data-testid="input-bet-description"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Players & Amounts</Label>
+              <p className="text-xs text-muted-foreground">
+                Positive amounts are winnings, negative are losses. Total must equal zero.
+              </p>
+              {betEntries.map((entry, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <Select
+                    value={entry.playerName || ""}
+                    onValueChange={(value) => updateBetEntryPlayer(index, value)}
+                  >
+                    <SelectTrigger className="flex-1" data-testid={`select-bet-player-${index}`}>
+                      <SelectValue placeholder="Select player" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allEventPlayers.map((p) => (
+                        <SelectItem key={p.playerName} value={p.playerName}>{p.playerName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Amount"
+                    className="w-24"
+                    value={entry.amount}
+                    onChange={(e) => updateBetEntryAmount(index, e.target.value)}
+                    data-testid={`input-bet-amount-${index}`}
+                  />
+                  {betEntries.length > 2 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeBetEntry(index)}
+                      data-testid={`button-remove-entry-${index}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={addBetEntry}
+                className="w-full"
+                data-testid="button-add-entry"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Player
+              </Button>
+            </div>
+            
+            <div className="flex justify-between items-center text-sm">
+              <span className="text-muted-foreground">Total:</span>
+              <span className={calculateBetTotal() === 0 ? "text-green-600" : "text-red-600"}>
+                ${calculateBetTotal().toFixed(2)}
+                {calculateBetTotal() !== 0 && " (must be $0.00)"}
+              </span>
+            </div>
+            
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setAddBetOpen(false)}
+                data-testid="button-cancel-bet"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleSubmitBet}
+                disabled={createManualBetMutation.isPending || calculateBetTotal() !== 0}
+                data-testid="button-save-bet"
+              >
+                {createManualBetMutation.isPending ? "Saving..." : "Save Bet"}
               </Button>
             </div>
           </div>
