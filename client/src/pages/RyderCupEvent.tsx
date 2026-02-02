@@ -294,6 +294,16 @@ export default function RyderCupEvent() {
   const { data: presetPlayers = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["/api/preset-players"],
   });
+  
+  // Query for manual bets
+  const { data: manualBets = [] } = useQuery<{
+    id: number;
+    description: string;
+    createdAt: string | null;
+    entries: { id: number; playerName: string; presetPlayerId: number | null; amount: number }[];
+  }[]>({
+    queryKey: ["/api/manual-bets"],
+  });
 
   // Get current day's course info for scorecard
   const currentDay = event?.days.find(d => d.dayNumber === selectedDay);
@@ -3918,6 +3928,16 @@ export default function RyderCupEvent() {
                     expenseBalances[s.playerName] = (expenseBalances[s.playerName] || 0) - s.amount;
                   });
                 });
+                
+                // Calculate manual bet balances
+                const manualBetBalances: Record<string, number> = {};
+                allPlayers.forEach(name => { manualBetBalances[name] = 0; });
+                
+                manualBets.forEach(bet => {
+                  bet.entries.forEach(entry => {
+                    manualBetBalances[entry.playerName] = (manualBetBalances[entry.playerName] || 0) + entry.amount;
+                  });
+                });
 
                 // Calculate net position based on includeBuyInInLedger setting
                 const includeBuyIn = event?.includeBuyInInLedger ?? true;
@@ -3943,12 +3963,13 @@ export default function RyderCupEvent() {
                 const netPosition: Record<string, number> = {};
                 allPlayers.forEach(name => {
                   const sideBets = sideBetData.balances[name] || 0;
+                  const manualBetsTotal = manualBetBalances[name] || 0;
                   if (includeBuyIn) {
-                    // Include buy-in (negative) + earnings + side bets + expenses
-                    netPosition[name] = -buyInAmount + (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0);
+                    // Include buy-in (negative) + earnings + side bets + expenses + manual bets
+                    netPosition[name] = -buyInAmount + (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0) + manualBetsTotal;
                   } else {
-                    // Exclude earnings and buy-in from net - show side bets + expenses only
-                    netPosition[name] = sideBets + (expenseBalances[name] || 0);
+                    // Exclude earnings and buy-in from net - show side bets + expenses + manual bets only
+                    netPosition[name] = sideBets + (expenseBalances[name] || 0) + manualBetsTotal;
                   }
                 });
 
@@ -3997,6 +4018,7 @@ export default function RyderCupEvent() {
                                 </th>
                               ))}
                               <th className="text-right py-2 px-2">Expenses</th>
+                              <th className="text-right py-2 px-2">Manual Bets</th>
                               <th className="text-right py-2 pl-2 font-bold">
                                 {includeBuyIn ? "Net" : "Owed"}
                               </th>
@@ -4010,6 +4032,7 @@ export default function RyderCupEvent() {
                                 const earnings = payouts[playerName] || 0;
                                 const sideBets = sideBetData.balances[playerName] || 0;
                                 const expenses = expenseBalances[playerName] || 0;
+                                const manualBetsAmount = manualBetBalances[playerName] || 0;
                                 const net = netPosition[playerName] || 0;
                                 return (
                                   <tr key={playerName} className="border-b border-muted/50">
