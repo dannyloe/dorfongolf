@@ -1032,6 +1032,24 @@ export default function RyderCupEvent() {
       amount: Math.round(e.amount * 100),
     }));
 
+    // DEBUG: Compare entries sum vs balances for each player
+    const entrySums: Record<string, number> = {};
+    entriesInCents.forEach(e => {
+      entrySums[e.playerName] = (entrySums[e.playerName] || 0) + e.amount;
+    });
+    
+    // Log discrepancies
+    for (const name of Object.keys(entrySums)) {
+      const entryTotal = entrySums[name] || 0;
+      const balanceTotal = balancesByName[name] || 0;
+      if (entryTotal !== balanceTotal) {
+        console.log(`[SIDE BET DISCREPANCY] ${name}: entries=${entryTotal} balances=${balanceTotal} diff=${entryTotal - balanceTotal}`);
+        // Log individual entries for this player
+        const playerEntries = entriesInCents.filter(e => e.playerName === name);
+        console.log(`[SIDE BET ENTRIES] ${name}:`, playerEntries.map(e => ({ match: e.matchName, amount: e.amount, isComplete: e.isComplete })));
+      }
+    }
+
     return { balances: balancesByName, entries: entriesInCents };
   };
 
@@ -2226,6 +2244,28 @@ export default function RyderCupEvent() {
                   const sortedEarnings = Object.entries(playerEarnings)
                     .filter(([_, amount]) => amount !== 0)
                     .sort((a, b) => b[1] - a[1]);
+                  
+                  // DEBUG: Compare Side Matches entries vs Ledger balances
+                  console.log('[SIDE MATCHES DEBUG] Container:', dayContainer.id, dayContainer.name);
+                  console.log('[SIDE MATCHES DEBUG] containerEventMatches count:', containerEventMatches.length);
+                  console.log('[SIDE MATCHES DEBUG] allMatchEntries count:', allMatchEntries.length);
+                  console.log('[SIDE MATCHES DEBUG] total entries count:', sideBetData.entries.length);
+                  
+                  // Check for entries that don't match any container event match
+                  const matchIdsInEntries = new Set(sideBetData.entries.map(e => e.matchId));
+                  const containerMatchIds = new Set(containerEventMatches.map((em: any) => em.id));
+                  const unmatchedEntryMatchIds = [...matchIdsInEntries].filter(id => !containerMatchIds.has(id));
+                  if (unmatchedEntryMatchIds.length > 0) {
+                    console.log('[SIDE MATCHES DEBUG] Unmatched entry matchIds:', unmatchedEntryMatchIds);
+                  }
+                  
+                  // Compare earnings vs balances for each player
+                  for (const [name, earnings] of Object.entries(playerEarnings)) {
+                    const balance = sideBetData.balances[name] || 0;
+                    if (earnings !== balance) {
+                      console.log(`[SIDE MATCHES MISMATCH] ${name}: entries=${earnings} balance=${balance} diff=${earnings - balance}`);
+                    }
+                  }
                   
                   const isComplete = dayContainer.completed || allMatchEntries.length > 0;
 
