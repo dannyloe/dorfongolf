@@ -2105,13 +2105,19 @@ Rules:
         const courseHoles = day.courseId ? await storage.getCourseHoles(day.courseId) : [];
         const courseTees = day.courseId ? await storage.getCourseTees(day.courseId) : [];
         
+        // Calculate course par from holes
+        const coursePar = courseHoles.length > 0
+          ? courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0)
+          : null;
+        
         for (const pairing of day.pairings) {
           if (pairing.sides.length !== 2) continue;
           
           const sideA = pairing.sides[0];
           const sideB = pairing.sides[1];
           
-          // Calculate course handicaps for each player using tee slope
+          // Calculate course handicaps using full USGA formula:
+          // Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
           const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
             const hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
             const teeId = playerNum === 1 ? s.player1TeeId : s.player2TeeId;
@@ -2120,7 +2126,17 @@ Rules:
             // Fall back to first tee if player's tee not found in this course
             const tee = (teeId ? courseTees.find(t => t.id === teeId) : null) ?? courseTees[0];
             const slopeRating = tee?.slopeRating || 113;
-            return Math.round(handicapIndex * (slopeRating / 113));
+            const slopeAdjustment = handicapIndex * (slopeRating / 113);
+            
+            // Add course rating adjustment if available
+            let courseRatingAdjustment = 0;
+            const courseRating = tee?.courseRating;
+            if (courseRating !== null && courseRating !== undefined && coursePar !== null) {
+              const ratingValue = courseRating / 10; // Course rating stored as tenths
+              courseRatingAdjustment = ratingValue - coursePar;
+            }
+            
+            return Math.round(slopeAdjustment + courseRatingAdjustment);
           };
           
           const courseHcps = [
