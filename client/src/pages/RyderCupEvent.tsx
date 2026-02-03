@@ -1943,9 +1943,15 @@ export default function RyderCupEvent() {
                                 const hasOverride = sideHcpTenths !== null && sideHcpTenths !== undefined;
                                 const handicapIndexTenths = hasOverride ? sideHcpTenths : memberHcpTenths;
                                 const handicapIndex = handicapIndexTenths !== null && handicapIndexTenths !== undefined ? handicapIndexTenths / 10 : null;
-                                const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
+                                const tee = (teeId ? courseTees.find(t => t.id === teeId) : null) ?? courseTees[0];
+                                // Use full USGA formula: Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
+                                const courseParForDisplay = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0);
                                 const courseHcp = handicapIndex !== null && tee
-                                  ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
+                                  ? (() => {
+                                      const slopeAdj = handicapIndex * ((tee.slopeRating || 113) / 113);
+                                      const ratingAdj = tee.courseRating && courseParForDisplay > 0 ? (tee.courseRating / 10) - courseParForDisplay : 0;
+                                      return Math.round(slopeAdj + ratingAdj);
+                                    })()
                                   : null;
                                 const isEditingThis = editingSideHandicap?.sideId === sideA?.id && editingSideHandicap?.playerNumber === playerNumber;
                                 return (
@@ -2043,9 +2049,15 @@ export default function RyderCupEvent() {
                                 const hasOverride = sideHcpTenths !== null && sideHcpTenths !== undefined;
                                 const handicapIndexTenths = hasOverride ? sideHcpTenths : memberHcpTenths;
                                 const handicapIndex = handicapIndexTenths !== null && handicapIndexTenths !== undefined ? handicapIndexTenths / 10 : null;
-                                const tee = courseTees.find(t => t.id === teeId) || courseTees[0];
+                                const tee = (teeId ? courseTees.find(t => t.id === teeId) : null) ?? courseTees[0];
+                                // Use full USGA formula: Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
+                                const courseParForDisplayB = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0);
                                 const courseHcp = handicapIndex !== null && tee
-                                  ? Math.round(handicapIndex * ((tee.slopeRating || 113) / 113))
+                                  ? (() => {
+                                      const slopeAdj = handicapIndex * ((tee.slopeRating || 113) / 113);
+                                      const ratingAdj = tee.courseRating && courseParForDisplayB > 0 ? (tee.courseRating / 10) - courseParForDisplayB : 0;
+                                      return Math.round(slopeAdj + ratingAdj);
+                                    })()
                                   : null;
                                 const isEditingThis = editingSideHandicap?.sideId === sideB?.id && editingSideHandicap?.playerNumber === playerNumber;
                                 return (
