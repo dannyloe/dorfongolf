@@ -4097,9 +4097,11 @@ export default function RyderCupEvent() {
                               {player.scores.slice(0, 9).map((score, idx) => {
                                 const holeResult = skinsData.holeResults[idx];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
-                                const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
-                                const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 const strokesOnHole = player.strokesPerHole[idx] || 0;
+                                // Calculate net score for comparison (lowestScore is net when handicaps enabled)
+                                const netScore = score !== null && event.useHandicaps ? score - strokesOnHole : score;
+                                const isLowScore = holeResult?.lowestScore === netScore && holeResult?.winnerId === player.name;
+                                const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 return (
                                   <td
                                     key={idx}
@@ -4130,9 +4132,11 @@ export default function RyderCupEvent() {
                               {player.scores.slice(9, 18).map((score, idx) => {
                                 const holeResult = skinsData.holeResults[idx + 9];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
-                                const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
-                                const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 const strokesOnHole = player.strokesPerHole[idx + 9] || 0;
+                                // Calculate net score for comparison (lowestScore is net when handicaps enabled)
+                                const netScore = score !== null && event.useHandicaps ? score - strokesOnHole : score;
+                                const isLowScore = holeResult?.lowestScore === netScore && holeResult?.winnerId === player.name;
+                                const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 return (
                                   <td
                                     key={idx + 9}
