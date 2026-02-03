@@ -1500,13 +1500,16 @@ export default function RyderCupEvent() {
 
       const potentialWinner = playersWithMinScore[0];
 
-      // For holes 1-17: must also tie or beat lowest on next hole
+      // For holes 1-17: must make net par or better on next hole to validate the skin
       if (hole < 17) {
-        const nextHoleScores = players
-          .filter(p => p.scores[hole + 1] !== null)
-          .map(p => ({ name: p.name, strokes: p.scores[hole + 1]! }));
+        const nextHoleNumber = hole + 2; // hole is 0-indexed, holeNumber is 1-indexed
+        const nextHolePar = courseHoles.find(h => h.holeNumber === nextHoleNumber)?.par ?? 4;
+        
+        // Get the potential winner's score on the next hole
+        const winnerData = players.find(p => p.name === potentialWinner.name);
+        const winnerNextScore = winnerData?.scores[hole + 1] ?? null;
 
-        if (nextHoleScores.length === 0) {
+        if (winnerNextScore === null) {
           // Next hole not played yet - pending
           holeResults.push({
             holeNumber,
@@ -1519,11 +1522,11 @@ export default function RyderCupEvent() {
           continue;
         }
 
-        const nextMinScore = Math.min(...nextHoleScores.map(s => s.strokes));
-        const winnerNextScore = nextHoleScores.find(s => s.name === potentialWinner.name);
+        // Check if winner made par or better on the next hole
+        const madeParOrBetter = winnerNextScore <= nextHolePar;
 
-        if (winnerNextScore && winnerNextScore.strokes <= nextMinScore) {
-          // Winner tied or beat lowest on next hole - skin awarded
+        if (madeParOrBetter) {
+          // Winner made par or better on next hole - skin awarded
           skinCounts.set(potentialWinner.name, (skinCounts.get(potentialWinner.name) || 0) + 1);
           holeResults.push({
             holeNumber,
@@ -1534,7 +1537,7 @@ export default function RyderCupEvent() {
             isPending: false,
           });
         } else {
-          // Winner didn't tie/beat on next hole
+          // Winner didn't make par or better on next hole - no skin
           holeResults.push({
             holeNumber,
             winnerId: potentialWinner.name,
