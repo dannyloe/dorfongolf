@@ -927,8 +927,6 @@ export function calculateNassauSettlements(
     const teamBSize = teamB.members.length;
     const maxTeamSize = Math.max(teamASize, teamBSize);
     
-    console.log(`[NASSAU DEBUG] ${bet.name}: unitAmountCents=${unitAmountCents}, unitAmount=$${unitAmount}, teamASize=${teamASize}, teamBSize=${teamBSize}, maxTeamSize=${maxTeamSize}`);
-    
     let autoPressMultiplier = 1;
     let autoPressNullified = false;
     let autoPressTriggered = false;
@@ -1051,9 +1049,6 @@ export function calculateNassauSettlements(
       winAmount = effectiveTotalPot / winningTeamSize;
       loseAmount = effectiveUnitAmount;
     }
-    
-    console.log(`[NASSAU DEBUG] ${bet.name}: winner=${winner}, effectiveUnitAmount=$${effectiveUnitAmount}, winAmount=$${winAmount}, loseAmount=$${loseAmount}, winningTeam=${winningTeam.name}`);
-    console.log(`[NASSAU DEBUG] ${bet.name}: winningTeam members:`, winningTeam.members.map(m => `${m.player?.name}(id=${m.playerId})`));
     
     return {
       betName: bet.name,

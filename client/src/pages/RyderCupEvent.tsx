@@ -21,6 +21,20 @@ import { calculateLedger, type LedgerEntry, type NetScoringContext } from "@/lib
 import { calculateCourseHandicap } from "@/lib/handicap";
 import type { RyderCupEventResponse, RyderCupPairingSide, RyderCupPairingSideWithScores, RyderCupPairingScore, MATCH_TYPES, Match, Course, CourseTee, CourseHole } from "@shared/schema";
 
+type StoredResult = {
+  id: number;
+  eventMatchId: number;
+  playerId: number;
+  playerName: string;
+  amount: number;
+  betType?: string | null;
+  isComplete: boolean;
+  isAutoPress: boolean;
+  teamName?: string | null;
+  teamIndex?: number | null;
+  updatedAt?: string | null;
+};
+
 type SideMatchLedgerData = {
   matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; isHandicapped?: boolean; ryderCupDayNumber?: number | null }>;
   eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null; name?: string } }> }>; [key: string]: any }>;
@@ -28,6 +42,7 @@ type SideMatchLedgerData = {
   courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
   ryderCupScoresByDay?: Record<number, Record<string, Record<number, number>>>;
   ryderCupPlayerDataByDay?: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>;
+  storedResults?: StoredResult[];
 };
 
 type CourseWithHoles = Course & { holes: CourseHole[]; totalPar?: number };
@@ -262,6 +277,8 @@ export default function RyderCupEvent() {
   const [sideBetsExpanded, setSideBetsExpanded] = useState(false);
   const [dayEarningsBreakdown, setDayEarningsBreakdown] = useState<{ player: string; day: number } | null>(null);
   const [daySideBetsBreakdown, setDaySideBetsBreakdown] = useState<{ player: string; day: number } | null>(null);
+  const [activeTab, setActiveTab] = useState("schedule");
+  const [isRefreshingLedger, setIsRefreshingLedger] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
   const scanScorecard = useScanScorecard();
@@ -928,8 +945,47 @@ export default function RyderCupEvent() {
   
   const earningsByDay = calculateEarningsByDay();
 
-  // Calculate side bet earnings from side matches (computed inline to avoid hook issues)
-  const computeSideBetData = (): { balances: Record<string, number>; entries: LedgerEntry[] } => {
+  // Function to recalculate and save all side match results for the Event Ledger
+  const refreshSideMatchResults = async () => {
+    if (!sideMatchLedger?.eventMatches || sideMatchLedger.eventMatches.length === 0) return;
+    
+    setIsRefreshingLedger(true);
+    try {
+      // Calculate results using the same logic as computeSideBetData
+      const results = calculateSideBetResults();
+      
+      // Save results to the database for each event match
+      for (const em of sideMatchLedger.eventMatches) {
+        const matchEntries = results.entries.filter(e => e.matchId === em.id);
+        if (matchEntries.length === 0) continue;
+        
+        // Convert entries to the format expected by the API (amounts already in cents)
+        const resultsToSave = matchEntries.map(e => ({
+          playerId: e.playerId,
+          playerName: e.playerName,
+          amount: e.amount, // Already in cents
+          betType: e.betType || null,
+          isComplete: e.isComplete,
+          isAutoPress: e.isAutoPress || false,
+          teamName: e.teamName || null,
+          teamIndex: e.teamIndex ?? null,
+        }));
+        
+        // Save to the event match results table
+        await apiRequest('POST', `/api/event-matches/${em.id}/results`, { results: resultsToSave });
+      }
+      
+      // Refresh the side match ledger data to get the updated stored results
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id, "side-match-ledger"] });
+    } catch (error) {
+      console.error("Error refreshing side match results:", error);
+    } finally {
+      setIsRefreshingLedger(false);
+    }
+  };
+  
+  // Calculate side bet results (extracted for reuse)
+  const calculateSideBetResults = (): { balances: Record<string, number>; entries: LedgerEntry[] } => {
     if (!sideMatchLedger?.eventMatches) {
       return { balances: {}, entries: [] };
     }
@@ -1064,25 +1120,49 @@ export default function RyderCupEvent() {
       amount: Math.round(e.amount * 100),
     }));
 
-    // DEBUG: Compare entries sum vs balances for each player
-    const entrySums: Record<string, number> = {};
-    entriesInCents.forEach(e => {
-      entrySums[e.playerName] = (entrySums[e.playerName] || 0) + e.amount;
-    });
-    
-    // Log discrepancies
-    for (const name of Object.keys(entrySums)) {
-      const entryTotal = entrySums[name] || 0;
-      const balanceTotal = balancesByName[name] || 0;
-      if (entryTotal !== balanceTotal) {
-        console.log(`[SIDE BET DISCREPANCY] ${name}: entries=${entryTotal} balances=${balanceTotal} diff=${entryTotal - balanceTotal}`);
-        // Log individual entries for this player
-        const playerEntries = entriesInCents.filter(e => e.playerName === name);
-        console.log(`[SIDE BET ENTRIES] ${name}:`, playerEntries.map(e => ({ match: e.matchName, amount: e.amount, isComplete: e.isComplete })));
-      }
-    }
-
     return { balances: balancesByName, entries: entriesInCents };
+  };
+
+  // Use stored results if available, otherwise calculate fresh
+  const computeSideBetData = (): { balances: Record<string, number>; entries: LedgerEntry[] } => {
+    // If we have stored results from the API, use them directly
+    if (sideMatchLedger?.storedResults && sideMatchLedger.storedResults.length > 0) {
+      const balancesByName: Record<string, number> = {};
+      const entries: LedgerEntry[] = [];
+      
+      // Group stored results by event match to build entries
+      for (const result of sideMatchLedger.storedResults) {
+        // Find the event match details
+        const eventMatch = sideMatchLedger.eventMatches?.find((em: any) => em.id === result.eventMatchId);
+        const match = eventMatch ? sideMatchLedger.matches?.find((m: any) => m.id === eventMatch.eventId) : null;
+        
+        // Build the entry from stored result (amounts are already in cents)
+        entries.push({
+          matchId: result.eventMatchId,
+          matchName: `${match?.name || 'Unknown'} - ${result.betType || 'Bet'}`,
+          playerId: result.playerId,
+          playerName: result.playerName,
+          amount: result.amount, // Already in cents from database
+          isComplete: result.isComplete,
+          createdAt: match?.createdAt || '',
+          betType: result.betType || undefined,
+          isAutoPress: result.isAutoPress,
+          pressHole: null,
+          teamAMembers: [],
+          teamBMembers: [],
+          teamName: result.teamName || undefined,
+          teamIndex: result.teamIndex ?? 0,
+        });
+        
+        // Aggregate balances (amounts already in cents)
+        balancesByName[result.playerName] = (balancesByName[result.playerName] || 0) + result.amount;
+      }
+      
+      return { balances: balancesByName, entries };
+    }
+    
+    // Fallback to calculating fresh if no stored results
+    return calculateSideBetResults();
   };
 
   const sideBetData = computeSideBetData();
@@ -1624,10 +1704,22 @@ export default function RyderCupEvent() {
         </Card>
       </div>
 
-      <Tabs defaultValue="schedule">
+      <Tabs 
+        value={activeTab} 
+        onValueChange={(value) => {
+          setActiveTab(value);
+          // When switching to ledger tab, refresh all side match results
+          if (value === "ledger") {
+            refreshSideMatchResults();
+          }
+        }}
+      >
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="ledger" data-testid="tab-ledger">Ledger</TabsTrigger>
+          <TabsTrigger value="ledger" data-testid="tab-ledger">
+            {isRefreshingLedger ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+            Ledger
+          </TabsTrigger>
           <TabsTrigger value="skins" data-testid="tab-skins">Skins</TabsTrigger>
           <TabsTrigger value="payouts" data-testid="tab-payouts">Payouts</TabsTrigger>
           <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>
@@ -3984,32 +4076,6 @@ export default function RyderCupEvent() {
               )}
             </CardHeader>
             <CardContent>
-              {/* DEBUG: Show raw side bet data */}
-              <details className="mb-4 p-2 bg-yellow-100 dark:bg-yellow-900 rounded text-xs">
-                <summary className="cursor-pointer font-bold">DEBUG: Side Bet Data</summary>
-                <div className="mt-2 space-y-1">
-                  <div><strong>Balances (cents):</strong></div>
-                  {Object.entries(sideBetData.balances).map(([name, amount]) => (
-                    <div key={name}>{name}: {amount} cents (${(amount / 100).toFixed(2)})</div>
-                  ))}
-                  <div className="mt-2"><strong>Entries count:</strong> {sideBetData.entries.length}</div>
-                  <div><strong>Entries by player (cents):</strong></div>
-                  {(() => {
-                    const sums: Record<string, number> = {};
-                    sideBetData.entries.forEach(e => {
-                      sums[e.playerName] = (sums[e.playerName] || 0) + e.amount;
-                    });
-                    return Object.entries(sums).map(([name, total]) => (
-                      <div key={name}>{name}: {total} cents (${(total / 100).toFixed(2)})</div>
-                    ));
-                  })()}
-                  <div className="mt-2"><strong>Entry details:</strong></div>
-                  {sideBetData.entries.slice(0, 20).map((e, i) => (
-                    <div key={i} className="text-[10px]">{e.playerName}: {e.amount}¢ - {e.matchName} ({e.betType})</div>
-                  ))}
-                  {sideBetData.entries.length > 20 && <div>...and {sideBetData.entries.length - 20} more</div>}
-                </div>
-              </details>
               {(() => {
                 const allPlayers = [
                   ...(teamA?.members.map(m => m.playerName) || []),
