@@ -1414,7 +1414,7 @@ export default function RyderCupEvent() {
   }
 
   interface DaySkinsData {
-    players: { name: string; teamColor: string; scores: (number | null)[] }[];
+    players: { name: string; teamColor: string; scores: (number | null)[]; strokesPerHole: number[]; courseHandicap: number | null }[];
     holeResults: DaySkinResult[];
     totalSkins: number;
     skinWinners: { name: string; skinsWon: number; earnings: number }[];
@@ -1500,14 +1500,7 @@ export default function RyderCupEvent() {
 
     if (playerMap.size === 0) return null;
 
-    const players = Array.from(playerMap.entries()).map(([name, data]) => ({
-      name,
-      teamColor: data.teamColor,
-      scores: data.scores,
-      courseHandicap: data.courseHandicap,
-    }));
-
-    // Build hole handicap lookup and calculate strokes per player per hole
+    // Build hole handicap lookup first (needed to calculate strokes per hole)
     const holeHandicaps = new Map<number, number>();
     for (const hole of courseHoles) {
       if (hole.handicap !== null) {
@@ -1526,6 +1519,21 @@ export default function RyderCupEvent() {
       const extraStrokes = courseHandicap % 18;
       return baseStrokes + (holeHcp <= extraStrokes ? 1 : 0);
     };
+
+    // Build players array with strokes per hole
+    const players = Array.from(playerMap.entries()).map(([name, data]) => {
+      // Calculate strokes for each hole (1-18)
+      const strokesPerHole = Array.from({ length: 18 }, (_, i) => 
+        getPlayerStrokesOnHole(data.courseHandicap, i + 1)
+      );
+      return {
+        name,
+        teamColor: data.teamColor,
+        scores: data.scores,
+        courseHandicap: data.courseHandicap,
+        strokesPerHole,
+      };
+    });
 
     // Calculate net scores for each player
     const getNetScore = (player: typeof players[0], holeIndex: number): number | null => {
@@ -3984,11 +3992,26 @@ export default function RyderCupEvent() {
                   )}
 
                   {/* Skins Scorecard */}
+                  {event.useHandicaps && (
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
+                      <span className="flex items-center gap-1">
+                        <span className="text-blue-600 dark:text-blue-400 font-bold">•</span>
+                        <span>= 1 stroke received</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-blue-600 dark:text-blue-400 font-bold">••</span>
+                        <span>= 2 strokes received</span>
+                      </span>
+                    </div>
+                  )}
                   <div className="border rounded-lg overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-muted/50">
                           <th className="px-3 py-2 text-left font-medium sticky left-0 bg-muted/50 z-10">Player</th>
+                          {event.useHandicaps && (
+                            <th className="px-2 py-2 text-center font-medium text-xs" title="Course Handicap">HCP</th>
+                          )}
                           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((hole) => (
                             <th key={hole} className="px-2 py-2 text-center font-medium min-w-[36px]">
                               {hole}
@@ -4027,14 +4050,20 @@ export default function RyderCupEvent() {
                                   {player.name}
                                 </div>
                               </td>
+                              {event.useHandicaps && (
+                                <td className="px-2 py-2 text-center text-xs text-muted-foreground">
+                                  {player.courseHandicap !== null ? player.courseHandicap : '-'}
+                                </td>
+                              )}
                               {player.scores.slice(0, 9).map((score, idx) => {
                                 const holeResult = skinsData.holeResults[idx];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
                                 const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
+                                const strokesOnHole = player.strokesPerHole[idx] || 0;
                                 return (
                                   <td
                                     key={idx}
-                                    className={`px-2 py-2 text-center ${
+                                    className={`px-2 py-2 text-center relative ${
                                       isSkinWinner 
                                         ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
                                         : isLowScore && !holeResult?.isSkin
@@ -4043,6 +4072,11 @@ export default function RyderCupEvent() {
                                     }`}
                                   >
                                     {score ?? '-'}
+                                    {strokesOnHole > 0 && event.useHandicaps && (
+                                      <span className="absolute top-0.5 right-0.5 text-[8px] text-blue-600 dark:text-blue-400 font-bold">
+                                        {'•'.repeat(strokesOnHole)}
+                                      </span>
+                                    )}
                                   </td>
                                 );
                               })}
@@ -4053,10 +4087,11 @@ export default function RyderCupEvent() {
                                 const holeResult = skinsData.holeResults[idx + 9];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
                                 const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
+                                const strokesOnHole = player.strokesPerHole[idx + 9] || 0;
                                 return (
                                   <td
                                     key={idx + 9}
-                                    className={`px-2 py-2 text-center ${
+                                    className={`px-2 py-2 text-center relative ${
                                       isSkinWinner 
                                         ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
                                         : isLowScore && !holeResult?.isSkin
@@ -4065,6 +4100,11 @@ export default function RyderCupEvent() {
                                     }`}
                                   >
                                     {score ?? '-'}
+                                    {strokesOnHole > 0 && event.useHandicaps && (
+                                      <span className="absolute top-0.5 right-0.5 text-[8px] text-blue-600 dark:text-blue-400 font-bold">
+                                        {'•'.repeat(strokesOnHole)}
+                                      </span>
+                                    )}
                                   </td>
                                 );
                               })}
