@@ -1309,6 +1309,26 @@ export default function RyderCupEvent() {
       }
     }
     
+    // Add skins winnings to breakdown
+    if (event?.dailySkinsPot > 0 && courseHoles.length > 0) {
+      for (const day of event.days) {
+        try {
+          const daySkins = calculateDaySkins(day.dayNumber);
+          if (daySkins) {
+            const playerWins = daySkins.skinWinners.find(w => w.name === playerName);
+            if (playerWins && playerWins.skinsWon > 0) {
+              breakdown.push({
+                description: `Day ${day.dayNumber}: ${playerWins.skinsWon} skin${playerWins.skinsWon > 1 ? 's' : ''} won`,
+                amount: Math.round(playerWins.earnings * 100), // Convert dollars to cents
+              });
+            }
+          }
+        } catch (e) {
+          // Ignore errors in skins calculation
+        }
+      }
+    }
+    
     return breakdown;
   };
 
