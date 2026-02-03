@@ -321,7 +321,7 @@ export default function RyderCupEvent() {
     createdAt: string | null;
     entries: { id: number; playerName: string; presetPlayerId: number | null; amount: number }[];
   }[]>({
-    queryKey: ["/api/manual-bets", { ryderCupEventId: parseInt(id) }],
+    queryKey: [`/api/manual-bets?ryderCupEventId=${id}`],
     enabled: !!id,
   });
 
@@ -507,7 +507,7 @@ export default function RyderCupEvent() {
       return apiRequest("POST", "/api/manual-bets", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets", { ryderCupEventId: parseInt(id) }] });
+      queryClient.invalidateQueries({ queryKey: [`/api/manual-bets?ryderCupEventId=${id}`] });
       toast({ title: "Bet recorded successfully" });
       setAddBetOpen(false);
       setBetDescription("");
@@ -536,7 +536,7 @@ export default function RyderCupEvent() {
       return apiRequest("DELETE", `/api/manual-bets/${betId}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets", { ryderCupEventId: parseInt(id) }] });
+      queryClient.invalidateQueries({ queryKey: [`/api/manual-bets?ryderCupEventId=${id}`] });
       toast({ title: "Bet deleted" });
     },
     onError: () => {
