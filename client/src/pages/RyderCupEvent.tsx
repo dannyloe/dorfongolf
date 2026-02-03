@@ -531,6 +531,19 @@ export default function RyderCupEvent() {
     },
   });
 
+  const deleteManualBetMutation = useMutation({
+    mutationFn: async (betId: number) => {
+      return apiRequest("DELETE", `/api/manual-bets/${betId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets", { ryderCupEventId: parseInt(id) }] });
+      toast({ title: "Bet deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete bet", variant: "destructive" });
+    },
+  });
+
   const updateMemberHandicapMutation = useMutation({
     mutationFn: async ({ memberId, handicapIndex }: { memberId: number; handicapIndex: number | null }) => {
       return apiRequest("PATCH", `/api/ryder-cup/members/${memberId}/handicap`, { handicapIndex });
@@ -4324,7 +4337,7 @@ export default function RyderCupEvent() {
 
                     {transactions.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-semibold mb-3">Transaction History</h4>
+                        <h4 className="text-sm font-semibold mb-3">Expense History</h4>
                         <div className="space-y-3">
                           {transactions.map(t => (
                             <div key={t.id} className="border rounded p-3">
@@ -4350,6 +4363,43 @@ export default function RyderCupEvent() {
                                     onClick={() => deleteTransactionMutation.mutate(t.id)}
                                     disabled={deleteTransactionMutation.isPending}
                                     data-testid={`button-delete-transaction-${t.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {manualBets.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Manual Bets</h4>
+                        <div className="space-y-3">
+                          {manualBets.map(bet => (
+                            <div key={bet.id} className="border rounded p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-medium">{bet.description}</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {bet.entries.map(e => (
+                                      <span key={e.playerName} className="mr-2">
+                                        {e.playerName}: <span className={e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}>{e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}</span>
+                                      </span>
+                                    ))}
+                                  </p>
+                                </div>
+                                {isCreatorOrAdmin && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => deleteManualBetMutation.mutate(bet.id)}
+                                    disabled={deleteManualBetMutation.isPending}
+                                    data-testid={`button-delete-manual-bet-${bet.id}`}
                                   >
                                     <Trash2 className="w-4 h-4 text-destructive" />
                                   </Button>
