@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus } from "lucide-react";
@@ -1086,6 +1086,16 @@ export default function RyderCupEvent() {
   };
 
   const sideBetData = computeSideBetData();
+  
+  // Memoize the entries key for useEffect dependency
+  const sideBetEntriesKey = useMemo(() => {
+    return JSON.stringify(sideBetData.entries.filter(e => e.isComplete).map(e => ({
+      matchId: e.matchId,
+      playerName: e.playerName,
+      amount: e.amount,
+      betType: e.betType,
+    })));
+  }, [sideBetData.entries]);
 
   // Auto-save side match results to database for Ledger consistency
   const saveResultsMutation = useSaveEventMatchResults();
@@ -1099,15 +1109,9 @@ export default function RyderCupEvent() {
     const completeEntries = sideBetData.entries.filter(e => e.isComplete);
     if (completeEntries.length === 0) return;
     
-    // Debounce: check if entries have actually changed
-    const entriesKey = JSON.stringify(completeEntries.map(e => ({
-      matchId: e.matchId,
-      playerName: e.playerName,
-      amount: e.amount,
-      betType: e.betType,
-    })));
-    if (entriesKey === lastSavedEntriesRef.current) return;
-    lastSavedEntriesRef.current = entriesKey;
+    // Debounce: check if entries have actually changed using memoized key
+    if (sideBetEntriesKey === lastSavedEntriesRef.current) return;
+    lastSavedEntriesRef.current = sideBetEntriesKey;
     
     // Build player name to playerId lookup from event match teams
     const playerNameToId = new Map<number, Map<string, number>>(); // matchId -> (playerName -> playerId)
@@ -1166,7 +1170,7 @@ export default function RyderCupEvent() {
       // Save asynchronously
       saveResultsMutation.mutate({ eventMatchId, results });
     });
-  }, [JSON.stringify(sideBetData.entries), sideMatchLedger?.eventMatches]);
+  }, [sideBetEntriesKey, sideMatchLedger?.eventMatches, sideBetData.entries, saveResultsMutation]);
 
   // Calculate per-day side bet breakdown
   const computeSideBetsByDay = (): Record<number, Record<string, number>> => {
