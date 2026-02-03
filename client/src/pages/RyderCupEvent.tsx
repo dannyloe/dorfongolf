@@ -3884,17 +3884,19 @@ export default function RyderCupEvent() {
                   )}
 
                   {/* Debug Info for Hole 15 */}
-                  {debugHole15 && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs mb-2">
-                      <strong>DEBUG Hole 15:</strong>{' '}
-                      Winner: {debugHole15.hole15Result?.winnerName || 'none'} |{' '}
-                      H15 isSkin: {String(debugHole15.hole15Result?.isSkin)} |{' '}
-                      H15 isPending: {String(debugHole15.hole15Result?.isPending)} |{' '}
-                      H16 Par: {String(debugHole15.hole16Par)} |{' '}
-                      Winner H16 Score: {String(debugHole15.winnerHole16Score)} |{' '}
-                      CourseHoles loaded: {debugHole15.courseHolesCount}
-                    </div>
-                  )}
+                  <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs mb-2">
+                    <strong>DEBUG Hole 15:</strong>{' '}
+                    {debugHole15 ? (
+                      <>
+                        Winner: {debugHole15.hole15Result?.winnerName || 'none'} |{' '}
+                        H15 isSkin: {String(debugHole15.hole15Result?.isSkin)} |{' '}
+                        H15 isPending: {String(debugHole15.hole15Result?.isPending)} |{' '}
+                        H16 Par: {String(debugHole15.hole16Par)} |{' '}
+                        Winner H16 Score: {String(debugHole15.winnerHole16Score)} |{' '}
+                        CourseHoles loaded: {debugHole15.courseHolesCount}
+                      </>
+                    ) : 'No data'}
+                  </div>
 
                   {/* Skins Scorecard */}
                   <div className="border rounded-lg overflow-x-auto">
