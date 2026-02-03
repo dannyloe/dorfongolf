@@ -1676,6 +1676,12 @@ export default function RyderCupEvent() {
       }))
       .sort((a, b) => b.skinsWon - a.skinsWon);
 
+    // Build pars array for display
+    const pars = Array.from({ length: 18 }, (_, i) => {
+      const hole = courseHoles.find(h => h.holeNumber === i + 1);
+      return hole?.par ?? null;
+    });
+
     return {
       players,
       holeResults,
@@ -1684,6 +1690,7 @@ export default function RyderCupEvent() {
       skinValue: Math.round(skinValue * 100) / 100,
       totalPot,
       isComplete: allHolesComplete,
+      pars,
     };
   };
 
@@ -4026,6 +4033,27 @@ export default function RyderCupEvent() {
                           <th className="px-2 py-2 text-center font-medium bg-muted/30">IN</th>
                           <th className="px-2 py-2 text-center font-medium bg-muted/50">TOT</th>
                           <th className="px-2 py-2 text-center font-medium bg-primary/10">Skins</th>
+                        </tr>
+                        {/* Par row */}
+                        <tr className="bg-muted/30 text-xs text-muted-foreground">
+                          <td className="px-3 py-1 font-medium sticky left-0 bg-muted/30 z-10">Par</td>
+                          {event.useHandicaps && <td className="px-2 py-1"></td>}
+                          {skinsData.pars.slice(0, 9).map((par, idx) => (
+                            <td key={idx} className="px-2 py-1 text-center">{par ?? '-'}</td>
+                          ))}
+                          <td className="px-2 py-1 text-center bg-muted/50">
+                            {skinsData.pars.slice(0, 9).reduce((sum, p) => sum + (p ?? 0), 0) || '-'}
+                          </td>
+                          {skinsData.pars.slice(9, 18).map((par, idx) => (
+                            <td key={idx + 9} className="px-2 py-1 text-center">{par ?? '-'}</td>
+                          ))}
+                          <td className="px-2 py-1 text-center bg-muted/50">
+                            {skinsData.pars.slice(9, 18).reduce((sum, p) => sum + (p ?? 0), 0) || '-'}
+                          </td>
+                          <td className="px-2 py-1 text-center bg-muted/70 font-medium">
+                            {skinsData.pars.reduce((sum, p) => sum + (p ?? 0), 0) || '-'}
+                          </td>
+                          <td className="px-2 py-1"></td>
                         </tr>
                       </thead>
                       <tbody>
