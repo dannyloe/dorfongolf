@@ -1406,18 +1406,35 @@ export default function RyderCupEvent() {
     const day = event.days.find(d => d.dayNumber === dayNumber);
     if (!day) return null;
 
-    // Gather all unique players and their scores from all pairings
-    const playerMap = new Map<string, { teamColor: string; scores: (number | null)[] }>();
+    // Gather all unique players, their scores, and their handicap info from all pairings
+    const playerMap = new Map<string, { teamColor: string; scores: (number | null)[]; courseHandicap: number | null }>();
+
+    // Calculate course par for handicap calculations
+    const coursePar = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0) || 72;
 
     for (const pairing of day.pairings) {
       for (const side of pairing.sides) {
         const team = getTeamById(side.teamId);
         const color = team?.color || "#888";
 
+        // Helper to calculate course handicap from handicap index
+        const getCourseHandicap = (handicapIndexTenths: number | null, teeId: number | null): number | null => {
+          if (handicapIndexTenths === null || handicapIndexTenths === undefined) return null;
+          const handicapIndex = handicapIndexTenths / 10;
+          const tee = courseTees?.find(t => t.id === teeId);
+          if (tee) {
+            const slopeAdj = handicapIndex * ((tee.slopeRating || 113) / 113);
+            const ratingDiff = ((tee.courseRating || 720) / 10) - coursePar;
+            return Math.round(slopeAdj + ratingDiff);
+          }
+          return Math.round(handicapIndex);
+        };
+
         // Player 1
         if (side.player1Name) {
           if (!playerMap.has(side.player1Name)) {
-            playerMap.set(side.player1Name, { teamColor: color, scores: Array(18).fill(null) });
+            const courseHcp = getCourseHandicap(side.player1HandicapIndex, side.player1TeeId);
+            playerMap.set(side.player1Name, { teamColor: color, scores: Array(18).fill(null), courseHandicap: courseHcp });
           }
           // Fill in scores from this side
           for (const score of side.scores) {
@@ -1430,7 +1447,8 @@ export default function RyderCupEvent() {
         // Player 2
         if (side.player2Name) {
           if (!playerMap.has(side.player2Name)) {
-            playerMap.set(side.player2Name, { teamColor: color, scores: Array(18).fill(null) });
+            const courseHcp = getCourseHandicap(side.player2HandicapIndex, side.player2TeeId);
+            playerMap.set(side.player2Name, { teamColor: color, scores: Array(18).fill(null), courseHandicap: courseHcp });
           }
           for (const score of side.scores) {
             if (score.player2Strokes !== null) {
@@ -1447,7 +1465,36 @@ export default function RyderCupEvent() {
       name,
       teamColor: data.teamColor,
       scores: data.scores,
+      courseHandicap: data.courseHandicap,
     }));
+
+    // Build hole handicap lookup and calculate strokes per player per hole
+    const holeHandicaps = new Map<number, number>();
+    for (const hole of courseHoles) {
+      if (hole.handicap !== null) {
+        holeHandicaps.set(hole.holeNumber, hole.handicap);
+      }
+    }
+
+    // Helper to get strokes a player receives on a specific hole
+    const getPlayerStrokesOnHole = (courseHandicap: number | null, holeNumber: number): number => {
+      if (courseHandicap === null || courseHandicap <= 0) return 0;
+      const holeHcp = holeHandicaps.get(holeNumber);
+      if (holeHcp === undefined) return 0;
+      // Player gets a stroke if their course handicap >= hole handicap
+      // For each 18 strokes, they get an extra stroke on each hole
+      const baseStrokes = Math.floor(courseHandicap / 18);
+      const extraStrokes = courseHandicap % 18;
+      return baseStrokes + (holeHcp <= extraStrokes ? 1 : 0);
+    };
+
+    // Calculate net scores for each player
+    const getNetScore = (player: typeof players[0], holeIndex: number): number | null => {
+      const grossScore = player.scores[holeIndex];
+      if (grossScore === null) return null;
+      const strokes = getPlayerStrokesOnHole(player.courseHandicap, holeIndex + 1);
+      return grossScore - strokes;
+    };
 
     // Calculate skins for each hole
     const holeResults: DaySkinResult[] = [];
@@ -1466,9 +1513,13 @@ export default function RyderCupEvent() {
 
     for (let hole = 0; hole < 18; hole++) {
       const holeNumber = hole + 1;
+      // Use NET scores for skins when handicaps are enabled
       const holeScores = players
         .filter(p => p.scores[hole] !== null)
-        .map(p => ({ name: p.name, strokes: p.scores[hole]! }));
+        .map(p => {
+          const netScore = event.useHandicaps ? getNetScore(p, hole) : p.scores[hole];
+          return { name: p.name, strokes: netScore!, grossStrokes: p.scores[hole]!, courseHandicap: p.courseHandicap };
+        });
 
       if (holeScores.length === 0) {
         holeResults.push({
@@ -1500,21 +1551,19 @@ export default function RyderCupEvent() {
 
       const potentialWinner = playersWithMinScore[0];
 
-      // For holes 1-17: must make net par or better on next hole to validate the skin
+      // For holes 1-17: must make NET par or better on next hole to validate the skin
       if (hole < 17) {
         const nextHoleNumber = hole + 2; // hole is 0-indexed, holeNumber is 1-indexed
         const nextHolePar = courseHoles.find(h => h.holeNumber === nextHoleNumber)?.par ?? 4;
         
-        // Get the potential winner's score on the next hole
+        // Get the potential winner's score on the next hole (use net score if handicaps enabled)
         const winnerData = players.find(p => p.name === potentialWinner.name);
-        const winnerNextScore = winnerData?.scores[hole + 1] ?? null;
+        const winnerNextGross = winnerData?.scores[hole + 1] ?? null;
+        const winnerNextNet = winnerData && event.useHandicaps 
+          ? getNetScore(winnerData, hole + 1) 
+          : winnerNextGross;
 
-        // Debug log for hole 15
-        if (holeNumber === 15) {
-          console.log(`[SKINS DEBUG H15] Winner: ${potentialWinner.name}, nextHole: ${nextHoleNumber}, nextHolePar: ${nextHolePar}, winnerNextScore: ${winnerNextScore}, courseHoles count: ${courseHoles.length}`);
-        }
-
-        if (winnerNextScore === null) {
+        if (winnerNextNet === null) {
           // Next hole not played yet - pending
           holeResults.push({
             holeNumber,
@@ -1527,8 +1576,8 @@ export default function RyderCupEvent() {
           continue;
         }
 
-        // Check if winner made par or better on the next hole
-        const madeParOrBetter = winnerNextScore <= nextHolePar;
+        // Check if winner made NET par or better on the next hole
+        const madeParOrBetter = winnerNextNet <= nextHolePar;
 
         if (madeParOrBetter) {
           // Winner made par or better on next hole - skin awarded
@@ -1598,10 +1647,32 @@ export default function RyderCupEvent() {
     if (!skinsData) return null;
     const hole15Result = skinsData.holeResults.find(r => r.holeNumber === 15);
     const hole16Par = courseHoles.find(h => h.holeNumber === 16)?.par ?? 'not found';
+    const hole16Hcp = courseHoles.find(h => h.holeNumber === 16)?.handicap ?? 'not found';
     const winner = hole15Result?.winnerName;
     const winnerPlayer = skinsData.players.find(p => p.name === winner);
-    const winnerHole16Score = winnerPlayer?.scores[15] ?? 'no score'; // index 15 = hole 16
-    return { hole15Result, hole16Par, winnerHole16Score, courseHolesCount: courseHoles.length };
+    const winnerHole16Gross = winnerPlayer?.scores[15] ?? 'no score'; // index 15 = hole 16
+    const winnerCourseHcp = (winnerPlayer as any)?.courseHandicap ?? 'no hcp';
+    // Calculate strokes on hole 16 for the winner
+    const getStrokesOnHole = (courseHcp: number | null, holeHcp: number | null) => {
+      if (courseHcp === null || courseHcp <= 0 || holeHcp === null) return 0;
+      const baseStrokes = Math.floor(courseHcp / 18);
+      const extraStrokes = courseHcp % 18;
+      return baseStrokes + (holeHcp <= extraStrokes ? 1 : 0);
+    };
+    const winnerStrokesH16 = typeof winnerCourseHcp === 'number' && typeof hole16Hcp === 'number' 
+      ? getStrokesOnHole(winnerCourseHcp, hole16Hcp) : 0;
+    const winnerNetH16 = typeof winnerHole16Gross === 'number' ? winnerHole16Gross - winnerStrokesH16 : 'n/a';
+    return { 
+      hole15Result, 
+      hole16Par, 
+      hole16Hcp,
+      winnerHole16Gross, 
+      winnerCourseHcp,
+      winnerStrokesH16,
+      winnerNetH16,
+      courseHolesCount: courseHoles.length,
+      useHandicaps: event.useHandicaps
+    };
   })();
 
   const openRecordResult = (pairingId: number) => {
@@ -3892,8 +3963,12 @@ export default function RyderCupEvent() {
                         H15 isSkin: {String(debugHole15.hole15Result?.isSkin)} |{' '}
                         H15 isPending: {String(debugHole15.hole15Result?.isPending)} |{' '}
                         H16 Par: {String(debugHole15.hole16Par)} |{' '}
-                        Winner H16 Score: {String(debugHole15.winnerHole16Score)} |{' '}
-                        CourseHoles loaded: {debugHole15.courseHolesCount}
+                        H16 Hcp: {String(debugHole15.hole16Hcp)} |{' '}
+                        Winner CourseHcp: {String(debugHole15.winnerCourseHcp)} |{' '}
+                        Winner H16 Gross: {String(debugHole15.winnerHole16Gross)} |{' '}
+                        Strokes on H16: {String(debugHole15.winnerStrokesH16)} |{' '}
+                        Winner H16 Net: {String(debugHole15.winnerNetH16)} |{' '}
+                        UseHcp: {String(debugHole15.useHandicaps)}
                       </>
                     ) : 'No data'}
                   </div>
