@@ -2117,7 +2117,8 @@ Rules:
             const teeId = playerNum === 1 ? s.player1TeeId : s.player2TeeId;
             if (hcpTenths === null || hcpTenths === undefined) return null;
             const handicapIndex = hcpTenths / 10;
-            const tee = teeId ? courseTees.find(t => t.id === teeId) : courseTees[0];
+            // Fall back to first tee if player's tee not found in this course
+            const tee = (teeId ? courseTees.find(t => t.id === teeId) : null) ?? courseTees[0];
             const slopeRating = tee?.slopeRating || 113;
             return Math.round(handicapIndex * (slopeRating / 113));
           };
