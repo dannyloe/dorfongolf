@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -2715,24 +2715,42 @@ export default function MatchDetail() {
                                         data-testid={`input-match-course-hcp-${em.id}-${m.playerId}`}
                                       />
                                     ) : (
-                                      <button
-                                        onClick={() => {
-                                          if (canEditScoresAndBets) {
-                                            setEditingMatchCourseHcp({ eventMatchId: em.id, playerId: m.playerId });
-                                            setMatchCourseHcpEditValue(displayHcp?.toString() ?? '');
-                                          }
-                                        }}
-                                        className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                                          hasOverride 
-                                            ? 'bg-primary/20 text-primary border border-primary/30' 
-                                            : 'bg-muted text-muted-foreground'
-                                        } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
-                                        disabled={!canEditScoresAndBets}
-                                        title={hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
-                                        data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
-                                      >
-                                        {displayHcp ?? '-'}
-                                      </button>
+                                      <>
+                                        <button
+                                          onClick={() => {
+                                            if (canEditScoresAndBets) {
+                                              setEditingMatchCourseHcp({ eventMatchId: em.id, playerId: m.playerId });
+                                              setMatchCourseHcpEditValue(displayHcp?.toString() ?? '');
+                                            }
+                                          }}
+                                          className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                            hasOverride 
+                                              ? 'bg-primary/20 text-primary border border-primary/30' 
+                                              : 'bg-muted text-muted-foreground'
+                                          } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
+                                          disabled={!canEditScoresAndBets}
+                                          title={hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
+                                          data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
+                                        >
+                                          {displayHcp ?? '-'}
+                                        </button>
+                                        {hasOverride && canEditScoresAndBets && calculatedHcp !== undefined && (
+                                          <button
+                                            onClick={() => {
+                                              upsertMatchHandicap.mutate({
+                                                eventMatchId: em.id,
+                                                playerId: m.playerId,
+                                                courseHandicap: calculatedHcp,
+                                              });
+                                            }}
+                                            className="p-0.5 rounded text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                            title={`Reset to default (${calculatedHcp})`}
+                                            data-testid={`button-reset-match-course-hcp-${em.id}-${m.playerId}`}
+                                          >
+                                            <RotateCcw className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </>
                                     )}
                                   </div>
                                 );
