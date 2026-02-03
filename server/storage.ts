@@ -595,12 +595,68 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Also get Ryder Cup scores for score conversion (needed for side match calculations)
+    const ryderCupScoresByEventAndDay: Record<number, Record<number, Record<string, Record<number, number>>>> = {};
+    
+    for (const eventId of ryderCupEventIds) {
+      ryderCupScoresByEventAndDay[eventId] = {};
+      
+      // Get all days for this event
+      const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+      
+      for (const day of days) {
+        ryderCupScoresByEventAndDay[eventId][day.dayNumber] = {};
+        
+        // Get all pairings for this day
+        const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
+        
+        for (const pairing of pairings) {
+          // Get all sides for this pairing
+          const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
+          
+          for (const side of sides) {
+            // Look up current player names from team members if IDs are set
+            let player1Name = side.player1Name;
+            let player2Name = side.player2Name;
+            
+            if (side.player1Id) {
+              const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+              if (member1) player1Name = member1.playerName;
+            }
+            if (side.player2Id) {
+              const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+              if (member2) player2Name = member2.playerName;
+            }
+            
+            // Get scores for this side
+            const sideScores = await db.select().from(ryderCupPairingScores).where(eq(ryderCupPairingScores.sideId, side.id));
+            
+            for (const score of sideScores) {
+              if (player1Name && score.player1Strokes !== null) {
+                if (!ryderCupScoresByEventAndDay[eventId][day.dayNumber][player1Name]) {
+                  ryderCupScoresByEventAndDay[eventId][day.dayNumber][player1Name] = {};
+                }
+                ryderCupScoresByEventAndDay[eventId][day.dayNumber][player1Name][score.holeNumber] = score.player1Strokes;
+              }
+              if (player2Name && score.player2Strokes !== null) {
+                if (!ryderCupScoresByEventAndDay[eventId][day.dayNumber][player2Name]) {
+                  ryderCupScoresByEventAndDay[eventId][day.dayNumber][player2Name] = {};
+                }
+                ryderCupScoresByEventAndDay[eventId][day.dayNumber][player2Name][score.holeNumber] = score.player2Strokes;
+              }
+            }
+          }
+        }
+      }
+    }
+
     return {
       matches: allMatches,
       eventMatches: allEventMatches,
       scores: allScores,
       courseData,
       ryderCupPlayerDataByEventAndDay,
+      ryderCupScoresByEventAndDay,
     };
   }
 
