@@ -1660,38 +1660,6 @@ export default function RyderCupEvent() {
 
   const skinsData = calculateDaySkins(selectedSkinsDay);
   
-  // Debug info for hole 15
-  const debugHole15 = (() => {
-    if (!skinsData) return null;
-    const hole15Result = skinsData.holeResults.find(r => r.holeNumber === 15);
-    const hole16Par = courseHoles.find(h => h.holeNumber === 16)?.par ?? 'not found';
-    const hole16Hcp = courseHoles.find(h => h.holeNumber === 16)?.handicap ?? 'not found';
-    const winner = hole15Result?.winnerName;
-    const winnerPlayer = skinsData.players.find(p => p.name === winner);
-    const winnerHole16Gross = winnerPlayer?.scores[15] ?? 'no score'; // index 15 = hole 16
-    const winnerCourseHcp = (winnerPlayer as any)?.courseHandicap ?? 'no hcp';
-    // Calculate strokes on hole 16 for the winner
-    const getStrokesOnHole = (courseHcp: number | null, holeHcp: number | null) => {
-      if (courseHcp === null || courseHcp <= 0 || holeHcp === null) return 0;
-      const baseStrokes = Math.floor(courseHcp / 18);
-      const extraStrokes = courseHcp % 18;
-      return baseStrokes + (holeHcp <= extraStrokes ? 1 : 0);
-    };
-    const winnerStrokesH16 = typeof winnerCourseHcp === 'number' && typeof hole16Hcp === 'number' 
-      ? getStrokesOnHole(winnerCourseHcp, hole16Hcp) : 0;
-    const winnerNetH16 = typeof winnerHole16Gross === 'number' ? winnerHole16Gross - winnerStrokesH16 : 'n/a';
-    return { 
-      hole15Result, 
-      hole16Par, 
-      hole16Hcp,
-      winnerHole16Gross, 
-      winnerCourseHcp,
-      winnerStrokesH16,
-      winnerNetH16,
-      courseHolesCount: courseHoles.length,
-      useHandicaps: event.useHandicaps
-    };
-  })();
 
   const openRecordResult = (pairingId: number) => {
     setSelectedPairingId(pairingId);
@@ -3971,25 +3939,6 @@ export default function RyderCupEvent() {
                       </div>
                     </div>
                   )}
-
-                  {/* Debug Info for Hole 15 */}
-                  <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs mb-2">
-                    <strong>DEBUG Hole 15:</strong>{' '}
-                    {debugHole15 ? (
-                      <>
-                        Winner: {debugHole15.hole15Result?.winnerName || 'none'} |{' '}
-                        H15 isSkin: {String(debugHole15.hole15Result?.isSkin)} |{' '}
-                        H15 isPending: {String(debugHole15.hole15Result?.isPending)} |{' '}
-                        H16 Par: {String(debugHole15.hole16Par)} |{' '}
-                        H16 Hcp: {String(debugHole15.hole16Hcp)} |{' '}
-                        Winner CourseHcp: {String(debugHole15.winnerCourseHcp)} |{' '}
-                        Winner H16 Gross: {String(debugHole15.winnerHole16Gross)} |{' '}
-                        Strokes on H16: {String(debugHole15.winnerStrokesH16)} |{' '}
-                        Winner H16 Net: {String(debugHole15.winnerNetH16)} |{' '}
-                        UseHcp: {String(debugHole15.useHandicaps)}
-                      </>
-                    ) : 'No data'}
-                  </div>
 
                   {/* Skins Scorecard */}
                   <div className="border rounded-lg overflow-x-auto">
