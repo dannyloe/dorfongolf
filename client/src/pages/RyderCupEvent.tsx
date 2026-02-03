@@ -1411,6 +1411,7 @@ export default function RyderCupEvent() {
     lowestScore: number | null;
     isSkin: boolean;
     isPending: boolean; // waiting for next hole to be played
+    tiedPlayerNames: string[]; // players tied for low score (when there's a tie)
   }
 
   interface DaySkinsData {
@@ -1577,6 +1578,7 @@ export default function RyderCupEvent() {
           lowestScore: null,
           isSkin: false,
           isPending: false,
+          tiedPlayerNames: [],
         });
         continue;
       }
@@ -1593,6 +1595,7 @@ export default function RyderCupEvent() {
           lowestScore: minScore,
           isSkin: false,
           isPending: false,
+          tiedPlayerNames: playersWithMinScore.map(p => p.name),
         });
         continue;
       }
@@ -1620,6 +1623,7 @@ export default function RyderCupEvent() {
             lowestScore: minScore,
             isSkin: false,
             isPending: true,
+            tiedPlayerNames: [],
           });
           continue;
         }
@@ -1637,6 +1641,7 @@ export default function RyderCupEvent() {
             lowestScore: minScore,
             isSkin: true,
             isPending: false,
+            tiedPlayerNames: [],
           });
         } else {
           // Winner didn't make par or better on next hole - no skin
@@ -1647,6 +1652,7 @@ export default function RyderCupEvent() {
             lowestScore: minScore,
             isSkin: false,
             isPending: false,
+            tiedPlayerNames: [],
           });
         }
       } else {
@@ -1659,6 +1665,7 @@ export default function RyderCupEvent() {
           lowestScore: minScore,
           isSkin: true,
           isPending: false,
+          tiedPlayerNames: [],
         });
       }
     }
@@ -4003,11 +4010,14 @@ export default function RyderCupEvent() {
                   {event.useHandicaps && (
                     <div className="flex items-center gap-4 text-xs text-muted-foreground mb-2">
                       <span className="flex items-center gap-1">
-                        <span className="text-blue-600 dark:text-blue-400 font-bold">•</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                         <span>= 1 stroke received</span>
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="text-blue-600 dark:text-blue-400 font-bold">••</span>
+                        <span className="flex gap-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        </span>
                         <span>= 2 strokes received</span>
                       </span>
                     </div>
@@ -4088,6 +4098,7 @@ export default function RyderCupEvent() {
                                 const holeResult = skinsData.holeResults[idx];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
                                 const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
+                                const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 const strokesOnHole = player.strokesPerHole[idx] || 0;
                                 return (
                                   <td
@@ -4095,15 +4106,19 @@ export default function RyderCupEvent() {
                                     className={`px-2 py-2 text-center relative ${
                                       isSkinWinner 
                                         ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
-                                        : isLowScore && !holeResult?.isSkin
-                                          ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                                          : ''
+                                        : isTiedForLow
+                                          ? 'bg-red-100 dark:bg-red-900/30'
+                                          : isLowScore && !holeResult?.isSkin
+                                            ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                                            : ''
                                     }`}
                                   >
                                     {score ?? '-'}
                                     {strokesOnHole > 0 && event.useHandicaps && (
-                                      <span className="absolute top-0.5 right-0.5 text-[8px] text-blue-600 dark:text-blue-400 font-bold">
-                                        {'•'.repeat(strokesOnHole)}
+                                      <span className="absolute -top-0.5 -right-0.5 flex gap-0.5">
+                                        {Array.from({ length: Math.min(strokesOnHole, 3) }, (_, i) => (
+                                          <span key={i} className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        ))}
                                       </span>
                                     )}
                                   </td>
@@ -4116,6 +4131,7 @@ export default function RyderCupEvent() {
                                 const holeResult = skinsData.holeResults[idx + 9];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
                                 const isLowScore = holeResult?.lowestScore === score && holeResult?.winnerId === player.name;
+                                const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 const strokesOnHole = player.strokesPerHole[idx + 9] || 0;
                                 return (
                                   <td
@@ -4123,15 +4139,19 @@ export default function RyderCupEvent() {
                                     className={`px-2 py-2 text-center relative ${
                                       isSkinWinner 
                                         ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
-                                        : isLowScore && !holeResult?.isSkin
-                                          ? 'bg-yellow-50 dark:bg-yellow-900/20'
-                                          : ''
+                                        : isTiedForLow
+                                          ? 'bg-red-100 dark:bg-red-900/30'
+                                          : isLowScore && !holeResult?.isSkin
+                                            ? 'bg-yellow-50 dark:bg-yellow-900/20'
+                                            : ''
                                     }`}
                                   >
                                     {score ?? '-'}
                                     {strokesOnHole > 0 && event.useHandicaps && (
-                                      <span className="absolute top-0.5 right-0.5 text-[8px] text-blue-600 dark:text-blue-400 font-bold">
-                                        {'•'.repeat(strokesOnHole)}
+                                      <span className="absolute -top-0.5 -right-0.5 flex gap-0.5">
+                                        {Array.from({ length: Math.min(strokesOnHole, 3) }, (_, i) => (
+                                          <span key={i} className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                        ))}
                                       </span>
                                     )}
                                   </td>
