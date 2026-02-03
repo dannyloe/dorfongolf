@@ -1565,6 +1565,7 @@ export const api = {
       path: '/api/manual-bets',
       input: z.object({
         description: z.string().min(1),
+        ryderCupEventId: z.number().optional(),
         entries: z.array(z.object({
           playerName: z.string().min(1),
           presetPlayerId: z.number().optional(),

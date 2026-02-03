@@ -68,8 +68,8 @@ export interface IStorage {
   getAllClosestToHoleWinners(eventId: number): Promise<RyderCupClosestToHole[]>;
   
   // Manual Bet methods
-  getManualBets(): Promise<ManualBetWithEntries[]>;
-  createManualBet(description: string, entries: { playerName: string; presetPlayerId?: number; amount: number }[], creatorId?: number): Promise<ManualBetWithEntries>;
+  getManualBets(ryderCupEventId?: number): Promise<ManualBetWithEntries[]>;
+  createManualBet(description: string, entries: { playerName: string; presetPlayerId?: number; amount: number }[], creatorId?: number, ryderCupEventId?: number): Promise<ManualBetWithEntries>;
   deleteManualBet(betId: number): Promise<boolean>;
 }
 
@@ -2697,9 +2697,23 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Manual Bet methods
-  async getManualBets(): Promise<ManualBetWithEntries[]> {
-    const bets = await db.select().from(manualBets).orderBy(desc(manualBets.createdAt));
-    const entries = await db.select().from(manualBetEntries);
+  async getManualBets(ryderCupEventId?: number): Promise<ManualBetWithEntries[]> {
+    let bets;
+    if (ryderCupEventId !== undefined) {
+      bets = await db.select().from(manualBets)
+        .where(eq(manualBets.ryderCupEventId, ryderCupEventId))
+        .orderBy(desc(manualBets.createdAt));
+    } else {
+      bets = await db.select().from(manualBets).orderBy(desc(manualBets.createdAt));
+    }
+    
+    if (bets.length === 0) {
+      return [];
+    }
+    
+    const betIds = bets.map(b => b.id);
+    const entries = await db.select().from(manualBetEntries)
+      .where(inArray(manualBetEntries.betId, betIds));
     
     // Group entries by betId
     const entriesByBetId = new Map<number, ManualBetEntry[]>();
@@ -2719,12 +2733,14 @@ export class DatabaseStorage implements IStorage {
   async createManualBet(
     description: string, 
     entries: { playerName: string; presetPlayerId?: number; amount: number }[], 
-    creatorId?: number
+    creatorId?: number,
+    ryderCupEventId?: number
   ): Promise<ManualBetWithEntries> {
     // Create the bet
     const [bet] = await db.insert(manualBets).values({
       description,
       creatorId: creatorId ?? null,
+      ryderCupEventId: ryderCupEventId ?? null,
     }).returning();
     
     // Create entries, looking up presetPlayerId if not provided

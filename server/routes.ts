@@ -3084,7 +3084,8 @@ Rules:
   
   app.get(api.manualBets.list.path, async (req, res) => {
     try {
-      const bets = await storage.getManualBets();
+      const ryderCupEventId = req.query.ryderCupEventId ? parseInt(req.query.ryderCupEventId as string) : undefined;
+      const bets = await storage.getManualBets(ryderCupEventId);
       res.json(bets.map(bet => ({
         ...bet,
         createdAt: bet.createdAt?.toISOString() || null,
@@ -3104,7 +3105,7 @@ Rules:
         return res.status(400).json({ message: result.error.errors[0].message });
       }
       
-      const { description, entries } = result.data;
+      const { description, entries, ryderCupEventId } = result.data;
       
       // Server-side validation: minimum 2 entries
       if (entries.length < 2) {
@@ -3124,7 +3125,7 @@ Rules:
         return res.status(400).json({ message: "Duplicate players not allowed in the same bet" });
       }
       
-      const bet = await storage.createManualBet(description, entries, isNaN(userId) ? undefined : userId);
+      const bet = await storage.createManualBet(description, entries, isNaN(userId) ? undefined : userId, ryderCupEventId);
       
       res.status(201).json({
         ...bet,

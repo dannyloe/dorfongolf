@@ -678,6 +678,7 @@ export const manualBets = pgTable("manual_bets", {
   description: text("description").notNull(), // e.g. "Nassau side bet", "Putting contest"
   createdAt: timestamp("created_at").defaultNow(),
   creatorId: integer("creator_id"), // References users.id (optional)
+  ryderCupEventId: integer("ryder_cup_event_id"), // References ryderCupEvents.id (optional - for event-specific bets)
 });
 
 export const manualBetEntries = pgTable("manual_bet_entries", {

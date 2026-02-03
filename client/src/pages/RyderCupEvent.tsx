@@ -295,14 +295,15 @@ export default function RyderCupEvent() {
     queryKey: ["/api/preset-players"],
   });
   
-  // Query for manual bets
+  // Query for manual bets for this event
   const { data: manualBets = [] } = useQuery<{
     id: number;
     description: string;
     createdAt: string | null;
     entries: { id: number; playerName: string; presetPlayerId: number | null; amount: number }[];
   }[]>({
-    queryKey: ["/api/manual-bets"],
+    queryKey: ["/api/manual-bets", { ryderCupEventId: parseInt(id) }],
+    enabled: !!id,
   });
 
   // Get current day's course info for scorecard
@@ -483,11 +484,11 @@ export default function RyderCupEvent() {
   
   // Manual bet mutation
   const createManualBetMutation = useMutation({
-    mutationFn: async (data: { description: string; entries: { playerName: string; presetPlayerId?: number; amount: number }[] }) => {
+    mutationFn: async (data: { description: string; ryderCupEventId?: number; entries: { playerName: string; presetPlayerId?: number; amount: number }[] }) => {
       return apiRequest("POST", "/api/manual-bets", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manual-bets", { ryderCupEventId: parseInt(id) }] });
       toast({ title: "Bet recorded successfully" });
       setAddBetOpen(false);
       setBetDescription("");
@@ -812,6 +813,7 @@ export default function RyderCupEvent() {
     
     createManualBetMutation.mutate({
       description: betDescription.trim(),
+      ryderCupEventId: parseInt(id),
       entries: validEntries.map(e => ({
         playerName: e.playerName.trim(),
         presetPlayerId: e.presetPlayerId || undefined,
