@@ -954,10 +954,12 @@ export default function RyderCupEvent() {
     try {
       // Calculate results using the same logic as computeSideBetData
       const results = calculateSideBetResults();
+      console.log("[DEBUG] refreshSideMatchResults - calculated entries:", results.entries.length, "for", sideMatchLedger.eventMatches.length, "event matches");
       
       // Save results to the database for each event match
       for (const em of sideMatchLedger.eventMatches) {
         const matchEntries = results.entries.filter(e => e.matchId === em.id);
+        console.log("[DEBUG] Event match", em.id, em.name, "has", matchEntries.length, "entries");
         if (matchEntries.length === 0) continue;
         
         // Convert entries to the format expected by the API (amounts already in cents)
