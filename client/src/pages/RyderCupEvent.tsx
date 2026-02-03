@@ -1412,28 +1412,42 @@ export default function RyderCupEvent() {
     // Calculate course par for handicap calculations
     const coursePar = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0) || 72;
 
+    // Build a lookup of team member handicaps by player name (fallback when side doesn't have handicap)
+    const memberHandicapLookup = new Map<string, number | null>();
+    for (const team of event.teams) {
+      for (const member of team.members || []) {
+        if (member.playerName) {
+          memberHandicapLookup.set(member.playerName, member.handicapIndex ?? null);
+        }
+      }
+    }
+
+    // Helper to calculate course handicap from handicap index
+    const getCourseHandicap = (handicapIndexTenths: number | null, teeId: number | null): number | null => {
+      if (handicapIndexTenths === null || handicapIndexTenths === undefined) return null;
+      const handicapIndex = handicapIndexTenths / 10;
+      const tee = courseTees?.find(t => t.id === teeId);
+      if (tee) {
+        const slopeAdj = handicapIndex * ((tee.slopeRating || 113) / 113);
+        const ratingDiff = ((tee.courseRating || 720) / 10) - coursePar;
+        return Math.round(slopeAdj + ratingDiff);
+      }
+      return Math.round(handicapIndex);
+    };
+
     for (const pairing of day.pairings) {
       for (const side of pairing.sides) {
         const team = getTeamById(side.teamId);
         const color = team?.color || "#888";
 
-        // Helper to calculate course handicap from handicap index
-        const getCourseHandicap = (handicapIndexTenths: number | null, teeId: number | null): number | null => {
-          if (handicapIndexTenths === null || handicapIndexTenths === undefined) return null;
-          const handicapIndex = handicapIndexTenths / 10;
-          const tee = courseTees?.find(t => t.id === teeId);
-          if (tee) {
-            const slopeAdj = handicapIndex * ((tee.slopeRating || 113) / 113);
-            const ratingDiff = ((tee.courseRating || 720) / 10) - coursePar;
-            return Math.round(slopeAdj + ratingDiff);
-          }
-          return Math.round(handicapIndex);
-        };
-
         // Player 1
         if (side.player1Name) {
           if (!playerMap.has(side.player1Name)) {
-            const courseHcp = getCourseHandicap(side.player1HandicapIndex, side.player1TeeId);
+            // Try side handicap first, fall back to team member handicap
+            const sideHcp = side.player1HandicapIndex;
+            const memberHcp = memberHandicapLookup.get(side.player1Name);
+            const handicapIndexTenths = sideHcp ?? memberHcp ?? null;
+            const courseHcp = getCourseHandicap(handicapIndexTenths, side.player1TeeId);
             playerMap.set(side.player1Name, { teamColor: color, scores: Array(18).fill(null), courseHandicap: courseHcp });
           }
           // Fill in scores from this side
@@ -1447,7 +1461,11 @@ export default function RyderCupEvent() {
         // Player 2
         if (side.player2Name) {
           if (!playerMap.has(side.player2Name)) {
-            const courseHcp = getCourseHandicap(side.player2HandicapIndex, side.player2TeeId);
+            // Try side handicap first, fall back to team member handicap
+            const sideHcp = side.player2HandicapIndex;
+            const memberHcp = memberHandicapLookup.get(side.player2Name);
+            const handicapIndexTenths = sideHcp ?? memberHcp ?? null;
+            const courseHcp = getCourseHandicap(handicapIndexTenths, side.player2TeeId);
             playerMap.set(side.player2Name, { teamColor: color, scores: Array(18).fill(null), courseHandicap: courseHcp });
           }
           for (const score of side.scores) {
