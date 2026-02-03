@@ -1509,6 +1509,11 @@ export default function RyderCupEvent() {
         const winnerData = players.find(p => p.name === potentialWinner.name);
         const winnerNextScore = winnerData?.scores[hole + 1] ?? null;
 
+        // Debug log for hole 15
+        if (holeNumber === 15) {
+          console.log(`[SKINS DEBUG H15] Winner: ${potentialWinner.name}, nextHole: ${nextHoleNumber}, nextHolePar: ${nextHolePar}, winnerNextScore: ${winnerNextScore}, courseHoles count: ${courseHoles.length}`);
+        }
+
         if (winnerNextScore === null) {
           // Next hole not played yet - pending
           holeResults.push({
@@ -1587,6 +1592,17 @@ export default function RyderCupEvent() {
   };
 
   const skinsData = calculateDaySkins(selectedSkinsDay);
+  
+  // Debug info for hole 15
+  const debugHole15 = (() => {
+    if (!skinsData) return null;
+    const hole15Result = skinsData.holeResults.find(r => r.holeNumber === 15);
+    const hole16Par = courseHoles.find(h => h.holeNumber === 16)?.par ?? 'not found';
+    const winner = hole15Result?.winnerName;
+    const winnerPlayer = skinsData.players.find(p => p.name === winner);
+    const winnerHole16Score = winnerPlayer?.scores[15] ?? 'no score'; // index 15 = hole 16
+    return { hole15Result, hole16Par, winnerHole16Score, courseHolesCount: courseHoles.length };
+  })();
 
   const openRecordResult = (pairingId: number) => {
     setSelectedPairingId(pairingId);
@@ -3864,6 +3880,19 @@ export default function RyderCupEvent() {
                           );
                         })}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Debug Info for Hole 15 */}
+                  {debugHole15 && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs mb-2">
+                      <strong>DEBUG Hole 15:</strong>{' '}
+                      Winner: {debugHole15.hole15Result?.winnerName || 'none'} |{' '}
+                      H15 isSkin: {String(debugHole15.hole15Result?.isSkin)} |{' '}
+                      H15 isPending: {String(debugHole15.hole15Result?.isPending)} |{' '}
+                      H16 Par: {String(debugHole15.hole16Par)} |{' '}
+                      Winner H16 Score: {String(debugHole15.winnerHole16Score)} |{' '}
+                      CourseHoles loaded: {debugHole15.courseHolesCount}
                     </div>
                   )}
 
