@@ -964,6 +964,7 @@ export default function RyderCupEvent() {
         
         // Convert entries to the format expected by the API (amounts already in cents)
         const resultsToSave = matchEntries.map(e => ({
+          eventMatchId: em.id,
           playerId: e.playerId,
           playerName: e.playerName,
           amount: e.amount, // Already in cents
@@ -974,8 +975,8 @@ export default function RyderCupEvent() {
           teamIndex: e.teamIndex ?? null,
         }));
         
-        // Save to the event match results table
-        await apiRequest('POST', `/api/event-matches/${em.id}/results`, { results: resultsToSave });
+        // Save to the event match results table (API expects array directly)
+        await apiRequest('POST', `/api/event-matches/${em.id}/results`, resultsToSave);
       }
       
       // Refresh the side match ledger data to get the updated stored results
