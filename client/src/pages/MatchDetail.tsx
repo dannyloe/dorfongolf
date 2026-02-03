@@ -2734,7 +2734,7 @@ export default function MatchDetail() {
                                         >
                                           {displayHcp ?? '-'}
                                         </button>
-                                        {hasOverride && canEditScoresAndBets && calculatedHcp !== undefined && (
+                                        {canEditScoresAndBets && calculatedHcp !== undefined && (
                                           <button
                                             onClick={() => {
                                               upsertMatchHandicap.mutate({
