@@ -968,11 +968,17 @@ export default function RyderCupEvent() {
     }
 
     // Build net context map for net scoring calculations
+    // Use ryderCupPlayerDataByDay as authoritative source for handicaps (same as Ledger)
     const netContextMap = new Map<number, NetScoringContext>();
     for (const em of sideMatchLedger.eventMatches) {
       if (em.useNetScoring && sideMatchLedger.courseData) {
         const match = sideMatchLedger.matches.find((m: { id: number }) => m.id === em.eventId);
         const courseId = match?.courseId;
+        const dayNumber = match?.ryderCupDayNumber;
+        
+        // Get Ryder Cup player data for this day as authoritative source
+        const rcPlayerData = dayNumber ? sideMatchLedger.ryderCupPlayerDataByDay?.[dayNumber] : undefined;
+        
         if (courseId && sideMatchLedger.courseData[courseId]) {
           const courseData = sideMatchLedger.courseData[courseId];
           const holeHandicaps = new Map<number, number>();
@@ -985,27 +991,52 @@ export default function RyderCupEvent() {
           // Calculate course par from holes (holes data includes par field at runtime)
           const coursePar = (courseData.holes as Array<{ par?: number }>).reduce((sum: number, h) => sum + (h.par ?? 0), 0);
           
+          // Build tee lookup for course handicap calculation
+          const teeLookup = new Map<number, { slopeRating: number; courseRating: number }>();
+          for (const tee of courseData.tees) {
+            teeLookup.set(tee.id, { slopeRating: tee.slopeRating, courseRating: tee.courseRating });
+          }
+          
           const courseHandicaps = new Map<number, number>();
-          const playerHandicaps = new Map<number, number>();
           for (const team of em.teams || []) {
             for (const member of team.members || []) {
-              const handicapIndex = member.player?.handicapIndex;
-              const teeId = member.player?.teeId;
-              if (handicapIndex !== null && handicapIndex !== undefined) {
-                const tee = courseData.tees.find((t: { id: number }) => t.id === teeId) || courseData.tees[0];
-                if (tee) {
-                  // USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating - Par)
-                  const courseHcp = calculateCourseHandicap(handicapIndex, tee.slopeRating, tee.courseRating, coursePar);
-                  if (courseHcp !== null) {
-                    courseHandicaps.set(member.playerId, courseHcp);
-                    playerHandicaps.set(member.playerId, courseHcp);
-                  }
+              if (courseHandicaps.has(member.playerId)) continue;
+              
+              const player = member.player;
+              if (!player) continue;
+              
+              // For Ryder Cup side matches, use pairing data as authoritative source
+              const playerName = player.name;
+              const pairingData = playerName ? rcPlayerData?.[playerName] : undefined;
+              const handicapIndex = pairingData?.handicapIndex ?? player.handicapIndex;
+              const teeId = pairingData?.teeId ?? player.teeId;
+              
+              if (handicapIndex === null || handicapIndex === undefined) continue;
+              
+              if (teeId && teeLookup.has(teeId)) {
+                const teeInfo = teeLookup.get(teeId)!;
+                // USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating - Par)
+                const courseHcp = calculateCourseHandicap(handicapIndex, teeInfo.slopeRating, teeInfo.courseRating, coursePar);
+                if (courseHcp !== null) {
+                  courseHandicaps.set(member.playerId, courseHcp);
                 }
+              } else {
+                // Fall back to handicap index as course handicap
+                courseHandicaps.set(member.playerId, Math.round(handicapIndex / 10));
               }
             }
           }
-
-          netContextMap.set(em.eventId, { holeHandicaps, playerHandicaps, courseHandicaps });
+          
+          // Calculate relative handicaps based on course handicaps
+          if (courseHandicaps.size > 0) {
+            const minHandicap = Math.min(...Array.from(courseHandicaps.values()));
+            const playerHandicaps = new Map<number, number>();
+            courseHandicaps.forEach((ch, playerId) => {
+              playerHandicaps.set(playerId, ch - minHandicap);
+            });
+            
+            netContextMap.set(em.eventId, { holeHandicaps, playerHandicaps, courseHandicaps });
+          }
         }
       }
     }
