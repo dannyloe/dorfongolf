@@ -4146,11 +4146,15 @@ export default function RyderCupEvent() {
                 const manualBetBalances: Record<string, number> = {};
                 allPlayers.forEach(name => { manualBetBalances[name] = 0; });
                 
+                console.log("[DEBUG] manualBets loaded:", manualBets.length, "bets", manualBets);
+                
                 manualBets.forEach(bet => {
                   bet.entries.forEach(entry => {
                     manualBetBalances[entry.playerName] = (manualBetBalances[entry.playerName] || 0) + entry.amount;
                   });
                 });
+                
+                console.log("[DEBUG] manualBetBalances:", manualBetBalances);
 
                 // Calculate net position based on includeBuyInInLedger setting
                 const includeBuyIn = event?.includeBuyInInLedger ?? true;
@@ -4386,6 +4390,7 @@ export default function RyderCupEvent() {
                       </div>
                     )}
 
+                    <div className="text-xs text-muted-foreground mb-2">[Debug: {manualBets.length} manual bets loaded]</div>
                     {manualBets.length > 0 && (
                       <div>
                         <h4 className="text-sm font-semibold mb-3">Manual Bets</h4>
