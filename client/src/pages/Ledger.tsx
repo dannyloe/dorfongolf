@@ -420,6 +420,7 @@ export default function Ledger() {
     // Convert Ryder Cup scores to the format expected by calculateLedger
     // This matches the logic in RyderCupEvent.tsx for consistency
     const convertedScores: Array<{ playerId: number; matchId: number; holeNumber: number; strokes: number }> = [];
+    const rcMatchIds = new Set<number>(); // Track which matchIds have converted scores
     
     if (data?.ryderCupScoresByEventAndDay) {
       for (const em of eventMatchesNeedingCalculation as Array<{ id: number; eventId: number; teams?: Array<{ members?: Array<{ playerId: number; player?: { name?: string } }> }> }>) {
@@ -428,6 +429,8 @@ export default function Ledger() {
         
         const dayScores = data.ryderCupScoresByEventAndDay[match.ryderCupEventId]?.[match.ryderCupDayNumber];
         if (!dayScores) continue;
+        
+        rcMatchIds.add(em.eventId); // Mark this match as having RC scores
         
         // For each team member, get their Ryder Cup scores
         for (const team of em.teams || []) {
@@ -450,8 +453,10 @@ export default function Ledger() {
       }
     }
     
-    // Use converted Ryder Cup scores for RC side matches, otherwise use regular scores
-    const scoresToUse = convertedScores.length > 0 ? convertedScores : (data?.scores || []);
+    // Merge converted Ryder Cup scores with regular scores for non-RC matches
+    // Filter out regular scores for matches that have converted RC scores
+    const regularScores = (data?.scores || []).filter((s: { matchId: number }) => !rcMatchIds.has(s.matchId));
+    const scoresToUse = [...convertedScores, ...regularScores];
     
     // Calculate entries for event matches without stored results
     let calculatedEntries: typeof storedEntries = [];
