@@ -143,6 +143,17 @@ export class DatabaseStorage implements IStorage {
     let teeId: number | null = player.teeId ?? null;
     let presetPlayerId: number | null = null;
     
+    // Get available tees for this course to validate tee selection
+    let courseTeeIds: Set<number> = new Set();
+    let firstCourseTeeId: number | null = null;
+    if (courseId) {
+      const availableTees = await db.select().from(courseTees).where(eq(courseTees.courseId, courseId));
+      courseTeeIds = new Set(availableTees.map(t => t.id));
+      if (availableTees.length > 0) {
+        firstCourseTeeId = availableTees[0].id;
+      }
+    }
+    
     if (player.name) {
       // Look up preset player ID for dynamic name updates
       const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, player.name));
@@ -165,6 +176,12 @@ export class DatabaseStorage implements IStorage {
       if (teeId === null && defaultHandicap?.defaultTeeId !== undefined) {
         teeId = defaultHandicap.defaultTeeId;
       }
+    }
+    
+    // Validate that the selected teeId belongs to this course, otherwise use first available
+    if (courseId && teeId !== null && !courseTeeIds.has(teeId)) {
+      console.log(`[addPlayer] teeId ${teeId} not found in course ${courseId}, falling back to first available tee ${firstCourseTeeId}`);
+      teeId = firstCourseTeeId;
     }
     
     const [newPlayer] = await db.insert(players).values({
