@@ -2407,7 +2407,11 @@ export default function RyderCupEvent() {
 
                   const getPlayerTee = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2): CourseTee | undefined => {
                     const teeId = playerNumber === 1 ? side.player1TeeId : side.player2TeeId;
-                    if (teeId) return courseTees.find(t => t.id === teeId);
+                    if (teeId) {
+                      const found = courseTees.find(t => t.id === teeId);
+                      // If tee not found in this course, fall back to first available
+                      return found ?? courseTees[0];
+                    }
                     // Fall back to first available tee for handicap calculations
                     return courseTees[0];
                   };
