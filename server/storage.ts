@@ -2223,11 +2223,16 @@ export class DatabaseStorage implements IStorage {
     // Build a map of player name -> scores per hole, grouped by day number
     const ryderCupScoresByDay: Record<number, Record<string, Record<number, number>>> = {};
     
+    // Build a map of player name -> handicap/tee data from Ryder Cup pairings, grouped by day number
+    // This is the authoritative source for handicap data in side matches
+    const ryderCupPlayerDataByDay: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>> = {};
+    
     // Get all days for this event
     const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
     
     for (const day of days) {
       ryderCupScoresByDay[day.dayNumber] = {};
+      ryderCupPlayerDataByDay[day.dayNumber] = {};
       
       // Get all pairings for this day
       const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
