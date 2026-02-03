@@ -352,40 +352,69 @@ export default function Ledger() {
       });
     }
     
-    // Determine which event matches have stored results
+    // Build a set of match IDs that are Ryder Cup side matches
+    const ryderCupMatchIds = new Set<number>();
+    for (const match of data?.matches || []) {
+      if (match.ryderCupEventId && match.ryderCupDayNumber) {
+        ryderCupMatchIds.add(match.id);
+      }
+    }
+    
+    // Get event match to match ID mapping
+    const eventMatchToMatchId = new Map<number, number>();
+    for (const em of filteredEventMatches as Array<{ id: number; eventId: number }>) {
+      eventMatchToMatchId.set(em.id, em.eventId);
+    }
+    
+    // Determine which event matches have stored results (but exclude Ryder Cup matches)
     const storedResultsByEventMatch = new Map<number, typeof relevantStoredResults>();
     for (const r of relevantStoredResults) {
+      // Skip stored results for Ryder Cup side matches - always recalculate those
+      const matchId = eventMatchToMatchId.get(r.eventMatchId);
+      if (matchId && ryderCupMatchIds.has(matchId)) continue;
+      
       const existing = storedResultsByEventMatch.get(r.eventMatchId) || [];
       existing.push(r);
       storedResultsByEventMatch.set(r.eventMatchId, existing);
     }
     
-    // Identify event matches that need calculation (no stored results)
+    // Identify event matches that need calculation (no stored results OR is Ryder Cup match)
     const eventMatchesWithStoredResults = new Set(storedResultsByEventMatch.keys());
     const eventMatchesNeedingCalculation = filteredEventMatches.filter(
-      (em: { id: number }) => !eventMatchesWithStoredResults.has(em.id)
+      (em: { id: number; eventId: number }) => {
+        // Always recalculate Ryder Cup side matches to ensure consistency
+        if (ryderCupMatchIds.has(em.eventId)) return true;
+        // Calculate if no stored results
+        return !eventMatchesWithStoredResults.has(em.id);
+      }
     );
     
-    // Build entries from stored results
-    const storedEntries = relevantStoredResults.map(r => {
-      const metadata = eventMatchToMetadata.get(r.eventMatchId) || { matchName: `Match ${r.eventMatchId}` };
-      return {
-        matchId: r.eventMatchId,
-        matchName: metadata.matchName,
-        playerId: r.playerId,
-        playerName: r.playerName,
-        amount: r.amount / 100, // Convert cents to dollars
-        betType: r.betType || undefined,
-        isComplete: r.isComplete,
-        isAutoPress: r.isAutoPress,
-        teamName: r.teamName || undefined,
-        teamIndex: r.teamIndex ?? undefined,
-        createdAt: metadata.createdAt,
-        teamAMembers: metadata.teamAMembers,
-        teamBMembers: metadata.teamBMembers,
-        pressHole: undefined as number | null | undefined,
-      };
-    });
+    // Build entries from stored results (excluding Ryder Cup matches which we recalculate)
+    const storedEntries = relevantStoredResults
+      .filter(r => {
+        const matchId = eventMatchToMatchId.get(r.eventMatchId);
+        // Exclude Ryder Cup side matches - we recalculate those
+        return !(matchId && ryderCupMatchIds.has(matchId));
+      })
+      .map(r => {
+        const metadata = eventMatchToMetadata.get(r.eventMatchId) || { matchName: `Match ${r.eventMatchId}` };
+        return {
+          matchId: r.eventMatchId,
+          matchName: metadata.matchName,
+          playerId: r.playerId,
+          playerName: r.playerName,
+          amount: r.amount / 100, // Convert cents to dollars
+          betType: r.betType || undefined,
+          isComplete: r.isComplete,
+          isAutoPress: r.isAutoPress,
+          teamName: r.teamName || undefined,
+          teamIndex: r.teamIndex ?? undefined,
+          createdAt: metadata.createdAt,
+          teamAMembers: metadata.teamAMembers,
+          teamBMembers: metadata.teamBMembers,
+          pressHole: undefined as number | null | undefined,
+        };
+      });
     
     // Calculate entries for event matches without stored results
     let calculatedEntries: typeof storedEntries = [];
