@@ -1421,6 +1421,7 @@ export default function RyderCupEvent() {
     skinValue: number;
     totalPot: number;
     isComplete: boolean;
+    pars: (number | null)[];
   }
 
   const calculateDaySkins = (dayNumber: number): DaySkinsData | null => {
@@ -1942,6 +1943,9 @@ export default function RyderCupEvent() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
+                <span className="text-xs text-muted-foreground">
+                  ({courseTees.length} tees)
+                </span>
                 {isCreatorOrAdmin && (
                   <Button
                     size="sm"
@@ -4042,16 +4046,16 @@ export default function RyderCupEvent() {
                             <td key={idx} className="px-2 py-1 text-center">{par ?? '-'}</td>
                           ))}
                           <td className="px-2 py-1 text-center bg-muted/50">
-                            {skinsData.pars.slice(0, 9).reduce((sum, p) => sum + (p ?? 0), 0) || '-'}
+                            {skinsData.pars.slice(0, 9).reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
                           </td>
                           {skinsData.pars.slice(9, 18).map((par, idx) => (
                             <td key={idx + 9} className="px-2 py-1 text-center">{par ?? '-'}</td>
                           ))}
                           <td className="px-2 py-1 text-center bg-muted/50">
-                            {skinsData.pars.slice(9, 18).reduce((sum, p) => sum + (p ?? 0), 0) || '-'}
+                            {skinsData.pars.slice(9, 18).reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
                           </td>
                           <td className="px-2 py-1 text-center bg-muted/70 font-medium">
-                            {skinsData.pars.reduce((sum, p) => sum + (p ?? 0), 0) || '-'}
+                            {skinsData.pars.reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
                           </td>
                           <td className="px-2 py-1"></td>
                         </tr>
