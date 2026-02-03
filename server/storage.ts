@@ -74,6 +74,7 @@ export interface IStorage {
   
   // Event Match Results methods (stored/cached bet results)
   getEventMatchResults(eventMatchId: number): Promise<EventMatchResult[]>;
+  getEventMatchResultsByEventMatchIds(eventMatchIds: number[]): Promise<EventMatchResult[]>;
   saveEventMatchResults(eventMatchId: number, results: InsertEventMatchResult[]): Promise<EventMatchResult[]>;
   deleteEventMatchResults(eventMatchId: number): Promise<void>;
 }
@@ -2905,6 +2906,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEventMatchResults(eventMatchId: number): Promise<void> {
     await db.delete(eventMatchResults).where(eq(eventMatchResults.eventMatchId, eventMatchId));
+  }
+
+  async getEventMatchResultsByEventMatchIds(eventMatchIds: number[]): Promise<EventMatchResult[]> {
+    if (eventMatchIds.length === 0) {
+      return [];
+    }
+    return db.select().from(eventMatchResults).where(inArray(eventMatchResults.eventMatchId, eventMatchIds));
   }
 }
 

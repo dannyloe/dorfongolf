@@ -673,7 +673,15 @@ export async function registerRoutes(
       const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
       
       const ledgerData = await storage.getLedgerData(startDate, endDate);
-      res.json(ledgerData);
+      
+      // Get stored event match results for all event matches
+      const eventMatchIds = (ledgerData.eventMatches || []).map((em: any) => em.id);
+      const storedResults = await storage.getEventMatchResultsByEventMatchIds(eventMatchIds);
+      
+      res.json({
+        ...ledgerData,
+        storedResults,
+      });
     } catch (err) {
       res.status(500).json({ message: "Internal server error" });
     }

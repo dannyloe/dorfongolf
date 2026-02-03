@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus } from "lucide-react";
-import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
+import { useScanScorecard, ScannedPlayer, useSaveEventMatchResults } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -1086,6 +1086,87 @@ export default function RyderCupEvent() {
   };
 
   const sideBetData = computeSideBetData();
+
+  // Auto-save side match results to database for Ledger consistency
+  const saveResultsMutation = useSaveEventMatchResults();
+  const lastSavedEntriesRef = useRef<string>('');
+  
+  // Save results for all event matches when side bet data changes (with debouncing)
+  useEffect(() => {
+    if (!sideMatchLedger?.eventMatches || sideBetData.entries.length === 0) return;
+    
+    // Only save entries that are complete (have all scores)
+    const completeEntries = sideBetData.entries.filter(e => e.isComplete);
+    if (completeEntries.length === 0) return;
+    
+    // Debounce: check if entries have actually changed
+    const entriesKey = JSON.stringify(completeEntries.map(e => ({
+      matchId: e.matchId,
+      playerName: e.playerName,
+      amount: e.amount,
+      betType: e.betType,
+    })));
+    if (entriesKey === lastSavedEntriesRef.current) return;
+    lastSavedEntriesRef.current = entriesKey;
+    
+    // Build player name to playerId lookup from event match teams
+    const playerNameToId = new Map<number, Map<string, number>>(); // matchId -> (playerName -> playerId)
+    for (const em of sideMatchLedger.eventMatches) {
+      const lookup = new Map<string, number>();
+      for (const team of em.teams || []) {
+        for (const member of team.members || []) {
+          const name = member.player?.name?.toLowerCase().trim();
+          if (name) {
+            lookup.set(name, member.playerId);
+          }
+        }
+      }
+      playerNameToId.set(em.id, lookup);
+    }
+    
+    // Group entries by event match ID
+    const entriesByEventMatch = new Map<number, LedgerEntry[]>();
+    for (const entry of completeEntries) {
+      const entries = entriesByEventMatch.get(entry.matchId) || [];
+      entries.push(entry);
+      entriesByEventMatch.set(entry.matchId, entries);
+    }
+    
+    // Save results for each event match
+    Array.from(entriesByEventMatch.entries()).forEach(([eventMatchId, entries]) => {
+      const eventMatch = sideMatchLedger.eventMatches.find((em: any) => em.id === eventMatchId);
+      if (!eventMatch) return;
+      
+      const playerLookup = playerNameToId.get(eventMatchId);
+      if (!playerLookup) return;
+      
+      // Format results for storage, only including entries with valid player IDs
+      const results = entries
+        .map((e: LedgerEntry) => {
+          const normalizedName = e.playerName.toLowerCase().trim();
+          const playerId = playerLookup.get(normalizedName);
+          if (!playerId) return null; // Skip entries without valid player ID
+          
+          return {
+            eventMatchId,
+            playerId,
+            playerName: e.playerName,
+            amount: e.amount, // Already in cents from computeSideBetData
+            betType: e.betType || undefined,
+            isComplete: e.isComplete,
+            isAutoPress: e.isAutoPress || false,
+            teamName: e.teamName,
+            teamIndex: e.teamIndex,
+          };
+        })
+        .filter((r): r is NonNullable<typeof r> => r !== null);
+      
+      if (results.length === 0) return;
+      
+      // Save asynchronously
+      saveResultsMutation.mutate({ eventMatchId, results });
+    });
+  }, [JSON.stringify(sideBetData.entries), sideMatchLedger?.eventMatches]);
 
   // Calculate per-day side bet breakdown
   const computeSideBetsByDay = (): Record<number, Record<string, number>> => {

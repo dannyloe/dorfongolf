@@ -182,10 +182,11 @@ export default function Ledger() {
 
   const { data, isLoading } = useQuery<{
     matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; groupId: number | null; isHandicapped?: boolean; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null }>;
-    eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null; name?: string } }> }>; [key: string]: any }>;
+    eventMatches: Array<{ id: number; eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null; name?: string } }> }>; [key: string]: any }>;
     scores: Array<any>;
     courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
     ryderCupPlayerDataByEventAndDay?: Record<number, Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>>;
+    storedResults?: Array<{ id: number; eventMatchId: number; playerId: number; playerName: string; amount: number; betType: string | null; isComplete: boolean; isAutoPress: boolean; teamName: string | null; teamIndex: number | null }>;
   }>({
     queryKey: [`/api/ledger?${queryParams}`],
   });
@@ -329,11 +330,115 @@ export default function Ledger() {
   }, [data?.matches, data?.courseData, data?.eventMatches, data?.ryderCupPlayerDataByEventAndDay]);
 
   const ledgerResults = useMemo(() => {
-    if (!filteredEventMatches || filteredEventMatches.length === 0 || !data?.scores) {
+    if (!filteredEventMatches || filteredEventMatches.length === 0) {
       return { balances: [], entries: [] };
     }
-    return calculateLedger(filteredEventMatches as any, data.scores, netContextMap);
-  }, [filteredEventMatches, data?.scores, netContextMap]);
+    
+    // Get the set of filtered event match IDs
+    const filteredEventMatchIds = new Set(filteredEventMatches.map((em: { id: number }) => em.id));
+    
+    // Check if we have stored results for these event matches
+    const relevantStoredResults = (data?.storedResults || []).filter(r => filteredEventMatchIds.has(r.eventMatchId));
+    
+    // Build lookup from eventMatchId to match metadata for display
+    const eventMatchToMetadata = new Map<number, { matchName: string; createdAt?: string; teamAMembers?: string[]; teamBMembers?: string[] }>();
+    for (const em of filteredEventMatches as Array<{ id: number; eventId: number; name?: string; teams?: Array<{ members?: Array<{ player?: { name?: string } }> }> }>) {
+      const match = data?.matches?.find(m => m.id === em.eventId);
+      eventMatchToMetadata.set(em.id, {
+        matchName: (em as any).name || match?.name || `Match ${em.eventId}`,
+        createdAt: match?.createdAt,
+        teamAMembers: em.teams?.[0]?.members?.map(m => m.player?.name || '').filter(Boolean) || [],
+        teamBMembers: em.teams?.[1]?.members?.map(m => m.player?.name || '').filter(Boolean) || [],
+      });
+    }
+    
+    // Determine which event matches have stored results
+    const storedResultsByEventMatch = new Map<number, typeof relevantStoredResults>();
+    for (const r of relevantStoredResults) {
+      const existing = storedResultsByEventMatch.get(r.eventMatchId) || [];
+      existing.push(r);
+      storedResultsByEventMatch.set(r.eventMatchId, existing);
+    }
+    
+    // Identify event matches that need calculation (no stored results)
+    const eventMatchesWithStoredResults = new Set(storedResultsByEventMatch.keys());
+    const eventMatchesNeedingCalculation = filteredEventMatches.filter(
+      (em: { id: number }) => !eventMatchesWithStoredResults.has(em.id)
+    );
+    
+    // Build entries from stored results
+    const storedEntries = relevantStoredResults.map(r => {
+      const metadata = eventMatchToMetadata.get(r.eventMatchId) || { matchName: `Match ${r.eventMatchId}` };
+      return {
+        matchId: r.eventMatchId,
+        matchName: metadata.matchName,
+        playerId: r.playerId,
+        playerName: r.playerName,
+        amount: r.amount / 100, // Convert cents to dollars
+        betType: r.betType || undefined,
+        isComplete: r.isComplete,
+        isAutoPress: r.isAutoPress,
+        teamName: r.teamName || undefined,
+        teamIndex: r.teamIndex ?? undefined,
+        createdAt: metadata.createdAt,
+        teamAMembers: metadata.teamAMembers,
+        teamBMembers: metadata.teamBMembers,
+        pressHole: undefined as number | null | undefined,
+      };
+    });
+    
+    // Calculate entries for event matches without stored results
+    let calculatedEntries: typeof storedEntries = [];
+    if (eventMatchesNeedingCalculation.length > 0 && data?.scores) {
+      const calculated = calculateLedger(eventMatchesNeedingCalculation as any, data.scores, netContextMap);
+      calculatedEntries = calculated.entries.map(e => ({
+        matchId: e.matchId,
+        matchName: e.matchName,
+        playerId: e.playerId,
+        playerName: e.playerName,
+        amount: e.amount,
+        betType: e.betType || undefined,
+        isComplete: e.isComplete,
+        isAutoPress: e.isAutoPress || false,
+        teamName: e.teamName || undefined,
+        teamIndex: e.teamIndex,
+        createdAt: eventMatchToMetadata.get(e.matchId)?.createdAt,
+        teamAMembers: eventMatchToMetadata.get(e.matchId)?.teamAMembers,
+        teamBMembers: eventMatchToMetadata.get(e.matchId)?.teamBMembers,
+        pressHole: e.pressHole,
+      }));
+    }
+    
+    // Merge all entries
+    const entries = [...storedEntries, ...calculatedEntries];
+    
+    // Aggregate balances from all entries
+    const playerTotals = new Map<number, { name: string; won: number; lost: number; matches: Set<number> }>();
+    
+    for (const entry of entries) {
+      if (!playerTotals.has(entry.playerId)) {
+        playerTotals.set(entry.playerId, { name: entry.playerName, won: 0, lost: 0, matches: new Set() });
+      }
+      const totals = playerTotals.get(entry.playerId)!;
+      if (entry.amount > 0) {
+        totals.won += entry.amount;
+      } else {
+        totals.lost += Math.abs(entry.amount);
+      }
+      totals.matches.add(entry.matchId);
+    }
+    
+    const balances = Array.from(playerTotals.entries()).map(([playerId, totals]) => ({
+      playerId,
+      playerName: totals.name,
+      totalWon: totals.won,
+      totalLost: totals.lost,
+      netBalance: totals.won - totals.lost,
+      matchesPlayed: totals.matches.size,
+    }));
+    
+    return { entries, balances };
+  }, [filteredEventMatches, data?.scores, data?.storedResults, netContextMap]);
   
   // Combine ledger results with manual bets
   const combinedLedgerResults = useMemo(() => {
@@ -401,6 +506,13 @@ export default function Ledger() {
             betType: 'Manual Bet',
             isComplete: true,
             amount: amountInDollars,
+            isAutoPress: false,
+            teamName: undefined,
+            teamIndex: undefined,
+            createdAt: bet.createdAt || undefined,
+            teamAMembers: undefined,
+            teamBMembers: undefined,
+            pressHole: undefined,
           });
         }
       }
