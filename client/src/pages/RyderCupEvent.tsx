@@ -1097,12 +1097,35 @@ export default function RyderCupEvent() {
       }
     }
 
-    // Use converted Ryder Cup scores instead of separate side match scores
-    const scoresToUse = convertedScores.length > 0 ? convertedScores : sideMatchLedger.scores;
+    // Prefer regular match scores when they exist, otherwise use Ryder Cup pairing scores
+    // Build a set of match IDs that have regular scores
+    const matchIdsWithRegularScores = new Set<number>();
+    for (const score of sideMatchLedger.scores || []) {
+      matchIdsWithRegularScores.add(score.matchId);
+    }
+    
+    // For each event match, decide which scores to use:
+    // - If regular scores exist for this match, use them
+    // - Otherwise, use converted Ryder Cup pairing scores
+    const scoresToUse: Array<{ playerId: number; matchId: number; holeNumber: number; strokes: number }> = [];
+    
+    for (const em of sideMatchLedger.eventMatches) {
+      const matchId = em.eventId;
+      
+      if (matchIdsWithRegularScores.has(matchId)) {
+        // Use regular match scores for this event match
+        const matchScores = (sideMatchLedger.scores || []).filter((s: any) => s.matchId === matchId);
+        scoresToUse.push(...matchScores);
+      } else {
+        // Use converted Ryder Cup pairing scores for this event match
+        const convertedForThisMatch = convertedScores.filter(s => s.matchId === matchId);
+        scoresToUse.push(...convertedForThisMatch);
+      }
+    }
 
     const { entries, balances: playerBalances } = calculateLedger(
       sideMatchLedger.eventMatches as any,
-      scoresToUse,
+      scoresToUse as any,
       netContextMap.size > 0 ? netContextMap : null
     );
 
