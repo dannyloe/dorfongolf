@@ -1943,9 +1943,6 @@ export default function RyderCupEvent() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
-                <span className="text-xs text-muted-foreground">
-                  ({courseTees.length} tees)
-                </span>
                 {isCreatorOrAdmin && (
                   <Button
                     size="sm"
