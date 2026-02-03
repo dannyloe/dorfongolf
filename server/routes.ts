@@ -679,6 +679,128 @@ export async function registerRoutes(
     }
   });
 
+  // Event Match Results Routes - for storing calculated bet results
+  app.get(api.eventMatchResults.get.path, isAuthenticated, async (req, res) => {
+    try {
+      const eventMatchId = parseInt(req.params.id);
+      const results = await storage.getEventMatchResults(eventMatchId);
+      res.json(results);
+    } catch (err) {
+      console.error("Error fetching event match results:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.eventMatchResults.save.path, isAuthenticated, async (req, res) => {
+    try {
+      const eventMatchId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      // Get the event match to check permissions
+      const eventMatch = await storage.getEventMatch(eventMatchId);
+      if (!eventMatch) {
+        return res.status(404).json({ message: "Event match not found" });
+      }
+      
+      // Get the parent match (eventId references the matches table)
+      const match = await storage.getMatch(eventMatch.eventId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      // Check if user is admin, creator, or organizer
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(match.id, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      // Check if user is a participant (allow any participant to save results after scoring)
+      const matchPlayers = await storage.getMatchPlayers(match.id);
+      const isParticipant = matchPlayers.some(p => p.userId === userId);
+      
+      if (!isAdmin && !isCreator && !isOrganizer && !isParticipant) {
+        return res.status(403).json({ message: "Only match participants, organizers, or creators can save results" });
+      }
+      
+      const input = api.eventMatchResults.save.input.parse(req.body);
+      
+      // Get the event match with teams to validate player IDs
+      const eventMatchWithTeams = await storage.getEventMatchWithTeams(eventMatchId);
+      if (!eventMatchWithTeams) {
+        return res.status(404).json({ message: "Event match not found" });
+      }
+      
+      // Build set of valid player IDs from the event match teams
+      const validPlayerIds = new Set<number>();
+      for (const team of eventMatchWithTeams.teams || []) {
+        for (const member of team.members || []) {
+          validPlayerIds.add(member.playerId);
+        }
+      }
+      
+      // Validate that all submitted results have valid player IDs from this event match
+      for (const result of input) {
+        if (!validPlayerIds.has(result.playerId)) {
+          return res.status(400).json({ 
+            message: `Invalid player ID ${result.playerId} - player is not part of this event match` 
+          });
+        }
+      }
+      
+      // Ensure all results have the correct eventMatchId and amounts are in cents
+      const resultsWithId = input.map(r => ({
+        ...r,
+        eventMatchId,
+      }));
+      
+      const saved = await storage.saveEventMatchResults(eventMatchId, resultsWithId);
+      res.json(saved);
+    } catch (err) {
+      console.error("Error saving event match results:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.eventMatchResults.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const eventMatchId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      // Get the event match to check permissions
+      const eventMatch = await storage.getEventMatch(eventMatchId);
+      if (!eventMatch) {
+        return res.status(404).json({ message: "Event match not found" });
+      }
+      
+      // Get the parent match (eventId references the matches table)
+      const match = await storage.getMatch(eventMatch.eventId);
+      if (!match) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+      
+      // Only admin, creator, or organizer can delete results
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(match.id, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only organizers or creators can delete results" });
+      }
+      
+      await storage.deleteEventMatchResults(eventMatchId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting event match results:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Preset Players Routes
   app.get(api.presetPlayers.list.path, isAuthenticated, async (req, res) => {
     const { PRESET_PLAYERS } = await import("@shared/models/auth");

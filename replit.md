@@ -93,6 +93,29 @@ Preferred communication style: Simple, everyday language.
 - **Ledger Integration**: Manual bets are combined with match results in the ledger, using presetPlayerId for consistent player identification
 - **UI Location**: "Add Bet" button in Ledger page filters; recorded bets shown in dedicated "Manual Bets" section
 
+### Event Match Results Storage (Stored/Cached Results)
+- **Purpose**: Store pre-calculated bet results in the database for consistency between views
+- **Tables**:
+  - `eventMatchResults` - Stores calculated player amounts per event match
+- **Schema Fields**:
+  - `eventMatchId` - Reference to the event match
+  - `playerId` - Reference to the player
+  - `playerName` - Display name for the player
+  - `amount` - Amount in cents (positive = won, negative = lost)
+  - `betType` - Type of bet (e.g., "Front 9", "Back 9", "Overall", "Skins", "Match Play")
+  - `isComplete` - Whether the result is finalized
+  - `isAutoPress` - Whether this is an auto-press bet result
+  - `teamName` - Team name if applicable
+  - `teamIndex` - Team index (0 or 1)
+  - `updatedAt` - Timestamp of last update
+- **API Endpoints**:
+  - `GET /api/event-matches/:id/results` - Retrieve stored results for an event match
+  - `POST /api/event-matches/:id/results` - Save calculated results (amounts in cents)
+  - `DELETE /api/event-matches/:id/results` - Delete stored results
+- **Validation**: Server validates that submitted player IDs belong to the event match
+- **Client Utilities**: `calculateEventMatchResults()` and `calculateAllEventMatchResults()` in matchplay.ts for calculating results in storage format
+- **Data Flow**: Client calculates results → POST to server → Server validates and stores → Future reads use stored results
+
 ### Match-Specific Course Handicap Overrides
 - In expanded match view for net matches, course handicaps are displayed for each player
 - Creators can click on any player's course handicap to override it for that specific match

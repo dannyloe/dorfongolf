@@ -1,11 +1,11 @@
 import { db } from "./db";
 import { 
-  matches, players, scores, users, eventMatches, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
+  matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   verificationCodes, notificationPreferences, messages,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
-  type EventMatch, type Team, type TeamMember, type CreateEventMatchRequest,
+  type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
   type PlayerHandicap, type InsertPlayerHandicap,
   type CourseTee, type InsertCourseTee,
@@ -71,6 +71,11 @@ export interface IStorage {
   getManualBets(ryderCupEventId?: number): Promise<ManualBetWithEntries[]>;
   createManualBet(description: string, entries: { playerName: string; presetPlayerId?: number; amount: number }[], creatorId?: number, ryderCupEventId?: number): Promise<ManualBetWithEntries>;
   deleteManualBet(betId: number): Promise<boolean>;
+  
+  // Event Match Results methods (stored/cached bet results)
+  getEventMatchResults(eventMatchId: number): Promise<EventMatchResult[]>;
+  saveEventMatchResults(eventMatchId: number, results: InsertEventMatchResult[]): Promise<EventMatchResult[]>;
+  deleteEventMatchResults(eventMatchId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2878,6 +2883,28 @@ export class DatabaseStorage implements IStorage {
     // Delete the bet
     const result = await db.delete(manualBets).where(eq(manualBets.id, betId)).returning();
     return result.length > 0;
+  }
+
+  // Event Match Results - stored/cached bet calculation results
+  async getEventMatchResults(eventMatchId: number): Promise<EventMatchResult[]> {
+    return db.select().from(eventMatchResults).where(eq(eventMatchResults.eventMatchId, eventMatchId));
+  }
+
+  async saveEventMatchResults(eventMatchId: number, results: InsertEventMatchResult[]): Promise<EventMatchResult[]> {
+    // Delete existing results for this event match first
+    await db.delete(eventMatchResults).where(eq(eventMatchResults.eventMatchId, eventMatchId));
+    
+    // Insert new results
+    if (results.length === 0) {
+      return [];
+    }
+    
+    const inserted = await db.insert(eventMatchResults).values(results).returning();
+    return inserted;
+  }
+
+  async deleteEventMatchResults(eventMatchId: number): Promise<void> {
+    await db.delete(eventMatchResults).where(eq(eventMatchResults.eventMatchId, eventMatchId));
   }
 }
 

@@ -546,6 +546,53 @@ export const api = {
       },
     },
   },
+  eventMatchResults: {
+    get: {
+      method: 'GET' as const,
+      path: '/api/event-matches/:id/results',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          eventMatchId: z.number(),
+          playerId: z.number(),
+          playerName: z.string(),
+          amount: z.number(),
+          betType: z.string().nullable(),
+          isComplete: z.boolean(),
+          isAutoPress: z.boolean(),
+          teamName: z.string().nullable(),
+          teamIndex: z.number().nullable(),
+          updatedAt: z.string().nullable(),
+        })),
+      },
+    },
+    save: {
+      method: 'POST' as const,
+      path: '/api/event-matches/:id/results',
+      // Note: amount is stored in cents (e.g., 500 = $5.00, -250 = -$2.50)
+      input: z.array(z.object({
+        eventMatchId: z.number(),
+        playerId: z.number(),
+        playerName: z.string(),
+        amount: z.number(), // Amount in cents (positive = won, negative = lost)
+        betType: z.string().optional(),
+        isComplete: z.boolean().optional(),
+        isAutoPress: z.boolean().optional(),
+        teamName: z.string().optional(),
+        teamIndex: z.number().optional(),
+      })),
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/event-matches/:id/results',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+      },
+    },
+  },
   courses: {
     list: {
       method: 'GET' as const,

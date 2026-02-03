@@ -103,6 +103,39 @@ export function useSubmitScore(matchId: number) {
   });
 }
 
+// Types for event match results
+type EventMatchResultInput = {
+  eventMatchId: number;
+  playerId: number;
+  playerName: string;
+  amount: number;
+  betType?: string;
+  isComplete?: boolean;
+  isAutoPress?: boolean;
+  teamName?: string;
+  teamIndex?: number;
+};
+
+export function useSaveEventMatchResults() {
+  return useMutation({
+    mutationFn: async ({ eventMatchId, results }: { eventMatchId: number; results: EventMatchResultInput[] }) => {
+      const url = buildUrl(api.eventMatchResults.save.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatchResults.save.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(results),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Failed to save results" }));
+        throw new Error(error.message || "Failed to save results");
+      }
+      return res.json();
+    },
+  });
+}
+
 export function useDeleteMatch() {
   const queryClient = useQueryClient();
   return useMutation({

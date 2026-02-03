@@ -345,7 +345,7 @@ export function calculateLedger(
           pressHole,
           teamAMembers,
           teamBMembers,
-          teamName: s.teamName,
+          teamName: undefined, // Skins is individual, no team
           teamIndex: 0,
         });
 
@@ -1445,4 +1445,75 @@ export function calculateFiveSettlements(
   });
   
   return settlements;
+}
+
+// Storage format for event match results
+export interface StorableEventMatchResult {
+  eventMatchId: number;
+  playerId: number;
+  playerName: string;
+  amount: number; // in cents
+  betType?: string;
+  isComplete?: boolean;
+  isAutoPress?: boolean;
+  teamName?: string;
+  teamIndex?: number;
+}
+
+/**
+ * Calculate results for a single event match and return them in a format suitable for storage.
+ * This is useful for persisting calculated results to ensure consistency between views.
+ */
+export function calculateEventMatchResults(
+  eventMatch: EventMatchWithUnit,
+  scores: Score[],
+  netContext: NetScoringContext | null = null
+): StorableEventMatchResult[] {
+  // Use calculateLedger to get entries for this single event match
+  const { entries } = calculateLedger([eventMatch], scores, netContext ? new Map([[eventMatch.eventId, netContext]]) : null);
+  
+  // Convert ledger entries to storable format (amounts in cents)
+  return entries.map(entry => ({
+    eventMatchId: eventMatch.id,
+    playerId: entry.playerId,
+    playerName: entry.playerName,
+    amount: Math.round(entry.amount * 100), // Convert dollars to cents
+    betType: entry.betType,
+    isComplete: entry.isComplete,
+    isAutoPress: entry.isAutoPress || false,
+    teamName: entry.teamName,
+    teamIndex: entry.teamIndex,
+  }));
+}
+
+/**
+ * Calculate results for all event matches in a list and return them grouped by event match ID.
+ */
+export function calculateAllEventMatchResults(
+  eventMatches: EventMatchWithUnit[],
+  scores: Score[],
+  netContextMap: Map<number, NetScoringContext> | null = null
+): Map<number, StorableEventMatchResult[]> {
+  const { entries } = calculateLedger(eventMatches, scores, netContextMap);
+  
+  // Group entries by event match ID
+  const resultsByMatch = new Map<number, StorableEventMatchResult[]>();
+  
+  for (const entry of entries) {
+    const results = resultsByMatch.get(entry.matchId) || [];
+    results.push({
+      eventMatchId: entry.matchId,
+      playerId: entry.playerId,
+      playerName: entry.playerName,
+      amount: Math.round(entry.amount * 100), // Convert dollars to cents
+      betType: entry.betType,
+      isComplete: entry.isComplete,
+      isAutoPress: entry.isAutoPress || false,
+      teamName: entry.teamName,
+      teamIndex: entry.teamIndex,
+    });
+    resultsByMatch.set(entry.matchId, results);
+  }
+  
+  return resultsByMatch;
 }

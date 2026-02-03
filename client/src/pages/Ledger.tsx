@@ -341,7 +341,7 @@ export default function Ledger() {
     
     // Create a map of player balances keyed by presetPlayerId (or playerName as fallback)
     // Use a composite key: presetPlayerId if available, otherwise playerName
-    const balanceMap = new Map<string, { playerId: number; playerName: string; presetPlayerId?: number; won: number; lost: number; netBalance: number }>();
+    const balanceMap = new Map<string, { playerId: number; playerName: string; presetPlayerId?: number; won: number; lost: number; netBalance: number; matchesPlayed?: number }>();
     
     const getPlayerKey = (playerId: number, playerName: string, presetPlayerId?: number | null): string => {
       // Use presetPlayerId as primary key if available, fallback to playerName
@@ -351,7 +351,15 @@ export default function Ledger() {
     // Add base ledger balances
     for (const balance of baseLedger.balances) {
       const key = getPlayerKey(balance.playerId, balance.playerName, (balance as any).presetPlayerId);
-      balanceMap.set(key, { ...balance });
+      balanceMap.set(key, {
+        playerId: balance.playerId,
+        playerName: balance.playerName,
+        presetPlayerId: (balance as any).presetPlayerId,
+        won: balance.totalWon,
+        lost: balance.totalLost,
+        netBalance: balance.netBalance,
+        matchesPlayed: balance.matchesPlayed,
+      });
     }
     
     // Add manual bet entries
@@ -391,7 +399,7 @@ export default function Ledger() {
             playerId: presetPlayerId || entry.id,
             playerName: entry.playerName,
             betType: 'Manual Bet',
-            result: amountInDollars >= 0 ? 'Won' : 'Lost',
+            isComplete: true,
             amount: amountInDollars,
           });
         }
@@ -757,14 +765,14 @@ export default function Ledger() {
                       onClick={() => setDetailModal({ playerId: balance.playerId, playerName: balance.playerName, type: "won" })}
                       data-testid={`cell-won-${balance.playerId}`}
                     >
-                      +${balance.totalWon.toFixed(2)}
+                      +${balance.won.toFixed(2)}
                     </TableCell>
                     <TableCell 
                       className="text-right text-red-600 whitespace-nowrap cursor-pointer hover:underline"
                       onClick={() => setDetailModal({ playerId: balance.playerId, playerName: balance.playerName, type: "lost" })}
                       data-testid={`cell-lost-${balance.playerId}`}
                     >
-                      -${balance.totalLost.toFixed(2)}
+                      -${balance.lost.toFixed(2)}
                     </TableCell>
                     <TableCell 
                       className={`text-right font-bold whitespace-nowrap cursor-pointer hover:underline ${balance.netBalance >= 0 ? "text-green-600" : "text-red-600"}`}
