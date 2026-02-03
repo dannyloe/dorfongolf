@@ -43,6 +43,7 @@ type SideMatchLedgerData = {
   ryderCupScoresByDay?: Record<number, Record<string, Record<number, number>>>;
   ryderCupPlayerDataByDay?: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>;
   storedResults?: StoredResult[];
+  handicapOverrides?: Record<number, Record<number, number>>; // eventMatchId -> playerId -> courseHandicap
 };
 
 type CourseWithHoles = Course & { holes: CourseHole[]; totalPar?: number };
@@ -1054,12 +1055,23 @@ export default function RyderCupEvent() {
           }
           
           const courseHandicaps = new Map<number, number>();
+          
+          // Get handicap overrides for this event match (em.id is the event match ID)
+          const eventMatchOverrides = sideMatchLedger.handicapOverrides?.[em.id] || {};
+          
           for (const team of em.teams || []) {
             for (const member of team.members || []) {
               if (courseHandicaps.has(member.playerId)) continue;
               
               const player = member.player;
               if (!player) continue;
+              
+              // Check for handicap override first - this takes priority
+              const overrideCourseHcp = eventMatchOverrides[member.playerId];
+              if (overrideCourseHcp !== undefined) {
+                courseHandicaps.set(member.playerId, overrideCourseHcp);
+                continue;
+              }
               
               // For Ryder Cup side matches, use pairing data as authoritative source
               const playerName = player.name;

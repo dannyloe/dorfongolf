@@ -2413,6 +2413,22 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Fetch handicap overrides for all event matches
+    const eventMatchIds = allEventMatches.map((em: any) => em.id);
+    const handicapOverrides: Record<number, Record<number, number>> = {};
+    
+    if (eventMatchIds.length > 0) {
+      const overrides = await db.select().from(matchPlayerHandicaps)
+        .where(inArray(matchPlayerHandicaps.eventMatchId, eventMatchIds));
+      
+      for (const override of overrides) {
+        if (!handicapOverrides[override.eventMatchId]) {
+          handicapOverrides[override.eventMatchId] = {};
+        }
+        handicapOverrides[override.eventMatchId][override.playerId] = override.courseHandicap;
+      }
+    }
+
     return {
       matches: allMatches,
       eventMatches: allEventMatches,
@@ -2420,6 +2436,7 @@ export class DatabaseStorage implements IStorage {
       courseData,
       ryderCupScoresByDay,
       ryderCupPlayerDataByDay,
+      handicapOverrides,
     };
   }
 
