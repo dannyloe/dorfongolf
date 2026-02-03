@@ -89,6 +89,22 @@ export const eventMatches = pgTable("event_matches", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Stored results for event matches - calculated from scores and cached for consistency
+// Auto-updates when scores or handicaps change
+export const eventMatchResults = pgTable("event_match_results", {
+  id: serial("id").primaryKey(),
+  eventMatchId: integer("event_match_id").notNull(),
+  playerId: integer("player_id").notNull(),
+  playerName: text("player_name").notNull(),
+  amount: integer("amount").notNull(), // Amount in cents (positive = won, negative = lost)
+  betType: text("bet_type"), // e.g., "Front 9", "Back 9", "Overall", "Skins", "Match Play"
+  isComplete: boolean("is_complete").notNull().default(false),
+  isAutoPress: boolean("is_auto_press").notNull().default(false),
+  teamName: text("team_name"),
+  teamIndex: integer("team_index"), // 0 or 1 for Team A or Team B
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Player handicaps - stores handicap index and default settings for preset players
 export const playerHandicaps = pgTable("player_handicaps", {
   id: serial("id").primaryKey(),
@@ -327,6 +343,11 @@ export const insertEventMatchSchema = createInsertSchema(eventMatches).omit({
   createdAt: true,
 });
 
+export const insertEventMatchResultSchema = createInsertSchema(eventMatchResults).omit({
+  id: true,
+  updatedAt: true,
+});
+
 export const insertTeamSchema = createInsertSchema(teams).omit({
   id: true,
 });
@@ -406,6 +427,9 @@ export type InsertScore = z.infer<typeof insertScoreSchema>;
 
 export type EventMatch = typeof eventMatches.$inferSelect;
 export type InsertEventMatch = z.infer<typeof insertEventMatchSchema>;
+
+export type EventMatchResult = typeof eventMatchResults.$inferSelect;
+export type InsertEventMatchResult = z.infer<typeof insertEventMatchResultSchema>;
 
 export type Team = typeof teams.$inferSelect;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
