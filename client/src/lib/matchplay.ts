@@ -282,7 +282,8 @@ interface EventMatchWithUnit extends EventMatch {
 export function calculateLedger(
   eventMatches: EventMatchWithUnit[],
   scores: Score[],
-  netContextMap: Map<number, NetScoringContext> | null = null
+  netContextMap: Map<number, NetScoringContext> | null = null,
+  pars: number[] | null = null
 ): { entries: LedgerEntry[]; balances: PlayerBalance[] } {
   const entries: LedgerEntry[] = [];
   // Use stable key (userId or "guest:name") for aggregation instead of playerId
@@ -329,7 +330,7 @@ export function calculateLedger(
       
       // Only use netContext if this specific event match has useNetScoring enabled
       const skinsNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
-      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, skinsNetContext);
+      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, skinsNetContext, pars);
       
       for (const s of skinsResult.settlements) {
         entries.push({
@@ -1103,7 +1104,8 @@ export function calculateSkinsResults(
   playerNames: Map<number, string>,
   scores: Score[],
   unitAmount: number,
-  netContext: NetScoringContext | null = null
+  netContext: NetScoringContext | null = null,
+  pars: number[] | null = null
 ): SkinsMatchResult {
   const holeResults: SkinResult[] = [];
   const skinCounts = new Map<number, number>();
@@ -1165,18 +1167,19 @@ export function calculateSkinsResults(
     
     const potentialWinner = playersWithMinScore[0];
     
-    // For holes 1-17: must also tie or beat lowest on next hole
+    // For holes 1-17: must make net par or better on next hole to validate the skin
     if (hole < 18) {
-      const nextHoleScores = includedPlayerIds.map(playerId => {
-        const score = scores.find(s => s.playerId === playerId && s.holeNumber === hole + 1);
-        const grossStrokes = score?.strokes ?? null;
-        const netStrokes = grossStrokes !== null && score 
-          ? getScoreValue(score, netContext) 
-          : null;
-        return { playerId, strokes: netStrokes };
-      }).filter(s => s.strokes !== null) as { playerId: number; strokes: number }[];
+      const nextHole = hole + 1;
+      const nextHolePar = pars && pars.length >= nextHole ? pars[nextHole - 1] : null;
       
-      if (nextHoleScores.length === 0) {
+      // Get the potential winner's score on the next hole
+      const winnerNextHoleScore = scores.find(s => s.playerId === potentialWinner.playerId && s.holeNumber === nextHole);
+      const winnerNextGross = winnerNextHoleScore?.strokes ?? null;
+      const winnerNextNet = winnerNextGross !== null && winnerNextHoleScore 
+        ? getScoreValue(winnerNextHoleScore, netContext) 
+        : null;
+      
+      if (winnerNextNet === null) {
         // Next hole not played yet - can't determine if skin is won
         holeResults.push({
           holeNumber: hole,
@@ -1188,11 +1191,13 @@ export function calculateSkinsResults(
         continue;
       }
       
-      const nextMinScore = Math.min(...nextHoleScores.map(s => s.strokes));
-      const winnerNextScore = nextHoleScores.find(s => s.playerId === potentialWinner.playerId);
+      // Check if winner made net par or better on the next hole
+      // If pars not provided, fall back to assuming par 4
+      const effectivePar = nextHolePar ?? 4;
+      const madeParOrBetter = winnerNextNet <= effectivePar;
       
-      if (winnerNextScore && winnerNextScore.strokes <= nextMinScore) {
-        // Winner tied or beat lowest on next hole - skin awarded!
+      if (madeParOrBetter) {
+        // Winner made net par or better on next hole - skin awarded!
         const currentCount = skinCounts.get(potentialWinner.playerId) || 0;
         skinCounts.set(potentialWinner.playerId, currentCount + 1);
         
@@ -1204,7 +1209,7 @@ export function calculateSkinsResults(
           isSkin: true,
         });
       } else {
-        // Winner didn't tie/beat on next hole - no skin
+        // Winner didn't make net par or better - no skin
         holeResults.push({
           holeNumber: hole,
           winnerId: potentialWinner.playerId,
@@ -1467,10 +1472,11 @@ export interface StorableEventMatchResult {
 export function calculateEventMatchResults(
   eventMatch: EventMatchWithUnit,
   scores: Score[],
-  netContext: NetScoringContext | null = null
+  netContext: NetScoringContext | null = null,
+  pars: number[] | null = null
 ): StorableEventMatchResult[] {
   // Use calculateLedger to get entries for this single event match
-  const { entries } = calculateLedger([eventMatch], scores, netContext ? new Map([[eventMatch.eventId, netContext]]) : null);
+  const { entries } = calculateLedger([eventMatch], scores, netContext ? new Map([[eventMatch.eventId, netContext]]) : null, pars);
   
   // Convert ledger entries to storable format (amounts in cents)
   return entries.map(entry => ({
@@ -1492,9 +1498,10 @@ export function calculateEventMatchResults(
 export function calculateAllEventMatchResults(
   eventMatches: EventMatchWithUnit[],
   scores: Score[],
-  netContextMap: Map<number, NetScoringContext> | null = null
+  netContextMap: Map<number, NetScoringContext> | null = null,
+  pars: number[] | null = null
 ): Map<number, StorableEventMatchResult[]> {
-  const { entries } = calculateLedger(eventMatches, scores, netContextMap);
+  const { entries } = calculateLedger(eventMatches, scores, netContextMap, pars);
   
   // Group entries by event match ID
   const resultsByMatch = new Map<number, StorableEventMatchResult[]>();

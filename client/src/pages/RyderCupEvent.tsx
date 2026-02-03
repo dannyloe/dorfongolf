@@ -1149,10 +1149,19 @@ export default function RyderCupEvent() {
       }
     }
 
+    // Build pars array from courseHoles (courseHoles is available from currentCourse)
+    const parsArray = courseHoles.length > 0 
+      ? Array.from({ length: 18 }, (_, i) => {
+          const hole = courseHoles.find(h => h.holeNumber === i + 1);
+          return hole?.par ?? 4;
+        })
+      : null;
+
     const { entries, balances: playerBalances } = calculateLedger(
       sideMatchLedger.eventMatches as any,
       scoresToUse as any,
-      netContextMap.size > 0 ? netContextMap : null
+      netContextMap.size > 0 ? netContextMap : null,
+      parsArray
     );
 
     // Aggregate balances by player name (normalize to handle duplicates)

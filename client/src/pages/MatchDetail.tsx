@@ -2407,7 +2407,14 @@ export default function MatchDetail() {
                           teamA?.members.forEach(m => {
                             playerNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
                           });
-                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext);
+                          // Build pars array for skins calculation
+                          const skinsParsArray = matchCourse?.holes.length 
+                            ? Array.from({ length: 18 }, (_, i) => {
+                                const hole = matchCourse.holes.find(h => h.holeNumber === i + 1);
+                                return hole?.par ?? 4;
+                              })
+                            : null;
+                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext, skinsParsArray);
                           
                           return (
                             <div className="space-y-4">
@@ -3354,7 +3361,14 @@ export default function MatchDetail() {
             }
           }
         }
-        const { entries, balances } = calculateLedger(eventMatches, scores, netContextMap.size > 0 ? netContextMap : null);
+        // Build pars array from matchCourse holes
+        const parsArray = matchCourse?.holes.length 
+          ? Array.from({ length: 18 }, (_, i) => {
+              const hole = matchCourse.holes.find(h => h.holeNumber === i + 1);
+              return hole?.par ?? 4;
+            })
+          : null;
+        const { entries, balances } = calculateLedger(eventMatches, scores, netContextMap.size > 0 ? netContextMap : null, parsArray);
         const hasCompletedMatches = entries.some(e => e.isComplete);
         
         if (!hasCompletedMatches) return null;
