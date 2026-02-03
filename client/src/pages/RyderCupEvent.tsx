@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus } from "lucide-react";
@@ -911,6 +911,7 @@ export default function RyderCupEvent() {
       }
     }
 
+    // Note: Skins winnings are added separately after calculateDaySkins is defined
     return payouts;
   };
 
@@ -1660,6 +1661,24 @@ export default function RyderCupEvent() {
 
   const skinsData = calculateDaySkins(selectedSkinsDay);
   
+  // Calculate payouts with skins included (now that calculateDaySkins is defined)
+  const payoutsWithSkins = useMemo(() => {
+    const result = { ...payouts };
+    
+    if (event.dailySkinsPot > 0) {
+      for (const day of event.days) {
+        const daySkins = calculateDaySkins(day.dayNumber);
+        if (daySkins) {
+          for (const winner of daySkins.skinWinners) {
+            // earnings is in dollars, need to convert to cents
+            result[winner.name] = (result[winner.name] || 0) + Math.round(winner.earnings * 100);
+          }
+        }
+      }
+    }
+    
+    return result;
+  }, [payouts, event.dailySkinsPot, event.days, courseHoles, courseTees, event.teams, event.useHandicaps]);
 
   const openRecordResult = (pairingId: number) => {
     setSelectedPairingId(pairingId);
@@ -4264,7 +4283,7 @@ export default function RyderCupEvent() {
                   const manualBetsTotal = manualBetBalances[name] || 0;
                   if (includeBuyIn) {
                     // Include buy-in (negative) + earnings + side bets + expenses + manual bets
-                    netPosition[name] = -buyInAmount + (payouts[name] || 0) + sideBets + (expenseBalances[name] || 0) + manualBetsTotal;
+                    netPosition[name] = -buyInAmount + (payoutsWithSkins[name] || 0) + sideBets + (expenseBalances[name] || 0) + manualBetsTotal;
                   } else {
                     // Exclude earnings and buy-in from net - show side bets + expenses + manual bets only
                     netPosition[name] = sideBets + (expenseBalances[name] || 0) + manualBetsTotal;
@@ -4331,7 +4350,7 @@ export default function RyderCupEvent() {
                               .sort((a, b) => (netPosition[b] || 0) - (netPosition[a] || 0))
                               .map(playerName => {
                                 const team = teamA?.members.find(m => m.playerName === playerName) ? teamA : teamB;
-                                const earnings = payouts[playerName] || 0;
+                                const earnings = payoutsWithSkins[playerName] || 0;
                                 const sideBetsOnly = sideBetData.balances[playerName] || 0;
                                 const manualBetsAmount = manualBetBalances[playerName] || 0;
                                 const sideBets = sideBetsOnly + manualBetsAmount;
