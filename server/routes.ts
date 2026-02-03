@@ -2100,6 +2100,9 @@ Rules:
       
       let updatedCount = 0;
       
+      // Get all team members for handicap fallback
+      const allTeamMembers = fullEvent.teams.flatMap(t => t.members || []);
+      
       // Process each day and pairing
       for (const day of fullEvent.days) {
         const courseHoles = day.courseId ? await storage.getCourseHoles(day.courseId) : [];
@@ -2119,8 +2122,19 @@ Rules:
           // Calculate course handicaps using full USGA formula:
           // Course Handicap = Handicap Index × (Slope Rating ÷ 113) + (Course Rating - Par)
           const getPlayerCourseHcp = (s: typeof sideA, playerNum: 1 | 2): number | null => {
-            const hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
+            // First check pairing-specific handicap
+            let hcpTenths = playerNum === 1 ? s.player1HandicapIndex : s.player2HandicapIndex;
             const teeId = playerNum === 1 ? s.player1TeeId : s.player2TeeId;
+            
+            // Fall back to team member handicap if not set on pairing
+            if (hcpTenths === null || hcpTenths === undefined) {
+              const playerName = playerNum === 1 ? s.player1Name : s.player2Name;
+              if (playerName) {
+                const member = allTeamMembers.find(m => m.playerName === playerName);
+                hcpTenths = member?.handicapIndex ?? null;
+              }
+            }
+            
             if (hcpTenths === null || hcpTenths === undefined) return null;
             const handicapIndex = hcpTenths / 10;
             // Fall back to first tee if player's tee not found in this course
