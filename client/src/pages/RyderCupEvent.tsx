@@ -27,6 +27,7 @@ type SideMatchLedgerData = {
   scores: Array<any>;
   courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
   ryderCupScoresByDay?: Record<number, Record<string, Record<number, number>>>;
+  ryderCupPlayerDataByDay?: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>;
 };
 
 type CourseWithHoles = Course & { holes: CourseHole[]; totalPar?: number };

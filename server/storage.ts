@@ -2258,7 +2258,7 @@ export class DatabaseStorage implements IStorage {
             if (member2) player2Name = member2.playerName;
           }
           
-          // Map player1 scores
+          // Map player1 scores and handicap data
           if (player1Name) {
             if (!ryderCupScoresByDay[day.dayNumber][player1Name]) {
               ryderCupScoresByDay[day.dayNumber][player1Name] = {};
@@ -2268,9 +2268,14 @@ export class DatabaseStorage implements IStorage {
                 ryderCupScoresByDay[day.dayNumber][player1Name][score.holeNumber] = score.player1Strokes;
               }
             }
+            // Store handicap and tee data from the pairing side (authoritative source)
+            ryderCupPlayerDataByDay[day.dayNumber][player1Name] = {
+              handicapIndex: side.player1HandicapIndex,
+              teeId: side.player1TeeId,
+            };
           }
           
-          // Map player2 scores
+          // Map player2 scores and handicap data
           if (player2Name) {
             if (!ryderCupScoresByDay[day.dayNumber][player2Name]) {
               ryderCupScoresByDay[day.dayNumber][player2Name] = {};
@@ -2280,6 +2285,11 @@ export class DatabaseStorage implements IStorage {
                 ryderCupScoresByDay[day.dayNumber][player2Name][score.holeNumber] = score.player2Strokes;
               }
             }
+            // Store handicap and tee data from the pairing side (authoritative source)
+            ryderCupPlayerDataByDay[day.dayNumber][player2Name] = {
+              handicapIndex: side.player2HandicapIndex,
+              teeId: side.player2TeeId,
+            };
           }
         }
       }
@@ -2291,6 +2301,7 @@ export class DatabaseStorage implements IStorage {
       scores: allScores,
       courseData,
       ryderCupScoresByDay,
+      ryderCupPlayerDataByDay,
     };
   }
 

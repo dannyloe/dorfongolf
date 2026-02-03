@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
@@ -171,6 +172,19 @@ export default function MatchDetail() {
   const matchCourseId = coursesList?.find(c => c.name === match?.courseName)?.id;
   const { data: courseTees } = useCourseTees(matchCourseId);
   
+  // For Ryder Cup side matches, fetch the pairing player data (authoritative source for handicaps)
+  const { data: ryderCupSideMatchData } = useQuery<{
+    ryderCupPlayerDataByDay?: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>;
+  }>({
+    queryKey: ["/api/ryder-cup", match?.ryderCupEventId, "side-match-ledger"],
+    enabled: !!match?.ryderCupEventId,
+  });
+  
+  // Get Ryder Cup pairing player data for this day (if this is a side match)
+  const ryderCupPlayerData = match?.ryderCupEventId && match?.ryderCupDayNumber
+    ? ryderCupSideMatchData?.ryderCupPlayerDataByDay?.[match.ryderCupDayNumber]
+    : undefined;
+  
   // Get match-specific player handicap overrides
   const { data: matchHandicapOverrides } = useMatchPlayerHandicaps(matchId);
   const upsertMatchHandicap = useUpsertMatchPlayerHandicap(matchId);
@@ -321,14 +335,20 @@ export default function MatchDetail() {
     }
     
     // Build player handicap info from players in the match
+    // For Ryder Cup side matches, use the pairing data as the authoritative source
     const playerHandicapInfo: PlayerHandicapInfo[] = players
       .filter(p => matchPlayerIds.has(p.id))
-      .map(p => ({
-        playerId: p.id,
-        playerName: p.name,
-        handicapIndex: p.handicapIndex,
-        teeId: p.teeId,
-      }));
+      .map(p => {
+        // Check if we have Ryder Cup pairing data for this player (by name)
+        const pairingData = ryderCupPlayerData?.[p.name];
+        return {
+          playerId: p.id,
+          playerName: p.name,
+          // Use pairing data if available, otherwise fall back to player data
+          handicapIndex: pairingData?.handicapIndex ?? p.handicapIndex,
+          teeId: pairingData?.teeId ?? p.teeId,
+        };
+      });
     
     // Check if at least some players have handicap data or overrides
     const overridesForMatch = matchHandicapOverrides?.get(eventMatch.id) || [];
@@ -362,12 +382,16 @@ export default function MatchDetail() {
       return null;
     }
     
-    const playerHandicapInfo: PlayerHandicapInfo[] = players.map(p => ({
-      playerId: p.id,
-      playerName: p.name,
-      handicapIndex: p.handicapIndex,
-      teeId: p.teeId,
-    }));
+    // For Ryder Cup side matches, use pairing data as authoritative source
+    const playerHandicapInfo: PlayerHandicapInfo[] = players.map(p => {
+      const pairingData = ryderCupPlayerData?.[p.name];
+      return {
+        playerId: p.id,
+        playerName: p.name,
+        handicapIndex: pairingData?.handicapIndex ?? p.handicapIndex,
+        teeId: pairingData?.teeId ?? p.teeId,
+      };
+    });
     
     const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null);
     if (!hasAnyHandicapData) {
