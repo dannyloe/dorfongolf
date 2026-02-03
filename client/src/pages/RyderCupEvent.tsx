@@ -4230,6 +4230,11 @@ export default function RyderCupEvent() {
                                   D{day.dayNumber}
                                 </th>
                               ))}
+                              {sideBetsExpanded && (
+                                <th className="text-right py-2 px-2 text-xs text-muted-foreground">
+                                  M
+                                </th>
+                              )}
                               <th className="text-right py-2 px-2">Expenses</th>
                               <th className="text-right py-2 pl-2 font-bold">
                                 {includeBuyIn ? "Net" : "Owed"}
@@ -4315,6 +4320,13 @@ export default function RyderCupEvent() {
                                         </td>
                                       );
                                     })}
+                                    {sideBetsExpanded && (
+                                      <td className="text-right py-2 px-2 text-xs">
+                                        <span className={`${manualBetsAmount > 0 ? "text-green-600" : manualBetsAmount < 0 ? "text-red-600" : "text-muted-foreground"}`}>
+                                          {manualBetsAmount !== 0 ? (manualBetsAmount > 0 ? "+" : "") : ""}{formatCurrency(manualBetsAmount)}
+                                        </span>
+                                      </td>
+                                    )}
                                     <td className={`text-right py-2 px-2`}>
                                       <button
                                         onClick={() => setExpensesBreakdownPlayer(playerName)}
