@@ -3984,6 +3984,32 @@ export default function RyderCupEvent() {
               )}
             </CardHeader>
             <CardContent>
+              {/* DEBUG: Show raw side bet data */}
+              <details className="mb-4 p-2 bg-yellow-100 dark:bg-yellow-900 rounded text-xs">
+                <summary className="cursor-pointer font-bold">DEBUG: Side Bet Data</summary>
+                <div className="mt-2 space-y-1">
+                  <div><strong>Balances (cents):</strong></div>
+                  {Object.entries(sideBetData.balances).map(([name, amount]) => (
+                    <div key={name}>{name}: {amount} cents (${(amount / 100).toFixed(2)})</div>
+                  ))}
+                  <div className="mt-2"><strong>Entries count:</strong> {sideBetData.entries.length}</div>
+                  <div><strong>Entries by player (cents):</strong></div>
+                  {(() => {
+                    const sums: Record<string, number> = {};
+                    sideBetData.entries.forEach(e => {
+                      sums[e.playerName] = (sums[e.playerName] || 0) + e.amount;
+                    });
+                    return Object.entries(sums).map(([name, total]) => (
+                      <div key={name}>{name}: {total} cents (${(total / 100).toFixed(2)})</div>
+                    ));
+                  })()}
+                  <div className="mt-2"><strong>Entry details:</strong></div>
+                  {sideBetData.entries.slice(0, 20).map((e, i) => (
+                    <div key={i} className="text-[10px]">{e.playerName}: {e.amount}¢ - {e.matchName} ({e.betType})</div>
+                  ))}
+                  {sideBetData.entries.length > 20 && <div>...and {sideBetData.entries.length - 20} more</div>}
+                </div>
+              </details>
               {(() => {
                 const allPlayers = [
                   ...(teamA?.members.map(m => m.playerName) || []),
