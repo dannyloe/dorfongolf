@@ -1662,23 +1662,27 @@ export default function RyderCupEvent() {
   const skinsData = calculateDaySkins(selectedSkinsDay);
   
   // Calculate payouts with skins included (now that calculateDaySkins is defined)
-  const payoutsWithSkins = useMemo(() => {
+  const payoutsWithSkins = (() => {
     const result = { ...payouts };
     
-    if (event.dailySkinsPot > 0) {
+    if (event.dailySkinsPot > 0 && courseHoles.length > 0) {
       for (const day of event.days) {
-        const daySkins = calculateDaySkins(day.dayNumber);
-        if (daySkins) {
-          for (const winner of daySkins.skinWinners) {
-            // earnings is in dollars, need to convert to cents
-            result[winner.name] = (result[winner.name] || 0) + Math.round(winner.earnings * 100);
+        try {
+          const daySkins = calculateDaySkins(day.dayNumber);
+          if (daySkins) {
+            for (const winner of daySkins.skinWinners) {
+              // earnings is in dollars, need to convert to cents
+              result[winner.name] = (result[winner.name] || 0) + Math.round(winner.earnings * 100);
+            }
           }
+        } catch (e) {
+          console.error(`Error calculating skins for day ${day.dayNumber}:`, e);
         }
       }
     }
     
     return result;
-  }, [payouts, event.dailySkinsPot, event.days, courseHoles, courseTees, event.teams, event.useHandicaps]);
+  })();
 
   const openRecordResult = (pairingId: number) => {
     setSelectedPairingId(pairingId);
