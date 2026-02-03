@@ -2254,7 +2254,7 @@ export default function RyderCupEvent() {
                   // Check for entries that don't match any container event match
                   const matchIdsInEntries = new Set(sideBetData.entries.map(e => e.matchId));
                   const containerMatchIds = new Set(containerEventMatches.map((em: any) => em.id));
-                  const unmatchedEntryMatchIds = [...matchIdsInEntries].filter(id => !containerMatchIds.has(id));
+                  const unmatchedEntryMatchIds = Array.from(matchIdsInEntries).filter(id => !containerMatchIds.has(id));
                   if (unmatchedEntryMatchIds.length > 0) {
                     console.log('[SIDE MATCHES DEBUG] Unmatched entry matchIds:', unmatchedEntryMatchIds);
                   }

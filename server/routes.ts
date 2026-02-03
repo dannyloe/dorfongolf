@@ -2298,6 +2298,30 @@ Rules:
     const eventId = parseInt(req.params.id);
     try {
       const ledgerData = await storage.getSideMatchLedgerData(eventId);
+      
+      // Debug: Log player handicap data
+      for (const em of ledgerData.eventMatches || []) {
+        console.log(`[HANDICAP DEBUG] Event match ${em.id}: useNetScoring=${em.useNetScoring}`);
+        for (const team of em.teams || []) {
+          for (const member of team.members || []) {
+            const p = member.player;
+            if (p) {
+              console.log(`[HANDICAP DEBUG]   Player ${p.name}: handicapIndex=${p.handicapIndex}, teeId=${p.teeId}`);
+            }
+          }
+        }
+      }
+      
+      // Debug: Log course data
+      if (ledgerData.courseData) {
+        for (const [courseId, data] of Object.entries(ledgerData.courseData)) {
+          console.log(`[HANDICAP DEBUG] Course ${courseId}: ${(data as any).holes?.length || 0} holes, ${(data as any).tees?.length || 0} tees`);
+          for (const tee of (data as any).tees || []) {
+            console.log(`[HANDICAP DEBUG]   Tee ${tee.id}: slope=${tee.slopeRating}, rating=${tee.courseRating}`);
+          }
+        }
+      }
+      
       res.json(ledgerData);
     } catch (err) {
       res.status(500).json({ message: "Internal server error" });

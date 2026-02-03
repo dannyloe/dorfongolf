@@ -53,6 +53,7 @@ export function calculateRelativeHandicaps(
   }
   
   const teeMap = new Map(tees.map(t => [t.id, t]));
+  const defaultTee = tees.length > 0 ? tees[0] : null;
   
   // Calculate course par from holes (sum of all hole pars)
   const coursePar = holes.length > 0 
@@ -60,7 +61,8 @@ export function calculateRelativeHandicaps(
     : null;
   
   const courseHandicaps = players.map(player => {
-    const tee = player.teeId ? teeMap.get(player.teeId) : null;
+    // Look up player's tee, fall back to first available tee if not found
+    const tee = (player.teeId ? teeMap.get(player.teeId) : null) ?? defaultTee;
     const slopeRating = tee?.slopeRating ?? null;
     const courseRating = tee?.courseRating ?? null;
     const courseHandicap = calculateCourseHandicap(player.handicapIndex, slopeRating, courseRating, coursePar);
