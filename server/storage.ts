@@ -144,10 +144,20 @@ export class DatabaseStorage implements IStorage {
     let presetPlayerId: number | null = null;
     
     // Get available tees for this course to validate tee selection
+    // If courseId not provided, derive it from the match
+    let effectiveCourseId = courseId;
+    if (!effectiveCourseId && player.matchId) {
+      const match = await this.getMatch(player.matchId);
+      effectiveCourseId = match?.courseId ?? undefined;
+    }
+    
     let courseTeeIds: Set<number> = new Set();
     let firstCourseTeeId: number | null = null;
-    if (courseId) {
-      const availableTees = await db.select().from(courseTees).where(eq(courseTees.courseId, courseId));
+    if (effectiveCourseId) {
+      // Order by id for deterministic selection of first tee
+      const availableTees = await db.select().from(courseTees)
+        .where(eq(courseTees.courseId, effectiveCourseId))
+        .orderBy(courseTees.id);
       courseTeeIds = new Set(availableTees.map(t => t.id));
       if (availableTees.length > 0) {
         firstCourseTeeId = availableTees[0].id;
@@ -179,8 +189,8 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Validate that the selected teeId belongs to this course, otherwise use first available
-    if (courseId && teeId !== null && !courseTeeIds.has(teeId)) {
-      console.log(`[addPlayer] teeId ${teeId} not found in course ${courseId}, falling back to first available tee ${firstCourseTeeId}`);
+    if (effectiveCourseId && teeId !== null && !courseTeeIds.has(teeId)) {
+      console.log(`[addPlayer] teeId ${teeId} not found in course ${effectiveCourseId}, falling back to first available tee ${firstCourseTeeId}`);
       teeId = firstCourseTeeId;
     }
     
