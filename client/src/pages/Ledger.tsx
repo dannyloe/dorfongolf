@@ -181,10 +181,11 @@ export default function Ledger() {
   }, [dateRange]);
 
   const { data, isLoading } = useQuery<{
-    matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; groupId: number | null; isHandicapped?: boolean }>;
-    eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null } }> }>; [key: string]: any }>;
+    matches: Array<{ id: number; name: string | null; createdAt: string; courseId: number | null; groupId: number | null; isHandicapped?: boolean; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null }>;
+    eventMatches: Array<{ eventId: number; useNetScoring?: boolean; teams?: Array<{ members?: Array<{ playerId: number; player?: { handicapIndex: number | null; teeId: number | null; name?: string } }> }>; [key: string]: any }>;
     scores: Array<any>;
     courseData?: Record<number, { holes: Array<{ holeNumber: number; handicap: number | null }>; tees: Array<{ id: number; slopeRating: number; courseRating: number }> }>;
+    ryderCupPlayerDataByEventAndDay?: Record<number, Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>>;
   }>({
     queryKey: [`/api/ledger?${queryParams}`],
   });
@@ -268,6 +269,11 @@ export default function Ledger() {
       // Calculate course par from holes (holes data includes par field at runtime)
       const coursePar = (courseInfo.holes as Array<{ par?: number }>).reduce((sum: number, h) => sum + (h.par ?? 0), 0);
       
+      // Get Ryder Cup player data if this is a Ryder Cup side match
+      const rcPlayerData = (match.ryderCupEventId && match.ryderCupDayNumber && data.ryderCupPlayerDataByEventAndDay)
+        ? data.ryderCupPlayerDataByEventAndDay[match.ryderCupEventId]?.[match.ryderCupDayNumber]
+        : undefined;
+      
       // Get all players from event matches for this match and build player handicaps
       const courseHandicaps = new Map<number, number>();
       for (const em of data.eventMatches) {
@@ -278,16 +284,22 @@ export default function Ledger() {
             if (courseHandicaps.has(member.playerId)) continue;
             
             const player = member.player;
-            if (!player || player.handicapIndex === null) continue;
+            if (!player) continue;
             
-            const teeId = player.teeId;
+            // For Ryder Cup side matches, use the pairing data as authoritative source
+            const playerName = player.name;
+            const pairingData = playerName ? rcPlayerData?.[playerName] : undefined;
+            const handicapIndex = pairingData?.handicapIndex ?? player.handicapIndex;
+            const teeId = pairingData?.teeId ?? player.teeId;
+            
+            if (handicapIndex === null) continue;
             
             if (teeId && teeLookup.has(teeId)) {
               const teeInfo = teeLookup.get(teeId)!;
               // calculateCourseHandicap expects handicapIndex in stored format (already * 10)
               // USGA formula: Handicap Index × (Slope ÷ 113) + (Course Rating - Par)
               const courseHandicap = calculateCourseHandicap(
-                player.handicapIndex,
+                handicapIndex,
                 teeInfo.slopeRating,
                 teeInfo.courseRating,
                 coursePar
@@ -295,7 +307,7 @@ export default function Ledger() {
               courseHandicaps.set(member.playerId, courseHandicap);
             } else {
               // Fall back to handicap index as course handicap
-              courseHandicaps.set(member.playerId, Math.round(player.handicapIndex / 10));
+              courseHandicaps.set(member.playerId, Math.round(handicapIndex / 10));
             }
           }
         }
@@ -314,7 +326,7 @@ export default function Ledger() {
     }
     
     return contextMap.size > 0 ? contextMap : null;
-  }, [data?.matches, data?.courseData, data?.eventMatches]);
+  }, [data?.matches, data?.courseData, data?.eventMatches, data?.ryderCupPlayerDataByEventAndDay]);
 
   const ledgerResults = useMemo(() => {
     if (!filteredEventMatches || filteredEventMatches.length === 0 || !data?.scores) {

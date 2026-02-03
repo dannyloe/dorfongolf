@@ -534,11 +534,67 @@ export class DatabaseStorage implements IStorage {
       courseData[courseId] = data;
     });
 
+    // Get Ryder Cup player data for any matches associated with Ryder Cup events
+    // This is needed for correct net scoring calculations in the Ledger
+    const ryderCupEventIds = Array.from(new Set(allMatches.filter(m => m.ryderCupEventId).map(m => m.ryderCupEventId!)));
+    const ryderCupPlayerDataByEventAndDay: Record<number, Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>> = {};
+    
+    for (const eventId of ryderCupEventIds) {
+      ryderCupPlayerDataByEventAndDay[eventId] = {};
+      
+      // Get all days for this event
+      const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+      
+      for (const day of days) {
+        ryderCupPlayerDataByEventAndDay[eventId][day.dayNumber] = {};
+        
+        // Get all pairings for this day
+        const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
+        
+        for (const pairing of pairings) {
+          // Get all sides for this pairing
+          const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
+          
+          for (const side of sides) {
+            // Look up current player names from team members if IDs are set
+            let player1Name = side.player1Name;
+            let player2Name = side.player2Name;
+            
+            if (side.player1Id) {
+              const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+              if (member1) player1Name = member1.playerName;
+            }
+            if (side.player2Id) {
+              const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+              if (member2) player2Name = member2.playerName;
+            }
+            
+            // Map player1 handicap data
+            if (player1Name) {
+              ryderCupPlayerDataByEventAndDay[eventId][day.dayNumber][player1Name] = {
+                handicapIndex: side.player1HandicapIndex,
+                teeId: side.player1TeeId,
+              };
+            }
+            
+            // Map player2 handicap data
+            if (player2Name) {
+              ryderCupPlayerDataByEventAndDay[eventId][day.dayNumber][player2Name] = {
+                handicapIndex: side.player2HandicapIndex,
+                teeId: side.player2TeeId,
+              };
+            }
+          }
+        }
+      }
+    }
+
     return {
       matches: allMatches,
       eventMatches: allEventMatches,
       scores: allScores,
       courseData,
+      ryderCupPlayerDataByEventAndDay,
     };
   }
 
