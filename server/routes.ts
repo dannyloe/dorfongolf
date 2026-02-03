@@ -2220,7 +2220,8 @@ Rules:
             
             const holesRemaining = 18 - hole;
             const lead = Math.abs(score);
-            if (lead > holesRemaining) {
+            // Only consider match "clinched" if decided before hole 18
+            if (hole < 18 && lead > holesRemaining) {
               decidedOnHole = hole;
               break;
             }
@@ -2239,10 +2240,12 @@ Rules:
             }
             
             const lead = Math.abs(score);
-            if (decidedOnHole !== null) {
+            if (decidedOnHole !== null && decidedOnHole < 18) {
+              // Match clinched early (before hole 18)
               const holesLeft = 18 - decidedOnHole;
               winningMargin = String(lead) + "&" + String(holesLeft);
             } else if (lead > 0) {
+              // Match went full 18 holes
               winningMargin = String(lead) + " up";
             }
             

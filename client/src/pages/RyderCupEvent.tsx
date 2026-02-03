@@ -2649,7 +2649,8 @@ export default function RyderCupEvent() {
                         
                         const holesRemaining = 18 - h;
                         const lead = Math.abs(score);
-                        if (lead > holesRemaining && decidedOnHole === null) {
+                        // Only consider match "clinched" if decided before hole 18
+                        if (h < 18 && lead > holesRemaining && decidedOnHole === null) {
                           decidedOnHole = h;
                           break;
                         }
@@ -2664,9 +2665,11 @@ export default function RyderCupEvent() {
                         else if (score < 0) winningSideId = sideB.id;
                         
                         const lead = Math.abs(score);
-                        if (decidedOnHole !== null) {
+                        if (decidedOnHole !== null && decidedOnHole < 18) {
+                          // Match clinched early (before hole 18)
                           winningMargin = `${lead}&${18 - decidedOnHole}`;
                         } else if (lead > 0) {
+                          // Match went full 18 holes
                           winningMargin = `${lead} up`;
                         }
                         
