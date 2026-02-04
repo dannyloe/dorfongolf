@@ -1685,7 +1685,8 @@ export function calculateEventMatchResults(
   pars: number[] | null = null
 ): StorableEventMatchResult[] {
   // Use calculateLedger to get entries for this single event match
-  const { entries } = calculateLedger([eventMatch], scores, netContext ? new Map([[eventMatch.eventId, netContext]]) : null, pars);
+  // Key by eventMatch.id (event match ID), not eventId (parent match), to match calculateLedger's lookup
+  const { entries } = calculateLedger([eventMatch], scores, netContext ? new Map([[eventMatch.id, netContext]]) : null, pars);
   
   // Convert ledger entries to storable format (amounts in cents)
   return entries.map(entry => ({

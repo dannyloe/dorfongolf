@@ -1131,7 +1131,9 @@ export default function RyderCupEvent() {
               playerHandicaps.set(playerId, ch - minHandicap);
             });
             
-            netContextMap.set(em.eventId, { holeHandicaps, playerHandicaps, courseHandicaps });
+            // Use em.id (event match ID) as the key, not em.eventId (parent match ID)
+            // This matches how calculateLedger looks up net contexts
+            netContextMap.set(em.id, { holeHandicaps, playerHandicaps, courseHandicaps });
           }
         }
       }
