@@ -3130,8 +3130,8 @@ export default function MatchDetail() {
                                         <tr className="border-t border-border/50 bg-amber-50/50 dark:bg-amber-950/30">
                                           <td className="p-2 font-semibold text-xs">Overall</td>
                                           {firstNineHoles.map((hole) => {
-                                            const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                            const r = nassauResults.overall[playingPos - 1];
+                                            // Access by physical hole number (overall array indexed 0-17 by physical hole)
+                                            const r = nassauResults.overall[hole - 1];
                                             const diff = r ? r.cumulativeA - r.cumulativeB : 0;
                                             const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
                                             if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
@@ -3141,8 +3141,8 @@ export default function MatchDetail() {
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           {secondNineHoles.map((hole) => {
-                                            const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                            const r = nassauResults.overall[playingPos - 1];
+                                            // Access by physical hole number (overall array indexed 0-17 by physical hole)
+                                            const r = nassauResults.overall[hole - 1];
                                             const diff = r ? r.cumulativeA - r.cumulativeB : 0;
                                             const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
                                             if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
@@ -3241,7 +3241,8 @@ export default function MatchDetail() {
                                       if (playingPos < pressStartPlayingPos) {
                                         return <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>;
                                       }
-                                      const pressResult = pressResults.find(r => r.holeNumber === playingPos);
+                                      // Access by physical hole number, not playing position
+                                      const pressResult = pressResults.find(r => r.holeNumber === hole);
                                       if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
                                         return <td key={hole} className="p-2 text-center">-</td>;
                                       }
@@ -3256,7 +3257,8 @@ export default function MatchDetail() {
                                       if (playingPos < pressStartPlayingPos) {
                                         return <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>;
                                       }
-                                      const pressResult = pressResults.find(r => r.holeNumber === playingPos);
+                                      // Access by physical hole number, not playing position
+                                      const pressResult = pressResults.find(r => r.holeNumber === hole);
                                       if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
                                         return <td key={hole} className="p-2 text-center">-</td>;
                                       }
