@@ -1,6 +1,103 @@
 import { type NetScoringContext, getNetStrokes } from './handicap';
 export type { NetScoringContext } from './handicap';
 
+// ============================================================================
+// Hole Mapping Utilities for "Start on Back 9" Mode
+// ============================================================================
+// When startOnBack9 is true, playing order is: 10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9
+// Physical hole 10 becomes playing position 1, physical hole 1 becomes playing position 10
+
+/**
+ * Convert a physical hole number (1-18) to its playing position (1-18) based on startOnBack9
+ * When startOnBack9=true: hole 10 → position 1, hole 1 → position 10
+ */
+export function physicalToPlayingPosition(physicalHole: number, startOnBack9: boolean): number {
+  if (!startOnBack9) return physicalHole;
+  // Physical 10-18 → Playing 1-9
+  // Physical 1-9 → Playing 10-18
+  if (physicalHole >= 10) {
+    return physicalHole - 9; // 10→1, 11→2, ..., 18→9
+  } else {
+    return physicalHole + 9; // 1→10, 2→11, ..., 9→18
+  }
+}
+
+/**
+ * Convert a playing position (1-18) back to physical hole number based on startOnBack9
+ * When startOnBack9=true: position 1 → hole 10, position 10 → hole 1
+ */
+export function playingToPhysicalHole(playingPosition: number, startOnBack9: boolean): number {
+  if (!startOnBack9) return playingPosition;
+  // Playing 1-9 → Physical 10-18
+  // Playing 10-18 → Physical 1-9
+  if (playingPosition <= 9) {
+    return playingPosition + 9; // 1→10, 2→11, ..., 9→18
+  } else {
+    return playingPosition - 9; // 10→1, 11→2, ..., 18→9
+  }
+}
+
+/**
+ * Transform scores to playing order - changes holeNumber to playing position
+ * Returns new array with transformed hole numbers
+ */
+export function transformScoresToPlayingOrder<T extends { holeNumber: number }>(
+  scores: T[],
+  startOnBack9: boolean
+): T[] {
+  if (!startOnBack9) return scores;
+  return scores.map(score => ({
+    ...score,
+    holeNumber: physicalToPlayingPosition(score.holeNumber, startOnBack9),
+  }));
+}
+
+/**
+ * Transform hole data (par, handicap) to playing order
+ * Input: array indexed by physical hole (index 0 = hole 1's data)
+ * Output: array indexed by playing position (index 0 = first hole played's data)
+ */
+export function transformHoleDataToPlayingOrder<T>(
+  holeData: T[],
+  startOnBack9: boolean
+): T[] {
+  if (!startOnBack9 || holeData.length !== 18) return holeData;
+  // When startOnBack9=true, reorder so index 0 = hole 10's data, index 9 = hole 1's data
+  const backNine = holeData.slice(9, 18); // holes 10-18 (indices 9-17)
+  const frontNine = holeData.slice(0, 9);  // holes 1-9 (indices 0-8)
+  return [...backNine, ...frontNine];
+}
+
+/**
+ * Transform a Map keyed by physical hole to be keyed by playing position
+ */
+export function transformHoleMapToPlayingOrder<T>(
+  holeMap: Map<number, T>,
+  startOnBack9: boolean
+): Map<number, T> {
+  if (!startOnBack9) return holeMap;
+  const transformed = new Map<number, T>();
+  holeMap.forEach((value, physicalHole) => {
+    const playingPosition = physicalToPlayingPosition(physicalHole, startOnBack9);
+    transformed.set(playingPosition, value);
+  });
+  return transformed;
+}
+
+/**
+ * Transform a NetScoringContext by remapping holeHandicaps to playing order
+ */
+export function transformNetContextToPlayingOrder(
+  netContext: NetScoringContext | null,
+  startOnBack9: boolean
+): NetScoringContext | null {
+  if (!netContext || !startOnBack9) return netContext;
+  return {
+    ...netContext,
+    holeHandicaps: transformHoleMapToPlayingOrder(netContext.holeHandicaps, startOnBack9),
+  };
+}
+
 interface Score {
   id: number;
   matchId: number;
@@ -364,14 +461,20 @@ export function calculateLedger(
         }
       }
     } else if (em.matchType === 'nassau') {
-      const nassauNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
-      const nassauResults = calculateNassauResults(em, scores, nassauNetContext);
+      // Transform scores and netContext to playing order when startOnBack9 is enabled
+      const startOnBack9 = em.startOnBack9 || false;
+      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
+      const nassauNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const nassauNetContext = transformNetContextToPlayingOrder(nassauNetContextRaw, startOnBack9);
+      
+      const nassauResults = calculateNassauResults(em, transformedScores, nassauNetContext);
       const nassauAutoPressSettings = {
         front9: em.autoPressNassauFront9 ?? true,
         back9: em.autoPressNassauBack9 ?? true,
         overall: em.autoPressNassauOverall ?? true,
       };
-      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, nassauAutoPressSettings, em.startOnBack9);
+      // No longer need to pass startOnBack9 to settlements since scores are already in playing order
+      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, nassauAutoPressSettings);
       
       // Build player ID to team index lookup
       const playerTeamIndex = new Map<number, number>();
@@ -711,7 +814,12 @@ export function calculateCombinedMatchSettlements(
     if (match.matchType === 'nassau') {
       // Nassau has 3 bets
       totalBets += 3;
-      const nassauResults = calculateNassauResults(match, scores, netContext);
+      // Transform scores and netContext to playing order when startOnBack9 is enabled
+      const startOnBack9 = match.startOnBack9 || false;
+      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
+      const transformedNetContext = transformNetContextToPlayingOrder(netContext, startOnBack9);
+      
+      const nassauResults = calculateNassauResults(match, transformedScores, transformedNetContext);
       const nassauAutoPressSettings = {
         front9: match.autoPressNassauFront9 ?? true,
         back9: match.autoPressNassauBack9 ?? true,
@@ -722,8 +830,7 @@ export function calculateCombinedMatchSettlements(
         teamA,
         teamB,
         nassauResults,
-        nassauAutoPressSettings,
-        match.startOnBack9
+        nassauAutoPressSettings
       );
 
       for (const ns of nassauSettlements) {
@@ -909,25 +1016,20 @@ export function calculateNassauSettlements(
   teamA: Team,
   teamB: Team,
   nassauResults: NassauResults,
-  autoPressSettings: boolean | NassauAutoPressSettings,
-  startOnBack9: boolean = false
+  autoPressSettings: boolean | NassauAutoPressSettings
 ): NassauSettlement[] {
   // Handle both legacy boolean and new object format
   const settings: NassauAutoPressSettings = typeof autoPressSettings === 'boolean'
     ? { front9: autoPressSettings, back9: autoPressSettings, overall: autoPressSettings }
     : autoPressSettings;
 
-  // When starting on back 9, the playing order is: 10-18, then 1-9
-  // So the Overall bet's press check and final hole change:
-  // - Normal: press check at hole 17, settle at hole 18 (last hole played)
-  // - Start on Back 9: press check at hole 8, settle at hole 9 (last hole played)
-  const overallFinalHole = startOnBack9 ? 9 : 18;
-  const overallPressCheckHole = startOnBack9 ? 8 : 17;
-
+  // Note: Scores should be transformed to playing order BEFORE calculating Nassau results
+  // when startOnBack9 is enabled. This way all bets use standard playing positions 1-18.
+  // Front 9 = playing positions 1-9, Back 9 = playing positions 10-18, Overall = 1-18
   const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number; autoPress: boolean }[] = [
     { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8, autoPress: settings.front9 },
     { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.back9 },
-    { name: 'Overall', results: nassauResults.overall, finalHole: overallFinalHole, autoPressCheckHole: overallPressCheckHole, autoPress: settings.overall },
+    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.overall },
   ];
 
   return bets.map(bet => {
