@@ -183,7 +183,13 @@ export function calculateMatchPlayResults(
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
   const matchType = eventMatch.matchType || 'match_play_1_ball';
-  const startHole = eventMatch.startHole || 1;
+  
+  // When startOnBack9 is true, scores are transformed to playing order (1-18).
+  // To avoid edge cases with non-1 physical start holes that would skip holes
+  // in playing order, we enforce startHole=1 when startOnBack9=true.
+  // This ensures all 18 holes are processed in the correct playing order.
+  const startOnBack9 = eventMatch.startOnBack9 || false;
+  const startHole = startOnBack9 ? 1 : (eventMatch.startHole || 1);
 
   if (!teamA || !teamB) return [];
 
@@ -426,9 +432,17 @@ export function calculateLedger(
         playerNames.set(member.playerId, member.player?.name || `Player ${member.playerId}`);
       }
       
+      // Transform scores and netContext to playing order when startOnBack9 is enabled
+      const startOnBack9 = em.startOnBack9 || false;
+      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
+      // Guard against null pars - provide default pars of 4 for each hole if not available
+      const safePars = pars || Array(18).fill(4);
+      const transformedPars = transformHoleDataToPlayingOrder(safePars.map((par, i) => ({ holeNumber: i + 1, par })), startOnBack9).map(h => h.par);
+      
       // Only use netContext if this specific event match has useNetScoring enabled
-      const skinsNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
-      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, skinsNetContext, pars);
+      const skinsNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const skinsNetContext = transformNetContextToPlayingOrder(skinsNetContextRaw, startOnBack9);
+      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, transformedScores, (em.unitAmount || 0) / 100, skinsNetContext, transformedPars);
       
       for (const s of skinsResult.settlements) {
         entries.push({
@@ -567,8 +581,13 @@ export function calculateLedger(
         }
       }
     } else {
-      const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
-      const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
+      // Transform scores and netContext to playing order when startOnBack9 is enabled
+      const startOnBack9 = em.startOnBack9 || false;
+      const matchPlayNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
+      const matchPlayNetContext = transformNetContextToPlayingOrder(matchPlayNetContextRaw, startOnBack9);
+      
+      const results = calculateMatchPlayResults(em, transformedScores, matchPlayNetContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
       
       // Determine if auto press was triggered (check if settlement total is doubled)
@@ -847,7 +866,12 @@ export function calculateCombinedMatchSettlements(
     } else {
       // Regular match play or stroke play - 1 bet
       totalBets += 1;
-      const results = calculateMatchPlayResults(match, scores, netContext);
+      // Transform scores and netContext to playing order when startOnBack9 is enabled
+      const startOnBack9 = match.startOnBack9 || false;
+      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
+      const transformedNetContext = transformNetContextToPlayingOrder(netContext, startOnBack9);
+      
+      const results = calculateMatchPlayResults(match, transformedScores, transformedNetContext);
       const settlement = calculateBetSettlements(
         match.unitAmount || 0,
         teamA,
