@@ -2354,12 +2354,16 @@ export class DatabaseStorage implements IStorage {
     // This is the authoritative source for handicap data in side matches
     const ryderCupPlayerDataByDay: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>> = {};
     
+    // Build a map of day number -> startOnBack9 setting
+    const startOnBack9ByDay: Record<number, boolean> = {};
+    
     // Get all days for this event
     const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
     
     for (const day of days) {
       ryderCupScoresByDay[day.dayNumber] = {};
       ryderCupPlayerDataByDay[day.dayNumber] = {};
+      startOnBack9ByDay[day.dayNumber] = day.startOnBack9 ?? false;
       
       // Get all pairings for this day
       const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
@@ -2445,6 +2449,7 @@ export class DatabaseStorage implements IStorage {
       courseData,
       ryderCupScoresByDay,
       ryderCupPlayerDataByDay,
+      startOnBack9ByDay,
       handicapOverrides,
     };
   }

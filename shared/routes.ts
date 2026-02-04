@@ -1252,6 +1252,7 @@ export const api = {
             holes: z.array(z.any()),
             tees: z.array(z.any()),
           })).optional(),
+          startOnBack9ByDay: z.record(z.string(), z.boolean()).optional(),
           storedResults: z.array(z.object({
             id: z.number(),
             eventMatchId: z.number(),

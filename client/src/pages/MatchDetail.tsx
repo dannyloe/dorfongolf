@@ -177,6 +177,7 @@ export default function MatchDetail() {
   // For Ryder Cup side matches, fetch the pairing player data (authoritative source for handicaps)
   const { data: ryderCupSideMatchData } = useQuery<{
     ryderCupPlayerDataByDay?: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>;
+    startOnBack9ByDay?: Record<number, boolean>;
   }>({
     queryKey: ["/api/ryder-cup", match?.ryderCupEventId, "side-match-ledger"],
     enabled: !!match?.ryderCupEventId,
@@ -186,6 +187,11 @@ export default function MatchDetail() {
   const ryderCupPlayerData = match?.ryderCupEventId && match?.ryderCupDayNumber
     ? ryderCupSideMatchData?.ryderCupPlayerDataByDay?.[match.ryderCupDayNumber]
     : undefined;
+  
+  // Get the day's startOnBack9 setting (if this is a Ryder Cup side match)
+  const dayStartOnBack9 = match?.ryderCupEventId && match?.ryderCupDayNumber
+    ? ryderCupSideMatchData?.startOnBack9ByDay?.[match.ryderCupDayNumber] ?? false
+    : false;
   
   // Get match-specific player handicap overrides
   const { data: matchHandicapOverrides } = useMatchPlayerHandicaps(matchId);
@@ -526,7 +532,7 @@ export default function MatchDetail() {
               autoPressNassauBack9: isNassau ? autoPressOriginal : true,
               autoPressNassauOverall: isNassau ? autoPressOriginal : true,
               useNetScoring: match.isHandicapped ? useNetScoring : false,
-              startOnBack9: false,
+              startOnBack9: dayStartOnBack9,
             }, {
               onSuccess: () => resolve(),
               onError: (err) => reject(err),
@@ -582,7 +588,7 @@ export default function MatchDetail() {
       autoPressNassauBack9: isNassau ? autoPressOriginal : true,
       autoPressNassauOverall: isNassau ? autoPressOriginal : true,
       useNetScoring: match.isHandicapped ? useNetScoring : false,
-      startOnBack9: false,
+      startOnBack9: dayStartOnBack9,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -653,7 +659,7 @@ export default function MatchDetail() {
       autoPressNassauBack9: true,
       autoPressNassauOverall: true,
       useNetScoring: match.isHandicapped ? useNetScoring : false,
-      startOnBack9: false,
+      startOnBack9: dayStartOnBack9,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -727,7 +733,7 @@ export default function MatchDetail() {
       autoPressNassauBack9: false,
       autoPressNassauOverall: false,
       useNetScoring: match.isHandicapped ? useNetScoring : false,
-      startOnBack9: false,
+      startOnBack9: dayStartOnBack9,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -833,7 +839,7 @@ export default function MatchDetail() {
             autoPressNassauBack9: true,
             autoPressNassauOverall: true,
             useNetScoring: match.isHandicapped ? useNetScoring : false,
-            startOnBack9: false,
+            startOnBack9: dayStartOnBack9,
           }, {
             onSuccess: () => resolve(),
             onError: (err) => reject(err),
