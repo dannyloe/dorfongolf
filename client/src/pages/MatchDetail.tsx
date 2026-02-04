@@ -2567,7 +2567,7 @@ export default function MatchDetail() {
                           );
                         })() : em.matchType === 'five_five_five_three' ? (() => {
                           // 5-5-5-3 Match View
-                          const fiveResult = calculateFiveMatchResults(em, scores, netContext);
+                          const fiveResult = calculateFiveMatchResults(emWithCorrectBack9, scores, netContext);
                           const unitAmt = (em.unitAmount || 100) / 100; // Convert cents to dollars
                           const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete);
                           const teamColors = ['text-primary bg-primary/10', 'text-accent bg-accent/10', 'text-orange-700 bg-orange-100', 'text-purple-700 bg-purple-100'];
@@ -3045,7 +3045,7 @@ export default function MatchDetail() {
                                 <>
                                   {/* Nassau: 3 status rows for Front 9, Back 9, Overall */}
                                   {(() => {
-                                    const nassauResults = calculateNassauResults(em, scores, netContext);
+                                    const nassauResults = calculateNassauResults(emWithCorrectBack9, scores, netContext);
                                     const firstNineResultsNassau = isBack9First ? nassauResults.back9 : nassauResults.front9;
                                     const secondNineResultsNassau = isBack9First ? nassauResults.front9 : nassauResults.back9;
                                     const firstNineLabel = isBack9First ? "Back 9" : "Front 9";
@@ -3374,7 +3374,9 @@ export default function MatchDetail() {
 
                         {/* Wager Summary - Combined for parent + all presses */}
                         {em.unitAmount > 0 && (() => {
-                          const combined = calculateCombinedMatchSettlements(em, pressMatches, scores);
+                          // Apply correct startOnBack9 to press matches for wager calculation
+                          const pressMatchesWithCorrectBack9 = pressMatches.map(pm => ({ ...pm, startOnBack9: isBack9First }));
+                          const combined = calculateCombinedMatchSettlements(emWithCorrectBack9, pressMatchesWithCorrectBack9, scores);
                           return (
                             <div className="pt-3 border-t border-border">
                               <div className="flex items-center justify-between mb-2">
