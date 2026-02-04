@@ -1326,7 +1326,18 @@ export default function Ledger() {
                         <TableRow key={`${entry.matchId}-${entry.betType}-${idx}`}>
                           <TableCell className="text-sm">
                             <div className="flex flex-col">
-                              <span>{entry.matchName?.split(' - ')[0]}</span>
+                              <span>
+                                {(() => {
+                                  // Show opponent name instead of full match name
+                                  const opponentMembers = entry.teamIndex === 0 
+                                    ? entry.teamBMembers 
+                                    : entry.teamAMembers;
+                                  if (opponentMembers && opponentMembers.length > 0) {
+                                    return `vs ${opponentMembers.join(' & ')}`;
+                                  }
+                                  return entry.matchName?.split(' - ')[0] || 'Match';
+                                })()}
+                              </span>
                               {entry.createdAt && (
                                 <span className="text-xs text-muted-foreground">
                                   {format(new Date(entry.createdAt), "MMM d, yyyy")}
