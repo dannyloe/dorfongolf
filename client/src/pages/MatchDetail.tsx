@@ -3130,8 +3130,8 @@ export default function MatchDetail() {
                                         <tr className="border-t border-border/50 bg-amber-50/50 dark:bg-amber-950/30">
                                           <td className="p-2 font-semibold text-xs">Overall</td>
                                           {firstNineHoles.map((hole) => {
-                                            // Access by physical hole number (overall array indexed 0-17 by physical hole)
-                                            const r = nassauResults.overall[hole - 1];
+                                            // Lookup by holeNumber since overall array is in playing order, not physical hole order
+                                            const r = nassauResults.overall.find(res => res.holeNumber === hole);
                                             const diff = r ? r.cumulativeA - r.cumulativeB : 0;
                                             const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
                                             if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
@@ -3141,8 +3141,8 @@ export default function MatchDetail() {
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           {secondNineHoles.map((hole) => {
-                                            // Access by physical hole number (overall array indexed 0-17 by physical hole)
-                                            const r = nassauResults.overall[hole - 1];
+                                            // Lookup by holeNumber since overall array is in playing order, not physical hole order
+                                            const r = nassauResults.overall.find(res => res.holeNumber === hole);
                                             const diff = r ? r.cumulativeA - r.cumulativeB : 0;
                                             const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
                                             if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
