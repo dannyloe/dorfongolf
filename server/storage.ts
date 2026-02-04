@@ -1649,6 +1649,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateRyderCupDayStartOnBack9(dayId: number, startOnBack9: boolean): Promise<RyderCupDay> {
+    const [updated] = await db.update(ryderCupDays)
+      .set({ startOnBack9 })
+      .where(eq(ryderCupDays.id, dayId))
+      .returning();
+    return updated;
+  }
+
   async getRyderCupPairing(pairingId: number): Promise<RyderCupPairing | undefined> {
     const [pairing] = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.id, pairingId));
     return pairing;

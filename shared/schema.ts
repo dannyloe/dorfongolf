@@ -605,6 +605,7 @@ export const ryderCupDays = pgTable("ryder_cup_days", {
   skinsCarryover: integer("skins_carryover").notNull().default(0), // carried from previous day
   skinsDistributed: boolean("skins_distributed").notNull().default(false),
   status: text("status").notNull().default("pending"), // pending, active, completed
+  startOnBack9: boolean("start_on_back_9").notNull().default(false), // when true, play starts on hole 10 (back 9 first)
 });
 
 export const ryderCupPairings = pgTable("ryder_cup_pairings", {

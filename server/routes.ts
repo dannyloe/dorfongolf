@@ -2545,6 +2545,40 @@ Rules:
     }
   });
 
+  // Update day start on back 9 setting
+  app.patch(api.ryderCup.updateDayStartOnBack9.path, isAuthenticated, async (req, res) => {
+    const dayId = parseInt(req.params.dayId);
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const input = api.ryderCup.updateDayStartOnBack9.input.parse(req.body);
+      
+      const day = await storage.getRyderCupDay(dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+      
+      const event = await storage.getRyderCupEvent(day.eventId);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (event.creatorId !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Only event creator or admin can update day settings" });
+      }
+      
+      const updatedDay = await storage.updateRyderCupDayStartOnBack9(dayId, input.startOnBack9);
+      res.json(updatedDay);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Update pairing tee time
   app.patch(api.ryderCup.updatePairingTeeTime.path, isAuthenticated, async (req, res) => {
     const pairingId = parseInt(req.params.pairingId);

@@ -1294,6 +1294,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateDayStartOnBack9: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/days/:dayId/start-on-back-9',
+      input: z.object({
+        startOnBack9: z.boolean(),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupDays.$inferSelect>(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
     updatePairingTeeTime: {
       method: 'PATCH' as const,
       path: '/api/ryder-cup/pairings/:pairingId/tee-time',

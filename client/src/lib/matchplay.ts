@@ -43,6 +43,7 @@ interface EventMatch {
   autoPressNassauBack9?: boolean;
   autoPressNassauOverall?: boolean;
   useNetScoring?: boolean;
+  startOnBack9?: boolean;
   teams: Team[];
 }
 
@@ -370,7 +371,7 @@ export function calculateLedger(
         back9: em.autoPressNassauBack9 ?? true,
         overall: em.autoPressNassauOverall ?? true,
       };
-      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, nassauAutoPressSettings);
+      const nassauSettlements = calculateNassauSettlements(em.unitAmount || 0, teamA, teamB, nassauResults, nassauAutoPressSettings, em.startOnBack9);
       
       // Build player ID to team index lookup
       const playerTeamIndex = new Map<number, number>();
@@ -721,7 +722,8 @@ export function calculateCombinedMatchSettlements(
         teamA,
         teamB,
         nassauResults,
-        nassauAutoPressSettings
+        nassauAutoPressSettings,
+        match.startOnBack9
       );
 
       for (const ns of nassauSettlements) {
@@ -907,17 +909,25 @@ export function calculateNassauSettlements(
   teamA: Team,
   teamB: Team,
   nassauResults: NassauResults,
-  autoPressSettings: boolean | NassauAutoPressSettings
+  autoPressSettings: boolean | NassauAutoPressSettings,
+  startOnBack9: boolean = false
 ): NassauSettlement[] {
   // Handle both legacy boolean and new object format
   const settings: NassauAutoPressSettings = typeof autoPressSettings === 'boolean'
     ? { front9: autoPressSettings, back9: autoPressSettings, overall: autoPressSettings }
     : autoPressSettings;
 
+  // When starting on back 9, the playing order is: 10-18, then 1-9
+  // So the Overall bet's press check and final hole change:
+  // - Normal: press check at hole 17, settle at hole 18 (last hole played)
+  // - Start on Back 9: press check at hole 8, settle at hole 9 (last hole played)
+  const overallFinalHole = startOnBack9 ? 9 : 18;
+  const overallPressCheckHole = startOnBack9 ? 8 : 17;
+
   const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number; autoPress: boolean }[] = [
     { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8, autoPress: settings.front9 },
     { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.back9 },
-    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.overall },
+    { name: 'Overall', results: nassauResults.overall, finalHole: overallFinalHole, autoPressCheckHole: overallPressCheckHole, autoPress: settings.overall },
   ];
 
   return bets.map(bet => {

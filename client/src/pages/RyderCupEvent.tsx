@@ -409,6 +409,19 @@ export default function RyderCupEvent() {
     },
   });
 
+  const updateDayStartOnBack9Mutation = useMutation({
+    mutationFn: async ({ dayId, startOnBack9 }: { dayId: number; startOnBack9: boolean }) => {
+      return apiRequest("PATCH", `/api/ryder-cup/days/${dayId}/start-on-back-9`, { startOnBack9 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", id] });
+      toast({ title: "Start on Back 9 Updated" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update setting", variant: "destructive" });
+    },
+  });
+
   const updatePairingTeeTimeMutation = useMutation({
     mutationFn: async ({ pairingId, teeTime }: { pairingId: number; teeTime: string | null }) => {
       return apiRequest("PATCH", `/api/ryder-cup/pairings/${pairingId}/tee-time`, { teeTime });
@@ -1158,8 +1171,19 @@ export default function RyderCupEvent() {
         })
       : null;
 
+    // Add startOnBack9 from the day to each event match for correct press calculation
+    const eventMatchesWithStartOnBack9 = sideMatchLedger.eventMatches.map((em: any) => {
+      const match = sideMatchLedger.matches.find((m: { id: number }) => m.id === em.eventId);
+      const dayNumber = match?.ryderCupDayNumber;
+      const day = dayNumber ? event.days.find(d => d.dayNumber === dayNumber) : null;
+      return {
+        ...em,
+        startOnBack9: day?.startOnBack9 || false,
+      };
+    });
+
     const { entries, balances: playerBalances } = calculateLedger(
-      sideMatchLedger.eventMatches as any,
+      eventMatchesWithStartOnBack9 as any,
       scoresToUse as any,
       netContextMap.size > 0 ? netContextMap : null,
       parsArray
@@ -1423,6 +1447,7 @@ export default function RyderCupEvent() {
     totalPot: number;
     isComplete: boolean;
     pars: (number | null)[];
+    startOnBack9: boolean;
   }
 
   const calculateDaySkins = (dayNumber: number): DaySkinsData | null => {
@@ -1607,20 +1632,65 @@ export default function RyderCupEvent() {
 
       const potentialWinner = playersWithMinScore[0];
 
-      // For holes 1-17: must make NET par or better on next hole to validate the skin
-      if (hole < 17) {
-        const nextHoleNumber = hole + 2; // hole is 0-indexed, holeNumber is 1-indexed
+      // Determine if this hole needs verification and what hole verifies it
+      // Normal play: holes 1-17 verified by next hole, hole 18 no verification
+      // Start on Back 9: holes 10-18 and 1-8 verified, hole 9 no verification
+      //   - Hole 18 is verified by hole 1
+      const startOnBack9 = day.startOnBack9 || false;
+      
+      let needsVerification: boolean;
+      let nextHoleIndex: number | null = null; // 0-indexed
+      
+      if (startOnBack9) {
+        // Start on Back 9: play order is 10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9
+        if (holeNumber === 9) {
+          // Hole 9 is the last hole played - no verification needed
+          needsVerification = false;
+        } else if (holeNumber === 18) {
+          // Hole 18 is verified by hole 1
+          needsVerification = true;
+          nextHoleIndex = 0; // Hole 1
+        } else {
+          // All other holes verified by the next hole in numerical order
+          needsVerification = true;
+          nextHoleIndex = hole + 1; // Next hole (0-indexed)
+        }
+      } else {
+        // Normal play: hole 18 no verification, others verified by next hole
+        if (holeNumber === 18) {
+          needsVerification = false;
+        } else {
+          needsVerification = true;
+          nextHoleIndex = hole + 1;
+        }
+      }
+
+      if (!needsVerification) {
+        // No verification needed - just needs lone low score
+        skinCounts.set(potentialWinner.name, (skinCounts.get(potentialWinner.name) || 0) + 1);
+        holeResults.push({
+          holeNumber,
+          winnerId: potentialWinner.name,
+          winnerName: potentialWinner.name,
+          lowestScore: minScore,
+          isSkin: true,
+          isPending: false,
+          tiedPlayerNames: [],
+        });
+      } else {
+        // Needs verification - must make NET par or better on verifying hole
+        const nextHoleNumber = nextHoleIndex! + 1; // 1-indexed
         const nextHolePar = dayHoles.find(h => h.holeNumber === nextHoleNumber)?.par ?? 4;
         
         // Get the potential winner's score on the next hole (use net score if handicaps enabled)
         const winnerData = players.find(p => p.name === potentialWinner.name);
-        const winnerNextGross = winnerData?.scores[hole + 1] ?? null;
+        const winnerNextGross = winnerData?.scores[nextHoleIndex!] ?? null;
         const winnerNextNet = winnerData && event.useHandicaps 
-          ? getNetScore(winnerData, hole + 1) 
+          ? getNetScore(winnerData, nextHoleIndex!) 
           : winnerNextGross;
 
         if (winnerNextNet === null) {
-          // Next hole not played yet - pending
+          // Verifying hole not played yet - pending
           holeResults.push({
             holeNumber,
             winnerId: potentialWinner.name,
@@ -1633,11 +1703,11 @@ export default function RyderCupEvent() {
           continue;
         }
 
-        // Check if winner made NET par or better on the next hole
+        // Check if winner made NET par or better on the verifying hole
         const madeParOrBetter = winnerNextNet <= nextHolePar;
 
         if (madeParOrBetter) {
-          // Winner made par or better on next hole - skin awarded
+          // Winner made par or better on verifying hole - skin awarded
           skinCounts.set(potentialWinner.name, (skinCounts.get(potentialWinner.name) || 0) + 1);
           holeResults.push({
             holeNumber,
@@ -1649,7 +1719,7 @@ export default function RyderCupEvent() {
             tiedPlayerNames: [],
           });
         } else {
-          // Winner didn't make par or better on next hole - no skin
+          // Winner didn't make par or better on verifying hole - no skin
           holeResults.push({
             holeNumber,
             winnerId: potentialWinner.name,
@@ -1660,18 +1730,6 @@ export default function RyderCupEvent() {
             tiedPlayerNames: [],
           });
         }
-      } else {
-        // Hole 18: just needs lone low score
-        skinCounts.set(potentialWinner.name, (skinCounts.get(potentialWinner.name) || 0) + 1);
-        holeResults.push({
-          holeNumber,
-          winnerId: potentialWinner.name,
-          winnerName: potentialWinner.name,
-          lowestScore: minScore,
-          isSkin: true,
-          isPending: false,
-          tiedPlayerNames: [],
-        });
       }
     }
 
@@ -1704,6 +1762,7 @@ export default function RyderCupEvent() {
       totalPot,
       isComplete: allHolesComplete,
       pars,
+      startOnBack9: day.startOnBack9 || false,
     };
   };
 
@@ -2188,6 +2247,27 @@ export default function RyderCupEvent() {
                   <p className="text-xs text-muted-foreground mt-2">
                     Drag matches below to reorder. The first match gets the first tee time, second match gets second tee time, etc.
                   </p>
+                  
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Start on Back 9</span>
+                      <span className="text-xs text-muted-foreground">(Play holes 10-18 first, then 1-9)</span>
+                    </div>
+                    <Button
+                      variant={currentDay.startOnBack9 ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        updateDayStartOnBack9Mutation.mutate({
+                          dayId: currentDay.id,
+                          startOnBack9: !currentDay.startOnBack9,
+                        });
+                      }}
+                      disabled={updateDayStartOnBack9Mutation.isPending}
+                      data-testid={`button-start-on-back-9-${currentDay.id}`}
+                    >
+                      {currentDay.startOnBack9 ? "Enabled" : "Disabled"}
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -4028,6 +4108,16 @@ export default function RyderCupEvent() {
                     </div>
                   )}
                   <div className="border rounded-lg overflow-x-auto">
+                    {(() => {
+                      const isBack9First = skinsData.startOnBack9;
+                      const firstNineHoles = isBack9First ? [10, 11, 12, 13, 14, 15, 16, 17, 18] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+                      const secondNineHoles = isBack9First ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [10, 11, 12, 13, 14, 15, 16, 17, 18];
+                      const firstNineIndices = isBack9First ? [9, 10, 11, 12, 13, 14, 15, 16, 17] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
+                      const secondNineIndices = isBack9First ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : [9, 10, 11, 12, 13, 14, 15, 16, 17];
+                      const firstNinePars = firstNineIndices.map(i => skinsData.pars[i]);
+                      const secondNinePars = secondNineIndices.map(i => skinsData.pars[i]);
+
+                      return (
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="bg-muted/50">
@@ -4035,13 +4125,13 @@ export default function RyderCupEvent() {
                           {event.useHandicaps && (
                             <th className="px-2 py-2 text-center font-medium text-xs" title="Course Handicap">HCP</th>
                           )}
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((hole) => (
+                          {firstNineHoles.map((hole) => (
                             <th key={hole} className="px-2 py-2 text-center font-medium min-w-[36px]">
                               {hole}
                             </th>
                           ))}
                           <th className="px-2 py-2 text-center font-medium bg-muted/30">OUT</th>
-                          {[10, 11, 12, 13, 14, 15, 16, 17, 18].map((hole) => (
+                          {secondNineHoles.map((hole) => (
                             <th key={hole} className="px-2 py-2 text-center font-medium min-w-[36px]">
                               {hole}
                             </th>
@@ -4054,17 +4144,17 @@ export default function RyderCupEvent() {
                         <tr className="bg-muted/30 text-xs text-muted-foreground">
                           <td className="px-3 py-1 font-medium sticky left-0 bg-muted/30 z-10">Par</td>
                           {event.useHandicaps && <td className="px-2 py-1"></td>}
-                          {skinsData.pars.slice(0, 9).map((par, idx) => (
+                          {firstNinePars.map((par, idx) => (
                             <td key={idx} className="px-2 py-1 text-center">{par ?? '-'}</td>
                           ))}
                           <td className="px-2 py-1 text-center bg-muted/50">
-                            {skinsData.pars.slice(0, 9).reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
+                            {firstNinePars.reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
                           </td>
-                          {skinsData.pars.slice(9, 18).map((par, idx) => (
+                          {secondNinePars.map((par, idx) => (
                             <td key={idx + 9} className="px-2 py-1 text-center">{par ?? '-'}</td>
                           ))}
                           <td className="px-2 py-1 text-center bg-muted/50">
-                            {skinsData.pars.slice(9, 18).reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
+                            {secondNinePars.reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
                           </td>
                           <td className="px-2 py-1 text-center bg-muted/70 font-medium">
                             {skinsData.pars.reduce<number>((sum, p) => sum + (p ?? 0), 0) || '-'}
@@ -4074,13 +4164,13 @@ export default function RyderCupEvent() {
                       </thead>
                       <tbody>
                         {skinsData.players.map((player) => {
-                          const front9Scores = player.scores.slice(0, 9);
-                          const back9Scores = player.scores.slice(9, 18);
-                          const front9Complete = front9Scores.every(s => s !== null);
-                          const back9Complete = back9Scores.every(s => s !== null);
-                          const front9 = front9Complete ? front9Scores.reduce<number>((sum, s) => sum + (s ?? 0), 0) : null;
-                          const back9 = back9Complete ? back9Scores.reduce<number>((sum, s) => sum + (s ?? 0), 0) : null;
-                          const total = front9 !== null && back9 !== null ? front9 + back9 : null;
+                          const firstNineScores = firstNineIndices.map(i => player.scores[i]);
+                          const secondNineScores = secondNineIndices.map(i => player.scores[i]);
+                          const firstNineComplete = firstNineScores.every(s => s !== null);
+                          const secondNineComplete = secondNineScores.every(s => s !== null);
+                          const firstNineTotal = firstNineComplete ? firstNineScores.reduce<number>((sum, s) => sum + (s ?? 0), 0) : null;
+                          const secondNineTotal = secondNineComplete ? secondNineScores.reduce<number>((sum, s) => sum + (s ?? 0), 0) : null;
+                          const total = firstNineTotal !== null && secondNineTotal !== null ? firstNineTotal + secondNineTotal : null;
                           const skinCount = skinsData.skinWinners.find(w => w.name === player.name)?.skinsWon || 0;
 
                           return (
@@ -4099,17 +4189,17 @@ export default function RyderCupEvent() {
                                   {player.courseHandicap !== null ? player.courseHandicap : '-'}
                                 </td>
                               )}
-                              {player.scores.slice(0, 9).map((score, idx) => {
-                                const holeResult = skinsData.holeResults[idx];
+                              {firstNineIndices.map((holeIdx, displayIdx) => {
+                                const score = player.scores[holeIdx];
+                                const holeResult = skinsData.holeResults[holeIdx];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
-                                const strokesOnHole = player.strokesPerHole[idx] || 0;
-                                // Calculate net score for comparison (lowestScore is net when handicaps enabled)
+                                const strokesOnHole = player.strokesPerHole[holeIdx] || 0;
                                 const netScore = score !== null && event.useHandicaps ? score - strokesOnHole : score;
                                 const isLowScore = holeResult?.lowestScore === netScore && holeResult?.winnerId === player.name;
                                 const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 return (
                                   <td
-                                    key={idx}
+                                    key={holeIdx}
                                     className={`px-2 py-2 text-center relative ${
                                       isSkinWinner 
                                         ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
@@ -4132,19 +4222,19 @@ export default function RyderCupEvent() {
                                 );
                               })}
                               <td className="px-2 py-2 text-center font-medium bg-muted/30">
-                                {front9 || '-'}
+                                {firstNineTotal ?? '-'}
                               </td>
-                              {player.scores.slice(9, 18).map((score, idx) => {
-                                const holeResult = skinsData.holeResults[idx + 9];
+                              {secondNineIndices.map((holeIdx, displayIdx) => {
+                                const score = player.scores[holeIdx];
+                                const holeResult = skinsData.holeResults[holeIdx];
                                 const isSkinWinner = holeResult?.isSkin && holeResult?.winnerId === player.name;
-                                const strokesOnHole = player.strokesPerHole[idx + 9] || 0;
-                                // Calculate net score for comparison (lowestScore is net when handicaps enabled)
+                                const strokesOnHole = player.strokesPerHole[holeIdx] || 0;
                                 const netScore = score !== null && event.useHandicaps ? score - strokesOnHole : score;
                                 const isLowScore = holeResult?.lowestScore === netScore && holeResult?.winnerId === player.name;
                                 const isTiedForLow = holeResult?.tiedPlayerNames?.includes(player.name) ?? false;
                                 return (
                                   <td
-                                    key={idx + 9}
+                                    key={holeIdx}
                                     className={`px-2 py-2 text-center relative ${
                                       isSkinWinner 
                                         ? 'bg-green-100 dark:bg-green-900/30 font-bold text-green-700 dark:text-green-400' 
@@ -4167,10 +4257,10 @@ export default function RyderCupEvent() {
                                 );
                               })}
                               <td className="px-2 py-2 text-center font-medium bg-muted/30" data-testid={`skins-back9-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
-                                {back9 !== null ? back9 : '-'}
+                                {secondNineTotal ?? '-'}
                               </td>
                               <td className="px-2 py-2 text-center font-bold bg-muted/50" data-testid={`skins-total-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
-                                {total !== null ? total : '-'}
+                                {total ?? '-'}
                               </td>
                               <td className="px-2 py-2 text-center font-bold bg-primary/10" data-testid={`skins-count-${player.name.replace(/\s+/g, '-').toLowerCase()}`}>
                                 {skinCount > 0 ? (
@@ -4185,33 +4275,40 @@ export default function RyderCupEvent() {
                           <td className="px-3 py-2 font-semibold sticky left-0 bg-primary/5 z-10">
                             Skins
                           </td>
-                          {skinsData.holeResults.slice(0, 9).map((result, idx) => (
-                            <td key={idx} className="px-2 py-2 text-center text-xs" data-testid={`skins-hole-${idx + 1}`}>
-                              {result.isSkin ? (
-                                <span className="text-green-600 font-bold">
-                                  {result.winnerName?.split(' ')[0]?.slice(0, 3)}
-                                </span>
-                              ) : result.isPending ? (
-                                <span className="text-yellow-600" title="Pending - waiting for next hole">?</span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </td>
-                          ))}
+                          {event.useHandicaps && <td className="px-2 py-2"></td>}
+                          {firstNineIndices.map((holeIdx) => {
+                            const result = skinsData.holeResults[holeIdx];
+                            return (
+                              <td key={holeIdx} className="px-2 py-2 text-center text-xs" data-testid={`skins-hole-${holeIdx + 1}`}>
+                                {result.isSkin ? (
+                                  <span className="text-green-600 font-bold">
+                                    {result.winnerName?.split(' ')[0]?.slice(0, 3)}
+                                  </span>
+                                ) : result.isPending ? (
+                                  <span className="text-yellow-600" title="Pending - waiting for next hole">?</span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
                           <td className="px-2 py-2 text-center bg-muted/30" />
-                          {skinsData.holeResults.slice(9, 18).map((result, idx) => (
-                            <td key={idx + 9} className="px-2 py-2 text-center text-xs" data-testid={`skins-hole-${idx + 10}`}>
-                              {result.isSkin ? (
-                                <span className="text-green-600 font-bold">
-                                  {result.winnerName?.split(' ')[0]?.slice(0, 3)}
-                                </span>
-                              ) : result.isPending ? (
-                                <span className="text-yellow-600" title="Pending - waiting for next hole">?</span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </td>
-                          ))}
+                          {secondNineIndices.map((holeIdx) => {
+                            const result = skinsData.holeResults[holeIdx];
+                            return (
+                              <td key={holeIdx} className="px-2 py-2 text-center text-xs" data-testid={`skins-hole-${holeIdx + 1}`}>
+                                {result.isSkin ? (
+                                  <span className="text-green-600 font-bold">
+                                    {result.winnerName?.split(' ')[0]?.slice(0, 3)}
+                                  </span>
+                                ) : result.isPending ? (
+                                  <span className="text-yellow-600" title="Pending - waiting for next hole">?</span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
                           <td className="px-2 py-2 text-center bg-muted/30" />
                           <td className="px-2 py-2 text-center bg-muted/50" />
                           <td className="px-2 py-2 text-center font-bold bg-primary/10 text-primary" data-testid="skins-total-count">
@@ -4220,6 +4317,8 @@ export default function RyderCupEvent() {
                         </tr>
                       </tbody>
                     </table>
+                      );
+                    })()}
                   </div>
 
                   {/* Legend */}
