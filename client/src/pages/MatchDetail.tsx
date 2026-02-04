@@ -3011,12 +3011,20 @@ export default function MatchDetail() {
                                   {/* Nassau: 3 status rows for Front 9, Back 9, Overall */}
                                   {(() => {
                                     const nassauResults = calculateNassauResults(em, scores, netContext);
+                                    const firstNineResultsNassau = isBack9First ? nassauResults.back9 : nassauResults.front9;
+                                    const secondNineResultsNassau = isBack9First ? nassauResults.front9 : nassauResults.back9;
+                                    const firstNineLabel = isBack9First ? "Back 9" : "Front 9";
+                                    const secondNineLabel = isBack9First ? "Front 9" : "Back 9";
+                                    const firstNineAutoPress = isBack9First ? em.autoPressNassauBack9 : em.autoPressNassauFront9;
+                                    const secondNineAutoPress = isBack9First ? em.autoPressNassauFront9 : em.autoPressNassauBack9;
+                                    const firstNinePressKey = isBack9First ? "autoPressNassauBack9" : "autoPressNassauFront9";
+                                    const secondNinePressKey = isBack9First ? "autoPressNassauFront9" : "autoPressNassauBack9";
                                     return (
                                       <>
-                                        {/* Front 9 Status */}
+                                        {/* First Nine Status (Front 9 or Back 9 depending on startOnBack9) */}
                                         <tr className="border-t-2 border-border bg-blue-50/50 dark:bg-blue-950/30">
-                                          <td className="p-2 font-semibold text-xs">Front 9</td>
-                                          {nassauResults.front9.map((r) => {
+                                          <td className="p-2 font-semibold text-xs">{firstNineLabel}</td>
+                                          {firstNineResultsNassau.map((r) => {
                                             const diff = r.cumulativeA - r.cumulativeB;
                                             const hasScores = r.teamAScore !== null && r.teamBScore !== null;
                                             if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
@@ -3031,27 +3039,27 @@ export default function MatchDetail() {
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           <td className="p-2 text-center">
                                             <Checkbox
-                                              id={`autopress-nassau-front9-${em.id}`}
-                                              checked={em.autoPressNassauFront9 ?? true}
+                                              id={`autopress-nassau-first9-${em.id}`}
+                                              checked={firstNineAutoPress ?? true}
                                               onCheckedChange={(checked) => {
                                                 updateAutoPress.mutate({ 
                                                   eventMatchId: em.id, 
-                                                  autoPressNassauFront9: checked === true 
+                                                  [firstNinePressKey]: checked === true 
                                                 });
                                               }}
                                               disabled={updateAutoPress.isPending}
-                                              data-testid={`checkbox-autopress-nassau-front9-${em.id}`}
+                                              data-testid={`checkbox-autopress-nassau-first9-${em.id}`}
                                             />
                                           </td>
                                         </tr>
-                                        {/* Back 9 Status */}
+                                        {/* Second Nine Status (Back 9 or Front 9 depending on startOnBack9) */}
                                         <tr className="border-t border-border/50 bg-green-50/50 dark:bg-green-950/30">
-                                          <td className="p-2 font-semibold text-xs">Back 9</td>
+                                          <td className="p-2 font-semibold text-xs">{secondNineLabel}</td>
                                           {Array.from({ length: 9 }, (_, i) => (
                                             <td key={i + 1} className="p-2 text-center text-muted-foreground/30">-</td>
                                           ))}
                                           <td className="p-2 text-center bg-muted/30"></td>
-                                          {nassauResults.back9.map((r) => {
+                                          {secondNineResultsNassau.map((r) => {
                                             const diff = r.cumulativeA - r.cumulativeB;
                                             const hasScores = r.teamAScore !== null && r.teamBScore !== null;
                                             if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
@@ -3062,38 +3070,42 @@ export default function MatchDetail() {
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           <td className="p-2 text-center">
                                             <Checkbox
-                                              id={`autopress-nassau-back9-${em.id}`}
-                                              checked={em.autoPressNassauBack9 ?? true}
+                                              id={`autopress-nassau-second9-${em.id}`}
+                                              checked={secondNineAutoPress ?? true}
                                               onCheckedChange={(checked) => {
                                                 updateAutoPress.mutate({ 
                                                   eventMatchId: em.id, 
-                                                  autoPressNassauBack9: checked === true 
+                                                  [secondNinePressKey]: checked === true 
                                                 });
                                               }}
                                               disabled={updateAutoPress.isPending}
-                                              data-testid={`checkbox-autopress-nassau-back9-${em.id}`}
+                                              data-testid={`checkbox-autopress-nassau-second9-${em.id}`}
                                             />
                                           </td>
                                         </tr>
                                         {/* Overall Status */}
                                         <tr className="border-t border-border/50 bg-amber-50/50 dark:bg-amber-950/30">
                                           <td className="p-2 font-semibold text-xs">Overall</td>
-                                          {nassauResults.overall.slice(0, 9).map((r) => {
-                                            const diff = r.cumulativeA - r.cumulativeB;
-                                            const hasScores = r.teamAScore !== null && r.teamBScore !== null;
-                                            if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
-                                            if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
-                                            if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
-                                            return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                          {firstNineHoles.map((hole) => {
+                                            const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                            const r = nassauResults.overall[playingPos - 1];
+                                            const diff = r ? r.cumulativeA - r.cumulativeB : 0;
+                                            const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
+                                            if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
+                                            if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                            if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                            return <td key={hole} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
-                                          {nassauResults.overall.slice(9, 18).map((r) => {
-                                            const diff = r.cumulativeA - r.cumulativeB;
-                                            const hasScores = r.teamAScore !== null && r.teamBScore !== null;
-                                            if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
-                                            if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
-                                            if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
-                                            return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                          {secondNineHoles.map((hole) => {
+                                            const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                            const r = nassauResults.overall[playingPos - 1];
+                                            const diff = r ? r.cumulativeA - r.cumulativeB : 0;
+                                            const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
+                                            if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
+                                            if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                            if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                            return <td key={hole} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           <td className="p-2 text-center">
@@ -3172,39 +3184,41 @@ export default function MatchDetail() {
                               {pressMatches.map((pm) => {
                                 const pressNetContext = buildMatchNetContext(pm);
                                 const pressResults = calculateMatchPlayResults(pm, scores, pressNetContext);
-                                const pressStartHole = pm.startHole || 1;
+                                const pressStartPlayingPos = pm.startHole || 1;
                                 return (
                                   <tr key={pm.id} className="border-t border-border/50 bg-muted/20">
                                     <td className="p-2 font-semibold text-xs">
-                                      Press #{pressStartHole}
+                                      Press #{pressStartPlayingPos}
                                       <span className="ml-1 text-muted-foreground">(${(pm.unitAmount / 100).toFixed(2)})</span>
                                     </td>
-                                    {Array.from({ length: 9 }, (_, i) => i + 1).map((holeNum) => {
-                                      if (holeNum < pressStartHole) {
-                                        return <td key={holeNum} className="p-2 text-center text-muted-foreground/30">-</td>;
+                                    {firstNineHoles.map((hole) => {
+                                      const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                      if (playingPos < pressStartPlayingPos) {
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>;
                                       }
-                                      const pressResult = pressResults.find(r => r.holeNumber === holeNum);
+                                      const pressResult = pressResults.find(r => r.holeNumber === playingPos);
                                       if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
-                                        return <td key={holeNum} className="p-2 text-center">-</td>;
+                                        return <td key={hole} className="p-2 text-center">-</td>;
                                       }
                                       const diff = pressResult.cumulativeA - pressResult.cumulativeB;
-                                      if (diff > 0) return <td key={holeNum} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
-                                      if (diff < 0) return <td key={holeNum} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
-                                      return <td key={holeNum} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                      if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                      if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                      return <td key={hole} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                     })}
                                     <td className="p-2 text-center bg-muted/30"></td>
-                                    {Array.from({ length: 9 }, (_, i) => i + 10).map((holeNum) => {
-                                      if (holeNum < pressStartHole) {
-                                        return <td key={holeNum} className="p-2 text-center text-muted-foreground/30">-</td>;
+                                    {secondNineHoles.map((hole) => {
+                                      const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                      if (playingPos < pressStartPlayingPos) {
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>;
                                       }
-                                      const pressResult = pressResults.find(r => r.holeNumber === holeNum);
+                                      const pressResult = pressResults.find(r => r.holeNumber === playingPos);
                                       if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
-                                        return <td key={holeNum} className="p-2 text-center">-</td>;
+                                        return <td key={hole} className="p-2 text-center">-</td>;
                                       }
                                       const diff = pressResult.cumulativeA - pressResult.cumulativeB;
-                                      if (diff > 0) return <td key={holeNum} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
-                                      if (diff < 0) return <td key={holeNum} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
-                                      return <td key={holeNum} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
+                                      if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
+                                      if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
+                                      return <td key={hole} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                     })}
                                     <td className="p-2 text-center bg-muted/30"></td>
                                     {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
