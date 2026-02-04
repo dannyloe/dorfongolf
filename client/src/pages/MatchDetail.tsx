@@ -3386,7 +3386,9 @@ export default function MatchDetail() {
                         {em.unitAmount > 0 && (() => {
                           // Apply correct startOnBack9 to press matches for wager calculation
                           const pressMatchesWithCorrectBack9 = pressMatches.map(pm => ({ ...pm, startOnBack9: isBack9First }));
-                          const combined = calculateCombinedMatchSettlements(emWithCorrectBack9, pressMatchesWithCorrectBack9, scores);
+                          // Build netContext for consistent calculation with ledger
+                          const wagerNetContext = em.useNetScoring ? buildMatchNetContext(emWithCorrectBack9) : null;
+                          const combined = calculateCombinedMatchSettlements(emWithCorrectBack9, pressMatchesWithCorrectBack9, scores, wagerNetContext);
                           return (
                             <div className="pt-3 border-t border-border">
                               <div className="flex items-center justify-between mb-2">
