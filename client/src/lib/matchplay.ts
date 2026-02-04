@@ -455,7 +455,7 @@ export function calculateLedger(
       const transformedPars = transformHoleDataToPlayingOrder(safePars.map((par, i) => ({ holeNumber: i + 1, par })), startOnBack9).map(h => h.par);
       
       // Only use netContext if this specific event match has useNetScoring enabled
-      const skinsNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const skinsNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       const skinsNetContext = transformNetContextToPlayingOrder(skinsNetContextRaw, startOnBack9);
       const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, transformedScores, (em.unitAmount || 0) / 100, skinsNetContext, transformedPars);
       
@@ -491,7 +491,7 @@ export function calculateLedger(
       }
     } else if (em.matchType === 'nassau') {
       // calculateNassauResults now handles startOnBack9 internally - pass original scores
-      const nassauNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const nassauNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       
       const nassauResults = calculateNassauResults(em, scores, nassauNetContext);
       const nassauAutoPressSettings = {
@@ -542,7 +542,7 @@ export function calculateLedger(
       }
     } else if (em.matchType === 'five_five_five_three') {
       // 5-5-5-3 match - only process if complete to avoid $0 entries
-      const fiveNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const fiveNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       const fiveResult = calculateFiveMatchResults(em, scores, fiveNetContext);
       
       // Skip incomplete matches entirely to avoid $0 ledger entries
@@ -594,7 +594,7 @@ export function calculateLedger(
       }
     } else {
       // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
-      const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
+      const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       
       const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);

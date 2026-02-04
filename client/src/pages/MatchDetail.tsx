@@ -3454,12 +3454,13 @@ export default function MatchDetail() {
         );
         
         // Build netContextMap for proper net scoring in ledger
+        // Key by em.id (event match ID), not em.eventId (parent match ID)
         const netContextMap = new Map<number, NetScoringContext>();
         for (const em of eventMatchesWithCorrectBack9) {
           if (em.useNetScoring) {
             const ctx = buildMatchNetContext(em);
             if (ctx) {
-              netContextMap.set(em.eventId, ctx);
+              netContextMap.set(em.id, ctx);
             }
           }
         }
