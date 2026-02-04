@@ -486,13 +486,10 @@ export function calculateLedger(
         }
       }
     } else if (em.matchType === 'nassau') {
-      // Transform scores and netContext to playing order when startOnBack9 is enabled
-      const startOnBack9 = em.startOnBack9 || false;
-      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
-      const nassauNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
-      const nassauNetContext = transformNetContextToPlayingOrder(nassauNetContextRaw, startOnBack9);
+      // calculateNassauResults now handles startOnBack9 internally - pass original scores
+      const nassauNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       
-      const nassauResults = calculateNassauResults(em, transformedScores, nassauNetContext);
+      const nassauResults = calculateNassauResults(em, scores, nassauNetContext);
       const nassauAutoPressSettings = {
         front9: em.autoPressNassauFront9 ?? true,
         back9: em.autoPressNassauBack9 ?? true,
@@ -592,13 +589,10 @@ export function calculateLedger(
         }
       }
     } else {
-      // Transform scores and netContext to playing order when startOnBack9 is enabled
-      const startOnBack9 = em.startOnBack9 || false;
-      const matchPlayNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
-      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
-      const matchPlayNetContext = transformNetContextToPlayingOrder(matchPlayNetContextRaw, startOnBack9);
+      // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
+      const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.eventId) || null : null;
       
-      const results = calculateMatchPlayResults(em, transformedScores, matchPlayNetContext);
+      const results = calculateMatchPlayResults(em, scores, matchPlayNetContext);
       const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, results, em.matchType, shouldAutoPress);
       
       // Determine if auto press was triggered (check if settlement total is doubled)
