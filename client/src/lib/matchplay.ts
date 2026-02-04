@@ -1066,7 +1066,7 @@ export function calculateNassauResults(
   };
 }
 
-function getNassauBetWinner(results: HoleResult[], finalHole: number): 'A' | 'B' | 'tie' | null {
+function getNassauBetWinner(results: HoleResult[], finalHole: number, expectedHoleCount?: number): 'A' | 'B' | 'tie' | null {
   // Get all played holes (with scores)
   const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
   const lastPlayedHole = playedHoles[playedHoles.length - 1];
@@ -1075,8 +1075,9 @@ function getNassauBetWinner(results: HoleResult[], finalHole: number): 'A' | 'B'
   
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
   
-  // Determine expected total holes based on finalHole (9 for front/back, 18 for overall)
-  const expectedHoles = finalHole === 9 ? 9 : 18;
+  // Determine expected total holes - use explicit count if provided, otherwise infer from finalHole
+  // Front 9 = 9 holes, Back 9 = 9 holes (holes 10-18), Overall = 18 holes
+  const expectedHoles = expectedHoleCount ?? (finalHole === 9 ? 9 : 18);
   const holesRemaining = expectedHoles - playedHoles.length;
   
   // Check for early clinch (e.g., 3 & 2 means 3 up with 2 holes remaining)
@@ -1122,14 +1123,14 @@ export function calculateNassauSettlements(
   // Note: Scores should be transformed to playing order BEFORE calculating Nassau results
   // when startOnBack9 is enabled. This way all bets use standard playing positions 1-18.
   // Front 9 = playing positions 1-9, Back 9 = playing positions 10-18, Overall = 1-18
-  const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number; autoPress: boolean }[] = [
-    { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8, autoPress: settings.front9 },
-    { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.back9 },
-    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.overall },
+  const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number; autoPress: boolean; expectedHoleCount: number }[] = [
+    { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8, autoPress: settings.front9, expectedHoleCount: 9 },
+    { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.back9, expectedHoleCount: 9 },
+    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.overall, expectedHoleCount: 18 },
   ];
 
   return bets.map(bet => {
-    const winner = getNassauBetWinner(bet.results, bet.finalHole);
+    const winner = getNassauBetWinner(bet.results, bet.finalHole, bet.expectedHoleCount);
     const unitAmount = unitAmountCents / 100;
     
     const teamASize = teamA.members.length;
