@@ -5118,17 +5118,41 @@ export default function RyderCupEvent() {
                 ) : (
                   <>
                     <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {allEntries.map((e, i) => (
-                        <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
-                          <div>
-                            <span className="font-medium">{e.matchName}</span>
-                            {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
+                      {allEntries.map((e, i) => {
+                        // Determine opponent name
+                        let opponentDisplay = e.matchName;
+                        const entry = e as any;
+                        // Try teamAMembers/teamBMembers first
+                        const opponentMembers = entry.teamIndex === 0 
+                          ? entry.teamBMembers 
+                          : entry.teamAMembers;
+                        if (opponentMembers && opponentMembers.length > 0) {
+                          opponentDisplay = `vs ${opponentMembers.join(' & ')}`;
+                        } else {
+                          // Fallback: Find opponent from ALL side bet entries (not just this player's)
+                          const opponentEntry = sideBetData.entries.find((oe: any) => 
+                            oe.matchId === entry.matchId && 
+                            oe.betType === entry.betType &&
+                            oe.teamIndex !== entry.teamIndex &&
+                            oe.teamName
+                          );
+                          if (opponentEntry?.teamName) {
+                            opponentDisplay = `vs ${opponentEntry.teamName}`;
+                          }
+                        }
+                        
+                        return (
+                          <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
+                            <div>
+                              <span className="font-medium">{opponentDisplay}</span>
+                              {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
+                            </div>
+                            <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
+                              {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
+                            </span>
                           </div>
-                          <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
-                            {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <div className="border-t pt-2 flex justify-between items-center font-semibold">
                       <span>Total</span>
