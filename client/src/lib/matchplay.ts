@@ -281,13 +281,15 @@ export function calculateMatchPlayResults(
 }
 
 export function getMatchStatus(results: HoleResult[], teamA: Team, teamB: Team, matchType?: string): string {
-  const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
+  const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+  const lastPlayedHole = playedHoles[playedHoles.length - 1];
   
   if (!lastPlayedHole) return 'Not started';
   
   const isStrokePlay = matchType === 'stroke_play';
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
-  const holesRemaining = 18 - lastPlayedHole.holeNumber;
+  // Use played-hole count for completion (handles startOnBack9 where last hole may be physical 9)
+  const holesRemaining = 18 - playedHoles.length;
   
   if (isStrokePlay) {
     // Stroke play: lower total strokes wins
@@ -331,13 +333,15 @@ export interface MatchSettlement {
 }
 
 export function getMatchWinner(results: HoleResult[], matchType?: string): 'A' | 'B' | 'tie' | null {
-  const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
+  const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+  const lastPlayedHole = playedHoles[playedHoles.length - 1];
   
   if (!lastPlayedHole) return null;
   
   const isStrokePlay = matchType === 'stroke_play';
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
-  const holesRemaining = 18 - lastPlayedHole.holeNumber;
+  // Use played-hole count for completion (handles startOnBack9 where last hole may be physical 9)
+  const holesRemaining = 18 - playedHoles.length;
   
   if (isStrokePlay) {
     // Stroke play: only complete after 18 holes, lower strokes wins
@@ -671,32 +675,38 @@ export function calculateBetSettlements(
   const teamBSize = teamB.members.length;
   const maxTeamSize = Math.max(teamASize, teamBSize);
   
-  // Auto Press logic: check if one team was 2+ down going into hole 18
+  // Auto Press logic: check if one team was 2+ down going into the final hole
   let autoPressMultiplier = 1;
   let autoPressNullified = false;
   
   if (autoPress && results.length >= 2 && matchType !== 'stroke_play') {
-    // Get status before hole 18 (after hole 17)
-    const hole17Result = results.find(r => r.holeNumber === 17);
-    const hole18Result = results.find(r => r.holeNumber === 18);
+    // Get played holes with scores (in playing order)
+    const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
     
-    if (hole17Result && hole18Result && hole18Result.teamAScore !== null && hole18Result.teamBScore !== null) {
-      const statusBefore18 = hole17Result.cumulativeA - hole17Result.cumulativeB;
+    // Only check auto-press if all 18 holes are complete
+    if (playedHoles.length === 18) {
+      // Get the second-to-last and last played holes (by position, not physical number)
+      const secondToLastHole = playedHoles[playedHoles.length - 2];
+      const lastHole = playedHoles[playedHoles.length - 1];
       
-      // Check if either team was 2+ down going into 18
-      if (Math.abs(statusBefore18) >= 2) {
-        const leaderBefore18 = statusBefore18 > 0 ? 'A' : 'B';
-        const hole18Winner = hole18Result.winner;
+      if (secondToLastHole && lastHole) {
+        const statusBeforeLast = secondToLastHole.cumulativeA - secondToLastHole.cumulativeB;
         
-        if (hole18Winner === leaderBefore18) {
-          // Leader won hole 18 - double the bet
-          autoPressMultiplier = 2;
-        } else if (hole18Winner === 'tie') {
-          // Tie on 18 - unchanged
-          autoPressMultiplier = 1;
-        } else {
-          // Leader lost hole 18 - bet is nullified (push)
-          autoPressNullified = true;
+        // Check if either team was 2+ down going into the final hole
+        if (Math.abs(statusBeforeLast) >= 2) {
+          const leaderBeforeLast = statusBeforeLast > 0 ? 'A' : 'B';
+          const lastHoleWinner = lastHole.winner;
+          
+          if (lastHoleWinner === leaderBeforeLast) {
+            // Leader won final hole - double the bet
+            autoPressMultiplier = 2;
+          } else if (lastHoleWinner === 'tie') {
+            // Tie on final hole - unchanged
+            autoPressMultiplier = 1;
+          } else {
+            // Leader lost final hole - bet is nullified (push)
+            autoPressNullified = true;
+          }
         }
       }
     }
@@ -1057,19 +1067,24 @@ export function calculateNassauResults(
 }
 
 function getNassauBetWinner(results: HoleResult[], finalHole: number): 'A' | 'B' | 'tie' | null {
-  const lastPlayedHole = results.filter(r => r.teamAScore !== null && r.teamBScore !== null).pop();
+  // Get all played holes (with scores)
+  const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+  const lastPlayedHole = playedHoles[playedHoles.length - 1];
   
   if (!lastPlayedHole) return null;
   
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
-  const holesRemaining = finalHole - lastPlayedHole.holeNumber;
+  
+  // Determine expected total holes based on finalHole (9 for front/back, 18 for overall)
+  const expectedHoles = finalHole === 9 ? 9 : 18;
+  const holesRemaining = expectedHoles - playedHoles.length;
   
   // Check for early clinch (e.g., 3 & 2 means 3 up with 2 holes remaining)
   if (Math.abs(diff) > holesRemaining) {
     return diff > 0 ? 'A' : 'B';
   }
   
-  // If we've played the final hole, determine winner
+  // If we've played all expected holes, determine winner
   if (holesRemaining === 0) {
     if (diff > 0) return 'A';
     if (diff < 0) return 'B';
