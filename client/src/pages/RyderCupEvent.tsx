@@ -1429,11 +1429,16 @@ export default function RyderCupEvent() {
     const day = event.days.find(d => d.dayNumber === dayNumber);
     if (!day) return null;
 
+    // Get the correct course for THIS day (not the currently selected tab)
+    const dayCourseId = day.courseId || event?.courseId;
+    const dayCourse = courses.find(c => c.id === dayCourseId);
+    const dayHoles: CourseHole[] = dayCourse?.holes || [];
+
     // Gather all unique players, their scores, and their handicap info from all pairings
     const playerMap = new Map<string, { teamColor: string; scores: (number | null)[]; courseHandicap: number | null }>();
 
-    // Calculate course par for handicap calculations
-    const coursePar = courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0) || 72;
+    // Calculate course par for handicap calculations using THIS day's course
+    const coursePar = dayHoles.reduce((sum, h) => sum + (h.par ?? 0), 0) || 72;
 
     // Build a lookup of team member handicaps by player name (fallback when side doesn't have handicap)
     const memberHandicapLookup = new Map<string, number | null>();
@@ -1504,7 +1509,7 @@ export default function RyderCupEvent() {
 
     // Build hole handicap lookup first (needed to calculate strokes per hole)
     const holeHandicaps = new Map<number, number>();
-    for (const hole of courseHoles) {
+    for (const hole of dayHoles) {
       if (hole.handicap !== null) {
         holeHandicaps.set(hole.holeNumber, hole.handicap);
       }
@@ -1605,7 +1610,7 @@ export default function RyderCupEvent() {
       // For holes 1-17: must make NET par or better on next hole to validate the skin
       if (hole < 17) {
         const nextHoleNumber = hole + 2; // hole is 0-indexed, holeNumber is 1-indexed
-        const nextHolePar = courseHoles.find(h => h.holeNumber === nextHoleNumber)?.par ?? 4;
+        const nextHolePar = dayHoles.find(h => h.holeNumber === nextHoleNumber)?.par ?? 4;
         
         // Get the potential winner's score on the next hole (use net score if handicaps enabled)
         const winnerData = players.find(p => p.name === potentialWinner.name);
@@ -1684,9 +1689,9 @@ export default function RyderCupEvent() {
       }))
       .sort((a, b) => b.skinsWon - a.skinsWon);
 
-    // Build pars array for display
+    // Build pars array for display using THIS day's course
     const pars = Array.from({ length: 18 }, (_, i) => {
-      const hole = courseHoles.find(h => h.holeNumber === i + 1);
+      const hole = dayHoles.find(h => h.holeNumber === i + 1);
       return hole?.par ?? null;
     });
 
