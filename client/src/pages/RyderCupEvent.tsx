@@ -2933,17 +2933,26 @@ export default function RyderCupEvent() {
                     return results;
                   };
 
-                  const calculateRunningScore = (holeResults: HoleResult[]): { score: number; text: string }[] => {
-                    const running: { score: number; text: string }[] = [];
+                  const calculateRunningScore = (holeResults: HoleResult[], isBack9First: boolean): { score: number; text: string }[] => {
+                    // Determine playing order: if back 9 first, holes 10-18 are played first, then 1-9
+                    const playingOrder = isBack9First 
+                      ? [10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9]
+                      : [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+                    
+                    // Build running score indexed by physical hole number
+                    const runningByHole: { score: number; text: string }[] = new Array(18);
                     let score = 0; // Positive = Team A up, Negative = Team B up
-                    for (let i = 0; i < 18; i++) {
-                      const result = holeResults[i];
+                    let lastText = 'AS';
+                    
+                    for (let playPos = 0; playPos < 18; playPos++) {
+                      const physicalHole = playingOrder[playPos];
+                      const result = holeResults[physicalHole - 1];
                       if (result.winner === 'A') score++;
                       else if (result.winner === 'B') score--;
                       
                       let text = '';
                       if (result.winner === null) {
-                        text = running.length > 0 ? running[running.length - 1].text : 'AS';
+                        text = lastText;
                       } else if (score === 0) {
                         text = 'AS';
                       } else if (score > 0) {
@@ -2951,9 +2960,10 @@ export default function RyderCupEvent() {
                       } else {
                         text = `${Math.abs(score)}`;
                       }
-                      running.push({ score, text });
+                      lastText = text;
+                      runningByHole[physicalHole - 1] = { score, text };
                     }
-                    return running;
+                    return runningByHole;
                   };
 
                   const handleScoreClick = (sideId: number, playerNumber: 1 | 2, hole: number, currentScore: number | null) => {
@@ -3224,13 +3234,13 @@ export default function RyderCupEvent() {
 
                         const isExpanded = expandedPairingId === pairing.id;
 
-                        const holeResults = calculateHoleResults(sideA, sideB, lowHandicap, pairing.useNetScoring);
-                        const runningScore = calculateRunningScore(holeResults);
-
                         // Determine hole order based on startOnBack9
                         const isBack9First = currentDay.startOnBack9 || false;
                         const firstNineHolesForRow = isBack9First ? [10,11,12,13,14,15,16,17,18] : [1,2,3,4,5,6,7,8,9];
                         const secondNineHolesForRow = isBack9First ? [1,2,3,4,5,6,7,8,9] : [10,11,12,13,14,15,16,17,18];
+
+                        const holeResults = calculateHoleResults(sideA, sideB, lowHandicap, pairing.useNetScoring);
+                        const runningScore = calculateRunningScore(holeResults, isBack9First);
 
                         const renderPlayerRow = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2, teamColor?: string, isTeamA?: boolean) => {
                           const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
@@ -3337,7 +3347,9 @@ export default function RyderCupEvent() {
                         };
 
                         const renderMatchStatusRow = () => {
-                          const finalScore = runningScore[17]?.score ?? 0;
+                          // When startOnBack9, last hole played is hole 9; otherwise hole 18
+                          const lastHolePlayed = isBack9First ? 9 : 18;
+                          const finalScore = runningScore[lastHolePlayed - 1]?.score ?? 0;
                           const finalText = finalScore === 0 ? 'All Square' : 
                             finalScore > 0 ? `${sideA.player1Name?.split(" ")[0]} ${finalScore} UP` : 
                             `${sideB.player1Name?.split(" ")[0]} ${Math.abs(finalScore)} UP`;
