@@ -3631,8 +3631,10 @@ export default function MatchDetail() {
                       let matchTitle = matchEntries[0]?.matchName || 'Match';
                       if (teamA && teamB) {
                         if (selectedStandingsPlayer !== null) {
-                          // Find which team the selected player is on and show opponent
-                          const selectedPlayerTeam = playerTeamIndex.get(selectedStandingsPlayer);
+                          // Find which team the selected player is on using match entries
+                          // (more reliable than playerTeamIndex since player IDs may differ across matches)
+                          const selectedPlayerEntry = matchEntries.find(e => e.playerId === selectedStandingsPlayer);
+                          const selectedPlayerTeam = selectedPlayerEntry?.teamIndex ?? playerTeamIndex.get(selectedStandingsPlayer);
                           if (selectedPlayerTeam === 0) {
                             matchTitle = `vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`;
                           } else if (selectedPlayerTeam === 1) {
