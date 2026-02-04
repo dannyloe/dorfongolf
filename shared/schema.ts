@@ -86,6 +86,7 @@ export const eventMatches = pgTable("event_matches", {
   autoPressNassauOverall: boolean("auto_press_nassau_overall").notNull().default(true),
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
   hasBeenReplicated: boolean("has_been_replicated").notNull().default(false),
+  startOnBack9: boolean("start_on_back_9").notNull().default(false), // when true, play starts on hole 10 (back 9 first)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -488,6 +489,7 @@ export type CreateEventMatchRequest = {
   autoPressNassauBack9?: boolean;
   autoPressNassauOverall?: boolean;
   useNetScoring?: boolean;
+  startOnBack9?: boolean;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
   // Optional: For 5-5-5-3 matches that support multiple teams

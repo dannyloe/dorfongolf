@@ -636,6 +636,7 @@ export async function registerRoutes(
             autoPressNassauBack9: sourceEventMatch.autoPressNassauBack9,
             autoPressNassauOverall: sourceEventMatch.autoPressNassauOverall,
             useNetScoring: sourceEventMatch.useNetScoring,
+            startOnBack9: sourceEventMatch.startOnBack9,
             teamA: {
               name: sourceEventMatch.teams?.[0]?.name || "Team A",
               playerIds: teamAPlayerIds,

@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, type NetScoringContext } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,6 +61,8 @@ interface EventMatch {
   autoPressNassauBack9?: boolean;
   autoPressNassauOverall?: boolean;
   useNetScoring?: boolean;
+  startOnBack9?: boolean;
+  hasBeenReplicated?: boolean;
   teams: Team[];
 }
 
@@ -524,6 +526,7 @@ export default function MatchDetail() {
               autoPressNassauBack9: isNassau ? autoPressOriginal : true,
               autoPressNassauOverall: isNassau ? autoPressOriginal : true,
               useNetScoring: match.isHandicapped ? useNetScoring : false,
+              startOnBack9: false,
             }, {
               onSuccess: () => resolve(),
               onError: (err) => reject(err),
@@ -579,6 +582,7 @@ export default function MatchDetail() {
       autoPressNassauBack9: isNassau ? autoPressOriginal : true,
       autoPressNassauOverall: isNassau ? autoPressOriginal : true,
       useNetScoring: match.isHandicapped ? useNetScoring : false,
+      startOnBack9: false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -649,6 +653,7 @@ export default function MatchDetail() {
       autoPressNassauBack9: true,
       autoPressNassauOverall: true,
       useNetScoring: match.isHandicapped ? useNetScoring : false,
+      startOnBack9: false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -722,6 +727,7 @@ export default function MatchDetail() {
       autoPressNassauBack9: false,
       autoPressNassauOverall: false,
       useNetScoring: match.isHandicapped ? useNetScoring : false,
+      startOnBack9: false,
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
@@ -827,6 +833,7 @@ export default function MatchDetail() {
             autoPressNassauBack9: true,
             autoPressNassauOverall: true,
             useNetScoring: match.isHandicapped ? useNetScoring : false,
+            startOnBack9: false,
           }, {
             onSuccess: () => resolve(),
             onError: (err) => reject(err),
@@ -2212,6 +2219,11 @@ export default function MatchDetail() {
               const netContext = buildMatchNetContext(em);
               const results = calculateMatchPlayResults(em, scores, netContext);
               const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
+              
+              // Determine hole display order based on startOnBack9
+              const isBack9First = em.startOnBack9 || false;
+              const firstNineHoles = isBack9First ? [10, 11, 12, 13, 14, 15, 16, 17, 18] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+              const secondNineHoles = isBack9First ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [10, 11, 12, 13, 14, 15, 16, 17, 18];
               const isExpanded = expandedMatch === em.id;
               const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
 
@@ -2772,12 +2784,12 @@ export default function MatchDetail() {
                             <thead>
                               <tr className="border-b border-border">
                                 <th className="p-2 text-left font-semibold">Hole</th>
-                                {results.slice(0, 9).map((r) => (
-                                  <th key={r.holeNumber} className="p-2 text-center font-medium">{r.holeNumber}</th>
+                                {firstNineHoles.map((hole) => (
+                                  <th key={hole} className="p-2 text-center font-medium">{hole}</th>
                                 ))}
                                 <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
-                                {results.slice(9, 18).map((r) => (
-                                  <th key={r.holeNumber} className="p-2 text-center font-medium">{r.holeNumber}</th>
+                                {secondNineHoles.map((hole) => (
+                                  <th key={hole} className="p-2 text-center font-medium">{hole}</th>
                                 ))}
                                 <th className="p-2 text-center font-semibold bg-muted/30">In</th>
                                 {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
@@ -2792,7 +2804,7 @@ export default function MatchDetail() {
                                 return (
                                   <tr key={`player-${m.playerId}`} className="border-b border-border/30 bg-primary/5">
                                     <td className="p-2 pl-4 text-xs text-primary/70">{m.player?.name}</td>
-                                    {Array.from({ length: 9 }, (_, i) => i + 1).map((holeNum) => {
+                                    {firstNineHoles.map((holeNum) => {
                                       const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
                                       const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
                                       const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
@@ -2812,9 +2824,9 @@ export default function MatchDetail() {
                                       );
                                     })}
                                     <td className="p-1 text-center bg-muted/30 text-xs">
-                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber <= 9).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && firstNineHoles.includes(s.holeNumber)).reduce((sum, s) => sum + s.strokes, 0) || '-'}
                                     </td>
-                                    {Array.from({ length: 9 }, (_, i) => i + 10).map((holeNum) => {
+                                    {secondNineHoles.map((holeNum) => {
                                       const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
                                       const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
                                       const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
@@ -2834,7 +2846,7 @@ export default function MatchDetail() {
                                       );
                                     })}
                                     <td className="p-1 text-center bg-muted/30 text-xs">
-                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber >= 10).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && secondNineHoles.includes(s.holeNumber)).reduce((sum, s) => sum + s.strokes, 0) || '-'}
                                     </td>
                                     {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
                                       <td></td>
@@ -2848,7 +2860,7 @@ export default function MatchDetail() {
                                 return (
                                   <tr key={`player-${m.playerId}`} className="border-b border-border/30 bg-accent/5">
                                     <td className="p-2 pl-4 text-xs text-accent/70">{m.player?.name}</td>
-                                    {Array.from({ length: 9 }, (_, i) => i + 1).map((holeNum) => {
+                                    {firstNineHoles.map((holeNum) => {
                                       const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
                                       const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
                                       const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
@@ -2868,9 +2880,9 @@ export default function MatchDetail() {
                                       );
                                     })}
                                     <td className="p-1 text-center bg-muted/30 text-xs">
-                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber <= 9).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && firstNineHoles.includes(s.holeNumber)).reduce((sum, s) => sum + s.strokes, 0) || '-'}
                                     </td>
-                                    {Array.from({ length: 9 }, (_, i) => i + 10).map((holeNum) => {
+                                    {secondNineHoles.map((holeNum) => {
                                       const score = scores.find((s: Score) => s.playerId === m.playerId && s.holeNumber === holeNum);
                                       const holeHandicapRank = netContext.holeHandicaps.get(holeNum) ?? 18;
                                       const strokesReceived = getStrokesForHole(relativeHandicap, holeHandicapRank);
@@ -2890,7 +2902,7 @@ export default function MatchDetail() {
                                       );
                                     })}
                                     <td className="p-1 text-center bg-muted/30 text-xs">
-                                      {scores.filter((s: Score) => s.playerId === m.playerId && s.holeNumber >= 10).reduce((sum, s) => sum + s.strokes, 0) || '-'}
+                                      {scores.filter((s: Score) => s.playerId === m.playerId && secondNineHoles.includes(s.holeNumber)).reduce((sum, s) => sum + s.strokes, 0) || '-'}
                                     </td>
                                     {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId && (
                                       <td></td>
@@ -2900,11 +2912,15 @@ export default function MatchDetail() {
                               })}
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-primary">{teamA?.name}</td>
-                                {results.slice(0, 9).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
-                                    {r.teamAScore ?? '-'}
-                                  </td>
-                                ))}
+                                {firstNineHoles.map((hole) => {
+                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                  const r = results[playingPos - 1];
+                                  return (
+                                    <td key={hole} className={`p-2 text-center ${r?.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                      {r?.teamAScore ?? '-'}
+                                    </td>
+                                  );
+                                })}
                                 {(() => {
                                   const outResult = results[8];
                                   const hasOutScores = outResult?.teamAScore !== null;
@@ -2917,11 +2933,15 @@ export default function MatchDetail() {
                                   if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(outDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
-                                {results.slice(9, 18).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
-                                    {r.teamAScore ?? '-'}
-                                  </td>
-                                ))}
+                                {secondNineHoles.map((hole) => {
+                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                  const r = results[playingPos - 1];
+                                  return (
+                                    <td key={hole} className={`p-2 text-center ${r?.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                      {r?.teamAScore ?? '-'}
+                                    </td>
+                                  );
+                                })}
                                 {(() => {
                                   const inResult = results[17];
                                   const hasInScores = inResult?.teamAScore !== null;
@@ -2940,11 +2960,15 @@ export default function MatchDetail() {
                               </tr>
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-accent">{teamB?.name}</td>
-                                {results.slice(0, 9).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
-                                    {r.teamBScore ?? '-'}
-                                  </td>
-                                ))}
+                                {firstNineHoles.map((hole) => {
+                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                  const r = results[playingPos - 1];
+                                  return (
+                                    <td key={hole} className={`p-2 text-center ${r?.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
+                                      {r?.teamBScore ?? '-'}
+                                    </td>
+                                  );
+                                })}
                                 {(() => {
                                   const outResult = results[8];
                                   const hasOutScores = outResult?.teamBScore !== null;
@@ -2957,11 +2981,15 @@ export default function MatchDetail() {
                                   if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(outDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
-                                {results.slice(9, 18).map((r) => (
-                                  <td key={r.holeNumber} className={`p-2 text-center ${r.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
-                                    {r.teamBScore ?? '-'}
-                                  </td>
-                                ))}
+                                {secondNineHoles.map((hole) => {
+                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                  const r = results[playingPos - 1];
+                                  return (
+                                    <td key={hole} className={`p-2 text-center ${r?.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
+                                      {r?.teamBScore ?? '-'}
+                                    </td>
+                                  );
+                                })}
                                 {(() => {
                                   const inResult = results[17];
                                   const hasInScores = inResult?.teamBScore !== null;
@@ -3090,32 +3118,36 @@ export default function MatchDetail() {
                               ) : (
                                 <tr className="border-t-2 border-border">
                                   <td className="p-2 font-semibold">Status</td>
-                                  {results.slice(0, 9).map((r) => {
-                                    const diff = r.cumulativeA - r.cumulativeB;
-                                    const hasScores = r.teamAScore !== null && r.teamBScore !== null;
-                                    if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                  {firstNineHoles.map((hole) => {
+                                    const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                    const r = results[playingPos - 1];
+                                    const diff = r ? r.cumulativeA - r.cumulativeB : 0;
+                                    const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
+                                    if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
                                     if (em.matchType === 'stroke_play') {
-                                      if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
-                                      if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
-                                      return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
+                                      if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
+                                      if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent">{diff}</td>;
+                                      return <td key={hole} className="p-2 text-center text-muted-foreground">T</td>;
                                     }
-                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
-                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
-                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
+                                    if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
+                                    if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
+                                    return <td key={hole} className="p-2 text-center text-muted-foreground">AS</td>;
                                   })}
                                   <td className="p-2 text-center bg-muted/30"></td>
-                                  {results.slice(9, 18).map((r) => {
-                                    const diff = r.cumulativeA - r.cumulativeB;
-                                    const hasScores = r.teamAScore !== null && r.teamBScore !== null;
-                                    if (!hasScores) return <td key={r.holeNumber} className="p-2 text-center">-</td>;
+                                  {secondNineHoles.map((hole) => {
+                                    const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                    const r = results[playingPos - 1];
+                                    const diff = r ? r.cumulativeA - r.cumulativeB : 0;
+                                    const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
+                                    if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
                                     if (em.matchType === 'stroke_play') {
-                                      if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
-                                      if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{diff}</td>;
-                                      return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">T</td>;
+                                      if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary">{Math.abs(diff)}</td>;
+                                      if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent">{diff}</td>;
+                                      return <td key={hole} className="p-2 text-center text-muted-foreground">T</td>;
                                     }
-                                    if (diff > 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
-                                    if (diff < 0) return <td key={r.holeNumber} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
-                                    return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground">AS</td>;
+                                    if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary">{diff} UP</td>;
+                                    if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent">{Math.abs(diff)} UP</td>;
+                                    return <td key={hole} className="p-2 text-center text-muted-foreground">AS</td>;
                                   })}
                                   <td className="p-2 text-center bg-muted/30"></td>
                                   {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (

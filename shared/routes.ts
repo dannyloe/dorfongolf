@@ -272,6 +272,7 @@ export const api = {
         autoPressNassauBack9: z.boolean().default(true),
         autoPressNassauOverall: z.boolean().default(true),
         useNetScoring: z.boolean().default(false),
+        startOnBack9: z.boolean().default(false),
         teamA: z.object({
           name: z.string().min(1),
           playerIds: z.array(z.number()).min(1),

@@ -3227,6 +3227,11 @@ export default function RyderCupEvent() {
                         const holeResults = calculateHoleResults(sideA, sideB, lowHandicap, pairing.useNetScoring);
                         const runningScore = calculateRunningScore(holeResults);
 
+                        // Determine hole order based on startOnBack9
+                        const isBack9First = currentDay.startOnBack9 || false;
+                        const firstNineHolesForRow = isBack9First ? [10,11,12,13,14,15,16,17,18] : [1,2,3,4,5,6,7,8,9];
+                        const secondNineHolesForRow = isBack9First ? [1,2,3,4,5,6,7,8,9] : [10,11,12,13,14,15,16,17,18];
+
                         const renderPlayerRow = (side: RyderCupPairingSideWithScores, playerNumber: 1 | 2, teamColor?: string, isTeamA?: boolean) => {
                           const playerName = playerNumber === 1 ? side.player1Name : side.player2Name;
                           if (!playerName) return null;
@@ -3252,7 +3257,7 @@ export default function RyderCupEvent() {
                                   )}
                                 </div>
                               </td>
-                              {[1,2,3,4,5,6,7,8,9].map(hole => {
+                              {firstNineHolesForRow.map(hole => {
                                 const holeData = courseHoles.find(h => h.holeNumber === hole);
                                 const holePar = holeData?.par || 4;
                                 const holeHcp = holeData?.handicap || hole;
@@ -3288,8 +3293,8 @@ export default function RyderCupEvent() {
                                   </td>
                                 );
                               })}
-                              <td className="text-center text-sm font-bold bg-muted/50 px-2">{totals.front9 ?? "-"}</td>
-                              {[10,11,12,13,14,15,16,17,18].map(hole => {
+                              <td className="text-center text-sm font-bold bg-muted/50 px-2">{isBack9First ? totals.back9 : totals.front9 ?? "-"}</td>
+                              {secondNineHolesForRow.map(hole => {
                                 const holeData = courseHoles.find(h => h.holeNumber === hole);
                                 const holePar = holeData?.par || 4;
                                 const holeHcp = holeData?.handicap || hole;
@@ -3325,7 +3330,7 @@ export default function RyderCupEvent() {
                                   </td>
                                 );
                               })}
-                              <td className="text-center text-sm font-bold bg-muted/50 px-2">{totals.back9 ?? "-"}</td>
+                              <td className="text-center text-sm font-bold bg-muted/50 px-2">{isBack9First ? totals.front9 : totals.back9 ?? "-"}</td>
                               <td className="text-center text-sm font-bold bg-primary/10 text-primary px-2">{totals.total ?? "-"}</td>
                             </tr>
                           );
@@ -3340,7 +3345,7 @@ export default function RyderCupEvent() {
                           return (
                             <tr className="bg-muted/20 border-t-2">
                               <td className="py-1 px-2 text-xs font-semibold sticky left-0 bg-muted/20 z-10">Match</td>
-                              {[1,2,3,4,5,6,7,8,9].map(hole => {
+                              {firstNineHolesForRow.map(hole => {
                                 const result = holeResults[hole - 1];
                                 const run = runningScore[hole - 1];
                                 const color = run.score > 0 ? teamAColor : run.score < 0 ? teamBColor : undefined;
@@ -3351,7 +3356,7 @@ export default function RyderCupEvent() {
                                 );
                               })}
                               <td className="text-center text-xs font-bold bg-muted/50"></td>
-                              {[10,11,12,13,14,15,16,17,18].map(hole => {
+                              {secondNineHolesForRow.map(hole => {
                                 const result = holeResults[hole - 1];
                                 const run = runningScore[hole - 1];
                                 const color = run.score > 0 ? teamAColor : run.score < 0 ? teamBColor : undefined;
@@ -3413,38 +3418,45 @@ export default function RyderCupEvent() {
                             {isExpanded && (
                               <CardContent className="pt-0 pb-3 px-0">
                                 <div className="overflow-x-auto">
+                                  {(() => {
+                                    // Determine hole order based on startOnBack9
+                                    const isBack9First = currentDay.startOnBack9 || false;
+                                    const firstNineHoles = isBack9First ? [10,11,12,13,14,15,16,17,18] : [1,2,3,4,5,6,7,8,9];
+                                    const secondNineHoles = isBack9First ? [1,2,3,4,5,6,7,8,9] : [10,11,12,13,14,15,16,17,18];
+                                    
+                                    return (
                                   <table className="w-full text-xs border-collapse">
                                     <thead>
                                       <tr className="bg-muted/30">
                                         <th className="py-1 px-2 text-left sticky left-0 bg-muted/30 z-10">Hole</th>
-                                        {[1,2,3,4,5,6,7,8,9].map(h => <th key={h} className="w-8 text-center">{h}</th>)}
+                                        {firstNineHoles.map(h => <th key={h} className="w-8 text-center">{h}</th>)}
                                         <th className="text-center px-2 bg-muted/50">OUT</th>
-                                        {[10,11,12,13,14,15,16,17,18].map(h => <th key={h} className="w-8 text-center">{h}</th>)}
+                                        {secondNineHoles.map(h => <th key={h} className="w-8 text-center">{h}</th>)}
                                         <th className="text-center px-2 bg-muted/50">IN</th>
                                         <th className="text-center px-2 bg-primary/10">TOT</th>
                                       </tr>
                                       <tr className="text-muted-foreground border-b">
                                         <td className="py-1 px-2 sticky left-0 bg-card z-10">Par</td>
-                                        {[1,2,3,4,5,6,7,8,9].map(h => {
+                                        {firstNineHoles.map(h => {
                                           const holeData = courseHoles.find(hole => hole.holeNumber === h);
                                           return <td key={h} className="text-center">{holeData?.par ?? "-"}</td>;
                                         })}
-                                        <td className="text-center bg-muted/50">{courseHoles.filter(h => h.holeNumber <= 9).reduce((sum, h) => sum + h.par, 0) || "-"}</td>
-                                        {[10,11,12,13,14,15,16,17,18].map(h => {
+                                        <td className="text-center bg-muted/50">{firstNineHoles.reduce((sum, h) => sum + (courseHoles.find(hole => hole.holeNumber === h)?.par || 0), 0) || "-"}</td>
+                                        {secondNineHoles.map(h => {
                                           const holeData = courseHoles.find(hole => hole.holeNumber === h);
                                           return <td key={h} className="text-center">{holeData?.par ?? "-"}</td>;
                                         })}
-                                        <td className="text-center bg-muted/50">{courseHoles.filter(h => h.holeNumber > 9).reduce((sum, h) => sum + h.par, 0) || "-"}</td>
+                                        <td className="text-center bg-muted/50">{secondNineHoles.reduce((sum, h) => sum + (courseHoles.find(hole => hole.holeNumber === h)?.par || 0), 0) || "-"}</td>
                                         <td className="text-center bg-primary/10">{courseHoles.reduce((sum, h) => sum + h.par, 0) || "-"}</td>
                                       </tr>
                                       <tr className="text-muted-foreground text-[10px] border-b">
                                         <td className="py-0.5 px-2 sticky left-0 bg-card z-10">HCP</td>
-                                        {[1,2,3,4,5,6,7,8,9].map(h => {
+                                        {firstNineHoles.map(h => {
                                           const holeData = courseHoles.find(hole => hole.holeNumber === h);
                                           return <td key={h} className="text-center">{holeData?.handicap ?? "-"}</td>;
                                         })}
                                         <td className="bg-muted/50"></td>
-                                        {[10,11,12,13,14,15,16,17,18].map(h => {
+                                        {secondNineHoles.map(h => {
                                           const holeData = courseHoles.find(hole => hole.holeNumber === h);
                                           return <td key={h} className="text-center">{holeData?.handicap ?? "-"}</td>;
                                         })}
@@ -3460,6 +3472,8 @@ export default function RyderCupEvent() {
                                       {renderMatchStatusRow()}
                                     </tbody>
                                   </table>
+                                    );
+                                  })()}
                                 </div>
                               </CardContent>
                             )}
