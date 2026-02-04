@@ -2227,7 +2227,8 @@ export default function MatchDetail() {
               const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
               
               // Determine hole display order based on startOnBack9
-              const isBack9First = em.startOnBack9 || false;
+              // For Ryder Cup side matches, use the day's setting (authoritative source)
+              const isBack9First = match?.ryderCupEventId ? dayStartOnBack9 : (em.startOnBack9 || false);
               const firstNineHoles = isBack9First ? [10, 11, 12, 13, 14, 15, 16, 17, 18] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
               const secondNineHoles = isBack9First ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [10, 11, 12, 13, 14, 15, 16, 17, 18];
               const isExpanded = expandedMatch === em.id;
