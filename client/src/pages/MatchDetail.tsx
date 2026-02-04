@@ -2451,12 +2451,12 @@ export default function MatchDetail() {
                                   <thead>
                                     <tr className="border-b border-border">
                                       <th className="p-2 text-left font-semibold">Hole</th>
-                                      {Array.from({ length: 9 }, (_, i) => (
-                                        <th key={i + 1} className="p-2 text-center font-medium">{i + 1}</th>
+                                      {firstNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium">{hole}</th>
                                       ))}
                                       <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
-                                      {Array.from({ length: 9 }, (_, i) => (
-                                        <th key={i + 10} className="p-2 text-center font-medium">{i + 10}</th>
+                                      {secondNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium">{hole}</th>
                                       ))}
                                       <th className="p-2 text-center font-semibold bg-muted/30">In</th>
                                       <th className="p-2 text-center font-semibold bg-muted/30">Total</th>
@@ -2466,27 +2466,43 @@ export default function MatchDetail() {
                                     {/* Skin Winners Row */}
                                     <tr className="border-b border-border/50 bg-primary/5">
                                       <td className="p-2 font-semibold">Skin Won</td>
-                                      {skinsResult.holeResults.slice(0, 9).map((r) => (
-                                        <td 
-                                          key={r.holeNumber} 
-                                          className={`p-2 text-center ${r.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}
-                                        >
-                                          {r.isSkin ? r.winnerName?.split(' ')[0] : (r.lowestScore !== null ? '-' : '')}
-                                        </td>
-                                      ))}
+                                      {firstNineHoles.map((hole) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        const r = skinsResult.holeResults[playingPos - 1];
+                                        return (
+                                          <td 
+                                            key={hole} 
+                                            className={`p-2 text-center ${r?.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}
+                                          >
+                                            {r?.isSkin ? r.winnerName?.split(' ')[0] : (r?.lowestScore !== null ? '-' : '')}
+                                          </td>
+                                        );
+                                      })}
                                       <td className="p-2 text-center font-semibold bg-muted/30">
-                                        {skinsResult.holeResults.slice(0, 9).filter(r => r.isSkin).length}
+                                        {firstNineHoles.reduce((count, hole) => {
+                                          const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                          const r = skinsResult.holeResults[playingPos - 1];
+                                          return count + (r?.isSkin ? 1 : 0);
+                                        }, 0)}
                                       </td>
-                                      {skinsResult.holeResults.slice(9, 18).map((r) => (
-                                        <td 
-                                          key={r.holeNumber} 
-                                          className={`p-2 text-center ${r.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}
-                                        >
-                                          {r.isSkin ? r.winnerName?.split(' ')[0] : (r.lowestScore !== null ? '-' : '')}
-                                        </td>
-                                      ))}
+                                      {secondNineHoles.map((hole) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        const r = skinsResult.holeResults[playingPos - 1];
+                                        return (
+                                          <td 
+                                            key={hole} 
+                                            className={`p-2 text-center ${r?.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}
+                                          >
+                                            {r?.isSkin ? r.winnerName?.split(' ')[0] : (r?.lowestScore !== null ? '-' : '')}
+                                          </td>
+                                        );
+                                      })}
                                       <td className="p-2 text-center font-semibold bg-muted/30">
-                                        {skinsResult.holeResults.slice(9, 18).filter(r => r.isSkin).length}
+                                        {secondNineHoles.reduce((count, hole) => {
+                                          const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                          const r = skinsResult.holeResults[playingPos - 1];
+                                          return count + (r?.isSkin ? 1 : 0);
+                                        }, 0)}
                                       </td>
                                       <td className="p-2 text-center font-bold bg-muted/30">
                                         {skinsResult.totalSkins}
@@ -2577,12 +2593,12 @@ export default function MatchDetail() {
                                   <thead>
                                     <tr className="border-b border-border">
                                       <th className="p-2 text-left font-semibold sticky left-0 bg-background">Team</th>
-                                      {Array.from({ length: 9 }, (_, i) => (
-                                        <th key={i + 1} className="p-2 text-center font-medium min-w-[28px]">{i + 1}</th>
+                                      {firstNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
                                       ))}
                                       <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
-                                      {Array.from({ length: 9 }, (_, i) => (
-                                        <th key={i + 10} className="p-2 text-center font-medium min-w-[28px]">{i + 10}</th>
+                                      {secondNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
                                       ))}
                                       <th className="p-2 text-center font-semibold bg-muted/30">In</th>
                                       <th className="p-2 text-center font-semibold bg-muted/30">Tot</th>
@@ -2590,12 +2606,16 @@ export default function MatchDetail() {
                                   </thead>
                                   <tbody>
                                     {fiveResult.teamTotals.map((teamTotal, idx) => {
-                                      const front9 = fiveResult.holeResults.slice(0, 9).reduce((sum, hr) => {
-                                        const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                      const firstNineTotal = firstNineHoles.reduce((sum, hole) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        const hr = fiveResult.holeResults[playingPos - 1];
+                                        const teamScore = hr?.teamScores.find(ts => ts.teamIndex === idx)?.score;
                                         return sum + (teamScore || 0);
                                       }, 0);
-                                      const back9 = fiveResult.holeResults.slice(9, 18).reduce((sum, hr) => {
-                                        const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                      const secondNineTotal = secondNineHoles.reduce((sum, hole) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        const hr = fiveResult.holeResults[playingPos - 1];
+                                        const teamScore = hr?.teamScores.find(ts => ts.teamIndex === idx)?.score;
                                         return sum + (teamScore || 0);
                                       }, 0);
                                       const teamTextColor = teamColors[idx]?.split(' ')[0] || '';
@@ -2604,24 +2624,28 @@ export default function MatchDetail() {
                                           <td className={`p-2 font-semibold sticky left-0 bg-background ${teamTextColor}`}>
                                             {teamTotal.teamName.length > 15 ? teamTotal.teamName.substring(0, 15) + '...' : teamTotal.teamName}
                                           </td>
-                                          {fiveResult.holeResults.slice(0, 9).map((hr) => {
-                                            const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                          {firstNineHoles.map((hole) => {
+                                            const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                            const hr = fiveResult.holeResults[playingPos - 1];
+                                            const teamScore = hr?.teamScores.find(ts => ts.teamIndex === idx)?.score;
                                             return (
-                                              <td key={hr.holeNumber} className="p-2 text-center">
+                                              <td key={hole} className="p-2 text-center">
                                                 {teamScore || '-'}
                                               </td>
                                             );
                                           })}
-                                          <td className="p-2 text-center font-semibold bg-muted/30">{front9 || '-'}</td>
-                                          {fiveResult.holeResults.slice(9, 18).map((hr) => {
-                                            const teamScore = hr.teamScores.find(ts => ts.teamIndex === idx)?.score;
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{firstNineTotal || '-'}</td>
+                                          {secondNineHoles.map((hole) => {
+                                            const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                            const hr = fiveResult.holeResults[playingPos - 1];
+                                            const teamScore = hr?.teamScores.find(ts => ts.teamIndex === idx)?.score;
                                             return (
-                                              <td key={hr.holeNumber} className="p-2 text-center">
+                                              <td key={hole} className="p-2 text-center">
                                                 {teamScore || '-'}
                                               </td>
                                             );
                                           })}
-                                          <td className="p-2 text-center font-semibold bg-muted/30">{back9 || '-'}</td>
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{secondNineTotal || '-'}</td>
                                           <td className="p-2 text-center font-bold bg-muted/30">
                                             {teamTotal.totalScore || '-'}
                                           </td>
@@ -3033,8 +3057,8 @@ export default function MatchDetail() {
                                             return <td key={r.holeNumber} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
                                           })}
                                           <td className="p-2 text-center bg-muted/30"></td>
-                                          {Array.from({ length: 9 }, (_, i) => (
-                                            <td key={i + 10} className="p-2 text-center text-muted-foreground/30">-</td>
+                                          {secondNineHoles.map((hole) => (
+                                            <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>
                                           ))}
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           <td className="p-2 text-center">
@@ -3055,8 +3079,8 @@ export default function MatchDetail() {
                                         {/* Second Nine Status (Back 9 or Front 9 depending on startOnBack9) */}
                                         <tr className="border-t border-border/50 bg-green-50/50 dark:bg-green-950/30">
                                           <td className="p-2 font-semibold text-xs">{secondNineLabel}</td>
-                                          {Array.from({ length: 9 }, (_, i) => (
-                                            <td key={i + 1} className="p-2 text-center text-muted-foreground/30">-</td>
+                                          {firstNineHoles.map((hole) => (
+                                            <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>
                                           ))}
                                           <td className="p-2 text-center bg-muted/30"></td>
                                           {secondNineResultsNassau.map((r) => {
