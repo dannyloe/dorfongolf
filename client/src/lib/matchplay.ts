@@ -184,12 +184,8 @@ export function calculateMatchPlayResults(
   const teamB = eventMatch.teams[1];
   const matchType = eventMatch.matchType || 'match_play_1_ball';
   
-  // When startOnBack9 is true, scores are transformed to playing order (1-18).
-  // To avoid edge cases with non-1 physical start holes that would skip holes
-  // in playing order, we enforce startHole=1 when startOnBack9=true.
-  // This ensures all 18 holes are processed in the correct playing order.
   const startOnBack9 = eventMatch.startOnBack9 || false;
-  const startHole = startOnBack9 ? 1 : (eventMatch.startHole || 1);
+  const startHole = eventMatch.startHole || 1;
 
   if (!teamA || !teamB) return [];
 
@@ -202,7 +198,22 @@ export function calculateMatchPlayResults(
 
   const isStrokePlay = matchType === 'stroke_play';
 
-  for (let hole = startHole; hole <= 18; hole++) {
+  // Build the list of holes to iterate in playing order
+  // When startOnBack9=true, play holes 10-18 first, then 1-9
+  // Otherwise, play holes in physical order starting from startHole
+  let holesToPlay: number[];
+  if (startOnBack9) {
+    // Playing order: 10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9
+    holesToPlay = [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+  } else {
+    // Normal order starting from startHole
+    holesToPlay = [];
+    for (let h = startHole; h <= 18; h++) {
+      holesToPlay.push(h);
+    }
+  }
+
+  for (const hole of holesToPlay) {
     const teamAScores = scores
       .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
       .map((s) => getScoreValue(s, netContext));
@@ -933,6 +944,7 @@ export function calculateNassauResults(
 ): NassauResults {
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
+  const startOnBack9 = eventMatch.startOnBack9 || false;
 
   if (!teamA || !teamB) return { front9: [], back9: [], overall: [] };
 
@@ -992,10 +1004,69 @@ export function calculateNassauResults(
     return results;
   };
 
+  // Calculate overall in playing order for correct cumulative display
+  const calculateOverall = (): HoleResult[] => {
+    const results: HoleResult[] = [];
+    let cumulativeA = 0;
+    let cumulativeB = 0;
+
+    // Determine hole order based on startOnBack9
+    const holesToPlay = startOnBack9
+      ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+    for (const hole of holesToPlay) {
+      const teamAScores = scores
+        .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
+        .map((s) => getScoreValue(s, netContext));
+      
+      const teamBScores = scores
+        .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
+        .map((s) => getScoreValue(s, netContext));
+
+      const teamAHoleScore = getTeamHoleScore(teamAScores, 'match_play_1_ball');
+      const teamBHoleScore = getTeamHoleScore(teamBScores, 'match_play_1_ball');
+
+      let winner: 'A' | 'B' | 'tie' | null = null;
+      
+      if (teamAHoleScore !== null && teamBHoleScore !== null) {
+        if (teamAHoleScore < teamBHoleScore) {
+          winner = 'A';
+          cumulativeA++;
+        } else if (teamBHoleScore < teamAHoleScore) {
+          winner = 'B';
+          cumulativeB++;
+        } else {
+          winner = 'tie';
+        }
+      }
+
+      const diff = cumulativeA - cumulativeB;
+      let status = 'All Square';
+      if (diff > 0) {
+        status = `${teamA.name} ${diff} UP`;
+      } else if (diff < 0) {
+        status = `${teamB.name} ${Math.abs(diff)} UP`;
+      }
+
+      results.push({
+        holeNumber: hole,
+        teamAScore: teamAHoleScore,
+        teamBScore: teamBHoleScore,
+        winner,
+        cumulativeA,
+        cumulativeB,
+        status,
+      });
+    }
+
+    return results;
+  };
+
   return {
     front9: calculateRange(1, 9),
     back9: calculateRange(10, 18),
-    overall: calculateRange(1, 18),
+    overall: calculateOverall(),
   };
 }
 
