@@ -5144,8 +5144,11 @@ export default function RyderCupEvent() {
                         return (
                           <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
                             <div>
-                              <span className="font-medium">{opponentDisplay}</span>
-                              {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
+                              <div className="font-medium">{e.matchName}</div>
+                              <div className="text-muted-foreground text-xs flex items-center gap-1">
+                                <span>{opponentDisplay !== e.matchName ? opponentDisplay : ''}</span>
+                                {e.betType && <Badge variant="outline" className="ml-1">{e.betType}</Badge>}
+                              </div>
                             </div>
                             <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
                               {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
