@@ -2222,13 +2222,15 @@ export default function MatchDetail() {
             {filteredMatches.map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
-              const netContext = buildMatchNetContext(em);
-              const results = calculateMatchPlayResults(em, scores, netContext);
-              const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, em.matchType) : 'Not started';
-              
-              // Determine hole display order based on startOnBack9
-              // For Ryder Cup side matches, use the day's setting (authoritative source)
+              // For Ryder Cup side matches, use the day's setting (authoritative source) for startOnBack9
               const isBack9First = match?.ryderCupEventId ? dayStartOnBack9 : (em.startOnBack9 || false);
+              
+              // Create a modified event match with the correct startOnBack9 for calculations
+              const emWithCorrectBack9 = { ...em, startOnBack9: isBack9First };
+              
+              const netContext = buildMatchNetContext(emWithCorrectBack9);
+              const results = calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
+              const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, emWithCorrectBack9.matchType) : 'Not started';
               const firstNineHoles = isBack9First ? [10, 11, 12, 13, 14, 15, 16, 17, 18] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
               const secondNineHoles = isBack9First ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [10, 11, 12, 13, 14, 15, 16, 17, 18];
               const isExpanded = expandedMatch === em.id;
@@ -2309,7 +2311,7 @@ export default function MatchDetail() {
                           </button>
                         )}
                         {match.isHandicapped && (() => {
-                          const netContext = buildMatchNetContext(em);
+                          const netContext = buildMatchNetContext(emWithCorrectBack9);
                           const isNetSkipped = em.useNetScoring && !netContext;
                           return (
                             <button
@@ -2388,8 +2390,10 @@ export default function MatchDetail() {
                   {!isExpanded && pressMatches.length > 0 && (
                     <div className="px-4 pb-3 space-y-1">
                       {pressMatches.map((pm) => {
-                        const pressNetContext = buildMatchNetContext(pm);
-                        const pressResults = calculateMatchPlayResults(pm, scores, pressNetContext);
+                        // Press matches inherit startOnBack9 from parent
+                        const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                        const pressNetContext = buildMatchNetContext(pmWithCorrectBack9);
+                        const pressResults = calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
                         const pressTeamA = pm.teams[0];
                         const pressTeamB = pm.teams[1];
                         const pressStatus = pressTeamA && pressTeamB ? getMatchStatus(pressResults, pressTeamA, pressTeamB, pm.matchType) : 'Not started';
@@ -3213,8 +3217,10 @@ export default function MatchDetail() {
                               )}
                               {/* Press Match Rows */}
                               {pressMatches.map((pm) => {
-                                const pressNetContext = buildMatchNetContext(pm);
-                                const pressResults = calculateMatchPlayResults(pm, scores, pressNetContext);
+                                // Press matches inherit startOnBack9 from parent
+                                const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                                const pressNetContext = buildMatchNetContext(pmWithCorrectBack9);
+                                const pressResults = calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
                                 const pressStartPlayingPos = pm.startHole || 1;
                                 return (
                                   <tr key={pm.id} className="border-t border-border/50 bg-muted/20">
@@ -3428,9 +3434,14 @@ export default function MatchDetail() {
 
       {/* Player Ledger */}
       {eventMatches.length > 0 && (() => {
+        // For Ryder Cup side matches, apply the day's startOnBack9 to all event matches
+        const eventMatchesWithCorrectBack9 = eventMatches.map(em => 
+          match?.ryderCupEventId ? { ...em, startOnBack9: dayStartOnBack9 } : em
+        );
+        
         // Build netContextMap for proper net scoring in ledger
         const netContextMap = new Map<number, NetScoringContext>();
-        for (const em of eventMatches) {
+        for (const em of eventMatchesWithCorrectBack9) {
           if (em.useNetScoring) {
             const ctx = buildMatchNetContext(em);
             if (ctx) {
@@ -3445,7 +3456,7 @@ export default function MatchDetail() {
               return hole?.par ?? 4;
             })
           : null;
-        const { entries, balances } = calculateLedger(eventMatches, scores, netContextMap.size > 0 ? netContextMap : null, parsArray);
+        const { entries, balances } = calculateLedger(eventMatchesWithCorrectBack9, scores, netContextMap.size > 0 ? netContextMap : null, parsArray);
         const hasCompletedMatches = entries.some(e => e.isComplete);
         
         if (!hasCompletedMatches) return null;
