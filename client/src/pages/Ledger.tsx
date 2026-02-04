@@ -1185,15 +1185,64 @@ export default function Ledger() {
                             <span className="text-sm">{row.betType || 'Match Play'}</span>
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-col gap-1">
-                              <div className={`text-sm ${row.teamAWon ? 'font-semibold text-green-600' : ''}`}>
-                                {row.teamAMembers.join(', ') || 'Team A'}
-                              </div>
-                              <div className="text-xs text-muted-foreground">vs</div>
-                              <div className={`text-sm ${row.teamBWon ? 'font-semibold text-green-600' : ''}`}>
-                                {row.teamBMembers.join(', ') || 'Team B'}
-                              </div>
-                            </div>
+                            {(() => {
+                              const teamAName = row.teamAMembers.length > 0 ? row.teamAMembers.join(', ') : null;
+                              const teamBName = row.teamBMembers.length > 0 ? row.teamBMembers.join(', ') : null;
+                              
+                              // If we have both team names, show traditional view
+                              if (teamAName && teamBName) {
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <div className={`text-sm ${row.teamAWon ? 'font-semibold text-green-600' : ''}`}>
+                                      {teamAName}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">vs</div>
+                                    <div className={`text-sm ${row.teamBWon ? 'font-semibold text-green-600' : ''}`}>
+                                      {teamBName}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              // Try to find team names from all entries for this match
+                              const matchEntries = combinedLedgerResults.entries.filter(e => e.matchId === row.matchId);
+                              const teamAFromEntries = matchEntries.filter(e => e.teamIndex === 0).map(e => e.playerName);
+                              const teamBFromEntries = matchEntries.filter(e => e.teamIndex === 1).map(e => e.playerName);
+                              const teamADisplay = teamAName || (teamAFromEntries.length > 0 ? Array.from(new Set(teamAFromEntries)).join(', ') : null);
+                              const teamBDisplay = teamBName || (teamBFromEntries.length > 0 ? Array.from(new Set(teamBFromEntries)).join(', ') : null);
+                              
+                              // Also try teamName field from entries
+                              if (!teamADisplay || !teamBDisplay) {
+                                const teamAEntry = matchEntries.find(e => e.teamIndex === 0 && e.teamName);
+                                const teamBEntry = matchEntries.find(e => e.teamIndex === 1 && e.teamName);
+                                const finalTeamA = teamADisplay || teamAEntry?.teamName || 'Team A';
+                                const finalTeamB = teamBDisplay || teamBEntry?.teamName || 'Team B';
+                                
+                                return (
+                                  <div className="flex flex-col gap-1">
+                                    <div className={`text-sm ${row.teamAWon ? 'font-semibold text-green-600' : ''}`}>
+                                      {finalTeamA}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">vs</div>
+                                    <div className={`text-sm ${row.teamBWon ? 'font-semibold text-green-600' : ''}`}>
+                                      {finalTeamB}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              return (
+                                <div className="flex flex-col gap-1">
+                                  <div className={`text-sm ${row.teamAWon ? 'font-semibold text-green-600' : ''}`}>
+                                    {teamADisplay}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">vs</div>
+                                  <div className={`text-sm ${row.teamBWon ? 'font-semibold text-green-600' : ''}`}>
+                                    {teamBDisplay}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="text-right whitespace-nowrap">
                             {row.isTie ? (
