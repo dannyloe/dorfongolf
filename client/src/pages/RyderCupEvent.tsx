@@ -17,7 +17,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import { calculateLedger, type LedgerEntry, type NetScoringContext } from "@/lib/matchplay";
+import { calculateLedger, type LedgerEntry, type NetScoringContext, physicalToPlayingPosition, playingToPhysicalHole, transformHoleDataToPlayingOrder } from "@/lib/matchplay";
 import { calculateCourseHandicap } from "@/lib/handicap";
 import type { RyderCupEventResponse, RyderCupPairingSide, RyderCupPairingSideWithScores, RyderCupPairingScore, MATCH_TYPES, Match, Course, CourseTee, CourseHole } from "@shared/schema";
 
@@ -1454,16 +1454,25 @@ export default function RyderCupEvent() {
     const day = event.days.find(d => d.dayNumber === dayNumber);
     if (!day) return null;
 
+    const startOnBack9 = day.startOnBack9 || false;
+
     // Get the correct course for THIS day (not the currently selected tab)
     const dayCourseId = day.courseId || event?.courseId;
     const dayCourse = courses.find(c => c.id === dayCourseId);
-    const dayHoles: CourseHole[] = dayCourse?.holes || [];
+    const dayHolesPhysical: CourseHole[] = dayCourse?.holes || [];
+    
+    // Transform hole data to playing order when startOnBack9 is enabled
+    // This ensures par and handicap values move with the holes
+    const dayHoles = startOnBack9 && dayHolesPhysical.length === 18
+      ? [...dayHolesPhysical.slice(9, 18), ...dayHolesPhysical.slice(0, 9)]  // holes 10-18, then 1-9
+      : dayHolesPhysical;
 
     // Gather all unique players, their scores, and their handicap info from all pairings
+    // Scores will be stored in playing order (index 0 = first hole played)
     const playerMap = new Map<string, { teamColor: string; scores: (number | null)[]; courseHandicap: number | null }>();
 
     // Calculate course par for handicap calculations using THIS day's course
-    const coursePar = dayHoles.reduce((sum, h) => sum + (h.par ?? 0), 0) || 72;
+    const coursePar = dayHolesPhysical.reduce((sum, h) => sum + (h.par ?? 0), 0) || 72;
 
     // Build a lookup of team member handicaps by player name (fallback when side doesn't have handicap)
     const memberHandicapLookup = new Map<string, number | null>();
@@ -1503,10 +1512,11 @@ export default function RyderCupEvent() {
             const courseHcp = getCourseHandicap(handicapIndexTenths, side.player1TeeId);
             playerMap.set(side.player1Name, { teamColor: color, scores: Array(18).fill(null), courseHandicap: courseHcp });
           }
-          // Fill in scores from this side
+          // Fill in scores from this side - convert to playing position index
           for (const score of side.scores) {
             if (score.player1Strokes !== null) {
-              playerMap.get(side.player1Name)!.scores[score.holeNumber - 1] = score.player1Strokes;
+              const playingPosition = physicalToPlayingPosition(score.holeNumber, startOnBack9);
+              playerMap.get(side.player1Name)!.scores[playingPosition - 1] = score.player1Strokes;
             }
           }
         }
@@ -1523,7 +1533,8 @@ export default function RyderCupEvent() {
           }
           for (const score of side.scores) {
             if (score.player2Strokes !== null) {
-              playerMap.get(side.player2Name)!.scores[score.holeNumber - 1] = score.player2Strokes;
+              const playingPosition = physicalToPlayingPosition(score.holeNumber, startOnBack9);
+              playerMap.get(side.player2Name)!.scores[playingPosition - 1] = score.player2Strokes;
             }
           }
         }
@@ -1532,18 +1543,19 @@ export default function RyderCupEvent() {
 
     if (playerMap.size === 0) return null;
 
-    // Build hole handicap lookup first (needed to calculate strokes per hole)
+    // Build hole handicap lookup indexed by playing position (1-18)
+    // Since dayHoles is now in playing order, index + 1 = playing position
     const holeHandicaps = new Map<number, number>();
-    for (const hole of dayHoles) {
+    dayHoles.forEach((hole, index) => {
       if (hole.handicap !== null) {
-        holeHandicaps.set(hole.holeNumber, hole.handicap);
+        holeHandicaps.set(index + 1, hole.handicap); // key = playing position
       }
-    }
+    });
 
-    // Helper to get strokes a player receives on a specific hole
-    const getPlayerStrokesOnHole = (courseHandicap: number | null, holeNumber: number): number => {
+    // Helper to get strokes a player receives on a specific playing position (1-18)
+    const getPlayerStrokesOnHole = (courseHandicap: number | null, playingPosition: number): number => {
       if (courseHandicap === null || courseHandicap <= 0) return 0;
-      const holeHcp = holeHandicaps.get(holeNumber);
+      const holeHcp = holeHandicaps.get(playingPosition);
       if (holeHcp === undefined) return 0;
       // Player gets a stroke if their course handicap >= hole handicap
       // For each 18 strokes, they get an extra stroke on each hole
@@ -1552,9 +1564,9 @@ export default function RyderCupEvent() {
       return baseStrokes + (holeHcp <= extraStrokes ? 1 : 0);
     };
 
-    // Build players array with strokes per hole
+    // Build players array with strokes per hole (indexed by playing position)
     const players = Array.from(playerMap.entries()).map(([name, data]) => {
-      // Calculate strokes for each hole (1-18)
+      // Calculate strokes for each playing position (1-18)
       const strokesPerHole = Array.from({ length: 18 }, (_, i) => 
         getPlayerStrokesOnHole(data.courseHandicap, i + 1)
       );
@@ -1567,7 +1579,7 @@ export default function RyderCupEvent() {
       };
     });
 
-    // Calculate net scores for each player
+    // Calculate net scores for each player at a given playing position index (0-17)
     const getNetScore = (player: typeof players[0], holeIndex: number): number | null => {
       const grossScore = player.scores[holeIndex];
       if (grossScore === null) return null;
@@ -1591,7 +1603,11 @@ export default function RyderCupEvent() {
     }
 
     for (let hole = 0; hole < 18; hole++) {
-      const holeNumber = hole + 1;
+      const playingPosition = hole + 1; // 1-18 in playing order
+      // holeNumber is kept as playing position for internal consistency
+      // The display will convert back to physical hole number if needed
+      const holeNumber = playingPosition;
+      
       // Use NET scores for skins when handicaps are enabled
       const holeScores = players
         .filter(p => p.scores[hole] !== null)
@@ -1632,38 +1648,11 @@ export default function RyderCupEvent() {
 
       const potentialWinner = playersWithMinScore[0];
 
-      // Determine if this hole needs verification and what hole verifies it
-      // Normal play: holes 1-17 verified by next hole, hole 18 no verification
-      // Start on Back 9: holes 10-18 and 1-8 verified, hole 9 no verification
-      //   - Hole 18 is verified by hole 1
-      const startOnBack9 = day.startOnBack9 || false;
-      
-      let needsVerification: boolean;
-      let nextHoleIndex: number | null = null; // 0-indexed
-      
-      if (startOnBack9) {
-        // Start on Back 9: play order is 10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9
-        if (holeNumber === 9) {
-          // Hole 9 is the last hole played - no verification needed
-          needsVerification = false;
-        } else if (holeNumber === 18) {
-          // Hole 18 is verified by hole 1
-          needsVerification = true;
-          nextHoleIndex = 0; // Hole 1
-        } else {
-          // All other holes verified by the next hole in numerical order
-          needsVerification = true;
-          nextHoleIndex = hole + 1; // Next hole (0-indexed)
-        }
-      } else {
-        // Normal play: hole 18 no verification, others verified by next hole
-        if (holeNumber === 18) {
-          needsVerification = false;
-        } else {
-          needsVerification = true;
-          nextHoleIndex = hole + 1;
-        }
-      }
+      // With data transformed to playing order, verification logic is simple:
+      // - Playing position 18 (last hole played) needs no verification
+      // - Playing positions 1-17 are verified by the next playing position
+      const needsVerification = playingPosition < 18;
+      const nextHoleIndex = needsVerification ? hole + 1 : null; // 0-indexed
 
       if (!needsVerification) {
         // No verification needed - just needs lone low score
@@ -1679,8 +1668,8 @@ export default function RyderCupEvent() {
         });
       } else {
         // Needs verification - must make NET par or better on verifying hole
-        const nextHoleNumber = nextHoleIndex! + 1; // 1-indexed
-        const nextHolePar = dayHoles.find(h => h.holeNumber === nextHoleNumber)?.par ?? 4;
+        // dayHoles is in playing order, so we use the index directly
+        const nextHolePar = dayHoles[nextHoleIndex!]?.par ?? 4;
         
         // Get the potential winner's score on the next hole (use net score if handicaps enabled)
         const winnerData = players.find(p => p.name === potentialWinner.name);
@@ -1747,11 +1736,8 @@ export default function RyderCupEvent() {
       }))
       .sort((a, b) => b.skinsWon - a.skinsWon);
 
-    // Build pars array for display using THIS day's course
-    const pars = Array.from({ length: 18 }, (_, i) => {
-      const hole = dayHoles.find(h => h.holeNumber === i + 1);
-      return hole?.par ?? null;
-    });
+    // Build pars array in playing order (dayHoles is already in playing order)
+    const pars = dayHoles.map(h => h.par ?? null);
 
     return {
       players,
@@ -4110,10 +4096,12 @@ export default function RyderCupEvent() {
                   <div className="border rounded-lg overflow-x-auto">
                     {(() => {
                       const isBack9First = skinsData.startOnBack9;
+                      // Column headers show physical hole numbers
                       const firstNineHoles = isBack9First ? [10, 11, 12, 13, 14, 15, 16, 17, 18] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
                       const secondNineHoles = isBack9First ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [10, 11, 12, 13, 14, 15, 16, 17, 18];
-                      const firstNineIndices = isBack9First ? [9, 10, 11, 12, 13, 14, 15, 16, 17] : [0, 1, 2, 3, 4, 5, 6, 7, 8];
-                      const secondNineIndices = isBack9First ? [0, 1, 2, 3, 4, 5, 6, 7, 8] : [9, 10, 11, 12, 13, 14, 15, 16, 17];
+                      // Data is now in playing order, so indices are always sequential
+                      const firstNineIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+                      const secondNineIndices = [9, 10, 11, 12, 13, 14, 15, 16, 17];
                       const firstNinePars = firstNineIndices.map(i => skinsData.pars[i]);
                       const secondNinePars = secondNineIndices.map(i => skinsData.pars[i]);
 
