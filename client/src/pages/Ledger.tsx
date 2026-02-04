@@ -276,10 +276,12 @@ export default function Ledger() {
         ? data.ryderCupPlayerDataByEventAndDay[match.ryderCupEventId]?.[match.ryderCupDayNumber]
         : undefined;
       
-      // Get all players from event matches for this match and build player handicaps
-      const courseHandicaps = new Map<number, number>();
+      // For each event match under this parent match, build a separate context keyed by em.id
+      // This is critical because calculateLedger looks up net context by em.id
       for (const em of data.eventMatches) {
         if (em.eventId !== match.id) continue;
+        
+        const courseHandicaps = new Map<number, number>();
         
         for (const team of em.teams || []) {
           for (const member of team.members || []) {
@@ -313,17 +315,18 @@ export default function Ledger() {
             }
           }
         }
-      }
-      
-      if (courseHandicaps.size > 0 && holeHandicaps.size > 0) {
-        // Calculate relative handicaps (playerHandicaps) based on courseHandicaps
-        const minHandicap = Math.min(...Array.from(courseHandicaps.values()));
-        const playerHandicaps = new Map<number, number>();
-        courseHandicaps.forEach((ch, playerId) => {
-          playerHandicaps.set(playerId, ch - minHandicap);
-        });
         
-        contextMap.set(match.id, { playerHandicaps, holeHandicaps, courseHandicaps });
+        if (courseHandicaps.size > 0 && holeHandicaps.size > 0) {
+          // Calculate relative handicaps (playerHandicaps) based on courseHandicaps
+          const minHandicap = Math.min(...Array.from(courseHandicaps.values()));
+          const playerHandicaps = new Map<number, number>();
+          courseHandicaps.forEach((ch, playerId) => {
+            playerHandicaps.set(playerId, ch - minHandicap);
+          });
+          
+          // Key by em.id (event match ID) to match what calculateLedger expects
+          contextMap.set(em.id, { playerHandicaps, holeHandicaps, courseHandicaps });
+        }
       }
     }
     
