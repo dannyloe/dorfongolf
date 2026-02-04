@@ -1329,11 +1329,22 @@ export default function Ledger() {
                               <span>
                                 {(() => {
                                   // Show opponent name instead of full match name
+                                  // First try teamAMembers/teamBMembers from metadata
                                   const opponentMembers = entry.teamIndex === 0 
                                     ? entry.teamBMembers 
                                     : entry.teamAMembers;
                                   if (opponentMembers && opponentMembers.length > 0) {
                                     return `vs ${opponentMembers.join(' & ')}`;
+                                  }
+                                  // Fallback: Find opponent from ALL entries in same match with different teamIndex
+                                  const opponentEntry = combinedLedgerResults.entries.find(e => 
+                                    e.matchId === entry.matchId && 
+                                    e.betType === entry.betType &&
+                                    e.teamIndex !== entry.teamIndex &&
+                                    e.teamName
+                                  );
+                                  if (opponentEntry?.teamName) {
+                                    return `vs ${opponentEntry.teamName}`;
                                   }
                                   return entry.matchName?.split(' - ')[0] || 'Match';
                                 })()}
