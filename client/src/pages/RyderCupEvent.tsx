@@ -5288,17 +5288,50 @@ export default function RyderCupEvent() {
                 ) : (
                   <>
                     <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                      {entries.map((e, i) => (
-                        <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
-                          <div>
-                            <span className="font-medium">{e.matchName}</span>
-                            {e.betType && <Badge variant="outline" className="ml-2">{e.betType}</Badge>}
+                      {entries.map((e, i) => {
+                        // Find opponent name similar to Side Bets Breakdown dialog
+                        let opponentDisplay = '';
+                        const eventMatch = sideMatchLedger?.eventMatches?.find((em: any) => em.id === e.matchId);
+                        if (eventMatch?.teams) {
+                          const playerTeam = eventMatch.teams.find((t: any) => 
+                            t.members?.some((m: any) => m.player?.name?.toLowerCase().trim() === daySideBetsBreakdown?.player?.toLowerCase().trim())
+                          );
+                          const opponentTeam = eventMatch.teams.find((t: any) => t !== playerTeam);
+                          if (opponentTeam?.members && opponentTeam.members.length > 0) {
+                            const opponentNames = opponentTeam.members.map((m: any) => m.player?.name).filter(Boolean);
+                            if (opponentNames.length > 0) {
+                              opponentDisplay = `vs ${opponentNames.join(' & ')}`;
+                            }
+                          }
+                        }
+                        // Fallback: find opponent from all entries in same match
+                        if (!opponentDisplay && sideBetData.entries) {
+                          const opponentEntry = sideBetData.entries.find(oe => 
+                            oe.matchId === e.matchId && 
+                            oe.betType === e.betType &&
+                            oe.teamIndex !== e.teamIndex &&
+                            oe.teamName
+                          );
+                          if (opponentEntry?.teamName) {
+                            opponentDisplay = `vs ${opponentEntry.teamName}`;
+                          }
+                        }
+                        
+                        return (
+                          <div key={i} className="flex justify-between items-center text-sm border-b pb-2">
+                            <div>
+                              <div className="font-medium">{e.matchName}</div>
+                              <div className="text-muted-foreground text-xs flex items-center gap-1">
+                                <span>{opponentDisplay}</span>
+                                {e.betType && <Badge variant="outline" className="ml-1">{e.betType}</Badge>}
+                              </div>
+                            </div>
+                            <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
+                              {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
+                            </span>
                           </div>
-                          <span className={`font-medium ${e.amount > 0 ? "text-green-600" : e.amount < 0 ? "text-red-600" : ""}`}>
-                            {e.amount > 0 ? "+" : ""}{formatCurrency(e.amount)}
-                          </span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <div className="border-t pt-2 flex justify-between items-center font-semibold">
                       <span>Total</span>
