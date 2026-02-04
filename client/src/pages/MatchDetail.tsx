@@ -3623,9 +3623,24 @@ export default function MatchDetail() {
                       }>);
                       
                       const betGroups = Object.values(groupedByBetType);
-                      const matchTitle = teamA && teamB 
-                        ? `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`
-                        : matchEntries[0]?.matchName || 'Match';
+                      
+                      // Determine match title - show opponent when a player is selected
+                      let matchTitle = matchEntries[0]?.matchName || 'Match';
+                      if (teamA && teamB) {
+                        if (selectedStandingsPlayer !== null) {
+                          // Find which team the selected player is on and show opponent
+                          const selectedPlayerTeam = playerTeamIndex.get(selectedStandingsPlayer);
+                          if (selectedPlayerTeam === 0) {
+                            matchTitle = `vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`;
+                          } else if (selectedPlayerTeam === 1) {
+                            matchTitle = `vs ${teamA.name}${matchType ? ` - ${matchType}` : ''}`;
+                          } else {
+                            matchTitle = `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`;
+                          }
+                        } else {
+                          matchTitle = `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`;
+                        }
+                      }
                       
                       return (
                         <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
