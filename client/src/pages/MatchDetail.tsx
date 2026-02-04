@@ -2948,8 +2948,8 @@ export default function MatchDetail() {
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-primary">{teamA?.name}</td>
                                 {firstNineHoles.map((hole) => {
-                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                  const r = results[playingPos - 1];
+                                  // Access by physical hole number, not playing position
+                                  const r = results.find(res => res.holeNumber === hole);
                                   return (
                                     <td key={hole} className={`p-2 text-center ${r?.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
                                       {r?.teamAScore ?? '-'}
@@ -2957,20 +2957,22 @@ export default function MatchDetail() {
                                   );
                                 })}
                                 {(() => {
-                                  const outResult = results[8];
+                                  // Get the last hole in the first nine for the "Out" summary
+                                  const lastFirstNineHole = firstNineHoles[firstNineHoles.length - 1];
+                                  const outResult = results.find(res => res.holeNumber === lastFirstNineHole);
                                   const hasOutScores = outResult?.teamAScore !== null;
-                                  if (!hasOutScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (!hasOutScores || !outResult) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
                                   if (em.matchType === 'stroke_play') {
                                     return <td className="p-2 text-center font-semibold bg-muted/30">{outResult.cumulativeA}</td>;
                                   }
-                                  const outDiff = outResult ? outResult.cumulativeA - outResult.cumulativeB : 0;
+                                  const outDiff = outResult.cumulativeA - outResult.cumulativeB;
                                   if (outDiff > 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{outDiff} UP</td>;
                                   if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{Math.abs(outDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
                                 {secondNineHoles.map((hole) => {
-                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                  const r = results[playingPos - 1];
+                                  // Access by physical hole number, not playing position
+                                  const r = results.find(res => res.holeNumber === hole);
                                   return (
                                     <td key={hole} className={`p-2 text-center ${r?.winner === 'A' ? 'bg-primary/20 text-primary font-bold' : ''}`}>
                                       {r?.teamAScore ?? '-'}
@@ -2978,11 +2980,13 @@ export default function MatchDetail() {
                                   );
                                 })}
                                 {(() => {
-                                  const inResult = results[17];
+                                  // Get the last hole in the second nine for the "In" summary
+                                  const lastSecondNineHole = secondNineHoles[secondNineHoles.length - 1];
+                                  const inResult = results.find(res => res.holeNumber === lastSecondNineHole);
                                   const hasInScores = inResult?.teamAScore !== null;
                                   if (!hasInScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
                                   if (em.matchType === 'stroke_play') {
-                                    return <td className="p-2 text-center font-semibold bg-muted/30">{inResult.cumulativeA}</td>;
+                                    return <td className="p-2 text-center font-semibold bg-muted/30">{inResult!.cumulativeA}</td>;
                                   }
                                   const inDiff = inResult ? inResult.cumulativeA - inResult.cumulativeB : 0;
                                   if (inDiff > 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{inDiff} UP</td>;
@@ -2996,8 +3000,8 @@ export default function MatchDetail() {
                               <tr className="border-b border-border/50">
                                 <td className="p-2 font-semibold text-accent">{teamB?.name}</td>
                                 {firstNineHoles.map((hole) => {
-                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                  const r = results[playingPos - 1];
+                                  // Access by physical hole number, not playing position
+                                  const r = results.find(res => res.holeNumber === hole);
                                   return (
                                     <td key={hole} className={`p-2 text-center ${r?.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
                                       {r?.teamBScore ?? '-'}
@@ -3005,20 +3009,22 @@ export default function MatchDetail() {
                                   );
                                 })}
                                 {(() => {
-                                  const outResult = results[8];
+                                  // Get the last hole in the first nine for the "Out" summary
+                                  const lastFirstNineHole = firstNineHoles[firstNineHoles.length - 1];
+                                  const outResult = results.find(res => res.holeNumber === lastFirstNineHole);
                                   const hasOutScores = outResult?.teamBScore !== null;
-                                  if (!hasOutScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (!hasOutScores || !outResult) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
                                   if (em.matchType === 'stroke_play') {
                                     return <td className="p-2 text-center font-semibold bg-muted/30">{outResult.cumulativeB}</td>;
                                   }
-                                  const outDiff = outResult ? outResult.cumulativeB - outResult.cumulativeA : 0;
+                                  const outDiff = outResult.cumulativeB - outResult.cumulativeA;
                                   if (outDiff > 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{outDiff} UP</td>;
                                   if (outDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(outDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
                                 })()}
                                 {secondNineHoles.map((hole) => {
-                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                  const r = results[playingPos - 1];
+                                  // Access by physical hole number, not playing position
+                                  const r = results.find(res => res.holeNumber === hole);
                                   return (
                                     <td key={hole} className={`p-2 text-center ${r?.winner === 'B' ? 'bg-accent/20 text-accent font-bold' : ''}`}>
                                       {r?.teamBScore ?? '-'}
@@ -3026,13 +3032,15 @@ export default function MatchDetail() {
                                   );
                                 })}
                                 {(() => {
-                                  const inResult = results[17];
+                                  // Get the last hole in the second nine for the "In" summary
+                                  const lastSecondNineHole = secondNineHoles[secondNineHoles.length - 1];
+                                  const inResult = results.find(res => res.holeNumber === lastSecondNineHole);
                                   const hasInScores = inResult?.teamBScore !== null;
-                                  if (!hasInScores) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
+                                  if (!hasInScores || !inResult) return <td className="p-2 text-center font-semibold bg-muted/30">-</td>;
                                   if (em.matchType === 'stroke_play') {
                                     return <td className="p-2 text-center font-semibold bg-muted/30">{inResult.cumulativeB}</td>;
                                   }
-                                  const inDiff = inResult ? inResult.cumulativeB - inResult.cumulativeA : 0;
+                                  const inDiff = inResult.cumulativeB - inResult.cumulativeA;
                                   if (inDiff > 0) return <td className="p-2 text-center font-semibold bg-accent/20 text-accent">{inDiff} UP</td>;
                                   if (inDiff < 0) return <td className="p-2 text-center font-semibold bg-primary/20 text-primary">{Math.abs(inDiff)} DN</td>;
                                   return <td className="p-2 text-center font-semibold bg-muted/30">AS</td>;
@@ -3166,8 +3174,8 @@ export default function MatchDetail() {
                                 <tr className="border-t-2 border-border">
                                   <td className="p-2 font-semibold">Status</td>
                                   {firstNineHoles.map((hole) => {
-                                    const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                    const r = results[playingPos - 1];
+                                    // Access by physical hole number, not playing position
+                                    const r = results.find(res => res.holeNumber === hole);
                                     const diff = r ? r.cumulativeA - r.cumulativeB : 0;
                                     const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
                                     if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
@@ -3182,8 +3190,8 @@ export default function MatchDetail() {
                                   })}
                                   <td className="p-2 text-center bg-muted/30"></td>
                                   {secondNineHoles.map((hole) => {
-                                    const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                    const r = results[playingPos - 1];
+                                    // Access by physical hole number, not playing position
+                                    const r = results.find(res => res.holeNumber === hole);
                                     const diff = r ? r.cumulativeA - r.cumulativeB : 0;
                                     const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
                                     if (!hasScores) return <td key={hole} className="p-2 text-center">-</td>;
