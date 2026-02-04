@@ -844,12 +844,8 @@ export function calculateCombinedMatchSettlements(
     if (match.matchType === 'nassau') {
       // Nassau has 3 bets
       totalBets += 3;
-      // Transform scores and netContext to playing order when startOnBack9 is enabled
-      const startOnBack9 = match.startOnBack9 || false;
-      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
-      const transformedNetContext = transformNetContextToPlayingOrder(netContext, startOnBack9);
-      
-      const nassauResults = calculateNassauResults(match, transformedScores, transformedNetContext);
+      // calculateNassauResults now handles startOnBack9 internally - pass original scores
+      const nassauResults = calculateNassauResults(match, scores, netContext);
       const nassauAutoPressSettings = {
         front9: match.autoPressNassauFront9 ?? true,
         back9: match.autoPressNassauBack9 ?? true,
@@ -877,12 +873,8 @@ export function calculateCombinedMatchSettlements(
     } else {
       // Regular match play or stroke play - 1 bet
       totalBets += 1;
-      // Transform scores and netContext to playing order when startOnBack9 is enabled
-      const startOnBack9 = match.startOnBack9 || false;
-      const transformedScores = transformScoresToPlayingOrder(scores, startOnBack9);
-      const transformedNetContext = transformNetContextToPlayingOrder(netContext, startOnBack9);
-      
-      const results = calculateMatchPlayResults(match, transformedScores, transformedNetContext);
+      // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
+      const results = calculateMatchPlayResults(match, scores, netContext);
       const settlement = calculateBetSettlements(
         match.unitAmount || 0,
         teamA,
