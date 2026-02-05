@@ -2,10 +2,11 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format, subDays, startOfYear } from "date-fns";
-import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X, HandCoins, Check, Loader2 } from "lucide-react";
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X, HandCoins, Check, Loader2, ChevronDown, ChevronUp, History } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -127,6 +128,7 @@ export default function Ledger() {
   type Settlement = {
     id: number;
     name: string | null;
+    status: string;
     createdAt: string | null;
     completedAt: string | null;
     creatorId: string | null;
@@ -137,6 +139,12 @@ export default function Ledger() {
     queryKey: ["/api/settlements/active"],
   });
   
+  const { data: archivedSettlements } = useQuery<Settlement[]>({
+    queryKey: ["/api/settlements/archived"],
+  });
+  
+  const [showSettlementHistory, setShowSettlementHistory] = useState(false);
+  
   // Mutation to create settlement
   const createSettlementMutation = useMutation({
     mutationFn: async (data: { name: string | null; balances: { playerName: string; presetPlayerId?: number | null; balance: number }[] }) => {
@@ -144,6 +152,7 @@ export default function Ledger() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/settlements/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/archived"] });
       toast({ title: "Settlement plan created" });
       setSettleUpOpen(false);
       setSettlementName("");
@@ -1191,6 +1200,101 @@ export default function Ledger() {
             </CardContent>
           </Card>
         </motion.div>
+      )}
+      
+      {/* Settlement History */}
+      {archivedSettlements && archivedSettlements.length > 0 && (
+        <Card className="border-muted">
+          <CardHeader className="pb-2">
+            <Button
+              variant="ghost"
+              className="w-full justify-between p-0 h-auto hover:bg-transparent"
+              onClick={() => setShowSettlementHistory(!showSettlementHistory)}
+              data-testid="button-toggle-settlement-history"
+            >
+              <CardTitle className="flex items-center gap-2 text-muted-foreground">
+                <History className="w-4 h-4" />
+                Past Settlements ({archivedSettlements.length})
+              </CardTitle>
+              {showSettlementHistory ? (
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              )}
+            </Button>
+          </CardHeader>
+          {showSettlementHistory && (
+            <CardContent className="space-y-4">
+              {archivedSettlements.map((settlement) => (
+                <div 
+                  key={settlement.id} 
+                  className="border rounded-md p-3"
+                  data-testid={`card-settlement-${settlement.id}`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">
+                        {settlement.name || `Settlement #${settlement.id}`}
+                      </span>
+                      <Badge 
+                        variant={settlement.status === "completed" ? "default" : "secondary"}
+                        className={settlement.status === "completed" ? "bg-green-600" : ""}
+                      >
+                        {settlement.status === "completed" ? "Completed" : "Archived"}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {settlement.createdAt ? format(new Date(settlement.createdAt), "MMM d, yyyy") : ""}
+                    </span>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>From</TableHead>
+                        <TableHead className="text-center">→</TableHead>
+                        <TableHead>To</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="text-center w-16">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {settlement.payments.map((payment) => (
+                        <TableRow 
+                          key={payment.id}
+                          className={payment.completed ? "opacity-60" : ""}
+                        >
+                          <TableCell className={payment.completed ? "line-through" : ""}>
+                            {payment.fromPlayerName}
+                          </TableCell>
+                          <TableCell className="text-center text-muted-foreground">→</TableCell>
+                          <TableCell className={payment.completed ? "line-through" : ""}>
+                            {payment.toPlayerName}
+                          </TableCell>
+                          <TableCell className={`text-right ${payment.completed ? "line-through text-muted-foreground" : ""}`}>
+                            ${(payment.amount / 100).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {payment.completed ? (
+                              <Check className="w-4 h-4 text-green-600 mx-auto" />
+                            ) : (
+                              <X className="w-4 h-4 text-red-600 mx-auto" />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    {settlement.payments.filter(p => p.completed).length} of {settlement.payments.length} payments completed
+                    {settlement.completedAt && (
+                      <span> • Settled on {format(new Date(settlement.completedAt), "MMM d, yyyy")}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          )}
+        </Card>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
