@@ -3038,9 +3038,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getActiveSettlement(): Promise<SettlementWithPayments | null> {
-    // Get the most recent settlement that is not completed
+    // Get the most recent settlement that is active
     const [settlement] = await db.select().from(settlements)
-      .where(isNull(settlements.completedAt))
+      .where(eq(settlements.status, "active"))
       .orderBy(desc(settlements.createdAt))
       .limit(1);
     
@@ -3055,6 +3055,41 @@ export class DatabaseStorage implements IStorage {
       ...settlement,
       payments,
     };
+  }
+  
+  async getArchivedSettlements(): Promise<SettlementWithPayments[]> {
+    const archivedSettlements = await db.select().from(settlements)
+      .where(or(eq(settlements.status, "archived"), eq(settlements.status, "completed")))
+      .orderBy(desc(settlements.createdAt));
+    
+    if (archivedSettlements.length === 0) {
+      return [];
+    }
+    
+    const settlementIds = archivedSettlements.map(s => s.id);
+    const allPayments = await db.select().from(settlementPayments)
+      .where(inArray(settlementPayments.settlementId, settlementIds));
+    
+    const paymentsBySettlementId = new Map<number, SettlementPayment[]>();
+    for (const payment of allPayments) {
+      if (!paymentsBySettlementId.has(payment.settlementId)) {
+        paymentsBySettlementId.set(payment.settlementId, []);
+      }
+      paymentsBySettlementId.get(payment.settlementId)!.push(payment);
+    }
+    
+    return archivedSettlements.map(settlement => ({
+      ...settlement,
+      payments: paymentsBySettlementId.get(settlement.id) || [],
+    }));
+  }
+  
+  async archiveSettlement(settlementId: number): Promise<boolean> {
+    const result = await db.update(settlements)
+      .set({ status: "archived" })
+      .where(eq(settlements.id, settlementId))
+      .returning();
+    return result.length > 0;
   }
 
   async createSettlement(
@@ -3115,12 +3150,12 @@ export class DatabaseStorage implements IStorage {
     
     if (allComplete) {
       await db.update(settlements)
-        .set({ completedAt: new Date() })
+        .set({ completedAt: new Date(), status: "completed" })
         .where(eq(settlements.id, payment.settlementId));
     } else {
       // If not all complete, make sure settlement is not marked as complete
       await db.update(settlements)
-        .set({ completedAt: null })
+        .set({ completedAt: null, status: "active" })
         .where(eq(settlements.id, payment.settlementId));
     }
     
