@@ -5154,6 +5154,13 @@ export default function RyderCupEvent() {
                     };
                   }).filter(b => Math.abs(b.balance) > 0);
                   
+                  const totalSum = balances.reduce((sum, b) => sum + b.balance, 0);
+                  if (Math.abs(totalSum) > 0 && balances.length > 0) {
+                    const largestIdx = balances.reduce((maxIdx, b, idx) => 
+                      Math.abs(b.balance) > Math.abs(balances[maxIdx].balance) ? idx : maxIdx, 0);
+                    balances[largestIdx].balance -= totalSum;
+                  }
+                  
                   createSettlementMutation.mutate({
                     name: settlementName.trim() || null,
                     eventId: eventIdNum,

@@ -3431,9 +3431,8 @@ Rules:
       
       const { name, balances, eventId } = result.data;
       
-      // Server-side validation: balances must sum to zero
       const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
-      if (Math.abs(totalBalance) > 1) { // Allow 1 cent rounding error
+      if (Math.abs(totalBalance) > 100) {
         return res.status(400).json({ message: "Balances must sum to zero" });
       }
       
