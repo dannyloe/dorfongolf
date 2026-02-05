@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ShareButton } from "@/components/ShareButton";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
@@ -238,6 +239,7 @@ export default function MatchDetail() {
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
   const [matchesCollapsed, setMatchesCollapsed] = useState(false);
   const [ledgerCollapsed, setLedgerCollapsed] = useState(false);
+  const bettingLedgerRef = useRef<HTMLDivElement | null>(null);
   
   // Round Robin wizard state (two groups)
   const [isRoundRobinMode, setIsRoundRobinMode] = useState(false);
@@ -3477,18 +3479,26 @@ export default function MatchDetail() {
         if (!hasCompletedMatches) return null;
         
         return (
-          <div className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
-            <button
-              onClick={() => setLedgerCollapsed(!ledgerCollapsed)}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity w-full"
-              data-testid="button-toggle-ledger"
-            >
-              <h3 className="font-display font-bold text-lg flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-accent" />
-                Betting Ledger
-              </h3>
-              {ledgerCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-            </button>
+          <div ref={bettingLedgerRef} className="bg-white rounded-2xl p-6 shadow-lg border border-border/50">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setLedgerCollapsed(!ledgerCollapsed)}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity flex-1"
+                data-testid="button-toggle-ledger"
+              >
+                <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-accent" />
+                  Betting Ledger
+                </h3>
+                {ledgerCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+              </button>
+              <ShareButton
+                targetRef={bettingLedgerRef}
+                title={`Betting Ledger - ${match?.name || "Match"}`}
+                text={`${match?.name || "Match"} - Betting Results`}
+                fileName="betting-ledger.png"
+              />
+            </div>
             
             {!ledgerCollapsed && (
             <div className="grid md:grid-cols-[auto_1fr] gap-6 mt-4">

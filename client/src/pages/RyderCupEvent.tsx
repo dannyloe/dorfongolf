@@ -21,6 +21,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { calculateLedger, type LedgerEntry, type NetScoringContext, physicalToPlayingPosition, playingToPhysicalHole, transformHoleDataToPlayingOrder } from "@/lib/matchplay";
 import { calculateCourseHandicap } from "@/lib/handicap";
+import { ShareButton } from "@/components/ShareButton";
 import type { RyderCupEventResponse, RyderCupPairingSide, RyderCupPairingSideWithScores, RyderCupPairingScore, MATCH_TYPES, Match, Course, CourseTee, CourseHole } from "@shared/schema";
 
 type StoredResult = {
@@ -289,6 +290,10 @@ export default function RyderCupEvent() {
   const [isRefreshingLedger, setIsRefreshingLedger] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
+  const teeTimesRef = useRef<HTMLDivElement | null>(null);
+  const scorecardRef = useRef<HTMLDivElement | null>(null);
+  const sideBetsRef = useRef<HTMLDivElement | null>(null);
+  const ledgerRef = useRef<HTMLDivElement | null>(null);
   const scanScorecard = useScanScorecard();
 
   // Focus the score input when editing starts
@@ -2094,6 +2099,12 @@ export default function RyderCupEvent() {
             <div className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="font-semibold">Day {currentDay.dayNumber} Matches</h3>
+                <ShareButton
+                  targetRef={teeTimesRef}
+                  title={`Tee Times - Day ${currentDay.dayNumber}`}
+                  text={`${event?.name || "Ryder Cup"} - Day ${currentDay.dayNumber} Tee Times`}
+                  fileName={`tee-times-day-${currentDay.dayNumber}.png`}
+                />
                 {isCreatorOrAdmin && (
                   <Button
                     size="sm"
@@ -2351,6 +2362,7 @@ export default function RyderCupEvent() {
                 </div>
               )}
 
+              <div ref={teeTimesRef} className="space-y-3">
               {(() => {
                 // Sort by matchNumber which represents the slot/position
                 const sortedPairings = [...currentDay.pairings.filter(p => p.isPrimary)].sort((a, b) => a.matchNumber - b.matchNumber);
@@ -2651,6 +2663,7 @@ export default function RyderCupEvent() {
                   );
                 });
               })()}
+              </div>
 
               <div className="mt-6">
                 <div className="flex items-center justify-between mb-2">
@@ -3484,7 +3497,7 @@ export default function RyderCupEvent() {
                         const teamBColor = event?.teams.find(t => t.id === sideB.teamId)?.color;
 
                         return (
-                          <Card key={pairing.id} data-testid={`scorecard-pairing-${pairing.id}`}>
+                          <Card key={pairing.id} ref={isExpanded ? scorecardRef : undefined} data-testid={`scorecard-pairing-${pairing.id}`}>
                             <CardHeader className="py-2 px-3 cursor-pointer" onClick={() => setExpandedPairingId(isExpanded ? null : pairing.id)}>
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
@@ -3492,6 +3505,14 @@ export default function RyderCupEvent() {
                                   <span className="text-sm text-muted-foreground">{pairing.matchFormat}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                  {isExpanded && (
+                                    <ShareButton
+                                      targetRef={scorecardRef}
+                                      title={`Scorecard - Match ${pairing.matchNumber}`}
+                                      text={`${event?.name || "Ryder Cup"} Day ${currentDay.dayNumber} - Match ${pairing.matchNumber}`}
+                                      fileName={`scorecard-day${currentDay.dayNumber}-match${pairing.matchNumber}.png`}
+                                    />
+                                  )}
                                   <input
                                     type="file"
                                     accept="image/*"
@@ -4527,15 +4548,23 @@ export default function RyderCupEvent() {
         </TabsContent>
 
         <TabsContent value="ledger">
-          <Card>
+          <Card ref={ledgerRef}>
             <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Receipt className="w-5 h-5" /> Event Ledger
-                </CardTitle>
-                <CardDescription>
-                  Track shared expenses and who owes who
-                </CardDescription>
+              <div className="flex items-center gap-2">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5" /> Event Ledger
+                  </CardTitle>
+                  <CardDescription>
+                    Track shared expenses and who owes who
+                  </CardDescription>
+                </div>
+                <ShareButton
+                  targetRef={ledgerRef}
+                  title={`Event Ledger - ${event?.name || "Ryder Cup"}`}
+                  text={`${event?.name || "Ryder Cup"} - Event Ledger`}
+                  fileName="event-ledger.png"
+                />
               </div>
               {isCreatorOrAdmin && (
                 <div className="flex gap-2 flex-wrap">
