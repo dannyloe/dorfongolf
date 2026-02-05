@@ -3418,10 +3418,10 @@ Rules:
         return res.status(400).json({ message: "Balances must sum to zero" });
       }
       
-      // Check if there's already an active settlement
+      // If there's already an active settlement, delete it first (recalculating)
       const existingSettlement = await storage.getActiveSettlement();
       if (existingSettlement) {
-        return res.status(400).json({ message: "An active settlement already exists. Please complete or cancel it before creating a new one." });
+        await storage.deleteSettlement(existingSettlement.id);
       }
       
       // Calculate optimal payments to settle all balances

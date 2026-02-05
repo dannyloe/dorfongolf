@@ -844,11 +844,11 @@ export default function Ledger() {
           variant="default"
           size="sm"
           onClick={() => setSettleUpOpen(true)}
-          disabled={!combinedLedgerResults?.balances?.some(b => b.netBalance !== 0) || !!activeSettlement}
+          disabled={!combinedLedgerResults?.balances?.some(b => b.netBalance !== 0) && !activeSettlement?.payments?.some(p => !p.completed)}
           data-testid="button-settle-up"
         >
           <HandCoins className="w-4 h-4 mr-2" />
-          {activeSettlement ? "Settlement Active" : "Settle Up"}
+          {activeSettlement ? "Recalculate" : "Settle Up"}
         </Button>
       </div>
       
@@ -958,9 +958,11 @@ export default function Ledger() {
       <Dialog open={settleUpOpen} onOpenChange={setSettleUpOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Settlement Plan</DialogTitle>
+            <DialogTitle>{activeSettlement ? "Recalculate Settlement Plan" : "Create Settlement Plan"}</DialogTitle>
             <DialogDescription>
-              This will calculate the minimum payments needed to settle all balances.
+              {activeSettlement 
+                ? "This will recalculate a new plan based on the remaining unpaid balances."
+                : "This will calculate the minimum payments needed to settle all balances."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -976,16 +978,62 @@ export default function Ledger() {
             </div>
             
             <div className="space-y-2">
-              <Label>Current Balances</Label>
+              <Label>{activeSettlement ? "Remaining Balances (from unpaid)" : "Current Balances"}</Label>
               <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
-                {combinedLedgerResults?.balances?.filter(b => b.netBalance !== 0).map((balance) => (
-                  <div key={balance.playerId} className="flex justify-between text-sm">
-                    <span>{balance.playerName}</span>
-                    <span className={balance.netBalance > 0 ? "text-green-600" : "text-red-600"}>
-                      {balance.netBalance > 0 ? "+" : ""}${balance.netBalance.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
+                {(() => {
+                  // If there's an active settlement, calculate remaining balances from incomplete payments
+                  if (activeSettlement) {
+                    const incompletePayments = activeSettlement.payments.filter(p => !p.completed);
+                    const balanceMap = new Map<string, { playerName: string; presetPlayerId: number | null; balance: number }>();
+                    
+                    incompletePayments.forEach(p => {
+                      // Payer owes money (negative balance)
+                      const payerKey = p.fromPresetPlayerId?.toString() || p.fromPlayerName;
+                      const payerEntry = balanceMap.get(payerKey) || { 
+                        playerName: p.fromPlayerName, 
+                        presetPlayerId: p.fromPresetPlayerId, 
+                        balance: 0 
+                      };
+                      payerEntry.balance -= p.amount;
+                      balanceMap.set(payerKey, payerEntry);
+                      
+                      // Payee is owed money (positive balance)
+                      const payeeKey = p.toPresetPlayerId?.toString() || p.toPlayerName;
+                      const payeeEntry = balanceMap.get(payeeKey) || { 
+                        playerName: p.toPlayerName, 
+                        presetPlayerId: p.toPresetPlayerId, 
+                        balance: 0 
+                      };
+                      payeeEntry.balance += p.amount;
+                      balanceMap.set(payeeKey, payeeEntry);
+                    });
+                    
+                    const remainingBalances = Array.from(balanceMap.values()).filter(b => Math.abs(b.balance) > 0);
+                    
+                    if (remainingBalances.length === 0) {
+                      return <div className="text-sm text-muted-foreground text-center py-2">All payments complete!</div>;
+                    }
+                    
+                    return remainingBalances.map((balance, idx) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span>{balance.playerName}</span>
+                        <span className={balance.balance > 0 ? "text-green-600" : "text-red-600"}>
+                          {balance.balance > 0 ? "+" : ""}${(balance.balance / 100).toFixed(2)}
+                        </span>
+                      </div>
+                    ));
+                  }
+                  
+                  // No active settlement - show current ledger balances
+                  return combinedLedgerResults?.balances?.filter(b => b.netBalance !== 0).map((balance) => (
+                    <div key={balance.playerId} className="flex justify-between text-sm">
+                      <span>{balance.playerName}</span>
+                      <span className={balance.netBalance > 0 ? "text-green-600" : "text-red-600"}>
+                        {balance.netBalance > 0 ? "+" : ""}${balance.netBalance.toFixed(2)}
+                      </span>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
             
@@ -1001,11 +1049,42 @@ export default function Ledger() {
               <Button
                 className="flex-1"
                 onClick={() => {
-                  const balances = combinedLedgerResults?.balances?.filter(b => b.netBalance !== 0).map(b => ({
-                    playerName: b.playerName,
-                    presetPlayerId: b.presetPlayerId ?? null,
-                    balance: Math.round(b.netBalance * 100), // Convert to cents
-                  })) || [];
+                  let balances: { playerName: string; presetPlayerId: number | null; balance: number }[];
+                  
+                  if (activeSettlement) {
+                    // Calculate remaining balances from incomplete payments
+                    const incompletePayments = activeSettlement.payments.filter(p => !p.completed);
+                    const balanceMap = new Map<string, { playerName: string; presetPlayerId: number | null; balance: number }>();
+                    
+                    incompletePayments.forEach(p => {
+                      const payerKey = p.fromPresetPlayerId?.toString() || p.fromPlayerName;
+                      const payerEntry = balanceMap.get(payerKey) || { 
+                        playerName: p.fromPlayerName, 
+                        presetPlayerId: p.fromPresetPlayerId ?? null, 
+                        balance: 0 
+                      };
+                      payerEntry.balance -= p.amount;
+                      balanceMap.set(payerKey, payerEntry);
+                      
+                      const payeeKey = p.toPresetPlayerId?.toString() || p.toPlayerName;
+                      const payeeEntry = balanceMap.get(payeeKey) || { 
+                        playerName: p.toPlayerName, 
+                        presetPlayerId: p.toPresetPlayerId ?? null, 
+                        balance: 0 
+                      };
+                      payeeEntry.balance += p.amount;
+                      balanceMap.set(payeeKey, payeeEntry);
+                    });
+                    
+                    balances = Array.from(balanceMap.values()).filter(b => Math.abs(b.balance) > 0);
+                  } else {
+                    balances = combinedLedgerResults?.balances?.filter(b => b.netBalance !== 0).map(b => ({
+                      playerName: b.playerName,
+                      presetPlayerId: b.presetPlayerId ?? null,
+                      balance: Math.round(b.netBalance * 100), // Convert to cents
+                    })) || [];
+                  }
+                  
                   createSettlementMutation.mutate({
                     name: settlementName.trim() || null,
                     balances,
@@ -1017,10 +1096,10 @@ export default function Ledger() {
                 {createSettlementMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
+                    {activeSettlement ? "Recalculating..." : "Creating..."}
                   </>
                 ) : (
-                  "Create Plan"
+                  activeSettlement ? "Recalculate Plan" : "Create Plan"
                 )}
               </Button>
             </div>
