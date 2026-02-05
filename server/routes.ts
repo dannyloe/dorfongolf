@@ -3400,6 +3400,23 @@ Rules:
     }
   });
   
+  app.get(api.settlements.archived.path, isAuthenticated, async (req, res) => {
+    try {
+      const archivedSettlements = await storage.getArchivedSettlements();
+      res.json(archivedSettlements.map(s => ({
+        ...s,
+        createdAt: s.createdAt?.toISOString() || null,
+        completedAt: s.completedAt?.toISOString() || null,
+        payments: s.payments.map(p => ({
+          ...p,
+          completedAt: p.completedAt?.toISOString() || null,
+        })),
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
   app.post(api.settlements.create.path, isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
@@ -3418,10 +3435,10 @@ Rules:
         return res.status(400).json({ message: "Balances must sum to zero" });
       }
       
-      // If there's already an active settlement, delete it first (recalculating)
+      // If there's already an active settlement, archive it first (recalculating)
       const existingSettlement = await storage.getActiveSettlement();
       if (existingSettlement) {
-        await storage.deleteSettlement(existingSettlement.id);
+        await storage.archiveSettlement(existingSettlement.id);
       }
       
       // Calculate optimal payments to settle all balances

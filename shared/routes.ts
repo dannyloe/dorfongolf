@@ -1685,6 +1685,7 @@ export const api = {
         200: z.array(z.object({
           id: z.number(),
           name: z.string().nullable(),
+          status: z.string(),
           createdAt: z.string().nullable(),
           completedAt: z.string().nullable(),
           creatorId: z.string().nullable(),
@@ -1709,6 +1710,7 @@ export const api = {
         200: z.object({
           id: z.number(),
           name: z.string().nullable(),
+          status: z.string(),
           createdAt: z.string().nullable(),
           completedAt: z.string().nullable(),
           creatorId: z.string().nullable(),
@@ -1726,6 +1728,31 @@ export const api = {
         }).nullable(),
       },
     },
+    archived: {
+      method: 'GET' as const,
+      path: '/api/settlements/archived',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          name: z.string().nullable(),
+          status: z.string(),
+          createdAt: z.string().nullable(),
+          completedAt: z.string().nullable(),
+          creatorId: z.string().nullable(),
+          payments: z.array(z.object({
+            id: z.number(),
+            settlementId: z.number(),
+            fromPlayerName: z.string(),
+            fromPresetPlayerId: z.number().nullable(),
+            toPlayerName: z.string(),
+            toPresetPlayerId: z.number().nullable(),
+            amount: z.number(),
+            completed: z.boolean(),
+            completedAt: z.string().nullable(),
+          })),
+        })),
+      },
+    },
     create: {
       method: 'POST' as const,
       path: '/api/settlements',
@@ -1741,6 +1768,7 @@ export const api = {
         201: z.object({
           id: z.number(),
           name: z.string().nullable(),
+          status: z.string(),
           createdAt: z.string().nullable(),
           completedAt: z.string().nullable(),
           creatorId: z.string().nullable(),
