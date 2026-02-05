@@ -3382,7 +3382,8 @@ Rules:
   
   app.get(api.settlements.active.path, isAuthenticated, async (req, res) => {
     try {
-      const settlement = await storage.getActiveSettlement();
+      const eventId = req.query.eventId ? parseInt(req.query.eventId as string) : undefined;
+      const settlement = await storage.getActiveSettlement(eventId);
       if (!settlement) {
         return res.json(null);
       }
@@ -3402,7 +3403,8 @@ Rules:
   
   app.get(api.settlements.archived.path, isAuthenticated, async (req, res) => {
     try {
-      const archivedSettlements = await storage.getArchivedSettlements();
+      const eventId = req.query.eventId ? parseInt(req.query.eventId as string) : undefined;
+      const archivedSettlements = await storage.getArchivedSettlements(eventId);
       res.json(archivedSettlements.map(s => ({
         ...s,
         createdAt: s.createdAt?.toISOString() || null,
@@ -3427,7 +3429,7 @@ Rules:
         return res.status(400).json({ message: result.error.errors[0].message });
       }
       
-      const { name, balances } = result.data;
+      const { name, balances, eventId } = result.data;
       
       // Server-side validation: balances must sum to zero
       const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
@@ -3435,8 +3437,8 @@ Rules:
         return res.status(400).json({ message: "Balances must sum to zero" });
       }
       
-      // If there's already an active settlement, archive it first (recalculating)
-      const existingSettlement = await storage.getActiveSettlement();
+      // If there's already an active settlement for this event, archive it first (recalculating)
+      const existingSettlement = await storage.getActiveSettlement(eventId);
       if (existingSettlement) {
         await storage.archiveSettlement(existingSettlement.id);
       }
@@ -3449,7 +3451,7 @@ Rules:
         return res.status(400).json({ message: "No payments needed - all balances are zero" });
       }
       
-      const settlement = await storage.createSettlement(name || null, payments, userId);
+      const settlement = await storage.createSettlement(name || null, payments, userId, eventId);
       
       res.status(201).json({
         ...settlement,

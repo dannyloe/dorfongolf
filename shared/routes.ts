@@ -1758,6 +1758,7 @@ export const api = {
       path: '/api/settlements',
       input: z.object({
         name: z.string().nullable().optional(),
+        eventId: z.number().optional(),
         balances: z.array(z.object({
           playerName: z.string(),
           presetPlayerId: z.number().nullable().optional(),
@@ -1769,6 +1770,7 @@ export const api = {
           id: z.number(),
           name: z.string().nullable(),
           status: z.string(),
+          eventId: z.number().nullable(),
           createdAt: z.string().nullable(),
           completedAt: z.string().nullable(),
           creatorId: z.string().nullable(),

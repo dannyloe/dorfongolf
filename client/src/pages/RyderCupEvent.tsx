@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus, HandCoins, History } from "lucide-react";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -271,6 +273,11 @@ export default function RyderCupEvent() {
     { presetPlayerId: null, playerName: "", amount: "" },
   ]);
   
+  // Settlement state
+  const [settleUpOpen, setSettleUpOpen] = useState(false);
+  const [settlementName, setSettlementName] = useState("");
+  const [showSettlementHistory, setShowSettlementHistory] = useState(false);
+  
   const [earningsBreakdownPlayer, setEarningsBreakdownPlayer] = useState<string | null>(null);
   const [sideBetsBreakdownPlayer, setSideBetsBreakdownPlayer] = useState<string | null>(null);
   const [expensesBreakdownPlayer, setExpensesBreakdownPlayer] = useState<string | null>(null);
@@ -378,6 +385,52 @@ export default function RyderCupEvent() {
   const { data: transactions = [] } = useQuery<Transaction[]>({
     queryKey: ["/api/ryder-cup", id, "transactions"],
     enabled: !!id,
+  });
+
+  // Settlement types and queries
+  type SettlementPayment = {
+    id: number;
+    settlementId: number;
+    fromPlayerName: string;
+    fromPresetPlayerId: number | null;
+    toPlayerName: string;
+    toPresetPlayerId: number | null;
+    amount: number;
+    completed: boolean;
+    completedAt: string | null;
+  };
+  
+  type Settlement = {
+    id: number;
+    name: string | null;
+    status: string;
+    eventId: number | null;
+    createdAt: string | null;
+    completedAt: string | null;
+    creatorId: string | null;
+    payments: SettlementPayment[];
+  };
+
+  const eventIdNum = id ? parseInt(id) : undefined;
+  
+  const { data: activeSettlement } = useQuery<Settlement | null>({
+    queryKey: ["/api/settlements/active", { eventId: eventIdNum }],
+    queryFn: async () => {
+      const res = await fetch(`/api/settlements/active?eventId=${eventIdNum}`);
+      if (!res.ok) throw new Error("Failed to fetch settlement");
+      return res.json();
+    },
+    enabled: !!eventIdNum,
+  });
+  
+  const { data: archivedSettlements = [] } = useQuery<Settlement[]>({
+    queryKey: ["/api/settlements/archived", { eventId: eventIdNum }],
+    queryFn: async () => {
+      const res = await fetch(`/api/settlements/archived?eventId=${eventIdNum}`);
+      if (!res.ok) throw new Error("Failed to fetch archived settlements");
+      return res.json();
+    },
+    enabled: !!eventIdNum,
   });
 
   const isCreatorOrAdmin = event && (event.creatorId === user?.id || user?.isAdmin);
@@ -554,6 +607,45 @@ export default function RyderCupEvent() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete bet", variant: "destructive" });
+    },
+  });
+
+  // Settlement mutations
+  const createSettlementMutation = useMutation({
+    mutationFn: async (data: { name: string | null; eventId?: number; balances: { playerName: string; presetPlayerId?: number | null; balance: number }[] }) => {
+      return apiRequest("POST", "/api/settlements", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/active", { eventId: eventIdNum }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/archived", { eventId: eventIdNum }] });
+      toast({ title: "Settlement plan created" });
+      setSettleUpOpen(false);
+      setSettlementName("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  const togglePaymentMutation = useMutation({
+    mutationFn: async (paymentId: number) => {
+      return apiRequest("PATCH", `/api/settlements/payments/${paymentId}/toggle`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/active", { eventId: eventIdNum }] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  const deleteSettlementMutation = useMutation({
+    mutationFn: async (settlementId: number) => {
+      return apiRequest("DELETE", `/api/settlements/${settlementId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/active", { eventId: eventIdNum }] });
+      toast({ title: "Settlement cancelled" });
     },
   });
 
@@ -4446,7 +4538,7 @@ export default function RyderCupEvent() {
                 </CardDescription>
               </div>
               {isCreatorOrAdmin && (
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button
                     size="sm"
                     onClick={() => setAddTransactionOpen(true)}
@@ -4461,6 +4553,15 @@ export default function RyderCupEvent() {
                     data-testid="button-add-bet"
                   >
                     <Plus className="w-4 h-4 mr-1" /> Add Bet
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => setSettleUpOpen(true)}
+                    data-testid="button-settle-up"
+                  >
+                    <HandCoins className="w-4 h-4 mr-1" />
+                    {activeSettlement ? "Recalculate" : "Settle Up"}
                   </Button>
                 </div>
               )}
@@ -4768,8 +4869,313 @@ export default function RyderCupEvent() {
               })()}
             </CardContent>
           </Card>
+
+          {/* Active Settlement Panel */}
+          {activeSettlement && (
+            <Card className="border-primary/50 bg-primary/5 mt-4">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <HandCoins className="w-5 h-5 text-primary" />
+                    Settlement Plan
+                    {activeSettlement.name && (
+                      <span className="text-muted-foreground font-normal text-sm">
+                        - {activeSettlement.name}
+                      </span>
+                    )}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      {activeSettlement.payments.filter(p => p.completed).length} / {activeSettlement.payments.length} complete
+                    </span>
+                    {isCreatorOrAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteSettlementMutation.mutate(activeSettlement.id)}
+                        data-testid="button-delete-settlement"
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">Done</TableHead>
+                      <TableHead>From</TableHead>
+                      <TableHead className="text-center">Pays</TableHead>
+                      <TableHead>To</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activeSettlement.payments.map((payment) => (
+                      <TableRow 
+                        key={payment.id} 
+                        className={payment.completed ? "opacity-60" : ""}
+                        data-testid={`row-payment-${payment.id}`}
+                      >
+                        <TableCell>
+                          <Checkbox
+                            checked={payment.completed}
+                            onCheckedChange={() => togglePaymentMutation.mutate(payment.id)}
+                            disabled={togglePaymentMutation.isPending || !isCreatorOrAdmin}
+                            data-testid={`checkbox-payment-${payment.id}`}
+                          />
+                        </TableCell>
+                        <TableCell className={payment.completed ? "line-through" : ""}>
+                          {payment.fromPlayerName}
+                        </TableCell>
+                        <TableCell className="text-center text-muted-foreground">
+                          →
+                        </TableCell>
+                        <TableCell className={payment.completed ? "line-through" : ""}>
+                          {payment.toPlayerName}
+                        </TableCell>
+                        <TableCell className={`text-right font-medium ${payment.completed ? "line-through text-muted-foreground" : "text-primary"}`}>
+                          ${(payment.amount / 100).toFixed(2)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {activeSettlement.payments.every(p => p.completed) && (
+                  <div className="mt-4 p-3 bg-green-100 dark:bg-green-900/30 rounded-md flex items-center gap-2 text-green-700 dark:text-green-400">
+                    <Check className="w-5 h-5" />
+                    <span className="font-medium">All payments complete! You're all settled up.</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Settlement History */}
+          {archivedSettlements && archivedSettlements.length > 0 && (
+            <Card className="border-muted mt-4">
+              <CardHeader className="pb-2">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-between p-0 h-auto"
+                  onClick={() => setShowSettlementHistory(!showSettlementHistory)}
+                  data-testid="button-toggle-settlement-history"
+                >
+                  <CardTitle className="flex items-center gap-2 text-muted-foreground">
+                    <History className="w-4 h-4" />
+                    Past Settlements ({archivedSettlements.length})
+                  </CardTitle>
+                  {showSettlementHistory ? (
+                    <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </CardHeader>
+              {showSettlementHistory && (
+                <CardContent className="space-y-4">
+                  {archivedSettlements.map((settlement) => (
+                    <div 
+                      key={settlement.id} 
+                      className="border rounded-md p-3"
+                      data-testid={`card-settlement-${settlement.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">
+                            {settlement.name || `Settlement #${settlement.id}`}
+                          </span>
+                          <Badge 
+                            variant={settlement.status === "completed" ? "default" : "secondary"}
+                            className={settlement.status === "completed" ? "bg-green-600" : ""}
+                          >
+                            {settlement.status === "completed" ? "Completed" : "Archived"}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {settlement.createdAt ? new Date(settlement.createdAt).toLocaleDateString() : ""}
+                        </span>
+                      </div>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>From</TableHead>
+                            <TableHead className="text-center">→</TableHead>
+                            <TableHead>To</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                            <TableHead className="text-center w-16">Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {settlement.payments.map((payment) => (
+                            <TableRow 
+                              key={payment.id}
+                              className={payment.completed ? "opacity-60" : ""}
+                            >
+                              <TableCell className={payment.completed ? "line-through" : ""}>
+                                {payment.fromPlayerName}
+                              </TableCell>
+                              <TableCell className="text-center text-muted-foreground">→</TableCell>
+                              <TableCell className={payment.completed ? "line-through" : ""}>
+                                {payment.toPlayerName}
+                              </TableCell>
+                              <TableCell className={`text-right ${payment.completed ? "line-through text-muted-foreground" : ""}`}>
+                                ${(payment.amount / 100).toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {payment.completed ? (
+                                  <Check className="w-4 h-4 text-green-600 mx-auto" />
+                                ) : (
+                                  <X className="w-4 h-4 text-red-600 mx-auto" />
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      <div className="mt-2 text-sm text-muted-foreground">
+                        {settlement.payments.filter(p => p.completed).length} of {settlement.payments.length} payments completed
+                        {settlement.completedAt && (
+                          <span> • Settled on {new Date(settlement.completedAt).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              )}
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
+
+      {/* Settle Up Dialog */}
+      <Dialog open={settleUpOpen} onOpenChange={setSettleUpOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{activeSettlement ? "Recalculate Settlement Plan" : "Create Settlement Plan"}</DialogTitle>
+            <DialogDescription>
+              {activeSettlement 
+                ? "This will recalculate a new plan based on the remaining unpaid balances."
+                : "This will calculate the minimum payments needed to settle all balances."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="settlement-name">Settlement Name (optional)</Label>
+              <Input
+                id="settlement-name"
+                placeholder="e.g., Final Settlement"
+                value={settlementName}
+                onChange={(e) => setSettlementName(e.target.value)}
+                data-testid="input-settlement-name"
+              />
+            </div>
+            
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setSettleUpOpen(false)}
+                data-testid="button-cancel-settlement"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  // Calculate full net positions (matching ledger tab calculation exactly)
+                  const allPlayerNames = [
+                    ...(teamA?.members.map(m => m.playerName) || []),
+                    ...(teamB?.members.map(m => m.playerName) || []),
+                  ];
+                  
+                  // Calculate expense balances
+                  const expenseBalances: Record<string, number> = {};
+                  allPlayerNames.forEach(name => { expenseBalances[name] = 0; });
+                  transactions.forEach(t => {
+                    expenseBalances[t.payerName] = (expenseBalances[t.payerName] || 0) + t.amount;
+                    t.splits.forEach(s => {
+                      expenseBalances[s.playerName] = (expenseBalances[s.playerName] || 0) - s.amount;
+                    });
+                  });
+                  
+                  // Calculate manual bet balances
+                  const manualBetBalances: Record<string, number> = {};
+                  allPlayerNames.forEach(name => { manualBetBalances[name] = 0; });
+                  manualBets.forEach(bet => {
+                    bet.entries.forEach(entry => {
+                      manualBetBalances[entry.playerName] = (manualBetBalances[entry.playerName] || 0) + entry.amount;
+                    });
+                  });
+                  
+                  // Calculate buy-in amount (matching PayoutsTab calculation)
+                  const numPlayers = 12;
+                  const numDays = event?.days.length || 4;
+                  const matchesPerDay = 3;
+                  const playersPerMatch = 2;
+                  const par3sByDay = (event?.days || []).map(day => {
+                    const dayCourseId = day.courseId || event?.courseId;
+                    const dayCourse = courses?.find(c => c.id === dayCourseId);
+                    return dayCourse?.holes?.filter(h => h.par === 3).length || 0;
+                  });
+                  const totalPar3s = par3sByDay.reduce((sum, p) => sum + p, 0);
+                  const totalTeamWin = (event?.teamWinBonus || 0) * 6;
+                  const totalMatchWins = (event?.matchWinBonus || 0) * playersPerMatch * matchesPerDay * numDays;
+                  const totalSkins = (event?.dailySkinsPot || 0) * numDays;
+                  const totalCTH = (event?.closestToHolePayout || 0) * totalPar3s;
+                  const totalPot = totalTeamWin + totalMatchWins + totalSkins + totalCTH;
+                  const buyInAmount = Math.ceil(totalPot / numPlayers);
+                  
+                  // Calculate net position including all components
+                  const includeBuyIn = event?.includeBuyInInLedger ?? true;
+                  
+                  const balances = allPlayerNames.map(playerName => {
+                    const member = [...(teamA?.members || []), ...(teamB?.members || [])].find(m => m.playerName === playerName);
+                    const sideBets = sideBetData.balances[playerName] || 0;
+                    const manualBetsTotal = manualBetBalances[playerName] || 0;
+                    const earnings = payoutsWithSkins[playerName] || 0;
+                    const expenses = expenseBalances[playerName] || 0;
+                    
+                    let netBalance: number;
+                    if (includeBuyIn) {
+                      // Include buy-in (negative) + earnings + side bets + expenses + manual bets
+                      netBalance = -buyInAmount + earnings + sideBets + expenses + manualBetsTotal;
+                    } else {
+                      // Exclude earnings and buy-in from net - show side bets + expenses + manual bets only
+                      netBalance = sideBets + expenses + manualBetsTotal;
+                    }
+                    
+                    return {
+                      playerName,
+                      presetPlayerId: member?.presetPlayerId ?? null,
+                      balance: netBalance,
+                    };
+                  }).filter(b => Math.abs(b.balance) > 0);
+                  
+                  createSettlementMutation.mutate({
+                    name: settlementName.trim() || null,
+                    eventId: eventIdNum,
+                    balances,
+                  });
+                }}
+                disabled={createSettlementMutation.isPending}
+                data-testid="button-create-settlement"
+              >
+                {createSettlementMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {activeSettlement ? "Recalculating..." : "Creating..."}
+                  </>
+                ) : (
+                  activeSettlement ? "Recalculate Plan" : "Create Plan"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addTransactionOpen} onOpenChange={setAddTransactionOpen}>
         <DialogContent>

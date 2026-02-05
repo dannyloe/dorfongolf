@@ -82,8 +82,10 @@ export interface IStorage {
   
   // Settlement methods
   getSettlements(): Promise<SettlementWithPayments[]>;
-  getActiveSettlement(): Promise<SettlementWithPayments | null>;
-  createSettlement(name: string | null, payments: { fromPlayerName: string; fromPresetPlayerId?: number | null; toPlayerName: string; toPresetPlayerId?: number | null; amount: number }[], creatorId?: string): Promise<SettlementWithPayments>;
+  getActiveSettlement(eventId?: number): Promise<SettlementWithPayments | null>;
+  getArchivedSettlements(eventId?: number): Promise<SettlementWithPayments[]>;
+  createSettlement(name: string | null, payments: { fromPlayerName: string; fromPresetPlayerId?: number | null; toPlayerName: string; toPresetPlayerId?: number | null; amount: number }[], creatorId?: string, eventId?: number): Promise<SettlementWithPayments>;
+  archiveSettlement(settlementId: number): Promise<boolean>;
   togglePaymentComplete(paymentId: number): Promise<SettlementPayment | null>;
   deleteSettlement(settlementId: number): Promise<boolean>;
 }
@@ -3037,10 +3039,15 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getActiveSettlement(): Promise<SettlementWithPayments | null> {
-    // Get the most recent settlement that is active
+  async getActiveSettlement(eventId?: number): Promise<SettlementWithPayments | null> {
+    // Get the most recent settlement that is active, optionally filtered by eventId
+    const conditions = [eq(settlements.status, "active")];
+    if (eventId !== undefined) {
+      conditions.push(eq(settlements.eventId, eventId));
+    }
+    
     const [settlement] = await db.select().from(settlements)
-      .where(eq(settlements.status, "active"))
+      .where(and(...conditions))
       .orderBy(desc(settlements.createdAt))
       .limit(1);
     
@@ -3057,9 +3064,14 @@ export class DatabaseStorage implements IStorage {
     };
   }
   
-  async getArchivedSettlements(): Promise<SettlementWithPayments[]> {
+  async getArchivedSettlements(eventId?: number): Promise<SettlementWithPayments[]> {
+    const statusCondition = or(eq(settlements.status, "archived"), eq(settlements.status, "completed"));
+    const conditions = eventId !== undefined 
+      ? and(statusCondition, eq(settlements.eventId, eventId))
+      : statusCondition;
+    
     const archivedSettlements = await db.select().from(settlements)
-      .where(or(eq(settlements.status, "archived"), eq(settlements.status, "completed")))
+      .where(conditions)
       .orderBy(desc(settlements.createdAt));
     
     if (archivedSettlements.length === 0) {
@@ -3095,12 +3107,14 @@ export class DatabaseStorage implements IStorage {
   async createSettlement(
     name: string | null,
     payments: { fromPlayerName: string; fromPresetPlayerId?: number | null; toPlayerName: string; toPresetPlayerId?: number | null; amount: number }[],
-    creatorId?: string
+    creatorId?: string,
+    eventId?: number
   ): Promise<SettlementWithPayments> {
     // Create the settlement
     const [settlement] = await db.insert(settlements).values({
       name,
       creatorId: creatorId ?? null,
+      eventId: eventId ?? null,
     }).returning();
     
     // Create all payments

@@ -739,6 +739,7 @@ export const settlements = pgTable("settlements", {
   id: serial("id").primaryKey(),
   name: text("name"), // Optional name for the settlement period
   status: text("status").notNull().default("active"), // active, archived, completed
+  eventId: integer("event_id"), // References ryderCupEvents.id for event-specific settlements
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"), // When all payments are complete
   creatorId: text("creator_id"), // User who initiated
