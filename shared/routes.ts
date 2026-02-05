@@ -1677,6 +1677,116 @@ export const api = {
       },
     },
   },
+  settlements: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/settlements',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          name: z.string().nullable(),
+          createdAt: z.string().nullable(),
+          completedAt: z.string().nullable(),
+          creatorId: z.string().nullable(),
+          payments: z.array(z.object({
+            id: z.number(),
+            settlementId: z.number(),
+            fromPlayerName: z.string(),
+            fromPresetPlayerId: z.number().nullable(),
+            toPlayerName: z.string(),
+            toPresetPlayerId: z.number().nullable(),
+            amount: z.number(),
+            completed: z.boolean(),
+            completedAt: z.string().nullable(),
+          })),
+        })),
+      },
+    },
+    active: {
+      method: 'GET' as const,
+      path: '/api/settlements/active',
+      responses: {
+        200: z.object({
+          id: z.number(),
+          name: z.string().nullable(),
+          createdAt: z.string().nullable(),
+          completedAt: z.string().nullable(),
+          creatorId: z.string().nullable(),
+          payments: z.array(z.object({
+            id: z.number(),
+            settlementId: z.number(),
+            fromPlayerName: z.string(),
+            fromPresetPlayerId: z.number().nullable(),
+            toPlayerName: z.string(),
+            toPresetPlayerId: z.number().nullable(),
+            amount: z.number(),
+            completed: z.boolean(),
+            completedAt: z.string().nullable(),
+          })),
+        }).nullable(),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/settlements',
+      input: z.object({
+        name: z.string().nullable().optional(),
+        balances: z.array(z.object({
+          playerName: z.string(),
+          presetPlayerId: z.number().nullable().optional(),
+          balance: z.number(), // positive = owed TO them, negative = they OWE
+        })),
+      }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          name: z.string().nullable(),
+          createdAt: z.string().nullable(),
+          completedAt: z.string().nullable(),
+          creatorId: z.string().nullable(),
+          payments: z.array(z.object({
+            id: z.number(),
+            settlementId: z.number(),
+            fromPlayerName: z.string(),
+            fromPresetPlayerId: z.number().nullable(),
+            toPlayerName: z.string(),
+            toPresetPlayerId: z.number().nullable(),
+            amount: z.number(),
+            completed: z.boolean(),
+            completedAt: z.string().nullable(),
+          })),
+        }),
+        400: z.object({ message: z.string() }),
+        401: z.object({ message: z.string() }),
+      },
+    },
+    togglePayment: {
+      method: 'PATCH' as const,
+      path: '/api/settlements/payments/:paymentId/toggle',
+      responses: {
+        200: z.object({
+          id: z.number(),
+          settlementId: z.number(),
+          fromPlayerName: z.string(),
+          fromPresetPlayerId: z.number().nullable(),
+          toPlayerName: z.string(),
+          toPresetPlayerId: z.number().nullable(),
+          amount: z.number(),
+          completed: z.boolean(),
+          completedAt: z.string().nullable(),
+        }),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/settlements/:id',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
 };
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {

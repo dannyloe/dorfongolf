@@ -732,6 +732,41 @@ export const manualBetEntriesRelations = relations(manualBetEntries, ({ one }) =
   }),
 }));
 
+// === SETTLEMENTS ===
+// For tracking payment plans to settle up ledger balances
+
+export const settlements = pgTable("settlements", {
+  id: serial("id").primaryKey(),
+  name: text("name"), // Optional name for the settlement period
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"), // When all payments are complete
+  creatorId: text("creator_id"), // User who initiated
+});
+
+export const settlementPayments = pgTable("settlement_payments", {
+  id: serial("id").primaryKey(),
+  settlementId: integer("settlement_id").notNull(), // References settlements.id
+  fromPlayerName: text("from_player_name").notNull(), // Player who owes money
+  fromPresetPlayerId: integer("from_preset_player_id"), // References presetPlayers.id
+  toPlayerName: text("to_player_name").notNull(), // Player who is owed money
+  toPresetPlayerId: integer("to_preset_player_id"), // References presetPlayers.id
+  amount: integer("amount").notNull(), // Amount in cents
+  completed: boolean("completed").notNull().default(false), // Has this payment been made?
+  completedAt: timestamp("completed_at"), // When payment was marked complete
+});
+
+// Settlement relations
+export const settlementsRelations = relations(settlements, ({ many }) => ({
+  payments: many(settlementPayments),
+}));
+
+export const settlementPaymentsRelations = relations(settlementPayments, ({ one }) => ({
+  settlement: one(settlements, {
+    fields: [settlementPayments.settlementId],
+    references: [settlements.id],
+  }),
+}));
+
 // === RYDER CUP RELATIONS ===
 
 export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many }) => ({
@@ -971,6 +1006,30 @@ export type InsertManualBetEntry = z.infer<typeof insertManualBetEntrySchema>;
 // Manual bet with entries type
 export type ManualBetWithEntries = ManualBet & {
   entries: ManualBetEntry[];
+};
+
+// Settlement insert schemas
+export const insertSettlementSchema = createInsertSchema(settlements).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+
+export const insertSettlementPaymentSchema = createInsertSchema(settlementPayments).omit({
+  id: true,
+  completed: true,
+  completedAt: true,
+});
+
+export type Settlement = typeof settlements.$inferSelect;
+export type InsertSettlement = z.infer<typeof insertSettlementSchema>;
+
+export type SettlementPayment = typeof settlementPayments.$inferSelect;
+export type InsertSettlementPayment = z.infer<typeof insertSettlementPaymentSchema>;
+
+// Settlement with payments type
+export type SettlementWithPayments = Settlement & {
+  payments: SettlementPayment[];
 };
 
 // === RYDER CUP API TYPES ===

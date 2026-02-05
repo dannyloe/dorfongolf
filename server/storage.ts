@@ -4,6 +4,7 @@ import {
   verificationCodes, notificationPreferences, messages,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
+  settlements, settlementPayments,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -20,6 +21,7 @@ import {
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
   type RyderCupTransaction, type RyderCupTransactionSplit, type RyderCupClosestToHole,
   type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
+  type Settlement, type SettlementPayment, type SettlementWithPayments,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
@@ -77,6 +79,13 @@ export interface IStorage {
   getEventMatchResultsByEventMatchIds(eventMatchIds: number[]): Promise<EventMatchResult[]>;
   saveEventMatchResults(eventMatchId: number, results: InsertEventMatchResult[]): Promise<EventMatchResult[]>;
   deleteEventMatchResults(eventMatchId: number): Promise<void>;
+  
+  // Settlement methods
+  getSettlements(): Promise<SettlementWithPayments[]>;
+  getActiveSettlement(): Promise<SettlementWithPayments | null>;
+  createSettlement(name: string | null, payments: { fromPlayerName: string; fromPresetPlayerId?: number | null; toPlayerName: string; toPresetPlayerId?: number | null; amount: number }[], creatorId?: string): Promise<SettlementWithPayments>;
+  togglePaymentComplete(paymentId: number): Promise<SettlementPayment | null>;
+  deleteSettlement(settlementId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3000,6 +3009,130 @@ export class DatabaseStorage implements IStorage {
       return [];
     }
     return db.select().from(eventMatchResults).where(inArray(eventMatchResults.eventMatchId, eventMatchIds));
+  }
+
+  // Settlement methods
+  async getSettlements(): Promise<SettlementWithPayments[]> {
+    const allSettlements = await db.select().from(settlements).orderBy(desc(settlements.createdAt));
+    
+    if (allSettlements.length === 0) {
+      return [];
+    }
+    
+    const settlementIds = allSettlements.map(s => s.id);
+    const allPayments = await db.select().from(settlementPayments)
+      .where(inArray(settlementPayments.settlementId, settlementIds));
+    
+    const paymentsBySettlementId = new Map<number, SettlementPayment[]>();
+    for (const payment of allPayments) {
+      if (!paymentsBySettlementId.has(payment.settlementId)) {
+        paymentsBySettlementId.set(payment.settlementId, []);
+      }
+      paymentsBySettlementId.get(payment.settlementId)!.push(payment);
+    }
+    
+    return allSettlements.map(settlement => ({
+      ...settlement,
+      payments: paymentsBySettlementId.get(settlement.id) || [],
+    }));
+  }
+
+  async getActiveSettlement(): Promise<SettlementWithPayments | null> {
+    // Get the most recent settlement that is not completed
+    const [settlement] = await db.select().from(settlements)
+      .where(isNull(settlements.completedAt))
+      .orderBy(desc(settlements.createdAt))
+      .limit(1);
+    
+    if (!settlement) {
+      return null;
+    }
+    
+    const payments = await db.select().from(settlementPayments)
+      .where(eq(settlementPayments.settlementId, settlement.id));
+    
+    return {
+      ...settlement,
+      payments,
+    };
+  }
+
+  async createSettlement(
+    name: string | null,
+    payments: { fromPlayerName: string; fromPresetPlayerId?: number | null; toPlayerName: string; toPresetPlayerId?: number | null; amount: number }[],
+    creatorId?: string
+  ): Promise<SettlementWithPayments> {
+    // Create the settlement
+    const [settlement] = await db.insert(settlements).values({
+      name,
+      creatorId: creatorId ?? null,
+    }).returning();
+    
+    // Create all payments
+    const createdPayments: SettlementPayment[] = [];
+    for (const payment of payments) {
+      const [created] = await db.insert(settlementPayments).values({
+        settlementId: settlement.id,
+        fromPlayerName: payment.fromPlayerName,
+        fromPresetPlayerId: payment.fromPresetPlayerId ?? null,
+        toPlayerName: payment.toPlayerName,
+        toPresetPlayerId: payment.toPresetPlayerId ?? null,
+        amount: payment.amount,
+      }).returning();
+      createdPayments.push(created);
+    }
+    
+    return {
+      ...settlement,
+      payments: createdPayments,
+    };
+  }
+
+  async togglePaymentComplete(paymentId: number): Promise<SettlementPayment | null> {
+    // Get current state
+    const [payment] = await db.select().from(settlementPayments)
+      .where(eq(settlementPayments.id, paymentId));
+    
+    if (!payment) {
+      return null;
+    }
+    
+    // Toggle the completed state
+    const newCompleted = !payment.completed;
+    const [updated] = await db.update(settlementPayments)
+      .set({
+        completed: newCompleted,
+        completedAt: newCompleted ? new Date() : null,
+      })
+      .where(eq(settlementPayments.id, paymentId))
+      .returning();
+    
+    // Check if all payments in this settlement are complete
+    const allPayments = await db.select().from(settlementPayments)
+      .where(eq(settlementPayments.settlementId, payment.settlementId));
+    
+    const allComplete = allPayments.every(p => p.id === paymentId ? newCompleted : p.completed);
+    
+    if (allComplete) {
+      await db.update(settlements)
+        .set({ completedAt: new Date() })
+        .where(eq(settlements.id, payment.settlementId));
+    } else {
+      // If not all complete, make sure settlement is not marked as complete
+      await db.update(settlements)
+        .set({ completedAt: null })
+        .where(eq(settlements.id, payment.settlementId));
+    }
+    
+    return updated;
+  }
+
+  async deleteSettlement(settlementId: number): Promise<boolean> {
+    // Delete payments first
+    await db.delete(settlementPayments).where(eq(settlementPayments.settlementId, settlementId));
+    // Delete the settlement
+    const result = await db.delete(settlements).where(eq(settlements.id, settlementId)).returning();
+    return result.length > 0;
   }
 }
 

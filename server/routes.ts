@@ -3361,5 +3361,195 @@ Rules:
     }
   });
 
+  // ===== SETTLEMENTS =====
+  
+  app.get(api.settlements.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const settlements = await storage.getSettlements();
+      res.json(settlements.map(s => ({
+        ...s,
+        createdAt: s.createdAt?.toISOString() || null,
+        completedAt: s.completedAt?.toISOString() || null,
+        payments: s.payments.map(p => ({
+          ...p,
+          completedAt: p.completedAt?.toISOString() || null,
+        })),
+      })));
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.get(api.settlements.active.path, isAuthenticated, async (req, res) => {
+    try {
+      const settlement = await storage.getActiveSettlement();
+      if (!settlement) {
+        return res.json(null);
+      }
+      res.json({
+        ...settlement,
+        createdAt: settlement.createdAt?.toISOString() || null,
+        completedAt: settlement.completedAt?.toISOString() || null,
+        payments: settlement.payments.map(p => ({
+          ...p,
+          completedAt: p.completedAt?.toISOString() || null,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.post(api.settlements.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      
+      const result = api.settlements.create.input.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ message: result.error.errors[0].message });
+      }
+      
+      const { name, balances } = result.data;
+      
+      // Server-side validation: balances must sum to zero
+      const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
+      if (Math.abs(totalBalance) > 1) { // Allow 1 cent rounding error
+        return res.status(400).json({ message: "Balances must sum to zero" });
+      }
+      
+      // Check if there's already an active settlement
+      const existingSettlement = await storage.getActiveSettlement();
+      if (existingSettlement) {
+        return res.status(400).json({ message: "An active settlement already exists. Please complete or cancel it before creating a new one." });
+      }
+      
+      // Calculate optimal payments to settle all balances
+      // Use a greedy algorithm to minimize number of transactions
+      const payments = calculateSettlementPayments(balances);
+      
+      if (payments.length === 0) {
+        return res.status(400).json({ message: "No payments needed - all balances are zero" });
+      }
+      
+      const settlement = await storage.createSettlement(name || null, payments, userId);
+      
+      res.status(201).json({
+        ...settlement,
+        createdAt: settlement.createdAt?.toISOString() || null,
+        completedAt: settlement.completedAt?.toISOString() || null,
+        payments: settlement.payments.map(p => ({
+          ...p,
+          completedAt: p.completedAt?.toISOString() || null,
+        })),
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.patch(api.settlements.togglePayment.path, isAuthenticated, async (req, res) => {
+    try {
+      const paymentId = parseInt(req.params.paymentId);
+      const payment = await storage.togglePaymentComplete(paymentId);
+      
+      if (!payment) {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+      
+      res.json({
+        ...payment,
+        completedAt: payment.completedAt?.toISOString() || null,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+  
+  app.delete(api.settlements.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const settlementId = parseInt(req.params.id);
+      const success = await storage.deleteSettlement(settlementId);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Settlement not found" });
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
+}
+
+// Helper function to calculate optimal payments to settle all balances
+function calculateSettlementPayments(
+  balances: { playerName: string; presetPlayerId?: number | null; balance: number }[]
+): { fromPlayerName: string; fromPresetPlayerId: number | null; toPlayerName: string; toPresetPlayerId: number | null; amount: number }[] {
+  // Filter out zero balances and separate into debtors (owe money) and creditors (owed money)
+  const debtors: { playerName: string; presetPlayerId: number | null; amount: number }[] = [];
+  const creditors: { playerName: string; presetPlayerId: number | null; amount: number }[] = [];
+  
+  for (const b of balances) {
+    const roundedBalance = Math.round(b.balance); // Round to nearest cent
+    if (roundedBalance < 0) {
+      // Negative balance = this player owes money
+      debtors.push({
+        playerName: b.playerName,
+        presetPlayerId: b.presetPlayerId ?? null,
+        amount: -roundedBalance, // Make positive
+      });
+    } else if (roundedBalance > 0) {
+      // Positive balance = this player is owed money
+      creditors.push({
+        playerName: b.playerName,
+        presetPlayerId: b.presetPlayerId ?? null,
+        amount: roundedBalance,
+      });
+    }
+  }
+  
+  // Sort by amount (largest first) for better matching
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
+  
+  const payments: { fromPlayerName: string; fromPresetPlayerId: number | null; toPlayerName: string; toPresetPlayerId: number | null; amount: number }[] = [];
+  
+  // Greedy algorithm: match largest debtor with largest creditor
+  let debtorIdx = 0;
+  let creditorIdx = 0;
+  
+  while (debtorIdx < debtors.length && creditorIdx < creditors.length) {
+    const debtor = debtors[debtorIdx];
+    const creditor = creditors[creditorIdx];
+    
+    const paymentAmount = Math.min(debtor.amount, creditor.amount);
+    
+    if (paymentAmount > 0) {
+      payments.push({
+        fromPlayerName: debtor.playerName,
+        fromPresetPlayerId: debtor.presetPlayerId,
+        toPlayerName: creditor.playerName,
+        toPresetPlayerId: creditor.presetPlayerId,
+        amount: paymentAmount,
+      });
+    }
+    
+    debtor.amount -= paymentAmount;
+    creditor.amount -= paymentAmount;
+    
+    if (debtor.amount === 0) {
+      debtorIdx++;
+    }
+    if (creditor.amount === 0) {
+      creditorIdx++;
+    }
+  }
+  
+  return payments;
 }

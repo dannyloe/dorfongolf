@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format, subDays, startOfYear } from "date-fns";
-import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X } from "lucide-react";
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X, HandCoins, Check, Loader2 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { calculateLedger, NetScoringContext } from "@/lib/matchplay";
 import { useCourses, useGroups, useMatches, usePresetPlayers } from "@/hooks/use-matches";
@@ -60,6 +61,10 @@ export default function Ledger() {
     { presetPlayerId: null, playerName: "", amount: "" },
     { presetPlayerId: null, playerName: "", amount: "" },
   ]);
+  
+  // Settle up dialog state
+  const [settleUpOpen, setSettleUpOpen] = useState(false);
+  const [settlementName, setSettlementName] = useState("");
 
   const { data: courses } = useCourses();
   const { data: groups } = useGroups();
@@ -103,6 +108,72 @@ export default function Ledger() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manual-bets"] });
       toast({ title: "Bet deleted" });
+    },
+  });
+  
+  // Query for active settlement
+  type SettlementPayment = {
+    id: number;
+    settlementId: number;
+    fromPlayerName: string;
+    fromPresetPlayerId: number | null;
+    toPlayerName: string;
+    toPresetPlayerId: number | null;
+    amount: number;
+    completed: boolean;
+    completedAt: string | null;
+  };
+  
+  type Settlement = {
+    id: number;
+    name: string | null;
+    createdAt: string | null;
+    completedAt: string | null;
+    creatorId: string | null;
+    payments: SettlementPayment[];
+  };
+  
+  const { data: activeSettlement, isLoading: isSettlementLoading } = useQuery<Settlement | null>({
+    queryKey: ["/api/settlements/active"],
+  });
+  
+  // Mutation to create settlement
+  const createSettlementMutation = useMutation({
+    mutationFn: async (data: { name: string | null; balances: { playerName: string; presetPlayerId?: number | null; balance: number }[] }) => {
+      return apiRequest("POST", "/api/settlements", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/active"] });
+      toast({ title: "Settlement plan created" });
+      setSettleUpOpen(false);
+      setSettlementName("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  // Mutation to toggle payment completion
+  const togglePaymentMutation = useMutation({
+    mutationFn: async (paymentId: number) => {
+      return apiRequest("PATCH", `/api/settlements/payments/${paymentId}/toggle`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/active"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+  
+  // Mutation to delete settlement
+  const deleteSettlementMutation = useMutation({
+    mutationFn: async (settlementId: number) => {
+      return apiRequest("DELETE", `/api/settlements/${settlementId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settlements/active"] });
+      toast({ title: "Settlement cancelled" });
     },
   });
   
@@ -768,6 +839,17 @@ export default function Ledger() {
           <Plus className="w-4 h-4 mr-2" />
           Add Bet
         </Button>
+        
+        <Button
+          variant="default"
+          size="sm"
+          onClick={() => setSettleUpOpen(true)}
+          disabled={!combinedLedgerResults?.balances?.some(b => b.netBalance !== 0) || !!activeSettlement}
+          data-testid="button-settle-up"
+        >
+          <HandCoins className="w-4 h-4 mr-2" />
+          {activeSettlement ? "Settlement Active" : "Settle Up"}
+        </Button>
       </div>
       
       {/* Add Bet Dialog */}
@@ -871,6 +953,166 @@ export default function Ledger() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* Settle Up Dialog */}
+      <Dialog open={settleUpOpen} onOpenChange={setSettleUpOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Settlement Plan</DialogTitle>
+            <DialogDescription>
+              This will calculate the minimum payments needed to settle all balances.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="settlement-name">Settlement Name (optional)</Label>
+              <Input
+                id="settlement-name"
+                placeholder="e.g., Q1 2026 Settlement"
+                value={settlementName}
+                onChange={(e) => setSettlementName(e.target.value)}
+                data-testid="input-settlement-name"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Current Balances</Label>
+              <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+                {combinedLedgerResults?.balances?.filter(b => b.netBalance !== 0).map((balance) => (
+                  <div key={balance.playerId} className="flex justify-between text-sm">
+                    <span>{balance.playerName}</span>
+                    <span className={balance.netBalance > 0 ? "text-green-600" : "text-red-600"}>
+                      {balance.netBalance > 0 ? "+" : ""}${balance.netBalance.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setSettleUpOpen(false)}
+                data-testid="button-cancel-settlement"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  const balances = combinedLedgerResults?.balances?.filter(b => b.netBalance !== 0).map(b => ({
+                    playerName: b.playerName,
+                    presetPlayerId: b.presetPlayerId ?? null,
+                    balance: Math.round(b.netBalance * 100), // Convert to cents
+                  })) || [];
+                  createSettlementMutation.mutate({
+                    name: settlementName.trim() || null,
+                    balances,
+                  });
+                }}
+                disabled={createSettlementMutation.isPending}
+                data-testid="button-create-settlement"
+              >
+                {createSettlementMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Plan"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Active Settlement Panel */}
+      {activeSettlement && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <Card className="border-primary/50 bg-primary/5">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <HandCoins className="w-5 h-5 text-primary" />
+                  Settlement Plan
+                  {activeSettlement.name && (
+                    <span className="text-muted-foreground font-normal text-sm">
+                      - {activeSettlement.name}
+                    </span>
+                  )}
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    {activeSettlement.payments.filter(p => p.completed).length} / {activeSettlement.payments.length} complete
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => deleteSettlementMutation.mutate(activeSettlement.id)}
+                    data-testid="button-delete-settlement"
+                  >
+                    <Trash2 className="w-4 h-4 text-muted-foreground" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">Done</TableHead>
+                    <TableHead>From</TableHead>
+                    <TableHead className="text-center">Pays</TableHead>
+                    <TableHead>To</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {activeSettlement.payments.map((payment) => (
+                    <TableRow 
+                      key={payment.id} 
+                      className={payment.completed ? "opacity-60" : ""}
+                      data-testid={`row-payment-${payment.id}`}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={payment.completed}
+                          onCheckedChange={() => togglePaymentMutation.mutate(payment.id)}
+                          disabled={togglePaymentMutation.isPending}
+                          data-testid={`checkbox-payment-${payment.id}`}
+                        />
+                      </TableCell>
+                      <TableCell className={payment.completed ? "line-through" : ""}>
+                        {payment.fromPlayerName}
+                      </TableCell>
+                      <TableCell className="text-center text-muted-foreground">
+                        →
+                      </TableCell>
+                      <TableCell className={payment.completed ? "line-through" : ""}>
+                        {payment.toPlayerName}
+                      </TableCell>
+                      <TableCell className={`text-right font-medium ${payment.completed ? "line-through text-muted-foreground" : "text-primary"}`}>
+                        ${(payment.amount / 100).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {activeSettlement.payments.every(p => p.completed) && (
+                <div className="mt-4 p-3 bg-green-100 dark:bg-green-900/30 rounded-md flex items-center gap-2 text-green-700 dark:text-green-400">
+                  <Check className="w-5 h-5" />
+                  <span className="font-medium">All payments complete! You're all settled up.</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
