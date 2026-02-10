@@ -1035,8 +1035,6 @@ export const api = {
       path: '/api/groups/:id/players/invite',
       input: z.object({
         name: z.string().min(1),
-        phone: z.string().optional(),
-        sendInvite: z.boolean().default(false),
       }),
       responses: {
         201: z.any(),

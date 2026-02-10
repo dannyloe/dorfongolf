@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -79,8 +79,6 @@ export default function Groups() {
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [addMemberMode, setAddMemberMode] = useState<'existing' | 'new'>('existing');
   const [newPlayerName, setNewPlayerName] = useState("");
-  const [newPlayerPhone, setNewPlayerPhone] = useState("");
-  const [sendInvite, setSendInvite] = useState(false);
   const [selectedExistingPlayerId, setSelectedExistingPlayerId] = useState<string>("");
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
@@ -229,17 +227,17 @@ export default function Groups() {
   });
 
   const invitePlayerMutation = useMutation({
-    mutationFn: async (data: { name: string; phone?: string; sendInvite: boolean }) => {
+    mutationFn: async (data: { name: string }) => {
       const res = await apiRequest("POST", `/api/groups/${selectedGroupId}/players/invite`, data);
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/my"] });
       queryClient.invalidateQueries({ queryKey: ["/api/preset-players"] });
       toast({
         title: "Member added",
-        description: data.smsSent ? "Player added and invitation sent!" : "Player added to group.",
+        description: "Player added to group.",
       });
       setAddMemberDialogOpen(false);
       resetAddMemberForm();
@@ -252,8 +250,6 @@ export default function Groups() {
   const resetAddMemberForm = () => {
     setAddMemberMode('existing');
     setNewPlayerName("");
-    setNewPlayerPhone("");
-    setSendInvite(false);
     setSelectedExistingPlayerId("");
   };
 
@@ -265,8 +261,6 @@ export default function Groups() {
     } else if (addMemberMode === 'new' && newPlayerName.trim()) {
       invitePlayerMutation.mutate({
         name: newPlayerName.trim(),
-        phone: newPlayerPhone.trim() || undefined,
-        sendInvite: sendInvite && !!newPlayerPhone.trim(),
       });
     }
   };
@@ -279,6 +273,25 @@ export default function Groups() {
       setTimeout(() => setCopiedCode(false), 2000);
     } catch {
       toast({ title: "Error", description: "Failed to copy code.", variant: "destructive" });
+    }
+  };
+
+  const handleShareInvite = async () => {
+    if (!groupDetail) return;
+    const code = groupDetail.inviteCode || '';
+    const text = `Join my group "${groupDetail.name}" on Golf Betting! Use invite code: ${code}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `Join ${groupDetail.name}`, text });
+      } catch {
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast({ title: "Copied", description: "Invite message copied to clipboard. Share it with your friends!" });
+      } catch {
+        toast({ title: "Error", description: "Could not share invite.", variant: "destructive" });
+      }
     }
   };
 
@@ -338,6 +351,15 @@ export default function Groups() {
                   data-testid="button-copy-invite-code"
                 >
                   {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleShareInvite}
+                  data-testid="button-share-invite"
+                >
+                  <Share2 className="w-4 h-4 mr-1" />
+                  Share Invite
                 </Button>
                 <Button
                   variant="outline"
@@ -598,31 +620,9 @@ export default function Groups() {
                       data-testid="input-new-player-name"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">Phone Number (optional)</label>
-                    <Input
-                      value={newPlayerPhone}
-                      onChange={(e) => setNewPlayerPhone(e.target.value)}
-                      placeholder="(555) 123-4567"
-                      type="tel"
-                      data-testid="input-new-player-phone"
-                    />
-                  </div>
-                  {newPlayerPhone.trim() && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="send-invite"
-                        checked={sendInvite}
-                        onChange={(e) => setSendInvite(e.target.checked)}
-                        className="rounded border-border"
-                        data-testid="checkbox-send-invite"
-                      />
-                      <label htmlFor="send-invite" className="text-sm text-muted-foreground cursor-pointer">
-                        Send SMS invitation
-                      </label>
-                    </div>
-                  )}
+                  <p className="text-xs text-muted-foreground">
+                    After adding, use the Share Invite button to send the group invite code via text, email, or any app on your device.
+                  </p>
                 </div>
               )}
             </div>
@@ -639,7 +639,7 @@ export default function Groups() {
                 }
                 data-testid="button-confirm-add-member"
               >
-                {invitePlayerMutation.isPending ? "Adding..." : (sendInvite && newPlayerPhone.trim() ? "Add & Send Invite" : "Add Member")}
+                {invitePlayerMutation.isPending ? "Adding..." : "Add Member"}
               </Button>
             </DialogFooter>
           </DialogContent>

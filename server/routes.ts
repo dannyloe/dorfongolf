@@ -2234,25 +2234,9 @@ Rules:
         }
       }
 
-      let smsSent = false;
-      if (input.sendInvite && input.phone) {
-        try {
-          const group = await storage.getGroupById(groupId);
-          if (group) {
-            const inviteCode = group.inviteCode || 'N/A';
-            const message = `You've been added to the "${group.name}" group on Golf Betting! Use invite code "${inviteCode}" to join when you sign up.`;
-            const result = await sendSMS(input.phone, message);
-            smsSent = result.success;
-          }
-        } catch (smsErr: any) {
-          console.error('[Group Invite] SMS send failed:', smsErr.message);
-        }
-      }
-
       res.status(201).json({
         presetPlayer,
-        smsSent,
-        message: smsSent ? 'Player added and invitation sent' : 'Player added to group'
+        message: 'Player added to group'
       });
     } catch (err: any) {
       console.error('[Group Invite] Error:', err.message);
