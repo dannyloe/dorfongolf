@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2 } from "lucide-react";
+import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -77,9 +76,7 @@ export default function Groups() {
   const [inviteCodeInput, setInviteCodeInput] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
-  const [addMemberMode, setAddMemberMode] = useState<'existing' | 'new'>('existing');
-  const [newPlayerName, setNewPlayerName] = useState("");
-  const [selectedExistingPlayerId, setSelectedExistingPlayerId] = useState<string>("");
+  const [playerSearchQuery, setPlayerSearchQuery] = useState("");
   const [playerFilter, setPlayerFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
@@ -249,20 +246,18 @@ export default function Groups() {
   });
 
   const resetAddMemberForm = () => {
-    setAddMemberMode('existing');
-    setNewPlayerName("");
-    setSelectedExistingPlayerId("");
+    setPlayerSearchQuery("");
   };
 
-  const handleAddMember = () => {
-    if (addMemberMode === 'existing' && selectedExistingPlayerId) {
-      addPlayerMutation.mutate(Number(selectedExistingPlayerId));
-      setAddMemberDialogOpen(false);
-      resetAddMemberForm();
-    } else if (addMemberMode === 'new' && newPlayerName.trim()) {
-      invitePlayerMutation.mutate({
-        name: newPlayerName.trim(),
-      });
+  const handleSelectExistingPlayer = (playerId: number) => {
+    addPlayerMutation.mutate(playerId);
+    setAddMemberDialogOpen(false);
+    resetAddMemberForm();
+  };
+
+  const handleCreateNewPlayer = () => {
+    if (playerSearchQuery.trim()) {
+      invitePlayerMutation.mutate({ name: playerSearchQuery.trim() });
     }
   };
 
@@ -307,6 +302,12 @@ export default function Groups() {
 
   const existingPlayerIds = new Set(groupDetail?.players.map(p => p.presetPlayerId) ?? []);
   const availablePlayers = allPresetPlayers.filter(p => !existingPlayerIds.has(p.id));
+
+  const filteredAvailablePlayers = availablePlayers.filter(p =>
+    p.name.toLowerCase().includes(playerSearchQuery.toLowerCase().trim())
+  );
+  const showCreateNew = playerSearchQuery.trim().length > 0 &&
+    !availablePlayers.some(p => p.name.toLowerCase() === playerSearchQuery.toLowerCase().trim());
 
   const memberUserIds = new Set(groupDetail?.members.map(m => m.userId) ?? []);
   const registeredPlayers = groupDetail?.members ?? [];
@@ -610,81 +611,62 @@ export default function Groups() {
             <DialogHeader>
               <DialogTitle>Add Player</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <Button
-                  variant={addMemberMode === 'existing' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setAddMemberMode('existing')}
-                  data-testid="button-mode-existing"
-                  className="flex-1"
-                >
-                  Existing Player
-                </Button>
-                <Button
-                  variant={addMemberMode === 'new' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setAddMemberMode('new')}
-                  data-testid="button-mode-new"
-                  className="flex-1"
-                >
-                  New Player
-                </Button>
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={playerSearchQuery}
+                  onChange={(e) => setPlayerSearchQuery(e.target.value)}
+                  placeholder="Search by name..."
+                  className="pl-9"
+                  autoFocus
+                  data-testid="input-player-search"
+                />
               </div>
-
-              {addMemberMode === 'existing' ? (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Select Player</label>
-                  {availablePlayers.length > 0 ? (
-                    <Select value={selectedExistingPlayerId} onValueChange={setSelectedExistingPlayerId}>
-                      <SelectTrigger data-testid="select-existing-player">
-                        <SelectValue placeholder="Choose a player..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availablePlayers.map((p) => (
-                          <SelectItem key={p.id} value={String(p.id)}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">All players are already in this group.</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">Player Name</label>
-                    <Input
-                      value={newPlayerName}
-                      onChange={(e) => setNewPlayerName(e.target.value)}
-                      placeholder="Enter player name..."
-                      data-testid="input-new-player-name"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    After adding, use the Share Invite button to send the group invite code via text, email, or any app on your device.
-                  </p>
-                </div>
+              <div className="max-h-60 overflow-y-auto space-y-1" data-testid="list-player-results">
+                {playerSearchQuery.trim() === "" && availablePlayers.length > 0 && (
+                  <p className="text-xs text-muted-foreground px-2 py-1">Type a name to search existing players or add a new one.</p>
+                )}
+                {playerSearchQuery.trim() !== "" && filteredAvailablePlayers.length === 0 && !showCreateNew && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No players found.</p>
+                )}
+                {(playerSearchQuery.trim() === "" ? availablePlayers : filteredAvailablePlayers).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleSelectExistingPlayer(p.id)}
+                    disabled={addPlayerMutation.isPending}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm hover-elevate active-elevate-2 transition-colors"
+                    data-testid={`button-select-player-${p.id}`}
+                  >
+                    <Avatar className="w-7 h-7">
+                      <AvatarFallback className="text-xs">{p.name[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <span>{p.name}</span>
+                    {p.claimedByUserId && (
+                      <Badge variant="secondary" className="ml-auto text-xs">Registered</Badge>
+                    )}
+                  </button>
+                ))}
+                {showCreateNew && (
+                  <button
+                    onClick={handleCreateNewPlayer}
+                    disabled={invitePlayerMutation.isPending}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm border border-dashed border-primary/40 hover-elevate active-elevate-2 transition-colors mt-1"
+                    data-testid="button-create-new-player"
+                  >
+                    <div className="w-7 h-7 rounded-full border-2 border-dashed border-primary/40 flex items-center justify-center">
+                      <Plus className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    <span>Add <strong>"{playerSearchQuery.trim()}"</strong> as new player</span>
+                  </button>
+                )}
+              </div>
+              {playerSearchQuery.trim() !== "" && showCreateNew && (
+                <p className="text-xs text-muted-foreground px-1">
+                  After adding, use the Share Invite button to send the group invite code.
+                </p>
               )}
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { resetAddMemberForm(); setAddMemberDialogOpen(false); }} data-testid="button-cancel-add-member">
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddMember}
-                disabled={
-                  (addMemberMode === 'existing' && !selectedExistingPlayerId) ||
-                  (addMemberMode === 'new' && !newPlayerName.trim()) ||
-                  invitePlayerMutation.isPending || addPlayerMutation.isPending
-                }
-                data-testid="button-confirm-add-member"
-              >
-                {invitePlayerMutation.isPending ? "Adding..." : "Add Player"}
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       </motion.div>
