@@ -10,6 +10,34 @@ import { users } from "./models/auth";
 export const groups = pgTable("groups", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
+  description: text("description"),
+  inviteCode: text("invite_code").unique(),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const groupMemberships = pgTable("group_memberships", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  userId: text("user_id").notNull(),
+  role: text("role").notNull().default("member"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const groupJoinRequests = pgTable("group_join_requests", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  userId: text("user_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export const groupPlayers = pgTable("group_players", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  presetPlayerId: integer("preset_player_id").notNull(),
+  addedBy: text("added_by"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -225,6 +253,42 @@ export const courseTeesRelations = relations(courseTees, ({ one }) => ({
 
 export const groupsRelations = relations(groups, ({ many }) => ({
   matches: many(matches),
+  memberships: many(groupMemberships),
+  joinRequests: many(groupJoinRequests),
+  groupPlayers: many(groupPlayers),
+}));
+
+export const groupMembershipsRelations = relations(groupMemberships, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupMemberships.groupId],
+    references: [groups.id],
+  }),
+  user: one(users, {
+    fields: [groupMemberships.userId],
+    references: [users.id],
+  }),
+}));
+
+export const groupJoinRequestsRelations = relations(groupJoinRequests, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupJoinRequests.groupId],
+    references: [groups.id],
+  }),
+  user: one(users, {
+    fields: [groupJoinRequests.userId],
+    references: [users.id],
+  }),
+}));
+
+export const groupPlayersRelations = relations(groupPlayers, ({ one }) => ({
+  group: one(groups, {
+    fields: [groupPlayers.groupId],
+    references: [groups.id],
+  }),
+  presetPlayer: one(presetPlayers, {
+    fields: [groupPlayers.presetPlayerId],
+    references: [presetPlayers.id],
+  }),
 }));
 
 export const matchesRelations = relations(matches, ({ one, many }) => ({
@@ -308,6 +372,25 @@ export const matchRolesRelations = relations(matchRoles, ({ one }) => ({
 // === BASE SCHEMAS ===
 
 export const insertGroupSchema = createInsertSchema(groups).omit({
+  id: true,
+  createdAt: true,
+  createdBy: true,
+  inviteCode: true,
+});
+
+export const insertGroupMembershipSchema = createInsertSchema(groupMemberships).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertGroupJoinRequestSchema = createInsertSchema(groupJoinRequests).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+  status: true,
+});
+
+export const insertGroupPlayerSchema = createInsertSchema(groupPlayers).omit({
   id: true,
   createdAt: true,
 });
@@ -408,6 +491,15 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
 export type Group = typeof groups.$inferSelect;
 export type InsertGroup = z.infer<typeof insertGroupSchema>;
 
+export type GroupMembership = typeof groupMemberships.$inferSelect;
+export type InsertGroupMembership = z.infer<typeof insertGroupMembershipSchema>;
+
+export type GroupJoinRequest = typeof groupJoinRequests.$inferSelect;
+export type InsertGroupJoinRequest = z.infer<typeof insertGroupJoinRequestSchema>;
+
+export type GroupPlayer = typeof groupPlayers.$inferSelect;
+export type InsertGroupPlayer = z.infer<typeof insertGroupPlayerSchema>;
+
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
 
@@ -496,6 +588,12 @@ export type CreateEventMatchRequest = {
   teams?: { name: string; playerIds: number[] }[];
 };
 
+export type GroupWithDetails = Group & {
+  memberCount: number;
+  playerCount: number;
+  role: string;
+};
+
 export type MatchResponse = Match & {
   creator?: typeof users.$inferSelect;
   players?: Player[];
@@ -562,6 +660,7 @@ export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value,
 export const ryderCupEvents = pgTable("ryder_cup_events", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  groupId: integer("group_id"),
   courseId: integer("course_id"),
   courseName: text("course_name").notNull(),
   creatorId: text("creator_id").notNull(),
@@ -1038,6 +1137,7 @@ export type SettlementWithPayments = Settlement & {
 
 export type CreateRyderCupEventRequest = {
   name: string;
+  groupId?: number;
   courseName: string; // default course name
   courseId?: number; // default course id
   buyInAmount?: number;

@@ -1,10 +1,12 @@
 import { useMatches, useDeleteMatch, useUpdateMatchStatus, useCloneEvent, useGroups } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useMemo } from "react";
 import { ClaimPresetPlayerModal } from "@/components/ClaimPresetPlayerModal";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +17,16 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [hasShownModal, setHasShownModal] = useState(false);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number | null>>(new Set());
+
+  const { data: myGroups = [] } = useQuery<{id: number; name: string; memberCount: number; playerCount: number; role: string}[]>({
+    queryKey: ["/api/groups/my"],
+    queryFn: async () => {
+      const res = await fetch("/api/groups/my", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch groups");
+      return res.json();
+    },
+  });
 
   const groupsById = useMemo(() => {
     const map = new Map<number, string>();
@@ -23,12 +35,62 @@ export default function Dashboard() {
   }, [groups]);
 
   useEffect(() => {
-    // Only show modal once per session if user hasn't claimed a preset
+    if (myGroups.length > 0 && selectedGroupIds.size === 0) {
+      const initial = new Set<number | null>(myGroups.map(g => g.id));
+      initial.add(null);
+      setSelectedGroupIds(initial);
+    }
+  }, [myGroups]);
+
+  useEffect(() => {
     if (user && !user.presetPlayerName && !hasShownModal) {
       setShowPresetModal(true);
       setHasShownModal(true);
     }
   }, [user, hasShownModal]);
+
+  const toggleGroup = (groupId: number | null) => {
+    setSelectedGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedGroupIds.size === myGroups.length + 1) {
+      setSelectedGroupIds(new Set());
+    } else {
+      const all = new Set<number | null>(myGroups.map(g => g.id));
+      all.add(null);
+      setSelectedGroupIds(all);
+    }
+  };
+
+  const filteredMatches = useMemo(() => {
+    if (!matches) return [];
+    if (myGroups.length === 0 && selectedGroupIds.size === 0) return matches;
+    return matches.filter(m => selectedGroupIds.has(m.groupId ?? null));
+  }, [matches, selectedGroupIds, myGroups]);
+
+  const groupedMatches = useMemo(() => {
+    const gMap = new Map<number | null, typeof filteredMatches>();
+    for (const m of filteredMatches) {
+      const key = m.groupId ?? null;
+      if (!gMap.has(key)) gMap.set(key, []);
+      gMap.get(key)!.push(m);
+    }
+    return gMap;
+  }, [filteredMatches]);
+
+  const activeMatches = filteredMatches.filter(m => !m.completed);
+  const pastMatches = filteredMatches.filter(m => m.completed);
+
+  const showGroupedSections = selectedGroupIds.size > 1;
 
   if (isLoading) {
     return (
@@ -39,9 +101,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  const activeMatches = matches?.filter(m => !m.completed) || [];
-  const pastMatches = matches?.filter(m => m.completed) || [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-12">
@@ -62,40 +121,120 @@ export default function Dashboard() {
         </Link>
       </motion.div>
 
-      {/* Active Events Section */}
-      <section>
-        <h2 className="text-xl font-bold font-display text-foreground mb-6 flex items-center gap-2">
-          <div className="w-2 h-8 bg-accent rounded-full" />
-          Active Events
-        </h2>
-        
-        {activeMatches.length === 0 ? (
-          <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
-            <p className="text-muted-foreground mb-4">No active events found.</p>
-            <p className="text-sm font-medium text-primary">Click "New Event" to start playing!</p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {activeMatches.map((match) => (
-              <MatchCard key={match.id} match={match} userId={user?.id} groupsById={groupsById} />
-            ))}
-          </div>
-        )}
-      </section>
+      {myGroups.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center" data-testid="group-filter-bar">
+          <span className="text-sm font-medium text-muted-foreground mr-1">Filter:</span>
+          <Badge
+            className={`cursor-pointer toggle-elevate ${selectedGroupIds.size === myGroups.length + 1 ? 'toggle-elevated' : ''}`}
+            variant={selectedGroupIds.size === myGroups.length + 1 ? "default" : "outline"}
+            onClick={toggleAll}
+            data-testid="filter-all-groups"
+          >
+            All
+          </Badge>
+          {myGroups.map(group => (
+            <Badge
+              key={group.id}
+              className={`cursor-pointer toggle-elevate ${selectedGroupIds.has(group.id) ? 'toggle-elevated' : ''}`}
+              variant={selectedGroupIds.has(group.id) ? "default" : "outline"}
+              onClick={() => toggleGroup(group.id)}
+              data-testid={`filter-group-${group.id}`}
+            >
+              {group.name}
+            </Badge>
+          ))}
+          <Badge
+            className={`cursor-pointer toggle-elevate ${selectedGroupIds.has(null) ? 'toggle-elevated' : ''}`}
+            variant={selectedGroupIds.has(null) ? "default" : "outline"}
+            onClick={() => toggleGroup(null)}
+            data-testid="filter-ungrouped"
+          >
+            Ungrouped
+          </Badge>
+        </div>
+      )}
 
-      {/* Past Matches Section */}
-      {pastMatches.length > 0 && (
-        <section>
-          <h2 className="text-xl font-bold font-display text-foreground mb-6 flex items-center gap-2">
-            <div className="w-2 h-8 bg-muted rounded-full" />
-            History
-          </h2>
-          <div className="grid gap-4 opacity-80 hover:opacity-100 transition-opacity">
-            {pastMatches.map((match) => (
-              <MatchCard key={match.id} match={match} isHistory userId={user?.id} groupsById={groupsById} />
-            ))}
-          </div>
-        </section>
+      {showGroupedSections ? (
+        <>
+          {Array.from(groupedMatches.entries())
+            .sort(([a], [b]) => {
+              if (a === null) return 1;
+              if (b === null) return -1;
+              return 0;
+            })
+            .map(([groupId, groupMatchList]) => {
+              const active = groupMatchList.filter(m => !m.completed);
+              const completed = groupMatchList.filter(m => m.completed);
+              const groupName = groupId === null ? "Ungrouped" : (groupsById.get(groupId) || myGroups.find(g => g.id === groupId)?.name || `Group ${groupId}`);
+
+              return (
+                <section key={groupId ?? "ungrouped"} data-testid={`group-section-${groupId ?? 'ungrouped'}`}>
+                  <h2 className="text-xl font-bold font-display text-foreground mb-6 flex items-center gap-2">
+                    <div className="w-2 h-8 bg-accent rounded-full" />
+                    {groupName}
+                  </h2>
+
+                  {active.length > 0 && (
+                    <div className="grid gap-4 mb-6">
+                      {active.map((match) => (
+                        <MatchCard key={match.id} match={match} userId={user?.id} groupsById={groupsById} />
+                      ))}
+                    </div>
+                  )}
+
+                  {completed.length > 0 && (
+                    <div className="grid gap-4 opacity-80 hover:opacity-100 transition-opacity">
+                      {completed.map((match) => (
+                        <MatchCard key={match.id} match={match} isHistory userId={user?.id} groupsById={groupsById} />
+                      ))}
+                    </div>
+                  )}
+
+                  {active.length === 0 && completed.length === 0 && (
+                    <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
+                      <p className="text-muted-foreground">No events in this group.</p>
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+        </>
+      ) : (
+        <>
+          <section>
+            <h2 className="text-xl font-bold font-display text-foreground mb-6 flex items-center gap-2">
+              <div className="w-2 h-8 bg-accent rounded-full" />
+              Active Events
+            </h2>
+            
+            {activeMatches.length === 0 ? (
+              <div className="bg-white border border-dashed border-border rounded-2xl p-12 text-center">
+                <p className="text-muted-foreground mb-4">No active events found.</p>
+                <p className="text-sm font-medium text-primary">Click "New Event" to start playing!</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {activeMatches.map((match) => (
+                  <MatchCard key={match.id} match={match} userId={user?.id} groupsById={groupsById} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {pastMatches.length > 0 && (
+            <section>
+              <h2 className="text-xl font-bold font-display text-foreground mb-6 flex items-center gap-2">
+                <div className="w-2 h-8 bg-muted rounded-full" />
+                History
+              </h2>
+              <div className="grid gap-4 opacity-80 hover:opacity-100 transition-opacity">
+                {pastMatches.map((match) => (
+                  <MatchCard key={match.id} match={match} isHistory userId={user?.id} groupsById={groupsById} />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       {user && (

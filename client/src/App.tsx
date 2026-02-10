@@ -19,6 +19,7 @@ import RyderCupCreate from "@/pages/RyderCupCreate";
 import RyderCupEvent from "@/pages/RyderCupEvent";
 import RyderCupScorecard from "@/pages/RyderCupScorecard";
 import Profile from "@/pages/Profile";
+import Groups from "@/pages/Groups";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -91,6 +92,9 @@ function Router() {
       </Route>
       <Route path="/profile">
         <PrivateRoute component={Profile} />
+      </Route>
+      <Route path="/groups">
+        <PrivateRoute component={Groups} />
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -67,6 +67,12 @@ export function Layout({ children }: { children: ReactNode }) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link href="/groups" className="flex items-center gap-2 w-full" data-testid="mobile-link-groups">
+                      <Users className="w-4 h-4" />
+                      Groups
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link href="/profile" className="flex items-center gap-2 w-full" data-testid="mobile-link-profile">
                       <User className="w-4 h-4" />
                       Profile
@@ -130,6 +136,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 >
                   <Trophy className="w-4 h-4" />
                   Ryder Cup
+                </Link>
+                <Link 
+                  href="/groups" 
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${isActive('/groups') || location.startsWith('/groups') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  data-testid="link-groups"
+                >
+                  <Users className="w-4 h-4" />
+                  Groups
                 </Link>
               </nav>
 

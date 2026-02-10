@@ -1953,16 +1953,49 @@ Rules:
     }
   });
 
-  // Groups endpoints
+  // === GROUP ROUTES ===
+  
   app.get(api.groups.list.path, isAuthenticated, async (req, res) => {
-    const groups = await storage.getGroups();
-    res.json(groups);
+    const allGroups = await storage.getGroups();
+    res.json(allGroups);
+  });
+
+  app.get(api.groups.myGroups.path, isAuthenticated, async (req, res) => {
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const myGroups = await storage.getGroupsForUser(userId);
+    res.json(myGroups);
+  });
+
+  app.post(api.groups.joinByCode.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.groups.joinByCode.input.parse(req.body);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const group = await storage.getGroupByInviteCode(input.inviteCode.toUpperCase());
+      if (!group) {
+        return res.status(404).json({ message: "Invalid invite code" });
+      }
+      const existing = await storage.getGroupMembership(group.id, userId);
+      if (existing) {
+        return res.status(400).json({ message: "You are already a member of this group" });
+      }
+      await storage.addGroupMember(group.id, userId, 'member');
+      res.json(group);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.post(api.groups.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.groups.create.input.parse(req.body);
-      const group = await storage.createGroup(input.name);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const group = await storage.createGroupWithMembership(input.name, input.description || null, userId);
       res.status(201).json(group);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1970,6 +2003,224 @@ Rules:
       }
       res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  app.get(api.groups.get.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const group = await storage.getGroupById(groupId);
+    if (!group) return res.status(404).json({ message: "Group not found" });
+    
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    const members = await storage.getGroupMembers(groupId);
+    const groupPlayers = await storage.getGroupPlayers(groupId);
+    const pendingRequests = membership?.role === 'admin' 
+      ? await storage.getPendingJoinRequests(groupId) 
+      : [];
+    
+    res.json({
+      ...group,
+      role: membership?.role || null,
+      members,
+      players: groupPlayers,
+      pendingRequests,
+    });
+  });
+
+  app.patch(api.groups.update.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can update group settings" });
+    }
+    try {
+      const input = api.groups.update.input.parse(req.body);
+      const updated = await storage.updateGroup(groupId, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.groups.delete.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can delete groups" });
+    }
+    await storage.deleteGroup(groupId);
+    res.status(204).send();
+  });
+
+  app.get(api.groups.members.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const members = await storage.getGroupMembers(groupId);
+    res.json(members);
+  });
+
+  app.post(api.groups.addMember.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add members" });
+    }
+    try {
+      const input = api.groups.addMember.input.parse(req.body);
+      const existing = await storage.getGroupMembership(groupId, input.userId);
+      if (existing) {
+        return res.status(400).json({ message: "User is already a member of this group" });
+      }
+      const member = await storage.addGroupMember(groupId, input.userId, input.role);
+      res.status(201).json(member);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.groups.removeMember.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const targetUserId = req.params.userId;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if ((!membership || membership.role !== 'admin') && userId !== targetUserId) {
+      return res.status(403).json({ message: "Only group admins can remove members" });
+    }
+    await storage.removeGroupMember(groupId, targetUserId);
+    res.status(204).send();
+  });
+
+  app.patch(api.groups.updateMemberRole.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const targetUserId = req.params.userId;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can change roles" });
+    }
+    try {
+      const input = api.groups.updateMemberRole.input.parse(req.body);
+      const updated = await storage.updateGroupMemberRole(groupId, targetUserId, input.role);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.groups.requestJoin.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const existing = await storage.getGroupMembership(groupId, userId);
+    if (existing) {
+      return res.status(400).json({ message: "You are already a member of this group" });
+    }
+    const request = await storage.createJoinRequest(groupId, userId);
+    res.status(201).json(request);
+  });
+
+  app.get(api.groups.pendingRequests.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can view pending requests" });
+    }
+    const requests = await storage.getPendingJoinRequests(groupId);
+    res.json(requests);
+  });
+
+  app.patch(api.groups.resolveRequest.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const requestId = parseInt(req.params.requestId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can resolve join requests" });
+    }
+    try {
+      const input = api.groups.resolveRequest.input.parse(req.body);
+      const updated = await storage.resolveJoinRequest(requestId, input.status);
+      if (input.status === 'approved') {
+        await storage.addGroupMember(groupId, updated.userId, 'member');
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.groups.regenerateInviteCode.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can regenerate invite codes" });
+    }
+    const updated = await storage.regenerateInviteCode(groupId);
+    res.json(updated);
+  });
+
+  app.get(api.groups.players.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const groupPlayersList = await storage.getGroupPlayers(groupId);
+    res.json(groupPlayersList);
+  });
+
+  app.post(api.groups.addPlayer.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const input = api.groups.addPlayer.input.parse(req.body);
+      const gp = await storage.addGroupPlayer(groupId, input.presetPlayerId, userId);
+      res.status(201).json(gp);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.groups.removePlayer.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const presetPlayerId = parseInt(req.params.presetPlayerId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can remove players" });
+    }
+    await storage.removeGroupPlayer(groupId, presetPlayerId);
+    res.status(204).send();
   });
 
   // === RYDER CUP ROUTES ===

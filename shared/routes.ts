@@ -877,15 +877,165 @@ export const api = {
         200: z.array(z.custom<typeof groups.$inferSelect>()),
       },
     },
+    myGroups: {
+      method: 'GET' as const,
+      path: '/api/groups/my',
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
     create: {
       method: 'POST' as const,
       path: '/api/groups',
       input: z.object({
         name: z.string().min(1),
+        description: z.string().nullable().optional(),
       }),
       responses: {
         201: z.custom<typeof groups.$inferSelect>(),
         400: errorSchemas.validation,
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/groups/:id',
+      responses: {
+        200: z.any(),
+        404: errorSchemas.notFound,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/groups/:id',
+      input: z.object({
+        name: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+      }),
+      responses: {
+        200: z.custom<typeof groups.$inferSelect>(),
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/groups/:id',
+      responses: {
+        204: z.void(),
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
+    members: {
+      method: 'GET' as const,
+      path: '/api/groups/:id/members',
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
+    addMember: {
+      method: 'POST' as const,
+      path: '/api/groups/:id/members',
+      input: z.object({
+        userId: z.string(),
+        role: z.enum(['admin', 'member']).default('member'),
+      }),
+      responses: {
+        201: z.any(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+      },
+    },
+    removeMember: {
+      method: 'DELETE' as const,
+      path: '/api/groups/:id/members/:userId',
+      responses: {
+        204: z.void(),
+        403: errorSchemas.forbidden,
+      },
+    },
+    updateMemberRole: {
+      method: 'PATCH' as const,
+      path: '/api/groups/:id/members/:userId/role',
+      input: z.object({
+        role: z.enum(['admin', 'member']),
+      }),
+      responses: {
+        200: z.any(),
+        403: errorSchemas.forbidden,
+      },
+    },
+    joinByCode: {
+      method: 'POST' as const,
+      path: '/api/groups/join',
+      input: z.object({
+        inviteCode: z.string().min(1),
+      }),
+      responses: {
+        200: z.custom<typeof groups.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    requestJoin: {
+      method: 'POST' as const,
+      path: '/api/groups/:id/join-requests',
+      responses: {
+        201: z.any(),
+        400: errorSchemas.validation,
+      },
+    },
+    pendingRequests: {
+      method: 'GET' as const,
+      path: '/api/groups/:id/join-requests',
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
+    resolveRequest: {
+      method: 'PATCH' as const,
+      path: '/api/groups/:id/join-requests/:requestId',
+      input: z.object({
+        status: z.enum(['approved', 'rejected']),
+      }),
+      responses: {
+        200: z.any(),
+        403: errorSchemas.forbidden,
+      },
+    },
+    regenerateInviteCode: {
+      method: 'POST' as const,
+      path: '/api/groups/:id/invite-code',
+      responses: {
+        200: z.custom<typeof groups.$inferSelect>(),
+        403: errorSchemas.forbidden,
+      },
+    },
+    players: {
+      method: 'GET' as const,
+      path: '/api/groups/:id/players',
+      responses: {
+        200: z.array(z.any()),
+      },
+    },
+    addPlayer: {
+      method: 'POST' as const,
+      path: '/api/groups/:id/players',
+      input: z.object({
+        presetPlayerId: z.number(),
+      }),
+      responses: {
+        201: z.any(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+      },
+    },
+    removePlayer: {
+      method: 'DELETE' as const,
+      path: '/api/groups/:id/players/:presetPlayerId',
+      responses: {
+        204: z.void(),
+        403: errorSchemas.forbidden,
       },
     },
   },
@@ -996,6 +1146,7 @@ export const api = {
       path: '/api/ryder-cup',
       input: z.object({
         name: z.string().min(1),
+        groupId: z.number().optional(),
         courseName: z.string().min(1),
         courseId: z.number().optional(),
         buyInAmount: z.number().optional(),

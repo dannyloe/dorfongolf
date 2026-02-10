@@ -22,6 +22,7 @@ export default function RyderCupCreate() {
   const [step, setStep] = useState(1);
 
   const [eventName, setEventName] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>();
   const [courseName, setCourseName] = useState("");
   const [courseId, setCourseId] = useState<number | undefined>();
   const [useHandicaps, setUseHandicaps] = useState(false);
@@ -57,6 +58,15 @@ export default function RyderCupCreate() {
     queryKey: ["/api/courses"],
   });
 
+  const { data: myGroups = [] } = useQuery<{id: number; name: string; memberCount: number; playerCount: number; role: string}[]>({
+    queryKey: ["/api/groups/my"],
+    queryFn: async () => {
+      const res = await fetch("/api/groups/my", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const { data: playerData } = useQuery<FullPlayerData>({
     queryKey: ["/api/preset-players/full"],
   });
@@ -77,6 +87,7 @@ export default function RyderCupCreate() {
     mutationFn: async () => {
       const payload = {
         name: eventName,
+        groupId: selectedGroupId,
         courseName: useDifferentCourses ? dayConfigs[0].courseName : courseName,
         courseId: useDifferentCourses ? dayConfigs[0].courseId : courseId,
         buyInAmount: Math.round(buyInAmount * 100),
@@ -162,6 +173,25 @@ export default function RyderCupCreate() {
             data-testid="input-event-name"
           />
         </div>
+        {myGroups.length > 0 && (
+          <div>
+            <Label htmlFor="group">Group</Label>
+            <div className="relative">
+              <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <select
+                value={selectedGroupId ?? ""}
+                onChange={(e) => setSelectedGroupId(e.target.value ? parseInt(e.target.value) : undefined)}
+                className="input-field pl-10 appearance-none cursor-pointer w-full"
+                data-testid="select-group"
+              >
+                <option value="">No group</option>
+                {myGroups.map((group) => (
+                  <option key={group.id} value={group.id}>{group.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <div>
             <Label>Different Course Each Day</Label>

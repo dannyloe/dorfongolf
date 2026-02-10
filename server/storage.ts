@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
+  groupMemberships, groupJoinRequests, groupPlayers,
   verificationCodes, notificationPreferences, messages,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
@@ -13,6 +14,7 @@ import {
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
   type PlayerCourseDefault, type InsertPlayerCourseDefault,
   type Group, type InsertGroup,
+  type GroupMembership, type GroupJoinRequest, type GroupPlayer, type GroupWithDetails,
   type PresetPlayer, type InsertPresetPlayer,
   type PlayerAlias, type InsertPlayerAlias,
   type MatchRole, type InsertMatchRole,
@@ -90,6 +92,35 @@ export interface IStorage {
   archiveSettlement(settlementId: number): Promise<boolean>;
   togglePaymentComplete(paymentId: number): Promise<SettlementPayment | null>;
   deleteSettlement(settlementId: number): Promise<boolean>;
+
+  // Group membership methods
+  getGroupsForUser(userId: string): Promise<GroupWithDetails[]>;
+  createGroupWithMembership(name: string, description: string | null, createdBy: string): Promise<Group>;
+  getGroupById(id: number): Promise<Group | undefined>;
+  updateGroup(groupId: number, data: { name?: string; description?: string | null }): Promise<Group>;
+  deleteGroup(groupId: number): Promise<boolean>;
+  
+  // Group membership
+  getGroupMembers(groupId: number): Promise<(GroupMembership & { user?: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null; profileImageUrl: string | null } })[]>;
+  addGroupMember(groupId: number, userId: string, role: string): Promise<GroupMembership>;
+  removeGroupMember(groupId: number, userId: string): Promise<boolean>;
+  updateGroupMemberRole(groupId: number, userId: string, role: string): Promise<GroupMembership | null>;
+  getGroupMembership(groupId: number, userId: string): Promise<GroupMembership | null>;
+  
+  // Group join requests
+  createJoinRequest(groupId: number, userId: string): Promise<GroupJoinRequest>;
+  getPendingJoinRequests(groupId: number): Promise<(GroupJoinRequest & { user?: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null; profileImageUrl: string | null } })[]>;
+  resolveJoinRequest(requestId: number, status: string): Promise<GroupJoinRequest>;
+  
+  // Group invite codes
+  getGroupByInviteCode(code: string): Promise<Group | undefined>;
+  regenerateInviteCode(groupId: number): Promise<Group>;
+  
+  // Group players (preset players linked to groups)
+  getGroupPlayers(groupId: number): Promise<(GroupPlayer & { presetPlayer?: { id: number; name: string } })[]>;
+  addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer>;
+  removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean>;
+  getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1224,7 +1255,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGroup(name: string): Promise<Group> {
-    const [newGroup] = await db.insert(groups).values({ name }).returning();
+    const [newGroup] = await db.insert(groups).values({ name, createdBy: '' }).returning();
     return newGroup;
   }
 
@@ -1239,6 +1270,202 @@ export class DatabaseStorage implements IStorage {
       .where(eq(matches.id, matchId))
       .returning();
     return updated;
+  }
+
+  async getGroupsForUser(userId: string): Promise<GroupWithDetails[]> {
+    const memberships = await db.select().from(groupMemberships).where(eq(groupMemberships.userId, userId));
+    if (memberships.length === 0) return [];
+    
+    const groupIds = memberships.map(m => m.groupId);
+    const userGroups = await db.select().from(groups).where(inArray(groups.id, groupIds));
+    
+    const result: GroupWithDetails[] = [];
+    for (const group of userGroups) {
+      const membership = memberships.find(m => m.groupId === group.id);
+      const memberCount = await db.select().from(groupMemberships).where(eq(groupMemberships.groupId, group.id));
+      const playerCount = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, group.id));
+      
+      result.push({
+        ...group,
+        memberCount: memberCount.length,
+        playerCount: playerCount.length,
+        role: membership?.role || 'member',
+      });
+    }
+    return result;
+  }
+
+  async createGroupWithMembership(name: string, description: string | null, createdBy: string): Promise<Group> {
+    const inviteCode = this.generateInviteCode();
+    const [newGroup] = await db.insert(groups).values({ 
+      name, 
+      description, 
+      inviteCode,
+      createdBy,
+    }).returning();
+    
+    await db.insert(groupMemberships).values({
+      groupId: newGroup.id,
+      userId: createdBy,
+      role: 'admin',
+    });
+    
+    return newGroup;
+  }
+
+  private generateInviteCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 8; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  async updateGroup(groupId: number, data: { name?: string; description?: string | null }): Promise<Group> {
+    const updateData: Partial<{ name: string; description: string | null }> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    
+    const [updated] = await db.update(groups).set(updateData).where(eq(groups.id, groupId)).returning();
+    return updated;
+  }
+
+  async deleteGroup(groupId: number): Promise<boolean> {
+    await db.delete(groupMemberships).where(eq(groupMemberships.groupId, groupId));
+    await db.delete(groupJoinRequests).where(eq(groupJoinRequests.groupId, groupId));
+    await db.delete(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+    await db.delete(groups).where(eq(groups.id, groupId));
+    return true;
+  }
+
+  async getGroupMembers(groupId: number) {
+    const members = await db.select().from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
+    const result = [];
+    for (const member of members) {
+      const [user] = await db.select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        presetPlayerName: users.presetPlayerName,
+        profileImageUrl: users.profileImageUrl,
+      }).from(users).where(eq(users.id, member.userId));
+      result.push({ ...member, user: user || undefined });
+    }
+    return result;
+  }
+
+  async addGroupMember(groupId: number, userId: string, role: string = 'member'): Promise<GroupMembership> {
+    const [membership] = await db.insert(groupMemberships).values({
+      groupId,
+      userId,
+      role,
+    }).returning();
+    return membership;
+  }
+
+  async removeGroupMember(groupId: number, userId: string): Promise<boolean> {
+    await db.delete(groupMemberships)
+      .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)));
+    return true;
+  }
+
+  async updateGroupMemberRole(groupId: number, userId: string, role: string): Promise<GroupMembership | null> {
+    const [updated] = await db.update(groupMemberships)
+      .set({ role })
+      .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)))
+      .returning();
+    return updated || null;
+  }
+
+  async getGroupMembership(groupId: number, userId: string): Promise<GroupMembership | null> {
+    const [membership] = await db.select().from(groupMemberships)
+      .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)));
+    return membership || null;
+  }
+
+  async createJoinRequest(groupId: number, userId: string): Promise<GroupJoinRequest> {
+    const [request] = await db.insert(groupJoinRequests).values({
+      groupId,
+      userId,
+    }).returning();
+    return request;
+  }
+
+  async getPendingJoinRequests(groupId: number) {
+    const requests = await db.select().from(groupJoinRequests)
+      .where(and(eq(groupJoinRequests.groupId, groupId), eq(groupJoinRequests.status, 'pending')));
+    const result = [];
+    for (const req of requests) {
+      const [user] = await db.select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        presetPlayerName: users.presetPlayerName,
+        profileImageUrl: users.profileImageUrl,
+      }).from(users).where(eq(users.id, req.userId));
+      result.push({ ...req, user: user || undefined });
+    }
+    return result;
+  }
+
+  async resolveJoinRequest(requestId: number, status: string): Promise<GroupJoinRequest> {
+    const [updated] = await db.update(groupJoinRequests)
+      .set({ status, resolvedAt: new Date() })
+      .where(eq(groupJoinRequests.id, requestId))
+      .returning();
+    return updated;
+  }
+
+  async getGroupByInviteCode(code: string): Promise<Group | undefined> {
+    const [group] = await db.select().from(groups).where(eq(groups.inviteCode, code));
+    return group;
+  }
+
+  async regenerateInviteCode(groupId: number): Promise<Group> {
+    const newCode = this.generateInviteCode();
+    const [updated] = await db.update(groups).set({ inviteCode: newCode }).where(eq(groups.id, groupId)).returning();
+    return updated;
+  }
+
+  async getGroupPlayers(groupId: number) {
+    const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+    const result = [];
+    for (const gp of gps) {
+      const [pp] = await db.select({ id: presetPlayers.id, name: presetPlayers.name })
+        .from(presetPlayers).where(eq(presetPlayers.id, gp.presetPlayerId));
+      result.push({ ...gp, presetPlayer: pp || undefined });
+    }
+    return result;
+  }
+
+  async addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer> {
+    const [gp] = await db.insert(groupPlayers).values({
+      groupId,
+      presetPlayerId,
+      addedBy: addedBy || null,
+    }).returning();
+    return gp;
+  }
+
+  async removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean> {
+    await db.delete(groupPlayers)
+      .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.presetPlayerId, presetPlayerId)));
+    return true;
+  }
+
+  async getPresetPlayersForGroups(groupIds: number[]) {
+    if (groupIds.length === 0) return [];
+    const gps = await db.select().from(groupPlayers).where(inArray(groupPlayers.groupId, groupIds));
+    const result = [];
+    for (const gp of gps) {
+      const [pp] = await db.select({ id: presetPlayers.id, name: presetPlayers.name })
+        .from(presetPlayers).where(eq(presetPlayers.id, gp.presetPlayerId));
+      if (pp) {
+        result.push({ ...pp, groupId: gp.groupId });
+      }
+    }
+    return result;
   }
 
   // Dynamic preset players
@@ -1899,6 +2126,7 @@ export class DatabaseStorage implements IStorage {
 
     const [event] = await db.insert(ryderCupEvents).values({
       name: data.name,
+      groupId: data.groupId ?? null,
       courseName: data.courseName,
       courseId,
       creatorId,

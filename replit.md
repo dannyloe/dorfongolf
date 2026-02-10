@@ -36,7 +36,8 @@ Preferred communication style: Simple, everyday language.
 - **Manual Bet Entry**: Allows users to record bets outside of tracked matches, with server-side validation ensuring amounts sum to zero.
 - **Event Match Results Storage**: Pre-calculated bet results are stored in `eventMatchResults` table for consistency and efficiency, with API endpoints for retrieval and storage.
 - **Match-Specific Course Handicap Overrides**: Users can override calculated course handicaps for individual players within a match, affecting only that match.
-- **Event Groups**: Matches can be associated with groups for organization into leagues or series, with inline editing capabilities.
+- **Multi-Tenancy Group System**: Full group membership system where users create/join groups via invite codes with admin approval. Groups organize events, players, and members. Tables: `groups`, `groupMemberships`, `groupJoinRequests`, `groupPlayers`. 18 API endpoints under `/api/groups/*` handle CRUD, membership management, join requests, and player associations. Role-based authorization (admin vs member) for sensitive operations. Dashboard and Ryder Cup list feature toggleable group filter badges for multi-group event filtering with events organized by group section. Groups management page at `/groups` with create/join workflows and admin panel (members, players, requests tabs).
+- **Event Groups**: Matches and Ryder Cup events can be associated with groups via `groupId` foreign key, with inline editing capabilities.
 - **Match Roles and Permissions**: A three-tier permission system (Creator, Organizer, Viewer, Player) with backend enforcement, allowing granular control over match data.
 - **Ledger Filtering**: Comprehensive filtering options for date range, event, group, and course to analyze financial and game data.
 - **Scorecard Scanning**: AI-powered feature to scan physical scorecards using Gemini Vision AI, extract scores, and allow user review before saving.

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useDeleteRyderCupEvent } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { RyderCupEvent } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -15,8 +15,54 @@ export default function RyderCupList() {
     queryKey: ["/api/ryder-cup"],
   });
 
-  const activeEvents = events.filter(e => e.status !== "completed");
-  const pastEvents = events.filter(e => e.status === "completed");
+  const { data: myGroups = [] } = useQuery<{id: number; name: string; memberCount: number; playerCount: number; role: string}[]>({
+    queryKey: ["/api/groups/my"],
+    queryFn: async () => {
+      const res = await fetch("/api/groups/my", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number | null>>(new Set());
+
+  useEffect(() => {
+    if (myGroups.length > 0 && selectedGroupIds.size === 0) {
+      const initial = new Set<number | null>(myGroups.map(g => g.id));
+      initial.add(null);
+      setSelectedGroupIds(initial);
+    }
+  }, [myGroups]);
+
+  const toggleGroup = (groupId: number | null) => {
+    setSelectedGroupIds(prev => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedGroupIds.size === myGroups.length + 1) {
+      setSelectedGroupIds(new Set());
+    } else {
+      const all = new Set<number | null>(myGroups.map(g => g.id));
+      all.add(null);
+      setSelectedGroupIds(all);
+    }
+  };
+
+  const filteredEvents = useMemo(() => {
+    if (myGroups.length === 0 && selectedGroupIds.size === 0) return events;
+    return events.filter(e => selectedGroupIds.has(e.groupId ?? null));
+  }, [events, selectedGroupIds, myGroups]);
+
+  const activeEvents = filteredEvents.filter(e => e.status !== "completed");
+  const pastEvents = filteredEvents.filter(e => e.status === "completed");
 
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -44,6 +90,39 @@ export default function RyderCupList() {
           </Button>
         </Link>
       </div>
+
+      {myGroups.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2" data-testid="ryder-cup-group-filter">
+          <span className="text-sm font-medium text-muted-foreground mr-1">Filter:</span>
+          <Badge
+            className={`cursor-pointer toggle-elevate ${selectedGroupIds.size === myGroups.length + 1 ? 'toggle-elevated' : ''}`}
+            variant={selectedGroupIds.size === myGroups.length + 1 ? "default" : "outline"}
+            onClick={toggleAll}
+            data-testid="filter-all-groups"
+          >
+            All
+          </Badge>
+          {myGroups.map(group => (
+            <Badge
+              key={group.id}
+              className={`cursor-pointer toggle-elevate ${selectedGroupIds.has(group.id) ? 'toggle-elevated' : ''}`}
+              variant={selectedGroupIds.has(group.id) ? "default" : "outline"}
+              onClick={() => toggleGroup(group.id)}
+              data-testid={`filter-group-${group.id}`}
+            >
+              {group.name}
+            </Badge>
+          ))}
+          <Badge
+            className={`cursor-pointer toggle-elevate ${selectedGroupIds.has(null) ? 'toggle-elevated' : ''}`}
+            variant={selectedGroupIds.has(null) ? "default" : "outline"}
+            onClick={() => toggleGroup(null)}
+            data-testid="filter-ungrouped"
+          >
+            Ungrouped
+          </Badge>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
