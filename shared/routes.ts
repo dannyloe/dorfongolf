@@ -1030,6 +1030,20 @@ export const api = {
         403: errorSchemas.forbidden,
       },
     },
+    invitePlayer: {
+      method: 'POST' as const,
+      path: '/api/groups/:id/players/invite',
+      input: z.object({
+        name: z.string().min(1),
+        phone: z.string().optional(),
+        sendInvite: z.boolean().default(false),
+      }),
+      responses: {
+        201: z.any(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+      },
+    },
     removePlayer: {
       method: 'DELETE' as const,
       path: '/api/groups/:id/players/:presetPlayerId',

@@ -76,6 +76,12 @@ export default function Groups() {
   const [newGroupDescription, setNewGroupDescription] = useState("");
   const [inviteCodeInput, setInviteCodeInput] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
+  const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
+  const [addMemberMode, setAddMemberMode] = useState<'existing' | 'new'>('existing');
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [newPlayerPhone, setNewPlayerPhone] = useState("");
+  const [sendInvite, setSendInvite] = useState(false);
+  const [selectedExistingPlayerId, setSelectedExistingPlayerId] = useState<string>("");
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
     queryKey: ["/api/groups/my"],
@@ -221,6 +227,49 @@ export default function Groups() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+
+  const invitePlayerMutation = useMutation({
+    mutationFn: async (data: { name: string; phone?: string; sendInvite: boolean }) => {
+      const res = await apiRequest("POST", `/api/groups/${selectedGroupId}/players/invite`, data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/my"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players"] });
+      toast({
+        title: "Member added",
+        description: data.smsSent ? "Player added and invitation sent!" : "Player added to group.",
+      });
+      setAddMemberDialogOpen(false);
+      resetAddMemberForm();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resetAddMemberForm = () => {
+    setAddMemberMode('existing');
+    setNewPlayerName("");
+    setNewPlayerPhone("");
+    setSendInvite(false);
+    setSelectedExistingPlayerId("");
+  };
+
+  const handleAddMember = () => {
+    if (addMemberMode === 'existing' && selectedExistingPlayerId) {
+      addPlayerMutation.mutate(Number(selectedExistingPlayerId));
+      setAddMemberDialogOpen(false);
+      resetAddMemberForm();
+    } else if (addMemberMode === 'new' && newPlayerName.trim()) {
+      invitePlayerMutation.mutate({
+        name: newPlayerName.trim(),
+        phone: newPlayerPhone.trim() || undefined,
+        sendInvite: sendInvite && !!newPlayerPhone.trim(),
+      });
+    }
+  };
 
   const handleCopyInviteCode = async (code: string) => {
     try {
@@ -389,23 +438,14 @@ export default function Groups() {
             </TabsContent>
 
             <TabsContent value="players" className="space-y-4 mt-4">
-              {isAdmin && availablePlayers.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select
-                    onValueChange={(val) => addPlayerMutation.mutate(Number(val))}
-                  >
-                    <SelectTrigger className="w-[250px]" data-testid="select-add-player">
-                      <SelectValue placeholder="Add a player..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availablePlayers.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)} data-testid={`option-player-${p.id}`}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {isAdmin && (
+                <Button
+                  onClick={() => setAddMemberDialogOpen(true)}
+                  data-testid="button-add-member"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Add Member
+                </Button>
               )}
 
               {groupDetail?.players.map((player) => (
@@ -499,6 +539,111 @@ export default function Groups() {
             )}
           </Tabs>
         )}
+
+        <Dialog open={addMemberDialogOpen} onOpenChange={(open) => { if (!open) { resetAddMemberForm(); } setAddMemberDialogOpen(open); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Member</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  variant={addMemberMode === 'existing' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setAddMemberMode('existing')}
+                  data-testid="button-mode-existing"
+                  className="flex-1"
+                >
+                  Existing Player
+                </Button>
+                <Button
+                  variant={addMemberMode === 'new' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setAddMemberMode('new')}
+                  data-testid="button-mode-new"
+                  className="flex-1"
+                >
+                  New Player
+                </Button>
+              </div>
+
+              {addMemberMode === 'existing' ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Select Player</label>
+                  {availablePlayers.length > 0 ? (
+                    <Select value={selectedExistingPlayerId} onValueChange={setSelectedExistingPlayerId}>
+                      <SelectTrigger data-testid="select-existing-player">
+                        <SelectValue placeholder="Choose a player..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availablePlayers.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">All players are already in this group.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Player Name</label>
+                    <Input
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      placeholder="Enter player name..."
+                      data-testid="input-new-player-name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Phone Number (optional)</label>
+                    <Input
+                      value={newPlayerPhone}
+                      onChange={(e) => setNewPlayerPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
+                      type="tel"
+                      data-testid="input-new-player-phone"
+                    />
+                  </div>
+                  {newPlayerPhone.trim() && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="send-invite"
+                        checked={sendInvite}
+                        onChange={(e) => setSendInvite(e.target.checked)}
+                        className="rounded border-border"
+                        data-testid="checkbox-send-invite"
+                      />
+                      <label htmlFor="send-invite" className="text-sm text-muted-foreground cursor-pointer">
+                        Send SMS invitation
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { resetAddMemberForm(); setAddMemberDialogOpen(false); }} data-testid="button-cancel-add-member">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddMember}
+                disabled={
+                  (addMemberMode === 'existing' && !selectedExistingPlayerId) ||
+                  (addMemberMode === 'new' && !newPlayerName.trim()) ||
+                  invitePlayerMutation.isPending || addPlayerMutation.isPending
+                }
+                data-testid="button-confirm-add-member"
+              >
+                {invitePlayerMutation.isPending ? "Adding..." : (sendInvite && newPlayerPhone.trim() ? "Add & Send Invite" : "Add Member")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </motion.div>
     );
   }

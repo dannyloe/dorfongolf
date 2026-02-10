@@ -5,7 +5,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { ai } from "./replit_integrations/image/client";
-import { sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
+import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
 
 // Helper to send match invitation notification to a player (non-blocking)
 async function notifyPlayerOfMatchInvitation(
@@ -2207,6 +2207,56 @@ Rules:
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.groups.invitePlayer.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can invite players" });
+    }
+    try {
+      const input = api.groups.invitePlayer.input.parse(req.body);
+
+      let presetPlayer = await storage.getPresetPlayerByName(input.name);
+      if (!presetPlayer) {
+        presetPlayer = await storage.createPresetPlayer(input.name);
+      }
+
+      try {
+        await storage.addGroupPlayer(groupId, presetPlayer.id, userId);
+      } catch (err: any) {
+        if (!err.message?.includes('already') && !err.message?.includes('duplicate')) {
+          throw err;
+        }
+      }
+
+      let smsSent = false;
+      if (input.sendInvite && input.phone) {
+        try {
+          const group = await storage.getGroupById(groupId);
+          if (group) {
+            const inviteCode = group.inviteCode || 'N/A';
+            const message = `You've been added to the "${group.name}" group on Golf Betting! Use invite code "${inviteCode}" to join when you sign up.`;
+            const result = await sendSMS(input.phone, message);
+            smsSent = result.success;
+          }
+        } catch (smsErr: any) {
+          console.error('[Group Invite] SMS send failed:', smsErr.message);
+        }
+      }
+
+      res.status(201).json({
+        presetPlayer,
+        smsSent,
+        message: smsSent ? 'Player added and invitation sent' : 'Player added to group'
+      });
+    } catch (err: any) {
+      console.error('[Group Invite] Error:', err.message);
+      res.status(400).json({ message: err.message });
     }
   });
 

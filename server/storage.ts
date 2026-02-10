@@ -26,7 +26,7 @@ import {
   type Settlement, type SettlementPayment, type SettlementWithPayments,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
-import { eq, and, lt, inArray, or, isNull, desc, gte } from "drizzle-orm";
+import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -121,6 +121,7 @@ export interface IStorage {
   addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer>;
   removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean>;
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
+  getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1476,6 +1477,13 @@ export class DatabaseStorage implements IStorage {
   async createPresetPlayer(name: string, showInRoster: boolean = true): Promise<PresetPlayer> {
     const [newPlayer] = await db.insert(presetPlayers).values({ name, showInRoster }).returning();
     return newPlayer;
+  }
+
+  async getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined> {
+    const [player] = await db.select().from(presetPlayers).where(
+      sql`LOWER(${presetPlayers.name}) = LOWER(${name})`
+    );
+    return player;
   }
 
   async presetPlayerExists(name: string): Promise<boolean> {
