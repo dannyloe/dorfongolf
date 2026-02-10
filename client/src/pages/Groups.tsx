@@ -18,7 +18,7 @@ interface GroupSummary {
   name: string;
   description: string | null;
   inviteCode: string | null;
-  createdById: string;
+  createdBy: string;
   memberCount: number;
   playerCount: number;
   role: string;
@@ -41,9 +41,9 @@ interface GroupDetail {
   name: string;
   description: string | null;
   inviteCode: string | null;
-  createdById: string;
+  createdBy: string;
   members: GroupMember[];
-  players: Array<{ id: number; presetPlayerId: number; presetPlayerName: string }>;
+  players: Array<{ id: number; presetPlayerId: number; presetPlayer?: { id: number; name: string } }>;
   pendingRequests: Array<{
     id: number;
     userId: string;
@@ -512,12 +512,12 @@ export default function Groups() {
                       <div className="flex items-center gap-3">
                         <Avatar className="border-2 border-muted-foreground/20">
                           <AvatarFallback className="bg-muted text-muted-foreground">
-                            {player.presetPlayerName[0]?.toUpperCase() ?? "?"}
+                            {(player.presetPlayer?.name ?? "?")[0]?.toUpperCase() ?? "?"}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <p className="font-medium" data-testid={`text-player-name-${player.presetPlayerId}`}>
-                            {player.presetPlayerName}
+                            {player.presetPlayer?.name ?? "Unknown"}
                           </p>
                           <p className="text-xs text-muted-foreground">Not yet registered</p>
                         </div>
