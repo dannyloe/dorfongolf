@@ -2032,6 +2032,23 @@ Rules:
     res.status(204).send();
   });
 
+  app.patch(api.ryderCup.updateStatus.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.updateStatus.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      
+      const updated = await storage.updateRyderCupEventStatus(id, input.status);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.patch(api.ryderCup.updateHandicaps.path, isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
     try {

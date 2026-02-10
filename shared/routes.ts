@@ -1053,6 +1053,17 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateStatus: {
+      method: 'PATCH' as const,
+      path: '/api/ryder-cup/:id/status',
+      input: z.object({
+        status: z.enum(["active", "completed"]),
+      }),
+      responses: {
+        200: z.custom<typeof ryderCupEvents.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
     updateHandicaps: {
       method: 'PATCH' as const,
       path: '/api/ryder-cup/:id/handicaps',

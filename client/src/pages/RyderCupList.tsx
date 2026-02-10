@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Trophy, Plus, Users, Calendar, Flag, ChevronRight, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,32 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useDeleteRyderCupEvent } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { RyderCupEvent } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function RyderCupList() {
   const { data: events = [], isLoading } = useQuery<RyderCupEvent[]>({
     queryKey: ["/api/ryder-cup"],
   });
 
+  const activeEvents = events.filter(e => e.status !== "completed");
+  const pastEvents = events.filter(e => e.status === "completed");
+
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
     }).format(cents / 100);
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "setup":
-        return <Badge variant="outline">Setting Up</Badge>;
-      case "active":
-        return <Badge className="bg-green-500">Active</Badge>;
-      case "completed":
-        return <Badge variant="secondary">Completed</Badge>;
-      default:
-        return null;
-    }
   };
 
   return (
@@ -75,16 +66,44 @@ export default function RyderCupList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {events.map((event) => (
-            <RyderCupEventCard 
-              key={event.id} 
-              event={event} 
-              formatCurrency={formatCurrency}
-              getStatusBadge={getStatusBadge}
-            />
-          ))}
-        </div>
+        <>
+          {activeEvents.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-muted-foreground mb-4">No active events found.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {activeEvents.map((event) => (
+                <RyderCupEventCard 
+                  key={event.id} 
+                  event={event} 
+                  formatCurrency={formatCurrency}
+                  isHistory={false}
+                />
+              ))}
+            </div>
+          )}
+
+          {pastEvents.length > 0 && (
+            <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-muted-foreground flex items-center gap-2">
+                History
+              </h2>
+              <div className="grid gap-4">
+                {pastEvents.map((event) => (
+                  <RyderCupEventCard 
+                    key={event.id} 
+                    event={event} 
+                    formatCurrency={formatCurrency}
+                    isHistory={true}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -93,11 +112,11 @@ export default function RyderCupList() {
 function RyderCupEventCard({ 
   event, 
   formatCurrency, 
-  getStatusBadge 
+  isHistory,
 }: { 
   event: RyderCupEvent; 
   formatCurrency: (cents: number) => string;
-  getStatusBadge: (status: string) => ReactNode;
+  isHistory: boolean;
 }) {
   const { user } = useAuth();
   const deleteEvent = useDeleteRyderCupEvent();
@@ -105,6 +124,15 @@ function RyderCupEventCard({
   const ADMIN_USER_ID = "52861828";
   const isAdmin = user?.id === ADMIN_USER_ID;
   const isCreator = user?.id === event.creatorId || isAdmin;
+
+  const updateStatus = useMutation({
+    mutationFn: async (status: "active" | "completed") => {
+      return apiRequest("PATCH", `/api/ryder-cup/${event.id}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup"] });
+    },
+  });
 
   const handleDelete = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -163,7 +191,35 @@ function RyderCupEventCard({
                   </Button>
                 )
               )}
-              {getStatusBadge(event.status)}
+              {event.status === "setup" ? (
+                <Badge variant="outline">Setting Up</Badge>
+              ) : !isHistory ? (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    updateStatus.mutate("completed");
+                  }}
+                  disabled={updateStatus.isPending}
+                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors cursor-pointer"
+                  data-testid={`button-end-ryder-cup-${event.id}`}
+                >
+                  {updateStatus.isPending ? "..." : "In Progress"}
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    updateStatus.mutate("active");
+                  }}
+                  disabled={updateStatus.isPending}
+                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors cursor-pointer"
+                  data-testid={`button-reopen-ryder-cup-${event.id}`}
+                >
+                  {updateStatus.isPending ? "..." : "Ended"}
+                </button>
+              )}
               <ChevronRight className="w-5 h-5 text-muted-foreground" />
             </div>
           </div>

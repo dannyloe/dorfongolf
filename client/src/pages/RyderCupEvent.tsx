@@ -616,6 +616,16 @@ export default function RyderCupEvent() {
     },
   });
 
+  const updateEventStatusMutation = useMutation({
+    mutationFn: async (status: "active" | "completed") => {
+      return apiRequest("PATCH", `/api/ryder-cup/${eventIdNum}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup", eventIdNum] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup"] });
+    },
+  });
+
   // Settlement mutations
   const createSettlementMutation = useMutation({
     mutationFn: async (data: { name: string | null; eventId?: number; balances: { playerName: string; presetPlayerId?: number | null; balance: number }[] }) => {
@@ -1899,9 +1909,27 @@ export default function RyderCupEvent() {
           </h1>
           <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
             <span className="flex items-center gap-1"><Flag className="w-4 h-4" /> {event.courseName}</span>
-            <Badge variant={event.status === "active" ? "default" : "secondary"}>
-              {event.status === "setup" ? "Setting Up" : event.status === "active" ? "In Progress" : "Completed"}
-            </Badge>
+            {event.status === "setup" ? (
+              <Badge variant="outline">Setting Up</Badge>
+            ) : event.status === "active" ? (
+              <button
+                onClick={() => updateEventStatusMutation.mutate("completed")}
+                disabled={updateEventStatusMutation.isPending}
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition-colors cursor-pointer"
+                data-testid="button-end-ryder-cup-event"
+              >
+                {updateEventStatusMutation.isPending ? "..." : "In Progress"}
+              </button>
+            ) : (
+              <button
+                onClick={() => updateEventStatusMutation.mutate("active")}
+                disabled={updateEventStatusMutation.isPending}
+                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors cursor-pointer"
+                data-testid="button-reopen-ryder-cup-event"
+              >
+                {updateEventStatusMutation.isPending ? "..." : "Ended"}
+              </button>
+            )}
             {event.useHandicaps && <Badge variant="outline">Handicapped</Badge>}
           </div>
         </div>

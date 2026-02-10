@@ -50,6 +50,8 @@ export interface IStorage {
   updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
   
+  updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent>;
+  
   // Ryder Cup Payout methods
   updateRyderCupEventPayouts(eventId: number, payouts: {
     buyInAmount?: number;
@@ -2468,6 +2470,14 @@ export class DatabaseStorage implements IStorage {
   async updateRyderCupEventHandicaps(eventId: number, useHandicaps: boolean): Promise<RyderCupEvent> {
     const [updated] = await db.update(ryderCupEvents)
       .set({ useHandicaps })
+      .where(eq(ryderCupEvents.id, eventId))
+      .returning();
+    return updated;
+  }
+
+  async updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent> {
+    const [updated] = await db.update(ryderCupEvents)
+      .set({ status })
       .where(eq(ryderCupEvents.id, eventId))
       .returning();
     return updated;
