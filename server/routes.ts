@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { db } from "./db";
+import { presetPlayers } from "@shared/schema";
 import { ai } from "./replit_integrations/image/client";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
 
@@ -812,14 +814,15 @@ export async function registerRoutes(
 
   // Preset Players Routes
   app.get(api.presetPlayers.list.path, isAuthenticated, async (req, res) => {
-    const { PRESET_PLAYERS } = await import("@shared/models/auth");
+    const allPresets = await db.select().from(presetPlayers).orderBy(presetPlayers.name);
     const claimedList = await storage.getPresetPlayersClaimed();
     const claimedMap = new Map(claimedList.map(c => [c.presetPlayerName, c]));
     
-    const result = PRESET_PLAYERS.map(name => ({
-      name,
-      claimedByUserId: claimedMap.get(name)?.userId || null,
-      claimedByName: claimedMap.get(name)?.userName || null,
+    const result = allPresets.map(p => ({
+      id: p.id,
+      name: p.name,
+      claimedByUserId: claimedMap.get(p.name)?.userId || null,
+      claimedByName: claimedMap.get(p.name)?.userName || null,
     }));
     
     res.json(result);
