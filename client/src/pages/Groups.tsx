@@ -22,7 +22,7 @@ interface GroupSummary {
   createdById: string;
   memberCount: number;
   playerCount: number;
-  myRole: string;
+  role: string;
 }
 
 interface GroupMember {
@@ -56,7 +56,7 @@ interface GroupDetail {
       email: string | null;
     } | null;
   }>;
-  myRole: string;
+  role: string;
 }
 
 interface PresetPlayer {
@@ -303,7 +303,7 @@ export default function Groups() {
     return "?";
   };
 
-  const isAdmin = groupDetail?.myRole === "admin";
+  const isAdmin = groupDetail?.role === "admin";
 
   const existingPlayerIds = new Set(groupDetail?.players.map(p => p.presetPlayerId) ?? []);
   const availablePlayers = allPresetPlayers.filter(p => !existingPlayerIds.has(p.id));
@@ -756,8 +756,8 @@ export default function Groups() {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle className="text-xl font-display">{group.name}</CardTitle>
-                  <Badge variant={group.myRole === "admin" ? "default" : "outline"} data-testid={`badge-group-role-${group.id}`}>
-                    {group.myRole === "admin" ? (
+                  <Badge variant={group.role === "admin" ? "default" : "outline"} data-testid={`badge-group-role-${group.id}`}>
+                    {group.role === "admin" ? (
                       <><Shield className="w-3 h-3 mr-1" />Admin</>
                     ) : (
                       "Member"
