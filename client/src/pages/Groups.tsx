@@ -80,6 +80,7 @@ export default function Groups() {
   const [addMemberMode, setAddMemberMode] = useState<'existing' | 'new'>('existing');
   const [newPlayerName, setNewPlayerName] = useState("");
   const [selectedExistingPlayerId, setSelectedExistingPlayerId] = useState<string>("");
+  const [playerFilter, setPlayerFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
     queryKey: ["/api/groups/my"],
@@ -307,6 +308,17 @@ export default function Groups() {
   const existingPlayerIds = new Set(groupDetail?.players.map(p => p.presetPlayerId) ?? []);
   const availablePlayers = allPresetPlayers.filter(p => !existingPlayerIds.has(p.id));
 
+  const memberUserIds = new Set(groupDetail?.members.map(m => m.userId) ?? []);
+  const registeredPlayers = groupDetail?.members ?? [];
+  const unregisteredPlayers = (groupDetail?.players ?? []).filter(p => {
+    const presetPlayer = allPresetPlayers.find(pp => pp.id === p.presetPlayerId);
+    if (presetPlayer?.claimedByUserId && memberUserIds.has(presetPlayer.claimedByUserId)) {
+      return false;
+    }
+    return true;
+  });
+  const totalPlayerCount = registeredPlayers.length + unregisteredPlayers.length;
+
   if (selectedGroupId) {
     return (
       <motion.div
@@ -381,21 +393,58 @@ export default function Groups() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : (
-          <Tabs defaultValue="members">
+          <Tabs defaultValue="players">
             <TabsList>
-              <TabsTrigger value="members" data-testid="tab-members">Members</TabsTrigger>
               <TabsTrigger value="players" data-testid="tab-players">Players</TabsTrigger>
               {isAdmin && <TabsTrigger value="requests" data-testid="tab-requests">Join Requests</TabsTrigger>}
             </TabsList>
 
-            <TabsContent value="members" className="space-y-3 mt-4">
-              {groupDetail?.members.map((member) => (
-                <Card key={member.userId} data-testid={`card-member-${member.userId}`}>
+            <TabsContent value="players" className="space-y-4 mt-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant={playerFilter === 'all' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setPlayerFilter('all')}
+                  data-testid="filter-all"
+                >
+                  All ({totalPlayerCount})
+                </Badge>
+                <Badge
+                  variant={playerFilter === 'registered' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setPlayerFilter('registered')}
+                  data-testid="filter-registered"
+                >
+                  Players ({registeredPlayers.length})
+                </Badge>
+                <Badge
+                  variant={playerFilter === 'unregistered' ? 'default' : 'outline'}
+                  className="cursor-pointer"
+                  onClick={() => setPlayerFilter('unregistered')}
+                  data-testid="filter-unregistered"
+                >
+                  Unregistered ({unregisteredPlayers.length})
+                </Badge>
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    onClick={() => setAddMemberDialogOpen(true)}
+                    className="ml-auto"
+                    data-testid="button-add-member"
+                  >
+                    <UserPlus className="w-4 h-4 mr-1" />
+                    Add Player
+                  </Button>
+                )}
+              </div>
+
+              {(playerFilter === 'all' || playerFilter === 'registered') && groupDetail?.members.map((member) => (
+                <Card key={`member-${member.userId}`} data-testid={`card-member-${member.userId}`}>
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>
+                        <Avatar className="border-2 border-primary/30">
+                          <AvatarFallback className="bg-primary/10 text-primary">
                             {getInitials(
                               member.user?.firstName ?? null,
                               member.user?.lastName ?? null,
@@ -410,16 +459,16 @@ export default function Groups() {
                               : member.user?.email ?? member.userId}
                           </p>
                           {member.user?.email && (
-                            <p className="text-sm text-muted-foreground">{member.user.email}</p>
+                            <p className="text-xs text-muted-foreground">{member.user.email}</p>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant={member.role === "admin" ? "default" : "outline"} data-testid={`badge-role-${member.userId}`}>
+                        <Badge variant={member.role === "admin" ? "default" : "secondary"} className="text-xs" data-testid={`badge-role-${member.userId}`}>
                           {member.role === "admin" ? (
                             <><Shield className="w-3 h-3 mr-1" />Admin</>
                           ) : (
-                            "Member"
+                            "Player"
                           )}
                         </Badge>
                         {isAdmin && member.userId !== user?.id && (
@@ -454,51 +503,45 @@ export default function Groups() {
                   </CardContent>
                 </Card>
               ))}
-              {groupDetail?.members.length === 0 && (
-                <p className="text-muted-foreground text-center py-8">No members yet.</p>
-              )}
-            </TabsContent>
 
-            <TabsContent value="players" className="space-y-4 mt-4">
-              {isAdmin && (
-                <Button
-                  onClick={() => setAddMemberDialogOpen(true)}
-                  data-testid="button-add-member"
-                >
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Add Member
-                </Button>
-              )}
-
-              {groupDetail?.players.map((player) => (
-                <Card key={player.presetPlayerId} data-testid={`card-player-${player.presetPlayerId}`}>
+              {(playerFilter === 'all' || playerFilter === 'unregistered') && unregisteredPlayers.map((player) => (
+                <Card key={`player-${player.presetPlayerId}`} className="border-dashed" data-testid={`card-player-${player.presetPlayerId}`}>
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarFallback>{player.presetPlayerName[0]?.toUpperCase() ?? "?"}</AvatarFallback>
+                        <Avatar className="border-2 border-muted-foreground/20">
+                          <AvatarFallback className="bg-muted text-muted-foreground">
+                            {player.presetPlayerName[0]?.toUpperCase() ?? "?"}
+                          </AvatarFallback>
                         </Avatar>
-                        <p className="font-medium" data-testid={`text-player-name-${player.presetPlayerId}`}>
-                          {player.presetPlayerName}
-                        </p>
+                        <div>
+                          <p className="font-medium" data-testid={`text-player-name-${player.presetPlayerId}`}>
+                            {player.presetPlayerName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">Not yet registered</p>
+                        </div>
                       </div>
-                      {isAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removePlayerMutation.mutate(player.presetPlayerId)}
-                          disabled={removePlayerMutation.isPending}
-                          data-testid={`button-remove-player-${player.presetPlayerId}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs border-dashed">Unregistered</Badge>
+                        {isAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removePlayerMutation.mutate(player.presetPlayerId)}
+                            disabled={removePlayerMutation.isPending}
+                            data-testid={`button-remove-player-${player.presetPlayerId}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
-              {groupDetail?.players.length === 0 && (
-                <p className="text-muted-foreground text-center py-8">No players added yet.</p>
+
+              {totalPlayerCount === 0 && (
+                <p className="text-muted-foreground text-center py-8">No players yet. Add some to get started.</p>
               )}
             </TabsContent>
 
@@ -565,7 +608,7 @@ export default function Groups() {
         <Dialog open={addMemberDialogOpen} onOpenChange={(open) => { if (!open) { resetAddMemberForm(); } setAddMemberDialogOpen(open); }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Member</DialogTitle>
+              <DialogTitle>Add Player</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="flex gap-2">
@@ -639,7 +682,7 @@ export default function Groups() {
                 }
                 data-testid="button-confirm-add-member"
               >
-                {invitePlayerMutation.isPending ? "Adding..." : "Add Member"}
+                {invitePlayerMutation.isPending ? "Adding..." : "Add Player"}
               </Button>
             </DialogFooter>
           </DialogContent>
