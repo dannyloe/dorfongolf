@@ -294,6 +294,7 @@ export default function RyderCupEvent() {
   const scorecardRef = useRef<HTMLDivElement | null>(null);
   const sideBetsRef = useRef<HTMLDivElement | null>(null);
   const ledgerRef = useRef<HTMLDivElement | null>(null);
+  const settlementRef = useRef<HTMLDivElement | null>(null);
   const scanScorecard = useScanScorecard();
 
   // Focus the score input when editing starts
@@ -4901,7 +4902,7 @@ export default function RyderCupEvent() {
 
           {/* Active Settlement Panel */}
           {activeSettlement && (
-            <Card className="border-primary/50 bg-primary/5 mt-4">
+            <Card ref={settlementRef} className="border-primary/50 bg-primary/5 mt-4">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <CardTitle className="flex items-center gap-2">
@@ -4917,6 +4918,12 @@ export default function RyderCupEvent() {
                     <span className="text-sm text-muted-foreground">
                       {activeSettlement.payments.filter(p => p.completed).length} / {activeSettlement.payments.length} complete
                     </span>
+                    <ShareButton
+                      targetRef={settlementRef}
+                      title={`Settlement Plan - ${event?.name || "Event"}`}
+                      text={`${event?.name || "Event"} - Settlement Plan`}
+                      fileName="settlement-plan.png"
+                    />
                     {isCreatorOrAdmin && (
                       <Button
                         variant="ghost"
