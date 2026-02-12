@@ -1779,6 +1779,10 @@ Rules:
         return res.status(400).json({ message: "Invalid image data" });
       }
 
+      if (!ai) {
+        return res.status(503).json({ message: "AI features are currently unavailable" });
+      }
+
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{
