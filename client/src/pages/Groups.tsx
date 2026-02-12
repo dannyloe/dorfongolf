@@ -63,6 +63,7 @@ interface PresetPlayer {
   name: string;
   claimedByUserId: string | null;
   claimedByName: string | null;
+  aliases: string[];
 }
 
 export default function Groups() {
@@ -328,11 +329,21 @@ export default function Groups() {
   const existingPlayerIds = new Set(groupDetail?.players.map(p => p.presetPlayerId) ?? []);
   const availablePlayers = allPresetPlayers.filter(p => !existingPlayerIds.has(p.id));
 
-  const filteredAvailablePlayers = availablePlayers.filter(p =>
-    p.name.toLowerCase().includes(playerSearchQuery.toLowerCase().trim())
-  );
+  const filteredAvailablePlayers = availablePlayers.filter(p => {
+    const query = playerSearchQuery.toLowerCase().trim();
+    if (!query) return true;
+    if (p.name.toLowerCase().includes(query)) return true;
+    if (p.claimedByName && p.claimedByName.toLowerCase().includes(query)) return true;
+    if (p.aliases?.some(alias => alias.toLowerCase().includes(query))) return true;
+    return false;
+  });
   const showCreateNew = playerSearchQuery.trim().length > 0 &&
-    !availablePlayers.some(p => p.name.toLowerCase() === playerSearchQuery.toLowerCase().trim());
+    !availablePlayers.some(p => {
+      const query = playerSearchQuery.toLowerCase().trim();
+      return p.name.toLowerCase() === query ||
+        (p.claimedByName && p.claimedByName.toLowerCase() === query) ||
+        p.aliases?.some(alias => alias.toLowerCase() === query);
+    });
 
   const memberUserIds = new Set(groupDetail?.members.map(m => m.userId) ?? []);
   const registeredPlayers = groupDetail?.members ?? [];

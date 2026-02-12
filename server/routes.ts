@@ -5,7 +5,7 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { db } from "./db";
-import { presetPlayers } from "@shared/schema";
+import { presetPlayers, playerAliases } from "@shared/schema";
 import { ai } from "./replit_integrations/image/client";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
 
@@ -817,12 +817,27 @@ export async function registerRoutes(
     const allPresets = await db.select().from(presetPlayers).orderBy(presetPlayers.name);
     const claimedList = await storage.getPresetPlayersClaimed();
     const claimedMap = new Map(claimedList.map(c => [c.presetPlayerName, c]));
-    
+
+    const { PLAYER_ALIASES } = await import("@shared/models/auth");
+    const aliasesMap: Record<string, string[]> = {};
+    for (const [alias, canonical] of Object.entries(PLAYER_ALIASES)) {
+      if (!aliasesMap[canonical]) aliasesMap[canonical] = [];
+      aliasesMap[canonical].push(alias);
+    }
+    const dbAliases = await db.select().from(playerAliases);
+    for (const dbAlias of dbAliases) {
+      if (!aliasesMap[dbAlias.canonicalName]) aliasesMap[dbAlias.canonicalName] = [];
+      if (!aliasesMap[dbAlias.canonicalName].includes(dbAlias.alias.toLowerCase())) {
+        aliasesMap[dbAlias.canonicalName].push(dbAlias.alias.toLowerCase());
+      }
+    }
+
     const result = allPresets.map(p => ({
       id: p.id,
       name: p.name,
       claimedByUserId: claimedMap.get(p.name)?.userId || null,
       claimedByName: claimedMap.get(p.name)?.userName || null,
+      aliases: aliasesMap[p.name] || [],
     }));
     
     res.json(result);
