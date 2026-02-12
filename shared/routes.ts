@@ -1030,6 +1030,18 @@ export const api = {
         403: errorSchemas.forbidden,
       },
     },
+    addPlayersBulk: {
+      method: 'POST' as const,
+      path: '/api/groups/:id/players/bulk',
+      input: z.object({
+        presetPlayerIds: z.array(z.number()).min(1),
+      }),
+      responses: {
+        201: z.any(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+      },
+    },
     invitePlayer: {
       method: 'POST' as const,
       path: '/api/groups/:id/players/invite',

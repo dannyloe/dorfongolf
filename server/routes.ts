@@ -2213,6 +2213,33 @@ Rules:
     }
   });
 
+  app.post(api.groups.addPlayersBulk.path, isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const input = api.groups.addPlayersBulk.input.parse(req.body);
+      const results = [];
+      for (const presetPlayerId of input.presetPlayerIds) {
+        try {
+          const gp = await storage.addGroupPlayer(groupId, presetPlayerId, userId);
+          results.push(gp);
+        } catch (err) {
+        }
+      }
+      res.status(201).json(results);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.groups.invitePlayer.path, isAuthenticated, async (req, res) => {
     const groupId = parseInt(req.params.id);
     const user = req.user as any;

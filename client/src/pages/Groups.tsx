@@ -77,6 +77,7 @@ export default function Groups() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [playerSearchQuery, setPlayerSearchQuery] = useState("");
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<number>>(new Set());
   const [playerFilter, setPlayerFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
@@ -183,13 +184,25 @@ export default function Groups() {
   });
 
   const addPlayerMutation = useMutation({
-    mutationFn: async (presetPlayerId: number) => {
-      return apiRequest("POST", `/api/groups/${selectedGroupId}/players`, { presetPlayerId });
+    mutationFn: async (presetPlayerIds: number[]) => {
+      const res = await apiRequest("POST", `/api/groups/${selectedGroupId}/players/bulk`, { presetPlayerIds });
+      const results = await res.json();
+      return { results, requested: presetPlayerIds.length };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId] });
       queryClient.invalidateQueries({ queryKey: ["/api/groups/my"] });
-      toast({ title: "Player added" });
+      const added = data.results.length;
+      const failed = data.requested - added;
+      if (failed > 0 && added > 0) {
+        toast({ title: `${added} player${added === 1 ? '' : 's'} added`, description: `${failed} could not be added (may already be in group).` });
+      } else if (added > 0) {
+        toast({ title: `${added} player${added === 1 ? '' : 's'} added` });
+      } else {
+        toast({ title: "No players added", description: "They may already be in the group.", variant: "destructive" });
+      }
+      setAddMemberDialogOpen(false);
+      resetAddMemberForm();
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -247,12 +260,24 @@ export default function Groups() {
 
   const resetAddMemberForm = () => {
     setPlayerSearchQuery("");
+    setSelectedPlayerIds(new Set());
   };
 
-  const handleSelectExistingPlayer = (playerId: number) => {
-    addPlayerMutation.mutate(playerId);
-    setAddMemberDialogOpen(false);
-    resetAddMemberForm();
+  const togglePlayerSelection = (playerId: number) => {
+    setSelectedPlayerIds(prev => {
+      const next = new Set(prev);
+      if (next.has(playerId)) {
+        next.delete(playerId);
+      } else {
+        next.add(playerId);
+      }
+      return next;
+    });
+  };
+
+  const handleAddSelectedPlayers = () => {
+    if (selectedPlayerIds.size === 0) return;
+    addPlayerMutation.mutate(Array.from(selectedPlayerIds));
   };
 
   const handleCreateNewPlayer = () => {
@@ -609,7 +634,10 @@ export default function Groups() {
         <Dialog open={addMemberDialogOpen} onOpenChange={(open) => { if (!open) { resetAddMemberForm(); } setAddMemberDialogOpen(open); }}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Player</DialogTitle>
+              <DialogTitle>Add Players</DialogTitle>
+              {selectedPlayerIds.size > 0 && (
+                <p className="text-sm text-muted-foreground">{selectedPlayerIds.size} selected</p>
+              )}
             </DialogHeader>
             <div className="space-y-3">
               <div className="relative">
@@ -625,28 +653,34 @@ export default function Groups() {
               </div>
               <div className="max-h-60 overflow-y-auto space-y-1" data-testid="list-player-results">
                 {playerSearchQuery.trim() === "" && availablePlayers.length > 0 && (
-                  <p className="text-xs text-muted-foreground px-2 py-1">Type a name to search existing players or add a new one.</p>
+                  <p className="text-xs text-muted-foreground px-2 py-1">Select players to add, then confirm below.</p>
                 )}
                 {playerSearchQuery.trim() !== "" && filteredAvailablePlayers.length === 0 && !showCreateNew && (
                   <p className="text-sm text-muted-foreground text-center py-4">No players found.</p>
                 )}
-                {(playerSearchQuery.trim() === "" ? availablePlayers : filteredAvailablePlayers).map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => handleSelectExistingPlayer(p.id)}
-                    disabled={addPlayerMutation.isPending}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm hover-elevate active-elevate-2 transition-colors"
-                    data-testid={`button-select-player-${p.id}`}
-                  >
-                    <Avatar className="w-7 h-7">
-                      <AvatarFallback className="text-xs">{p.name[0].toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <span>{p.name}</span>
-                    {p.claimedByUserId && (
-                      <Badge variant="secondary" className="ml-auto text-xs">Registered</Badge>
-                    )}
-                  </button>
-                ))}
+                {(playerSearchQuery.trim() === "" ? availablePlayers : filteredAvailablePlayers).map((p) => {
+                  const isSelected = selectedPlayerIds.has(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => togglePlayerSelection(p.id)}
+                      disabled={addPlayerMutation.isPending}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left text-sm hover-elevate active-elevate-2 transition-colors ${isSelected ? 'bg-primary/10' : ''}`}
+                      data-testid={`button-select-player-${p.id}`}
+                    >
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/30'}`}>
+                        {isSelected && <Check className="w-3 h-3" />}
+                      </div>
+                      <Avatar className="w-7 h-7">
+                        <AvatarFallback className="text-xs">{p.name[0].toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <span>{p.name}</span>
+                      {p.claimedByUserId && (
+                        <Badge variant="secondary" className="ml-auto text-xs">Registered</Badge>
+                      )}
+                    </button>
+                  );
+                })}
                 {showCreateNew && (
                   <button
                     onClick={handleCreateNewPlayer}
@@ -667,6 +701,22 @@ export default function Groups() {
                 </p>
               )}
             </div>
+            {selectedPlayerIds.size > 0 && (
+              <DialogFooter>
+                <Button
+                  onClick={handleAddSelectedPlayers}
+                  disabled={addPlayerMutation.isPending}
+                  data-testid="button-add-selected-players"
+                >
+                  {addPlayerMutation.isPending ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <UserPlus className="w-4 h-4 mr-2" />
+                  )}
+                  Add {selectedPlayerIds.size} Player{selectedPlayerIds.size === 1 ? '' : 's'}
+                </Button>
+              </DialogFooter>
+            )}
           </DialogContent>
         </Dialog>
       </motion.div>
