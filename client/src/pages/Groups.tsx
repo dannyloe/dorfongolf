@@ -497,7 +497,10 @@ export default function Groups() {
                             "Player"
                           )}
                         </Badge>
-                        {isAdmin && member.userId !== user?.id && (
+                        {member.userId === groupDetail?.createdBy && (
+                          <Badge variant="outline" className="text-xs">Creator</Badge>
+                        )}
+                        {isAdmin && member.userId !== user?.id && member.userId !== groupDetail?.createdBy && (
                           <>
                             <Button
                               variant="outline"

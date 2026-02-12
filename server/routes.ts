@@ -2098,6 +2098,13 @@ Rules:
     const user = req.user as any;
     const userId = user.claims.sub;
     const targetUserId = req.params.userId;
+    const group = await storage.getGroupById(groupId);
+    if (group && group.createdBy === targetUserId && userId === targetUserId) {
+      return res.status(403).json({ message: "The group creator cannot leave the group" });
+    }
+    if (group && group.createdBy === targetUserId && userId !== targetUserId) {
+      return res.status(403).json({ message: "The group creator cannot be removed" });
+    }
     const membership = await storage.getGroupMembership(groupId, userId);
     if ((!membership || membership.role !== 'admin') && userId !== targetUserId) {
       return res.status(403).json({ message: "Only group admins can remove members" });
@@ -2111,6 +2118,10 @@ Rules:
     const user = req.user as any;
     const userId = user.claims.sub;
     const targetUserId = req.params.userId;
+    const group = await storage.getGroupById(groupId);
+    if (group && group.createdBy === targetUserId) {
+      return res.status(403).json({ message: "The group creator's role cannot be changed" });
+    }
     const membership = await storage.getGroupMembership(groupId, userId);
     if (!membership || membership.role !== 'admin') {
       return res.status(403).json({ message: "Only group admins can change roles" });

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { User, Save, X, Plus, Loader2, Phone, Check, Bell } from "lucide-react";
+import { User, Save, X, Plus, Loader2, Phone, Check, Bell, Users, Shield, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -37,6 +37,17 @@ interface NotificationPreferences {
   matchReminders: boolean;
 }
 
+interface GroupSummary {
+  id: number;
+  name: string;
+  description: string | null;
+  inviteCode: string | null;
+  createdBy: string;
+  memberCount: number;
+  playerCount: number;
+  role: string;
+}
+
 export default function Profile() {
   const { toast } = useToast();
   
@@ -46,6 +57,28 @@ export default function Profile() {
 
   const { data: notificationPrefs } = useQuery<NotificationPreferences>({
     queryKey: ['/api/notifications/preferences'],
+  });
+
+  const { data: myGroups = [] } = useQuery<GroupSummary[]>({
+    queryKey: ["/api/groups/my"],
+  });
+
+  const [leaveConfirmGroupId, setLeaveConfirmGroupId] = useState<number | null>(null);
+
+  const leaveGroupMutation = useMutation({
+    mutationFn: async (groupId: number) => {
+      if (!profile?.id) throw new Error("Profile not loaded");
+      return apiRequest("DELETE", `/api/groups/${groupId}/members/${profile.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups/my"] });
+      setLeaveConfirmGroupId(null);
+      toast({ title: "Left group", description: "You have been removed from the group." });
+    },
+    onError: (error: Error) => {
+      setLeaveConfirmGroupId(null);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
   });
 
   const [firstName, setFirstName] = useState("");
@@ -509,6 +542,88 @@ export default function Profile() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2">
+            <Users className="w-5 h-5 text-primary" />
+            <CardTitle className="text-lg">My Groups</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {myGroups.length === 0 ? (
+              <p className="text-sm text-muted-foreground">You are not a member of any groups yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {myGroups.map((group) => {
+                  const isCreator = group.createdBy === profile?.id;
+                  return (
+                    <div
+                      key={group.id}
+                      className="flex items-center justify-between gap-3 p-3 rounded-md border"
+                      data-testid={`card-profile-group-${group.id}`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Users className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium truncate" data-testid={`text-profile-group-name-${group.id}`}>{group.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {group.memberCount} member{group.memberCount === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                        {group.role === "admin" && (
+                          <Badge variant="default" className="text-xs">
+                            <Shield className="w-3 h-3 mr-1" />Admin
+                          </Badge>
+                        )}
+                        {isCreator && (
+                          <Badge variant="outline" className="text-xs">Creator</Badge>
+                        )}
+                        {leaveConfirmGroupId === group.id ? (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => leaveGroupMutation.mutate(group.id)}
+                              disabled={leaveGroupMutation.isPending}
+                              data-testid={`button-confirm-leave-group-${group.id}`}
+                            >
+                              {leaveGroupMutation.isPending ? (
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              ) : null}
+                              Confirm
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setLeaveConfirmGroupId(null)}
+                              data-testid={`button-cancel-leave-group-${group.id}`}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setLeaveConfirmGroupId(group.id)}
+                            disabled={isCreator || !profile?.id}
+                            data-testid={`button-leave-group-${group.id}`}
+                          >
+                            <LogOut className="w-3.5 h-3.5 mr-1" />
+                            Leave
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
