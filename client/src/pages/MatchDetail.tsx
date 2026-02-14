@@ -1544,45 +1544,46 @@ export default function MatchDetail() {
                   </Button>
                 </div>
 
-                {/* Added Players List */}
-                {players.length > 0 && (
-                  <div className="mt-3 border-t border-border/50 pt-3">
-                    <p className="text-xs text-muted-foreground mb-2">Players in this match ({players.length}):</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {players.map((p) => {
-                        const playerHasScores = scores.some((s: Score) => s.playerId === p.id);
-                        return (
-                          <div
-                            key={p.id}
-                            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-primary/10 text-primary border border-primary/20"
-                            data-testid={`added-player-${p.id}`}
+              </div>
+            )}
+
+            {/* Added Players List - always visible regardless of collapse state */}
+            {players.length > 0 && (
+              <div className="px-4 pb-3 pt-2 border-t border-border/50">
+                <p className="text-xs text-muted-foreground mb-2">Players in this match ({players.length}):</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {players.map((p) => {
+                    const playerHasScores = scores.some((s: Score) => s.playerId === p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-primary/10 text-primary border border-primary/20"
+                        data-testid={`added-player-${p.id}`}
+                      >
+                        <span className="truncate max-w-[120px]">{p.name}</span>
+                        {canEditScoresAndBets && (
+                          <button
+                            onClick={() => {
+                              if (removePlayer.isPending) return;
+                              if (playerHasScores) {
+                                toast({ title: "Can't remove", description: "This player has recorded scores. Delete their scores first.", variant: "destructive" });
+                              } else {
+                                removePlayer.mutate(p.id);
+                              }
+                            }}
+                            className={`ml-0.5 rounded-full p-0.5 transition-colors ${
+                              playerHasScores ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                            }`}
+                            title={playerHasScores ? "Has recorded scores — delete scores first" : "Remove from match"}
+                            data-testid={`button-remove-player-${p.id}`}
                           >
-                            <span className="truncate max-w-[120px]">{p.name}</span>
-                            {canEditScoresAndBets && (
-                              <button
-                                onClick={() => {
-                                  if (removePlayer.isPending) return;
-                                  if (playerHasScores) {
-                                    toast({ title: "Can't remove", description: "This player has recorded scores. Delete their scores first.", variant: "destructive" });
-                                  } else {
-                                    removePlayer.mutate(p.id);
-                                  }
-                                }}
-                                className={`ml-0.5 rounded-full p-0.5 transition-colors ${
-                                  playerHasScores ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
-                                }`}
-                                title={playerHasScores ? "Has recorded scores — delete scores first" : "Remove from match"}
-                                data-testid={`button-remove-player-${p.id}`}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
