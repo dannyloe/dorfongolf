@@ -479,6 +479,14 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async updateEventMatchType(eventMatchId: number, matchType: string): Promise<EventMatch> {
+    const [updated] = await db.update(eventMatches)
+      .set({ matchType })
+      .where(eq(eventMatches.id, eventMatchId))
+      .returning();
+    return updated;
+  }
+
   async createPressMatch(parentMatchId: number, startHole: number): Promise<EventMatch> {
     const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
     if (!parentMatch) throw new Error("Parent match not found");

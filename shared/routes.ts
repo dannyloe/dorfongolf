@@ -371,6 +371,18 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateMatchType: {
+      method: 'PATCH' as const,
+      path: '/api/event-matches/:id/match-type',
+      input: z.object({
+        matchType: z.enum(["match_play_1_ball", "match_play_2_ball", "stroke_play", "nassau", "skins", "five_five_five_three"]),
+      }),
+      responses: {
+        200: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
     replicateToSiblingDays: {
       method: 'POST' as const,
       path: '/api/event-matches/:id/replicate-to-siblings',

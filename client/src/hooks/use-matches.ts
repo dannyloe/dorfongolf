@@ -411,6 +411,27 @@ export function useUpdateUnitAmount(matchId: number) {
   });
 }
 
+export function useUpdateMatchType(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, matchType }: { eventMatchId: number; matchType: string }) => {
+      const url = buildUrl(api.eventMatches.updateMatchType.path, { id: eventMatchId });
+      const res = await fetch(url, {
+        method: api.eventMatches.updateMatchType.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchType }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) throw new Error("Failed to update match type");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
 // Course types
 export interface CourseHole {
   id: number;

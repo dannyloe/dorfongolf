@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -162,9 +162,11 @@ export default function MatchDetail() {
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
   const updateUnitAmount = useUpdateUnitAmount(matchId);
+  const updateMatchType = useUpdateMatchType(matchId);
   const updateHandicapped = useUpdateHandicapped(matchId);
   const [editingUnitAmountId, setEditingUnitAmountId] = useState<number | null>(null);
   const [editUnitAmountValue, setEditUnitAmountValue] = useState("");
+  const [editingMatchTypeId, setEditingMatchTypeId] = useState<number | null>(null);
   const updateMatchDetails = useUpdateMatchDetails(matchId);
   const { data: playerHandicaps } = usePlayerHandicaps();
   const { data: fullPlayerData = [] } = useFullPlayerData();
@@ -2315,9 +2317,47 @@ export default function MatchDetail() {
                         {isExpanded ? <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />}
                       </div>
                       <div className="flex items-center gap-2 sm:gap-3">
-                        <span className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium">
-                          {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
-                        </span>
+                        {editingMatchTypeId === em.id ? (
+                          <select
+                            className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium border-0 focus:ring-1 focus:ring-primary cursor-pointer appearance-auto"
+                            value={em.matchType}
+                            disabled={updateMatchType.isPending}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              updateMatchType.mutate({
+                                eventMatchId: em.id,
+                                matchType: e.target.value,
+                              }, {
+                                onError: () => {
+                                  toast({ title: "Failed to update match type", variant: "destructive" });
+                                },
+                              });
+                              setEditingMatchTypeId(null);
+                            }}
+                            onBlur={() => setEditingMatchTypeId(null)}
+                            autoFocus
+                            data-testid={`select-match-type-${em.id}`}
+                          >
+                            {sortedMatchOptions.filter(opt => !(opt as any).isWizard).map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium ${canEditScoresAndBets ? 'cursor-pointer' : ''}`}
+                            onClick={(e) => {
+                              if (canEditScoresAndBets) {
+                                e.stopPropagation();
+                                setEditingMatchTypeId(em.id);
+                              }
+                            }}
+                            data-testid={`text-match-type-${em.id}`}
+                          >
+                            {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
+                            {canEditScoresAndBets && <Pencil className="w-2.5 h-2.5 inline ml-1" />}
+                          </span>
+                        )}
                         {editingUnitAmountId === em.id ? (
                           <input
                             type="number"

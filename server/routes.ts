@@ -597,6 +597,43 @@ export async function registerRoutes(
     }
   });
 
+  app.patch(api.eventMatches.updateMatchType.path, isAuthenticated, async (req, res) => {
+    const eventMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    
+    const eventMatch = await storage.getEventMatchWithTeams(eventMatchId);
+    if (!eventMatch) {
+      return res.status(404).json({ message: "Event match not found" });
+    }
+    
+    const match = await storage.getMatch(eventMatch.eventId);
+    if (!match) {
+      return res.status(404).json({ message: "Match not found" });
+    }
+    
+    const isAdmin = userId === ADMIN_USER_ID;
+    const isCreator = match.creatorId === userId;
+    const matchRole = await storage.getMatchRole(eventMatch.eventId, userId);
+    const isOrganizer = matchRole?.role === 'organizer';
+    
+    if (!isAdmin && !isCreator && !isOrganizer) {
+      return res.status(403).json({ message: "Only the creator or organizer can change the match type" });
+    }
+    
+    try {
+      const input = api.eventMatches.updateMatchType.input.parse(req.body);
+      const updated = await storage.updateEventMatchType(eventMatchId, input.matchType);
+      const withTeams = await storage.getEventMatchWithTeams(updated.id);
+      res.json(withTeams);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Replicate event match to sibling Ryder Cup day containers
   app.post(api.eventMatches.replicateToSiblingDays.path, isAuthenticated, async (req, res) => {
     const eventMatchId = parseInt(req.params.id);
