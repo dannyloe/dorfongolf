@@ -851,6 +851,7 @@ export default function MatchDetail() {
             autoPressNassauOverall: true,
             useNetScoring: match.isHandicapped ? useNetScoring : false,
             startOnBack9: dayStartOnBack9,
+            isRoundRobinGenerated: true,
           }, {
             onSuccess: () => resolve(),
             onError: (err) => reject(err),

@@ -115,6 +115,7 @@ export const eventMatches = pgTable("event_matches", {
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
   hasBeenReplicated: boolean("has_been_replicated").notNull().default(false),
   startOnBack9: boolean("start_on_back_9").notNull().default(false), // when true, play starts on hole 10 (back 9 first)
+  isRoundRobinGenerated: boolean("is_round_robin_generated").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

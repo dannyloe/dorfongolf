@@ -84,16 +84,22 @@ export async function registerRoutes(
       const result = await db
         .select({
           matchType: eventMatchesTable.matchType,
+          isRoundRobinGenerated: eventMatchesTable.isRoundRobinGenerated,
           count: count(),
         })
         .from(eventMatchesTable)
         .innerJoin(matchesTable, eq(eventMatchesTable.eventId, matchesTable.id))
         .where(eq(matchesTable.creatorId, user.claims.sub))
-        .groupBy(eventMatchesTable.matchType);
+        .groupBy(eventMatchesTable.matchType, eventMatchesTable.isRoundRobinGenerated);
       
       const frequency: Record<string, number> = {};
       for (const row of result) {
-        frequency[row.matchType] = Number(row.count);
+        let key = row.matchType;
+        if (row.isRoundRobinGenerated) {
+          if (key === "nassau") key = "round_robin_nassau";
+          else if (key === "match_play_1_ball") key = "round_robin_2_man";
+        }
+        frequency[key] = (frequency[key] || 0) + Number(row.count);
       }
       res.json(frequency);
     } catch (error) {

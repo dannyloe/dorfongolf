@@ -391,6 +391,7 @@ export class DatabaseStorage implements IStorage {
       autoPressNassauOverall: data.autoPressNassauOverall ?? true,
       useNetScoring: data.useNetScoring ?? false,
       startOnBack9: data.startOnBack9 ?? false,
+      isRoundRobinGenerated: data.isRoundRobinGenerated ?? false,
     }).returning();
 
     // Check if using multiple teams (for 5-5-5-3)
