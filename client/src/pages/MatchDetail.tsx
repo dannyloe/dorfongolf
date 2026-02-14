@@ -205,22 +205,6 @@ export default function MatchDetail() {
   const upsertMatchRole = useUpsertMatchRole(matchId);
   const deleteMatchRole = useDeleteMatchRole(matchId);
   
-  // Fetch user's match type frequency for sorting the selector
-  const { data: matchTypeFrequency } = useQuery<Record<string, number>>({
-    queryKey: ["/api/users/match-type-frequency"],
-  });
-
-  const sortedMatchOptions = (() => {
-    if (!matchTypeFrequency) return ALL_MATCH_OPTIONS;
-    const indexed = ALL_MATCH_OPTIONS.map((opt, i) => ({ ...opt, originalIndex: i }));
-    return indexed.sort((a, b) => {
-      const freqA = matchTypeFrequency[a.value] || 0;
-      const freqB = matchTypeFrequency[b.value] || 0;
-      if (freqB !== freqA) return freqB - freqA;
-      return a.originalIndex - b.originalIndex;
-    });
-  })();
-
   // Copy bets from another event
   const copyBetsFromEvent = useCopyBetsFromEvent(matchId);
   const { data: allMatches } = useMatches();
@@ -1942,7 +1926,7 @@ export default function MatchDetail() {
                       <SelectValue placeholder="Select match type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {sortedMatchOptions.map((opt) => (
+                      {ALL_MATCH_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value} data-testid={`option-${opt.value}`}>
                           {opt.label}
                         </SelectItem>
