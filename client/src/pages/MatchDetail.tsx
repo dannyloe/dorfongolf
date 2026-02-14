@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -360,14 +360,8 @@ export default function MatchDetail() {
         };
       });
     
-    // Check if at least some players have handicap data or overrides
     const overridesForMatch = matchHandicapOverrides?.get(eventMatch.id) || [];
-    const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null) || overridesForMatch.length > 0;
-    if (!hasAnyHandicapData) {
-      return null; // Can't calculate net scores if no players have handicaps and tees
-    }
     
-    // Convert overrides to the format expected by buildNetScoringContext
     const courseHandicapOverrides: CourseHandicapOverride[] = overridesForMatch.map(o => ({
       playerId: o.playerId,
       courseHandicap: o.courseHandicap,
@@ -402,11 +396,6 @@ export default function MatchDetail() {
         teeId: pairingData?.teeId ?? p.teeId,
       };
     });
-    
-    const hasAnyHandicapData = playerHandicapInfo.some(p => p.handicapIndex !== null && p.teeId !== null);
-    if (!hasAnyHandicapData) {
-      return null;
-    }
     
     return buildNetScoringContext(playerHandicapInfo, courseTees, matchCourse.holes);
   })();
@@ -2720,21 +2709,31 @@ export default function MatchDetail() {
                         </div>
 
                         {/* Course Handicaps for Net Matches (Editable by creator) */}
-                        {em.useNetScoring && netContext && (
-                          <div className="bg-muted/30 rounded-lg p-3">
-                            <p className="text-xs font-medium text-muted-foreground mb-2">Course Handicaps (click to edit)</p>
+                        {em.useNetScoring && netContext && (() => {
+                          const hasMissingPlayers = netContext.playersMissingData.size > 0;
+                          return (
+                          <div className={`rounded-lg p-3 ${hasMissingPlayers ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted/30'}`}>
+                            <div className="flex items-center gap-1.5 mb-2">
+                              {hasMissingPlayers && <AlertTriangle className="w-3.5 h-3.5 text-destructive" />}
+                              <p className="text-xs font-medium text-muted-foreground">
+                                {hasMissingPlayers 
+                                  ? 'Some players need handicap info — tap to enter course handicap' 
+                                  : 'Course Handicaps (click to edit)'}
+                              </p>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               {[...(teamA?.members || []), ...(teamB?.members || [])].map((m) => {
                                 const overrides = matchHandicapOverrides?.get(em.id) || [];
                                 const override = overrides.find(o => o.playerId === m.playerId);
+                                const isMissingData = netContext.playersMissingData.has(m.playerId);
                                 const calculatedHcp = netContext.courseHandicaps?.get(m.playerId);
-                                const displayHcp = override ? override.courseHandicap : calculatedHcp;
+                                const displayHcp = override ? override.courseHandicap : (isMissingData ? null : calculatedHcp);
                                 const isEditing = editingMatchCourseHcp?.eventMatchId === em.id && editingMatchCourseHcp?.playerId === m.playerId;
                                 const hasOverride = !!override;
                                 
                                 return (
                                   <div key={m.playerId} className="flex items-center gap-1">
-                                    <span className="text-xs text-muted-foreground">{m.player?.name}:</span>
+                                    <span className={`text-xs ${isMissingData && !hasOverride ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>{m.player?.name}:</span>
                                     {isEditing && canEditScoresAndBets ? (
                                       <Input
                                         type="number"
@@ -2780,17 +2779,19 @@ export default function MatchDetail() {
                                             }
                                           }}
                                           className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                                            hasOverride 
-                                              ? 'bg-primary/20 text-primary border border-primary/30' 
-                                              : 'bg-muted text-muted-foreground'
+                                            isMissingData && !hasOverride
+                                              ? 'bg-destructive/20 text-destructive border border-destructive/30 animate-pulse'
+                                              : hasOverride 
+                                                ? 'bg-primary/20 text-primary border border-primary/30' 
+                                                : 'bg-muted text-muted-foreground'
                                           } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
                                           disabled={!canEditScoresAndBets}
-                                          title={hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
+                                          title={isMissingData && !hasOverride ? 'No handicap data — click to enter course handicap' : hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
                                           data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
                                         >
                                           {displayHcp ?? '-'}
                                         </button>
-                                        {canEditScoresAndBets && calculatedHcp !== undefined && (
+                                        {canEditScoresAndBets && !isMissingData && calculatedHcp !== undefined && (
                                           <button
                                             onClick={() => {
                                               upsertMatchHandicap.mutate({
@@ -2813,7 +2814,8 @@ export default function MatchDetail() {
                               })}
                             </div>
                           </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Match Play Scoreboard */}
                         <div className="overflow-x-auto">
@@ -3899,11 +3901,17 @@ export default function MatchDetail() {
                           {/* Course Handicap display */}
                           {scorecardNetContext && (
                             <span 
-                              className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded"
-                              title="Course Handicap (calculated from handicap index and tee slope)"
+                              className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                scorecardNetContext.playersMissingData.has(p.id) 
+                                  ? 'text-destructive bg-destructive/10' 
+                                  : 'text-muted-foreground bg-muted/50'
+                              }`}
+                              title={scorecardNetContext.playersMissingData.has(p.id) 
+                                ? "No handicap data — set handicap index or enter course handicap override in bet settings" 
+                                : "Course Handicap (calculated from handicap index and tee slope)"}
                               data-testid={`course-hcp-${p.id}`}
                             >
-                              CH: {scorecardNetContext.courseHandicaps?.get(p.id) ?? '-'}
+                              CH: {scorecardNetContext.playersMissingData.has(p.id) ? '-' : (scorecardNetContext.courseHandicaps?.get(p.id) ?? '-')}
                             </span>
                           )}
                         </div>

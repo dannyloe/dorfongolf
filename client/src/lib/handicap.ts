@@ -133,6 +133,7 @@ export interface NetScoringContext {
   playerHandicaps: Map<number, number>; // playerId -> relativeHandicap
   holeHandicaps: Map<number, number>; // holeNumber -> handicapRank
   courseHandicaps: Map<number, number>; // playerId -> courseHandicap (before relative adjustment)
+  playersMissingData: Set<number>; // playerIds that have no handicap index/tee and no override
 }
 
 export interface CourseHandicapOverride {
@@ -146,21 +147,32 @@ export function buildNetScoringContext(
   holes: CourseHole[],
   courseHandicapOverrides?: CourseHandicapOverride[]
 ): NetScoringContext {
-  // Calculate course handicaps from handicap index, slope rating, course rating, and par
   const calculatedHandicaps = calculateRelativeHandicaps(players, tees, holes);
   
-  // Create a map to track course handicaps (with overrides applied)
   const courseHandicaps = new Map<number, number>();
   const overrideMap = new Map((courseHandicapOverrides ?? []).map(o => [o.playerId, o.courseHandicap]));
   
+  const playersMissingData = new Set<number>();
+  const playerInfoMap = new Map(players.map(p => [p.playerId, p]));
+  
   for (const p of calculatedHandicaps) {
-    // Use override if available, otherwise use calculated value
-    const courseHcp = overrideMap.has(p.playerId) ? overrideMap.get(p.playerId)! : p.courseHandicap;
-    courseHandicaps.set(p.playerId, courseHcp);
+    const info = playerInfoMap.get(p.playerId);
+    const hasOverride = overrideMap.has(p.playerId);
+    const hasHandicapData = info && info.handicapIndex !== null && info.teeId !== null;
+    
+    if (hasOverride) {
+      courseHandicaps.set(p.playerId, overrideMap.get(p.playerId)!);
+    } else if (hasHandicapData) {
+      courseHandicaps.set(p.playerId, p.courseHandicap);
+    } else {
+      playersMissingData.add(p.playerId);
+      courseHandicaps.set(p.playerId, 0);
+    }
   }
   
-  // Calculate relative handicaps (lowest = 0) based on final course handicaps
-  const finalCourseHandicaps = Array.from(courseHandicaps.values()).filter(h => !isNaN(h) && isFinite(h));
+  const finalCourseHandicaps = Array.from(courseHandicaps.entries())
+    .filter(([id, h]) => !playersMissingData.has(id) && !isNaN(h) && isFinite(h))
+    .map(([_, h]) => h);
   const minHandicap = finalCourseHandicaps.length > 0 ? Math.min(...finalCourseHandicaps) : 0;
   
   const playerHandicaps = new Map<number, number>();
@@ -168,13 +180,17 @@ export function buildNetScoringContext(
   for (const entry of entries) {
     const playerId = entry[0];
     const courseHcp = entry[1];
-    const relative = isNaN(courseHcp) || !isFinite(courseHcp) ? 0 : courseHcp - minHandicap;
-    playerHandicaps.set(playerId, relative);
+    if (playersMissingData.has(playerId)) {
+      playerHandicaps.set(playerId, 0);
+    } else {
+      const relative = isNaN(courseHcp) || !isFinite(courseHcp) ? 0 : courseHcp - minHandicap;
+      playerHandicaps.set(playerId, relative);
+    }
   }
   
   const holeHandicaps = buildHoleHandicapMap(holes);
   
-  return { playerHandicaps, holeHandicaps, courseHandicaps };
+  return { playerHandicaps, holeHandicaps, courseHandicaps, playersMissingData };
 }
 
 export function getNetStrokes(
