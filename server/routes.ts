@@ -5,7 +5,8 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { db } from "./db";
-import { presetPlayers, playerAliases } from "@shared/schema";
+import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable } from "@shared/schema";
+import { eq, sql, count } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
 
@@ -75,6 +76,30 @@ export async function registerRoutes(
   app.get(api.matches.list.path, isAuthenticated, async (req, res) => {
     const matches = await storage.getMatchesWithPlayers();
     res.json(matches);
+  });
+
+  app.get("/api/users/match-type-frequency", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const result = await db
+        .select({
+          matchType: eventMatchesTable.matchType,
+          count: count(),
+        })
+        .from(eventMatchesTable)
+        .innerJoin(matchesTable, eq(eventMatchesTable.eventId, matchesTable.id))
+        .where(eq(matchesTable.creatorId, user.claims.sub))
+        .groupBy(eventMatchesTable.matchType);
+      
+      const frequency: Record<string, number> = {};
+      for (const row of result) {
+        frequency[row.matchType] = Number(row.count);
+      }
+      res.json(frequency);
+    } catch (error) {
+      console.error("Error fetching match type frequency:", error);
+      res.status(500).json({ message: "Failed to fetch match type frequency" });
+    }
   });
 
   app.post(api.matches.create.path, isAuthenticated, async (req, res) => {
