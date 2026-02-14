@@ -246,7 +246,9 @@ export default function MatchDetail() {
   
   // Event Match creation state
   const [showCreateMatch, setShowCreateMatch] = useState(false);
-  const [selectedMatchType, setSelectedMatchType] = useState<MatchType>(MATCH_TYPES.MATCH_PLAY_1_BALL);
+  const [selectedMatchType, setSelectedMatchType] = useState<MatchType>(
+    (ALL_MATCH_OPTIONS.find(o => !('isWizard' in o && o.isWizard))?.value as MatchType) || MATCH_TYPES.NASSAU
+  );
   const [unitAmount, setUnitAmount] = useState<number>(20);
   const [teamAPlayerIds, setTeamAPlayerIds] = useState<number[]>([]);
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
@@ -555,7 +557,8 @@ export default function MatchDetail() {
         
         // Reset state after all matches created
         setShowCreateMatch(false);
-        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setIsRoundRobinMode(false);
+        setSelectedMatchType((sortedMatchOptions.find(o => !('isWizard' in o && o.isWizard))?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(20);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
@@ -600,7 +603,7 @@ export default function MatchDetail() {
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
-        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setSelectedMatchType((sortedMatchOptions.find(o => !('isWizard' in o && o.isWizard))?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(20);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
@@ -671,7 +674,7 @@ export default function MatchDetail() {
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
-        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setSelectedMatchType((sortedMatchOptions.find(o => !('isWizard' in o && o.isWizard))?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(20);
         setSkinsPlayerIds([]);
         // Keep useNetScoring true for handicapped matches
@@ -745,7 +748,7 @@ export default function MatchDetail() {
     }, {
       onSuccess: () => {
         setShowCreateMatch(false);
-        setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+        setSelectedMatchType((sortedMatchOptions.find(o => !('isWizard' in o && o.isWizard))?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(1); // Reset to $1 default
         setFiveTeamCount(2);
         setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
@@ -868,7 +871,7 @@ export default function MatchDetail() {
       setRoundRobinKeyedAIds([]);
       setRoundRobinKeyedBIds([]);
       setRoundRobinStep('select');
-      setSelectedMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
+      setSelectedMatchType((sortedMatchOptions.find(o => !('isWizard' in o && o.isWizard))?.value as MatchType) || MATCH_TYPES.NASSAU);
       // Keep useNetScoring true for handicapped matches
       setUseNetScoring(match.isHandicapped ?? false);
     } catch (error) {
