@@ -1437,107 +1437,91 @@ export default function MatchDetail() {
             
             {!addPlayerCollapsed && (
               <div className="px-4 pb-4 pt-2 border-t border-border/50">
-                {/* Preset Players Grid with Handicaps */}
-                <div className="mb-3">
-                  <p className="text-xs text-muted-foreground mb-2">Quick add from roster (with default handicaps):</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                    {(fullPlayerData || [])
-                      .filter(p => p.showInRoster)
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((playerInfo) => {
-                      const name = playerInfo.name;
-                      const isAdded = existingPlayerNames.includes(name.toLowerCase());
-                      const defaultHandicap = playerHandicaps?.find(h => h.presetPlayerName.toLowerCase() === name.toLowerCase());
-                      const handicapValue = defaultHandicap?.handicapIndex ?? playerInfo.handicapIndex;
-                      const displayHandicap = handicapValue !== null && handicapValue !== undefined 
-                        ? (handicapValue / 10).toFixed(1) 
-                        : '';
-                      const isEditingThis = editingHandicap === name;
-                      
-                      return (
-                        <div
-                          key={name}
-                          className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors ${
-                            isAdded 
-                              ? 'bg-primary/10 text-primary border border-primary/20' 
-                              : 'bg-muted/50 hover:bg-muted border border-transparent'
-                          }`}
-                        >
-                          <label className="flex items-center gap-1 flex-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isAdded}
-                              onChange={() => {
-                                if (!isAdded) {
-                                  addPlayer.mutate({ name });
-                                } else if (canEditScoresAndBets) {
-                                  const matchPlayer = players.find(p => p.name.toLowerCase() === name.toLowerCase());
-                                  if (matchPlayer) {
-                                    const playerHasScores = scores.some((s: Score) => s.playerId === matchPlayer.id);
-                                    if (playerHasScores) {
-                                      toast({ title: "Can't remove", description: "This player has recorded scores. Delete their scores first.", variant: "destructive" });
-                                    } else {
-                                      removePlayer.mutate(matchPlayer.id);
-                                    }
-                                  }
-                                }
-                              }}
-                              disabled={addPlayer.isPending || removePlayer.isPending || (isAdded && !canEditScoresAndBets)}
-                              className="w-3 h-3 rounded"
-                              data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
-                            />
-                            <span className="truncate">{name}</span>
-                          </label>
-                          {isEditingThis ? (
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={handicapEditValue}
-                              onChange={(e) => setHandicapEditValue(e.target.value)}
-                              onBlur={() => {
-                                const parsed = parseFloat(handicapEditValue);
-                                if (!isNaN(parsed) && parsed >= -10 && parsed <= 54) {
-                                  upsertPlayerHandicap.mutate({ 
-                                    presetPlayerName: name, 
-                                    handicapIndex: Math.round(parsed * 10) 
-                                  });
-                                } else if (handicapEditValue === '') {
-                                  upsertPlayerHandicap.mutate({ 
-                                    presetPlayerName: name, 
-                                    handicapIndex: null 
-                                  });
-                                }
-                                setEditingHandicap(null);
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.currentTarget.blur();
-                                } else if (e.key === 'Escape') {
-                                  setEditingHandicap(null);
-                                }
-                              }}
-                              autoFocus
-                              className="w-12 h-5 text-center text-xs border rounded px-1"
-                              placeholder="HCP"
-                              data-testid={`input-handicap-${name.toLowerCase().replace(/\s+/g, '-')}`}
-                            />
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setEditingHandicap(name);
-                                setHandicapEditValue(displayHandicap);
-                              }}
-                              className="w-12 h-5 text-center text-xs bg-background border rounded hover:bg-muted/50 text-muted-foreground"
-                              data-testid={`button-handicap-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                {/* Quick Add Roster Grid - only shows players NOT yet added */}
+                {(() => {
+                  const availableRosterPlayers = (fullPlayerData || [])
+                    .filter(p => p.showInRoster && !existingPlayerNames.includes(p.name.toLowerCase()))
+                    .sort((a, b) => a.name.localeCompare(b.name));
+                  
+                  return availableRosterPlayers.length > 0 ? (
+                    <div className="mb-3">
+                      <p className="text-xs text-muted-foreground mb-2">Quick add from roster:</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {availableRosterPlayers.map((playerInfo) => {
+                          const name = playerInfo.name;
+                          const defaultHandicap = playerHandicaps?.find(h => h.presetPlayerName.toLowerCase() === name.toLowerCase());
+                          const handicapValue = defaultHandicap?.handicapIndex ?? playerInfo.handicapIndex;
+                          const displayHandicap = handicapValue !== null && handicapValue !== undefined 
+                            ? (handicapValue / 10).toFixed(1) 
+                            : '';
+                          const isEditingThis = editingHandicap === name;
+                          
+                          return (
+                            <div
+                              key={name}
+                              className="flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors bg-muted/50 hover:bg-muted border border-transparent"
                             >
-                              {displayHandicap || '-'}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                              <button
+                                onClick={() => addPlayer.mutate({ name })}
+                                disabled={addPlayer.isPending}
+                                className="flex items-center gap-1 flex-1 cursor-pointer text-left"
+                                data-testid={`button-quick-add-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                              >
+                                <Plus className="w-3 h-3 text-muted-foreground shrink-0" />
+                                <span className="truncate">{name}</span>
+                              </button>
+                              {isEditingThis ? (
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={handicapEditValue}
+                                  onChange={(e) => setHandicapEditValue(e.target.value)}
+                                  onBlur={() => {
+                                    const parsed = parseFloat(handicapEditValue);
+                                    if (!isNaN(parsed) && parsed >= -10 && parsed <= 54) {
+                                      upsertPlayerHandicap.mutate({ 
+                                        presetPlayerName: name, 
+                                        handicapIndex: Math.round(parsed * 10) 
+                                      });
+                                    } else if (handicapEditValue === '') {
+                                      upsertPlayerHandicap.mutate({ 
+                                        presetPlayerName: name, 
+                                        handicapIndex: null 
+                                      });
+                                    }
+                                    setEditingHandicap(null);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.currentTarget.blur();
+                                    } else if (e.key === 'Escape') {
+                                      setEditingHandicap(null);
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="w-12 h-5 text-center text-xs border rounded px-1"
+                                  placeholder="HCP"
+                                  data-testid={`input-handicap-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                                />
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setEditingHandicap(name);
+                                    setHandicapEditValue(displayHandicap);
+                                  }}
+                                  className="w-12 h-5 text-center text-xs bg-background border rounded hover:bg-muted/50 text-muted-foreground"
+                                  data-testid={`button-handicap-${name.toLowerCase().replace(/\s+/g, '-')}`}
+                                >
+                                  {displayHandicap || '-'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
                 
                 {/* Custom Name Input */}
                 <div className="flex gap-2">
@@ -1559,6 +1543,46 @@ export default function MatchDetail() {
                     Add
                   </Button>
                 </div>
+
+                {/* Added Players List */}
+                {players.length > 0 && (
+                  <div className="mt-3 border-t border-border/50 pt-3">
+                    <p className="text-xs text-muted-foreground mb-2">Players in this match ({players.length}):</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {players.map((p) => {
+                        const playerHasScores = scores.some((s: Score) => s.playerId === p.id);
+                        return (
+                          <div
+                            key={p.id}
+                            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-primary/10 text-primary border border-primary/20"
+                            data-testid={`added-player-${p.id}`}
+                          >
+                            <span className="truncate max-w-[120px]">{p.name}</span>
+                            {canEditScoresAndBets && (
+                              <button
+                                onClick={() => {
+                                  if (removePlayer.isPending) return;
+                                  if (playerHasScores) {
+                                    toast({ title: "Can't remove", description: "This player has recorded scores. Delete their scores first.", variant: "destructive" });
+                                  } else {
+                                    removePlayer.mutate(p.id);
+                                  }
+                                }}
+                                className={`ml-0.5 rounded-full p-0.5 transition-colors ${
+                                  playerHasScores ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                                }`}
+                                title={playerHasScores ? "Has recorded scores — delete scores first" : "Remove from match"}
+                                data-testid={`button-remove-player-${p.id}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
