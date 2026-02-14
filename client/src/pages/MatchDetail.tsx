@@ -221,6 +221,15 @@ export default function MatchDetail() {
     });
   })();
 
+  useEffect(() => {
+    if (matchTypeFrequency && !showCreateMatch) {
+      const firstNonWizard = sortedMatchOptions.find(o => !('isWizard' in o && o.isWizard));
+      if (firstNonWizard) {
+        setSelectedMatchType(firstNonWizard.value as MatchType);
+      }
+    }
+  }, [matchTypeFrequency]);
+
   // Copy bets from another event
   const copyBetsFromEvent = useCopyBetsFromEvent(matchId);
   const { data: allMatches } = useMatches();
