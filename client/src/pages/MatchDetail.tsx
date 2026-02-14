@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -152,6 +152,7 @@ export default function MatchDetail() {
   const { user } = useAuth();
   const { toast } = useToast();
   const addPlayer = useAddPlayer(matchId);
+  const removePlayer = useRemovePlayer(matchId);
   const submitScore = useSubmitScore(matchId);
   const deleteMatch = useDeleteMatch();
   const createEventMatch = useCreateEventMatch(matchId, match?.ryderCupEventId);
@@ -1469,9 +1470,19 @@ export default function MatchDetail() {
                               onChange={() => {
                                 if (!isAdded) {
                                   addPlayer.mutate({ name });
+                                } else if (canEditScoresAndBets) {
+                                  const matchPlayer = players.find(p => p.name.toLowerCase() === name.toLowerCase());
+                                  if (matchPlayer) {
+                                    const playerHasScores = scores.some((s: Score) => s.playerId === matchPlayer.id);
+                                    if (playerHasScores) {
+                                      toast({ title: "Can't remove", description: "This player has recorded scores. Delete their scores first.", variant: "destructive" });
+                                    } else {
+                                      removePlayer.mutate(matchPlayer.id);
+                                    }
+                                  }
                                 }
                               }}
-                              disabled={isAdded || addPlayer.isPending}
+                              disabled={addPlayer.isPending || removePlayer.isPending || (isAdded && !canEditScoresAndBets)}
                               className="w-3 h-3 rounded"
                               data-testid={`checkbox-preset-${name.toLowerCase().replace(/\s+/g, '-')}`}
                             />

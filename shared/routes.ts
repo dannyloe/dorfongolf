@@ -86,6 +86,16 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+    removePlayer: {
+      method: 'DELETE' as const,
+      path: '/api/matches/:id/players/:playerId',
+      responses: {
+        204: z.void(),
+        400: errorSchemas.validation,
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
     submitScore: {
       method: 'POST' as const,
       path: '/api/matches/:id/scores',

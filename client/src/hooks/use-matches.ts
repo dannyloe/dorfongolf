@@ -82,6 +82,27 @@ export function useAddPlayer(matchId: number) {
   });
 }
 
+export function useRemovePlayer(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (playerId: number) => {
+      const url = buildUrl(api.matches.removePlayer.path, { id: matchId, playerId });
+      const res = await fetch(url, {
+        method: api.matches.removePlayer.method,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Failed to remove player" }));
+        throw new Error(error.message || "Failed to remove player");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+      queryClient.invalidateQueries({ queryKey: [api.matches.list.path] });
+    },
+  });
+}
+
 export function useSubmitScore(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({

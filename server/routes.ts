@@ -205,6 +205,41 @@ export async function registerRoutes(
     }
   });
 
+  app.delete(api.matches.removePlayer.path, isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id);
+    const playerId = parseInt(req.params.playerId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const isAdmin = await storage.isUserAdmin(userId);
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can remove players" });
+      }
+
+      const matchPlayers = await storage.getMatchPlayers(matchId);
+      const playerToRemove = matchPlayers.find(p => p.id === playerId);
+      if (!playerToRemove) {
+        return res.status(404).json({ message: "Player not found in this match" });
+      }
+
+      await storage.removePlayerFromMatch(matchId, playerId);
+      res.status(204).send();
+    } catch (err: any) {
+      if (err.message?.includes("Cannot remove player")) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.matches.submitScore.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;

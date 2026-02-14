@@ -306,6 +306,29 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
+  async removePlayerFromMatch(matchId: number, playerId: number): Promise<void> {
+    const existingScores = await db.select().from(scores)
+      .where(and(eq(scores.matchId, matchId), eq(scores.playerId, playerId)));
+    if (existingScores.length > 0) {
+      throw new Error("Cannot remove player with recorded scores. Delete their scores first.");
+    }
+
+    const eventMatchesList = await db.select().from(eventMatches).where(eq(eventMatches.eventId, matchId));
+    for (const em of eventMatchesList) {
+      const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, em.id));
+      for (const team of teamsList) {
+        await db.delete(teamMembers).where(
+          and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, playerId))
+        );
+      }
+      await db.delete(matchPlayerHandicaps).where(
+        and(eq(matchPlayerHandicaps.eventMatchId, em.id), eq(matchPlayerHandicaps.playerId, playerId))
+      );
+    }
+
+    await db.delete(players).where(and(eq(players.matchId, matchId), eq(players.id, playerId)));
+  }
+
   async deleteMatch(matchId: number): Promise<void> {
     // Delete event match data first
     const eventMatchesList = await db.select().from(eventMatches).where(eq(eventMatches.eventId, matchId));
