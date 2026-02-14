@@ -2382,6 +2382,9 @@ export default function MatchDetail() {
                           const netCtx = buildMatchNetContext(emWithCorrectBack9);
                           const isNetSkipped = em.useNetScoring && !netCtx;
                           const hasMissingHandicaps = em.useNetScoring && netCtx && netCtx.playersMissingData.size > 0;
+                          if (em.id === 248) {
+                            console.log('EM 248 debug:', { useNetScoring: em.useNetScoring, netCtxExists: !!netCtx, isNetSkipped, hasMissingHandicaps, missingSize: netCtx?.playersMissingData?.size, missingIds: netCtx ? Array.from(netCtx.playersMissingData) : [] });
+                          }
                           return (
                             <button
                               onClick={(e) => {
