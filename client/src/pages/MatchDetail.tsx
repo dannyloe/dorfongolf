@@ -171,6 +171,17 @@ export default function MatchDetail() {
   const { data: playerHandicaps } = usePlayerHandicaps();
   const { data: fullPlayerData = [] } = useFullPlayerData();
   const upsertPlayerHandicap = useUpsertPlayerHandicap();
+  
+  const { data: groupPlayerNames } = useQuery<string[]>({
+    queryKey: ['/api/groups', match?.groupId, 'player-names'],
+    queryFn: async () => {
+      const res = await fetch(`/api/groups/${match!.groupId}/players`, { credentials: 'include' });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.map((gp: any) => gp.presetPlayer?.name).filter(Boolean) as string[];
+    },
+    enabled: !!match?.groupId,
+  });
   const updatePlayerMatchHandicap = useUpdatePlayerMatchHandicap(matchId);
   const updatePlayerTee = useUpdatePlayerTee(matchId);
   
@@ -1470,8 +1481,13 @@ export default function MatchDetail() {
               <div className="px-4 pb-4 pt-2 border-t border-border/50">
                 {/* Quick Add Roster Grid - only shows players NOT yet added */}
                 {(() => {
+                  const groupNameSet = groupPlayerNames ? new Set(groupPlayerNames.map(n => n.toLowerCase())) : null;
                   const availableRosterPlayers = (fullPlayerData || [])
-                    .filter(p => p.showInRoster && !existingPlayerNames.includes(p.name.toLowerCase()))
+                    .filter(p => {
+                      if (existingPlayerNames.includes(p.name.toLowerCase())) return false;
+                      if (groupNameSet) return groupNameSet.has(p.name.toLowerCase());
+                      return p.showInRoster;
+                    })
                     .sort((a, b) => a.name.localeCompare(b.name));
                   
                   return availableRosterPlayers.length > 0 ? (
@@ -2382,9 +2398,6 @@ export default function MatchDetail() {
                           const netCtx = buildMatchNetContext(emWithCorrectBack9);
                           const isNetSkipped = em.useNetScoring && !netCtx;
                           const hasMissingHandicaps = em.useNetScoring && netCtx && netCtx.playersMissingData.size > 0;
-                          if (em.id === 248) {
-                            console.log('EM 248 debug:', { useNetScoring: em.useNetScoring, netCtxExists: !!netCtx, isNetSkipped, hasMissingHandicaps, missingSize: netCtx?.playersMissingData?.size, missingIds: netCtx ? Array.from(netCtx.playersMissingData) : [] });
-                          }
                           return (
                             <button
                               onClick={(e) => {
