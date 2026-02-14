@@ -2317,47 +2317,19 @@ export default function MatchDetail() {
                         {isExpanded ? <ChevronUp className="w-3 h-3 sm:w-4 sm:h-4" /> : <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4" />}
                       </div>
                       <div className="flex items-center gap-2 sm:gap-3">
-                        {editingMatchTypeId === em.id ? (
-                          <select
-                            className="text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium border-0 focus:ring-1 focus:ring-primary cursor-pointer appearance-auto"
-                            value={em.matchType}
-                            disabled={updateMatchType.isPending}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
+                        <span
+                          className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium ${canEditScoresAndBets ? 'cursor-pointer' : ''}`}
+                          onClick={(e) => {
+                            if (canEditScoresAndBets) {
                               e.stopPropagation();
-                              updateMatchType.mutate({
-                                eventMatchId: em.id,
-                                matchType: e.target.value,
-                              }, {
-                                onError: () => {
-                                  toast({ title: "Failed to update match type", variant: "destructive" });
-                                },
-                              });
-                              setEditingMatchTypeId(null);
-                            }}
-                            onBlur={() => setEditingMatchTypeId(null)}
-                            autoFocus
-                            data-testid={`select-match-type-${em.id}`}
-                          >
-                            {sortedMatchOptions.filter(opt => !(opt as any).isWizard).map((opt) => (
-                              <option key={opt.value} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span
-                            className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 bg-primary/10 text-primary rounded-full font-medium ${canEditScoresAndBets ? 'cursor-pointer' : ''}`}
-                            onClick={(e) => {
-                              if (canEditScoresAndBets) {
-                                e.stopPropagation();
-                                setEditingMatchTypeId(em.id);
-                              }
-                            }}
-                            data-testid={`text-match-type-${em.id}`}
-                          >
-                            {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
-                            {canEditScoresAndBets && <Pencil className="w-2.5 h-2.5 inline ml-1" />}
-                          </span>
-                        )}
+                              setEditingMatchTypeId(editingMatchTypeId === em.id ? null : em.id);
+                            }
+                          }}
+                          data-testid={`text-match-type-${em.id}`}
+                        >
+                          {MATCH_TYPE_LABELS[em.matchType as MatchType] || em.matchType}
+                          {canEditScoresAndBets && <Pencil className="w-2.5 h-2.5 inline ml-1" />}
+                        </span>
                         {editingUnitAmountId === em.id ? (
                           <input
                             type="number"
@@ -2481,6 +2453,34 @@ export default function MatchDetail() {
                       </Button>
                     )}
                   </div>
+
+                  {editingMatchTypeId === em.id && (
+                    <div className="border-t border-border bg-muted/30 px-3 py-2">
+                      <select
+                        className="w-full text-xs sm:text-sm px-2 py-1.5 bg-background border border-border rounded-md font-medium cursor-pointer focus:ring-1 focus:ring-primary focus:outline-none"
+                        value={em.matchType}
+                        disabled={updateMatchType.isPending}
+                        onChange={(e) => {
+                          updateMatchType.mutate({
+                            eventMatchId: em.id,
+                            matchType: e.target.value,
+                          }, {
+                            onError: () => {
+                              toast({ title: "Failed to update match type", variant: "destructive" });
+                            },
+                          });
+                          setEditingMatchTypeId(null);
+                        }}
+                        onBlur={() => setEditingMatchTypeId(null)}
+                        autoFocus
+                        data-testid={`select-match-type-${em.id}`}
+                      >
+                        {sortedMatchOptions.filter(opt => !(opt as any).isWizard).map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Collapsed Press Matches */}
                   {!isExpanded && pressMatches.length > 0 && (
