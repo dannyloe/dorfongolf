@@ -2379,8 +2379,9 @@ export default function MatchDetail() {
                           </button>
                         )}
                         {match.isHandicapped && (() => {
-                          const netContext = buildMatchNetContext(emWithCorrectBack9);
-                          const isNetSkipped = em.useNetScoring && !netContext;
+                          const netCtx = buildMatchNetContext(emWithCorrectBack9);
+                          const isNetSkipped = em.useNetScoring && !netCtx;
+                          const hasMissingHandicaps = em.useNetScoring && netCtx && netCtx.playersMissingData.size > 0;
                           return (
                             <button
                               onClick={(e) => {
@@ -2393,14 +2394,14 @@ export default function MatchDetail() {
                                 }
                               }}
                               className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded-full font-medium transition-colors ${
-                                isNetSkipped
+                                isNetSkipped || hasMissingHandicaps
                                   ? "bg-destructive/20 text-destructive"
                                   : em.useNetScoring 
                                     ? "bg-primary/20 text-primary" 
                                     : "bg-muted text-muted-foreground"
                               } ${canEditScoresAndBets ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
                               disabled={!canEditScoresAndBets || updateNetScoring.isPending}
-                              title={isNetSkipped ? "Net scoring skipped - missing handicap data or hole handicaps" : undefined}
+                              title={isNetSkipped ? "Net scoring skipped - missing handicap data or hole handicaps" : hasMissingHandicaps ? "Net scoring active but some players are missing handicap data" : undefined}
                               data-testid={`button-toggle-net-scoring-${em.id}`}
                             >
                               {em.useNetScoring ? "Net" : "Gross"}
