@@ -61,9 +61,9 @@ export function Layout({ children }: { children: ReactNode }) {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link href="/ryder-cup" className="flex items-center gap-2 w-full" data-testid="mobile-link-ryder-cup">
+                    <Link href="/ryder-cup" className="flex items-center gap-2 w-full" data-testid="mobile-link-events">
                       <Trophy className="w-4 h-4" />
-                      Ryder Cup
+                      Events
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -132,10 +132,10 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Link 
                   href="/ryder-cup" 
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${isActive('/ryder-cup') || location.startsWith('/ryder-cup') ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                  data-testid="link-ryder-cup"
+                  data-testid="link-events"
                 >
                   <Trophy className="w-4 h-4" />
-                  Ryder Cup
+                  Events
                 </Link>
                 <Link 
                   href="/groups" 

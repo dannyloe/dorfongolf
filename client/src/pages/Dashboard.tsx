@@ -73,8 +73,9 @@ export default function Dashboard() {
 
   const filteredMatches = useMemo(() => {
     if (!matches) return [];
-    if (myGroups.length === 0 && selectedGroupIds.size === 0) return matches;
-    return matches.filter(m => selectedGroupIds.has(m.groupId ?? null));
+    const standalone = matches.filter(m => !m.ryderCupEventId);
+    if (myGroups.length === 0 && selectedGroupIds.size === 0) return standalone;
+    return standalone.filter(m => selectedGroupIds.has(m.groupId ?? null));
   }, [matches, selectedGroupIds, myGroups]);
 
   const groupedMatches = useMemo(() => {

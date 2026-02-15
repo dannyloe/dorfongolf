@@ -2437,6 +2437,10 @@ Rules:
   app.post(api.ryderCup.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.ryderCup.create.input.parse(req.body);
+      const eventType = input.eventType ?? 'ryder_cup';
+      if (eventType === 'ryder_cup' && (!input.teamA || !input.teamB)) {
+        return res.status(400).json({ message: "Ryder Cup events require two teams" });
+      }
       const user = req.user as any;
       const event = await storage.createRyderCupEvent(input, user.claims.sub);
       res.status(201).json(event);

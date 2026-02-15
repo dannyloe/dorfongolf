@@ -2164,54 +2164,57 @@ export class DatabaseStorage implements IStorage {
       if (course) courseId = course.id;
     }
 
+    const eventType = data.eventType ?? 'ryder_cup';
+    
     const [event] = await db.insert(ryderCupEvents).values({
       name: data.name,
+      eventType,
       groupId: data.groupId ?? null,
       courseName: data.courseName,
       courseId,
       creatorId,
       buyInAmount: data.buyInAmount ?? 30000,
-      teamWinBonus: data.teamWinBonus ?? 12500,
+      teamWinBonus: data.teamWinBonus ?? (eventType === 'ryder_cup' ? 12500 : 0),
       matchWinBonus: data.matchWinBonus ?? 2500,
       matchTieBonus: data.matchTieBonus ?? 1250,
       dailySkinsPot: data.dailySkinsPot ?? 21250,
       closestToHolePayout: data.closestToHolePayout ?? 0,
-      targetPoints: data.targetPoints ?? 65,
+      targetPoints: data.targetPoints ?? (eventType === 'ryder_cup' ? 65 : 0),
       useHandicaps: data.useHandicaps ?? false,
     }).returning();
 
-    // Create Team A
-    const [teamA] = await db.insert(ryderCupTeams).values({
-      eventId: event.id,
-      name: data.teamA.name,
-      color: data.teamA.color || "#3b82f6",
-    }).returning();
+    if (data.teamA && data.teamB) {
+      const [teamA] = await db.insert(ryderCupTeams).values({
+        eventId: event.id,
+        name: data.teamA.name,
+        color: data.teamA.color || "#3b82f6",
+      }).returning();
 
-    for (const member of data.teamA.members) {
-      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
-      await db.insert(ryderCupTeamMembers).values({
-        teamId: teamA.id,
-        playerName: member.playerName,
-        presetPlayerId: preset?.id ?? null,
-        handicapIndex: member.handicapIndex ?? null,
-      });
-    }
+      for (const member of data.teamA.members) {
+        const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
+        await db.insert(ryderCupTeamMembers).values({
+          teamId: teamA.id,
+          playerName: member.playerName,
+          presetPlayerId: preset?.id ?? null,
+          handicapIndex: member.handicapIndex ?? null,
+        });
+      }
 
-    // Create Team B
-    const [teamB] = await db.insert(ryderCupTeams).values({
-      eventId: event.id,
-      name: data.teamB.name,
-      color: data.teamB.color || "#ef4444",
-    }).returning();
+      const [teamB] = await db.insert(ryderCupTeams).values({
+        eventId: event.id,
+        name: data.teamB.name,
+        color: data.teamB.color || "#ef4444",
+      }).returning();
 
-    for (const member of data.teamB.members) {
-      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
-      await db.insert(ryderCupTeamMembers).values({
-        teamId: teamB.id,
-        playerName: member.playerName,
-        presetPlayerId: preset?.id ?? null,
-        handicapIndex: member.handicapIndex ?? null,
-      });
+      for (const member of data.teamB.members) {
+        const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
+        await db.insert(ryderCupTeamMembers).values({
+          teamId: teamB.id,
+          playerName: member.playerName,
+          presetPlayerId: preset?.id ?? null,
+          handicapIndex: member.handicapIndex ?? null,
+        });
+      }
     }
 
     // Create days (default 4)

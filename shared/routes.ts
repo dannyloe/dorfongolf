@@ -1193,6 +1193,7 @@ export const api = {
       path: '/api/ryder-cup',
       input: z.object({
         name: z.string().min(1),
+        eventType: z.enum(['ryder_cup', 'buddy_trip', 'tournament']).optional().default('ryder_cup'),
         groupId: z.number().optional(),
         courseName: z.string().min(1),
         courseId: z.number().optional(),
@@ -1201,15 +1202,20 @@ export const api = {
         matchWinBonus: z.number().optional(),
         matchTieBonus: z.number().optional(),
         dailySkinsPot: z.number().optional(),
+        closestToHolePayout: z.number().optional(),
         targetPoints: z.number().optional(),
         useHandicaps: z.boolean().optional(),
         numberOfDays: z.number().optional(),
         dayConfigs: z.array(z.object({
           dayNumber: z.number(),
-          date: z.string().optional(), // ISO date string
-          teeTimes: z.array(z.string()).optional(), // e.g. ["8:00 AM", "8:12 AM"]
+          date: z.string().optional(),
+          teeTimes: z.array(z.string()).optional(),
           courseId: z.number().optional(),
           courseName: z.string().optional(),
+        })).optional(),
+        players: z.array(z.object({
+          playerName: z.string().min(1),
+          handicapIndex: z.number().optional(),
         })).optional(),
         teamA: z.object({
           name: z.string().min(1),
@@ -1218,7 +1224,7 @@ export const api = {
             playerName: z.string().min(1),
             handicapIndex: z.number().optional(),
           })).length(6),
-        }),
+        }).optional(),
         teamB: z.object({
           name: z.string().min(1),
           color: z.string().optional(),
@@ -1226,7 +1232,7 @@ export const api = {
             playerName: z.string().min(1),
             handicapIndex: z.number().optional(),
           })).length(6),
-        }),
+        }).optional(),
       }),
       responses: {
         201: z.custom<typeof ryderCupEvents.$inferSelect>(),

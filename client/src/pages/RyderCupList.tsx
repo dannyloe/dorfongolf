@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Trophy, Plus, Users, Calendar, Flag, ChevronRight, Trash2 } from "lucide-react";
+import { Trophy, Plus, Users, Calendar, Flag, ChevronRight, Trash2, TreePalm, Medal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { useDeleteRyderCupEvent } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useEffect, useMemo } from "react";
 import type { RyderCupEvent } from "@shared/schema";
+import { EVENT_TYPES, EVENT_TYPE_LABELS, type EventType } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function RyderCupList() {
@@ -77,10 +78,10 @@ export default function RyderCupList() {
         <div>
           <h1 className="text-3xl font-bold font-display flex items-center gap-3">
             <Trophy className="w-8 h-8 text-primary" />
-            Ryder Cup Events
+            Events
           </h1>
           <p className="text-muted-foreground mt-1">
-            Multi-day team competitions with Ryder Cup style format
+            Multi-day events: Ryder Cup, buddy trips, tournaments, and more
           </p>
         </div>
         <Link href="/ryder-cup/new">
@@ -132,9 +133,9 @@ export default function RyderCupList() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Trophy className="w-16 h-16 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Ryder Cup Events Yet</h3>
+            <h3 className="text-lg font-semibold mb-2">No Events Yet</h3>
             <p className="text-muted-foreground text-center mb-4">
-              Create your first Ryder Cup style event with 12 players split into two teams.
+              Create your first multi-day event - Ryder Cup, buddy trip, tournament, or more.
             </p>
             <Link href="/ryder-cup/new">
               <Button data-testid="button-create-first-event">
@@ -188,6 +189,12 @@ export default function RyderCupList() {
   );
 }
 
+const EVENT_TYPE_ICONS: Record<string, typeof Trophy> = {
+  [EVENT_TYPES.RYDER_CUP]: Trophy,
+  [EVENT_TYPES.BUDDY_TRIP]: TreePalm,
+  [EVENT_TYPES.TOURNAMENT]: Medal,
+};
+
 function RyderCupEventCard({ 
   event, 
   formatCurrency, 
@@ -203,6 +210,8 @@ function RyderCupEventCard({
   const ADMIN_USER_ID = "52861828";
   const isAdmin = user?.id === ADMIN_USER_ID;
   const isCreator = user?.id === event.creatorId || isAdmin;
+  const eventType = (event.eventType as EventType) || EVENT_TYPES.RYDER_CUP;
+  const EventTypeIcon = EVENT_TYPE_ICONS[eventType] || Trophy;
 
   const updateStatus = useMutation({
     mutationFn: async (status: "active" | "completed") => {
@@ -305,17 +314,13 @@ function RyderCupEventCard({
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+            <Badge variant="secondary" className="gap-1">
+              <EventTypeIcon className="w-3 h-3" />
+              {EVENT_TYPE_LABELS[eventType]}
+            </Badge>
             <div className="flex items-center gap-1">
               <Flag className="w-4 h-4" />
               {event.courseName}
-            </div>
-            <div className="flex items-center gap-1">
-              <Users className="w-4 h-4" />
-              12 Players
-            </div>
-            <div className="flex items-center gap-1">
-              <Calendar className="w-4 h-4" />
-              4 Days
             </div>
             <div className="flex items-center gap-1">
               Buy-in: {formatCurrency(event.buyInAmount)}
@@ -324,11 +329,13 @@ function RyderCupEventCard({
               <Badge variant="outline" className="text-xs">Handicapped</Badge>
             )}
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <span className="text-sm font-medium">Target:</span>
-            <span className="text-primary font-bold">{event.targetPoints / 10} pts</span>
-            <span className="text-muted-foreground text-sm">to win</span>
-          </div>
+          {eventType === EVENT_TYPES.RYDER_CUP && event.targetPoints > 0 && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="text-sm font-medium">Target:</span>
+              <span className="text-primary font-bold">{event.targetPoints / 10} pts</span>
+              <span className="text-muted-foreground text-sm">to win</span>
+            </div>
+          )}
         </CardContent>
       </Card>
     </Link>

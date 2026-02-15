@@ -658,9 +658,24 @@ export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value,
 
 // === RYDER CUP EVENT TABLES ===
 
+export const EVENT_TYPES = {
+  RYDER_CUP: "ryder_cup",
+  BUDDY_TRIP: "buddy_trip",
+  TOURNAMENT: "tournament",
+} as const;
+
+export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
+
+export const EVENT_TYPE_LABELS: Record<EventType, string> = {
+  [EVENT_TYPES.RYDER_CUP]: "Ryder Cup",
+  [EVENT_TYPES.BUDDY_TRIP]: "Buddy Trip",
+  [EVENT_TYPES.TOURNAMENT]: "Tournament",
+};
+
 export const ryderCupEvents = pgTable("ryder_cup_events", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  eventType: text("event_type").notNull().default("ryder_cup"),
   groupId: integer("group_id"),
   courseId: integer("course_id"),
   courseName: text("course_name").notNull(),
@@ -1138,31 +1153,33 @@ export type SettlementWithPayments = Settlement & {
 
 export type CreateRyderCupEventRequest = {
   name: string;
+  eventType?: EventType;
   groupId?: number;
-  courseName: string; // default course name
-  courseId?: number; // default course id
+  courseName: string;
+  courseId?: number;
   buyInAmount?: number;
   teamWinBonus?: number;
   matchWinBonus?: number;
   matchTieBonus?: number;
   dailySkinsPot?: number;
-  closestToHolePayout?: number; // in cents, per winner
+  closestToHolePayout?: number;
   targetPoints?: number;
   useHandicaps?: boolean;
-  numberOfDays?: number; // defaults to 4
-  dayConfigs?: { // optional per-day course and schedule selection
+  numberOfDays?: number;
+  dayConfigs?: {
     dayNumber: number;
-    date?: string; // ISO date string
-    teeTimes?: string[]; // e.g. ["8:00 AM", "8:12 AM"]
+    date?: string;
+    teeTimes?: string[];
     courseId?: number;
     courseName?: string;
   }[];
-  teamA: {
+  players?: { playerName: string; handicapIndex?: number }[];
+  teamA?: {
     name: string;
     color?: string;
     members: { playerName: string; handicapIndex?: number }[];
   };
-  teamB: {
+  teamB?: {
     name: string;
     color?: string;
     members: { playerName: string; handicapIndex?: number }[];

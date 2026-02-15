@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus, HandCoins, History } from "lucide-react";
+import { Trophy, Flag, Users, Calendar, ArrowLeft, Plus, Check, X, Minus, DollarSign, Pencil, Clock, GripVertical, ClipboardList, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Circle, Camera, Loader2, AlertCircle, CheckCircle2, RefreshCw, Receipt, Trash2, Eye, Settings, UserMinus, HandCoins, History, TreePalm, Medal } from "lucide-react";
+import { EVENT_TYPES, EVENT_TYPE_LABELS, type EventType } from "@shared/schema";
 import { useScanScorecard, ScannedPlayer } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -287,6 +288,7 @@ export default function RyderCupEvent() {
   const [dayEarningsBreakdown, setDayEarningsBreakdown] = useState<{ player: string; day: number } | null>(null);
   const [daySideBetsBreakdown, setDaySideBetsBreakdown] = useState<{ player: string; day: number } | null>(null);
   const [activeTab, setActiveTab] = useState("schedule");
+
   const [isRefreshingLedger, setIsRefreshingLedger] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
@@ -806,7 +808,7 @@ export default function RyderCupEvent() {
   };
 
   const createSideMatchMutation = useMutation({
-    mutationFn: async ({ forAllDays = false }: { forAllDays?: boolean } = {}): Promise<{ container: Match | null; daysCreated: number }> => {
+    mutationFn: async ({ forAllDays = false, dayNumber }: { forAllDays?: boolean; dayNumber?: number } = {}): Promise<{ container: Match | null; daysCreated: number }> => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -821,7 +823,7 @@ export default function RyderCupEvent() {
             })
             .map(d => d.dayNumber)
             .sort((a, b) => a - b)
-        : [selectedDay];
+        : [dayNumber ?? selectedDay];
       
       let firstContainer: Match | null = null;
       
@@ -904,8 +906,10 @@ export default function RyderCupEvent() {
 
   const teamA = event.teams[0];
   const teamB = event.teams[1];
+  const isTeamEvent = event.eventType === EVENT_TYPES.RYDER_CUP || (event.teams?.length > 0 && !event.eventType);
+  const eventTypeLabel = EVENT_TYPE_LABELS[event.eventType as EventType] || "Event";
+  const EventIcon = event.eventType === EVENT_TYPES.BUDDY_TRIP ? TreePalm : event.eventType === EVENT_TYPES.TOURNAMENT ? Medal : Trophy;
   
-  // Helper functions for manual bet dialog
   const allEventPlayers = [...(teamA?.members || []), ...(teamB?.members || [])];
   
   const addBetEntry = () => {
@@ -1904,7 +1908,7 @@ export default function RyderCupEvent() {
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold font-display flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-primary" />
+            <EventIcon className="w-6 h-6 text-primary" />
             {event.name}
           </h1>
           <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
@@ -1935,7 +1939,7 @@ export default function RyderCupEvent() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4">
+      {isTeamEvent && <div className="grid md:grid-cols-3 gap-4">
         <Card style={{ borderTop: `4px solid ${teamA?.color}` }}>
           <CardContent className="pt-4 text-center">
             {editingTeamId === teamA?.id ? (
@@ -2080,27 +2084,27 @@ export default function RyderCupEvent() {
             <p className="text-sm text-muted-foreground">points</p>
           </CardContent>
         </Card>
-      </div>
+      </div>}
 
       <Tabs 
         value={activeTab} 
         onValueChange={(value) => {
           setActiveTab(value);
-          // When switching to ledger tab, refresh all side match results
-          if (value === "ledger") {
+          if (value === "ledger" || value === "side_matches") {
             refreshSideMatchResults();
           }
         }}
       >
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
+        <TabsList className={`grid w-full ${isTeamEvent ? "grid-cols-6" : "grid-cols-5"}`}>
+          <TabsTrigger value="schedule" data-testid="tab-schedule">{isTeamEvent ? "Schedule" : "Days"}</TabsTrigger>
           <TabsTrigger value="ledger" data-testid="tab-ledger">
             {isRefreshingLedger ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
             Ledger
           </TabsTrigger>
           <TabsTrigger value="skins" data-testid="tab-skins">Skins</TabsTrigger>
+          <TabsTrigger value="side_matches" data-testid="tab-side-matches">Side Bets</TabsTrigger>
           <TabsTrigger value="payouts" data-testid="tab-payouts">Payouts</TabsTrigger>
-          <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>
+          {isTeamEvent && <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="schedule" className="space-y-4">
@@ -2694,150 +2698,6 @@ export default function RyderCupEvent() {
               })()}
               </div>
 
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-sm text-muted-foreground">Side Matches</h4>
-                  {(() => {
-                    // Check if a container already exists for this day
-                    const existingContainer = sideMatches.find(m => 
-                      m.ryderCupDayNumber === selectedDay && 
-                      m.name?.includes("Side Matches")
-                    );
-                    
-                    if (existingContainer) {
-                      // Container exists - just show button to go to it
-                      return (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setLocation(`/match/${existingContainer.id}`)}
-                          data-testid="button-go-to-side-match"
-                        >
-                          <Plus className="w-3 h-3 mr-1" /> Add Betting Game
-                        </Button>
-                      );
-                    }
-                    
-                    // No container - show options to create
-                    return (
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={createSideMatchMutation.isPending}
-                            data-testid="button-add-side-match"
-                          >
-                            <Plus className="w-3 h-3 mr-1" /> Set Up Side Matches
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56 p-2" align="end">
-                          <div className="flex flex-col gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="justify-start"
-                              onClick={() => createSideMatchMutation.mutate({ forAllDays: false })}
-                              disabled={createSideMatchMutation.isPending}
-                              data-testid="button-add-side-match-this-day"
-                            >
-                              Set up Day {selectedDay} only
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="justify-start"
-                              onClick={() => createSideMatchMutation.mutate({ forAllDays: true })}
-                              disabled={createSideMatchMutation.isPending}
-                              data-testid="button-add-side-match-all-days"
-                            >
-                              Set up all {event?.days.length || 4} days
-                            </Button>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    );
-                  })()}
-                </div>
-                {(() => {
-                  // Find the single container for this day (should only be one)
-                  const dayContainer = sideMatches.find(m => 
-                    m.ryderCupDayNumber === selectedDay && 
-                    m.name?.includes("Side Matches")
-                  );
-                  
-                  if (!dayContainer) {
-                    return <p className="text-sm text-muted-foreground">No side matches set up for this day</p>;
-                  }
-
-                  // Get all event match IDs (betting games) for this container
-                  const containerEventMatches = (sideMatchLedger?.eventMatches || [])
-                    .filter((em: any) => em.eventId === dayContainer.id);
-                  
-                  // Get ALL entries for this container
-                  const allMatchEntries = sideBetData.entries.filter(e => 
-                    containerEventMatches.map((em: any) => em.id).includes(e.matchId)
-                  );
-                  
-                  // Calculate player earnings from all entries
-                  const playerEarnings: Record<string, number> = {};
-                  allMatchEntries.forEach(r => {
-                    playerEarnings[r.playerName] = (playerEarnings[r.playerName] || 0) + r.amount;
-                  });
-                  const sortedEarnings = Object.entries(playerEarnings)
-                    .filter(([_, amount]) => amount !== 0)
-                    .sort((a, b) => b[1] - a[1]);
-                  
-                  
-                  const isComplete = dayContainer.completed || allMatchEntries.length > 0;
-
-                  return (
-                    <Card 
-                      className="border-dashed cursor-pointer hover-elevate"
-                      onClick={() => setLocation(`/match/${dayContainer.id}`)}
-                      data-testid={`card-side-match-${dayContainer.id}`}
-                    >
-                      <CardContent className="py-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-medium">{dayContainer.name || "Side Matches"}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {containerEventMatches.length} betting game{containerEventMatches.length !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">{dayContainer.courseName}</Badge>
-                            {isComplete && (
-                              <Badge variant="secondary">
-                                <Check className="w-3 h-3 mr-1" /> Complete
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        {isComplete && sortedEarnings.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-dashed">
-                            <div className="flex flex-wrap gap-2">
-                              {sortedEarnings.slice(0, 4).map(([name, amount]) => (
-                                <div key={name} className="flex items-center gap-1 text-xs">
-                                  <span className="text-muted-foreground">{name}:</span>
-                                  <span className={`font-medium ${amount > 0 ? "text-green-600" : amount < 0 ? "text-red-600" : ""}`}>
-                                    {amount > 0 ? "+" : ""}{formatCurrency(amount)}
-                                  </span>
-                                </div>
-                              ))}
-                              {sortedEarnings.length > 4 && (
-                                <span className="text-xs text-muted-foreground">
-                                  +{sortedEarnings.length - 4} more
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })()}
-              </div>
 
               {/* Closest to Hole Section */}
               {currentDayCourseId && courseHoles.length > 0 && courseHoles.some(h => h.par === 3) && (
@@ -4502,6 +4362,131 @@ export default function RyderCupEvent() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="side_matches" className="space-y-4" data-testid="tab-content-side-matches">
+          {(() => {
+            const daysWithContainers = (event?.days || []).map(day => {
+              const dayContainer = sideMatches.find(m =>
+                m.ryderCupDayNumber === day.dayNumber &&
+                m.name?.includes("Side Matches")
+              );
+              return { day, dayContainer };
+            });
+            const someMissing = daysWithContainers.some(d => !d.dayContainer);
+
+            return (
+              <div className="space-y-4">
+                {someMissing && (
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => createSideMatchMutation.mutate({ forAllDays: true })}
+                      disabled={createSideMatchMutation.isPending}
+                      data-testid="button-setup-all-days-side-matches"
+                    >
+                      {createSideMatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+                      Set Up All Days
+                    </Button>
+                  </div>
+                )}
+
+                {daysWithContainers.map(({ day, dayContainer }) => {
+                  const dayCourse = courses.find(c => c.id === (day.courseId || event?.courseId));
+
+                  return (
+                    <div key={day.id} className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-semibold text-sm" data-testid={`text-side-match-day-${day.dayNumber}`}>
+                          Day {day.dayNumber}
+                        </h4>
+                        {day.date && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(day.date).toLocaleDateString()}
+                          </span>
+                        )}
+                        {dayCourse && (
+                          <Badge variant="outline" data-testid={`badge-side-match-course-${day.dayNumber}`}>
+                            {dayCourse.name}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {dayContainer ? (
+                        <Card
+                          className="border-dashed cursor-pointer hover-elevate"
+                          onClick={() => setLocation(`/match/${dayContainer.id}`)}
+                          data-testid={`card-side-match-${dayContainer.id}`}
+                        >
+                          <CardContent className="py-3">
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex flex-col gap-1">
+                                <span className="font-medium">{dayContainer.name || "Side Matches"}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {((sideMatchLedger?.eventMatches || []).filter((em: any) => em.eventId === dayContainer.id)).length} betting game{((sideMatchLedger?.eventMatches || []).filter((em: any) => em.eventId === dayContainer.id)).length !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {dayContainer.courseName && (
+                                  <Badge variant="outline">{dayContainer.courseName}</Badge>
+                                )}
+                              </div>
+                            </div>
+                            {(() => {
+                              const containerEventMatches = (sideMatchLedger?.eventMatches || [])
+                                .filter((em: any) => em.eventId === dayContainer.id);
+                              const allMatchEntries = sideBetData.entries.filter(e =>
+                                containerEventMatches.map((em: any) => em.id).includes(e.matchId)
+                              );
+                              const playerEarnings: Record<string, number> = {};
+                              allMatchEntries.forEach(r => {
+                                playerEarnings[r.playerName] = (playerEarnings[r.playerName] || 0) + r.amount;
+                              });
+                              const sortedEarnings = Object.entries(playerEarnings)
+                                .filter(([_, amount]) => amount !== 0)
+                                .sort((a, b) => b[1] - a[1]);
+
+                              if (sortedEarnings.length === 0) return null;
+
+                              return (
+                                <div className="mt-2 pt-2 border-t border-dashed">
+                                  <div className="flex flex-wrap gap-2">
+                                    {sortedEarnings.slice(0, 4).map(([name, amount]) => (
+                                      <div key={name} className="flex items-center gap-1 text-xs">
+                                        <span className="text-muted-foreground">{name}:</span>
+                                        <span className={`font-medium ${amount > 0 ? "text-green-600" : amount < 0 ? "text-red-600" : ""}`}>
+                                          {amount > 0 ? "+" : ""}{formatCurrency(amount)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {sortedEarnings.length > 4 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        +{sortedEarnings.length - 4} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          onClick={() => createSideMatchMutation.mutate({ forAllDays: false, dayNumber: day.dayNumber })}
+                          disabled={createSideMatchMutation.isPending}
+                          data-testid={`button-setup-side-match-day-${day.dayNumber}`}
+                        >
+                          {createSideMatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+                          Set Up Side Matches
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="payouts">

@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Trophy, Users, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Check, Flag, CalendarDays, Clock, Plus, X } from "lucide-react";
+import { Trophy, Users, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Check, Flag, CalendarDays, Clock, Plus, X, TreePalm, Medal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,9 +11,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { EVENT_TYPES, EVENT_TYPE_LABELS, type EventType } from "@shared/schema";
 
 type FullPlayerData = {
   players: { name: string; handicapIndex: number | null; showInRoster: boolean }[];
+};
+
+const EVENT_TYPE_CONFIG: Record<EventType, { icon: typeof Trophy; description: string; defaultDays: number }> = {
+  [EVENT_TYPES.RYDER_CUP]: {
+    icon: Trophy,
+    description: "Team vs team competition with scheduled pairings",
+    defaultDays: 4,
+  },
+  [EVENT_TYPES.BUDDY_TRIP]: {
+    icon: TreePalm,
+    description: "Multi-day golf trip with friends, side matches, and skins",
+    defaultDays: 3,
+  },
+  [EVENT_TYPES.TOURNAMENT]: {
+    icon: Medal,
+    description: "Individual or group tournament across multiple rounds",
+    defaultDays: 2,
+  },
 };
 
 export default function RyderCupCreate() {
@@ -21,6 +40,7 @@ export default function RyderCupCreate() {
   const { toast } = useToast();
   const [step, setStep] = useState(1);
 
+  const [eventType, setEventType] = useState<EventType>(EVENT_TYPES.RYDER_CUP);
   const [eventName, setEventName] = useState("");
   const [selectedGroupId, setSelectedGroupId] = useState<number | undefined>();
   const [courseName, setCourseName] = useState("");
@@ -34,6 +54,7 @@ export default function RyderCupCreate() {
   const [closestToHolePayout, setClosestToHolePayout] = useState(0);
 
   const [useDifferentCourses, setUseDifferentCourses] = useState(false);
+  const [numberOfDays, setNumberOfDays] = useState(4);
   const [dayConfigs, setDayConfigs] = useState<{ 
     dayNumber: number; 
     courseId?: number; 
@@ -53,6 +74,9 @@ export default function RyderCupCreate() {
   const [teamBColor, setTeamBColor] = useState("#ef4444");
   const [teamAMembers, setTeamAMembers] = useState<string[]>([]);
   const [teamBMembers, setTeamBMembers] = useState<string[]>([]);
+
+  const isTeamEvent = eventType === EVENT_TYPES.RYDER_CUP;
+  const totalSteps = isTeamEvent ? 3 : 2;
 
   const { data: courses = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["/api/courses"],
@@ -83,53 +107,72 @@ export default function RyderCupCreate() {
     return availablePlayers.filter(p => !assigned.has(p.name));
   }, [availablePlayers, teamAMembers, teamBMembers]);
 
+  const updateNumberOfDays = (newCount: number) => {
+    setNumberOfDays(newCount);
+    setDayConfigs(prev => {
+      const configs = [...prev];
+      while (configs.length < newCount) {
+        configs.push({ dayNumber: configs.length + 1, courseName: "", date: "", teeTimes: [] });
+      }
+      return configs.slice(0, newCount);
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload = {
+      const activeDayConfigs = dayConfigs.slice(0, numberOfDays);
+      const payload: Record<string, unknown> = {
         name: eventName,
+        eventType,
         groupId: selectedGroupId,
-        courseName: useDifferentCourses ? dayConfigs[0].courseName : courseName,
-        courseId: useDifferentCourses ? dayConfigs[0].courseId : courseId,
+        courseName: useDifferentCourses ? activeDayConfigs[0].courseName : courseName,
+        courseId: useDifferentCourses ? activeDayConfigs[0].courseId : courseId,
         buyInAmount: Math.round(buyInAmount * 100),
-        teamWinBonus: Math.round(teamWinBonus * 100),
         matchWinBonus: Math.round(matchWinBonus * 100),
         matchTieBonus: Math.round(matchTieBonus * 100),
         dailySkinsPot: Math.round(dailySkinsPot * 100),
         closestToHolePayout: Math.round(closestToHolePayout * 100),
-        targetPoints: 65,
         useHandicaps,
-        numberOfDays: 4,
-        dayConfigs: dayConfigs.map(dc => ({
+        numberOfDays,
+        dayConfigs: activeDayConfigs.map(dc => ({
           dayNumber: dc.dayNumber,
           date: dc.date || undefined,
           teeTimes: dc.teeTimes.length > 0 ? dc.teeTimes : undefined,
           courseId: useDifferentCourses ? dc.courseId : courseId,
           courseName: useDifferentCourses ? dc.courseName : courseName,
         })),
-        teamA: {
+      };
+
+      if (isTeamEvent) {
+        payload.teamWinBonus = Math.round(teamWinBonus * 100);
+        payload.targetPoints = 65;
+        payload.teamA = {
           name: teamAName,
           color: teamAColor,
           members: teamAMembers.map(name => {
             const player = availablePlayers.find(p => p.name === name);
             return { playerName: name, handicapIndex: player?.handicapIndex ?? undefined };
           }),
-        },
-        teamB: {
+        };
+        payload.teamB = {
           name: teamBName,
           color: teamBColor,
           members: teamBMembers.map(name => {
             const player = availablePlayers.find(p => p.name === name);
             return { playerName: name, handicapIndex: player?.handicapIndex ?? undefined };
           }),
-        },
-      };
+        };
+      }
+
       return apiRequest("POST", "/api/ryder-cup", payload);
     },
     onSuccess: async (response) => {
       const event = await response.json();
-      await apiRequest("POST", `/api/ryder-cup/${event.id}/generate-schedule`);
+      if (isTeamEvent) {
+        await apiRequest("POST", `/api/ryder-cup/${event.id}/generate-schedule`);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/ryder-cup"] });
-      toast({ title: "Event Created!", description: "Your Ryder Cup event and schedule have been created." });
+      toast({ title: "Event Created!", description: `Your ${EVENT_TYPE_LABELS[eventType]} event has been created.` });
       setLocation(`/ryder-cup/${event.id}`);
     },
     onError: () => {
@@ -155,13 +198,50 @@ export default function RyderCupCreate() {
 
   const canProceedStep1 = eventName.length > 0 && (
     useDifferentCourses 
-      ? dayConfigs.every(dc => dc.courseName.length > 0)
+      ? dayConfigs.slice(0, numberOfDays).every(dc => dc.courseName.length > 0)
       : courseName.length > 0
   );
-  const canProceedStep2 = teamAMembers.length === 6 && teamBMembers.length === 6;
+  const canProceedStep2Team = teamAMembers.length === 6 && teamBMembers.length === 6;
+
+  const renderEventTypeSelection = () => (
+    <div className="space-y-3 mb-6">
+      <Label>Event Type</Label>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {(Object.entries(EVENT_TYPE_CONFIG) as [EventType, typeof EVENT_TYPE_CONFIG[EventType]][]).map(([type, config]) => {
+          const Icon = config.icon;
+          const selected = eventType === type;
+          return (
+            <button
+              key={type}
+              type="button"
+              onClick={() => {
+                setEventType(type);
+                const defaultDays = config.defaultDays;
+                updateNumberOfDays(defaultDays);
+              }}
+              className={`p-4 rounded-md border-2 text-left transition-colors ${
+                selected 
+                  ? "border-primary bg-primary/5" 
+                  : "border-muted hover-elevate"
+              }`}
+              data-testid={`button-event-type-${type}`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Icon className={`w-5 h-5 ${selected ? "text-primary" : "text-muted-foreground"}`} />
+                <span className="font-semibold">{EVENT_TYPE_LABELS[type]}</span>
+              </div>
+              <p className="text-sm text-muted-foreground">{config.description}</p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   const renderStep1 = () => (
     <div className="space-y-6">
+      {renderEventTypeSelection()}
+
       <div className="grid gap-4">
         <div>
           <Label htmlFor="eventName">Event Name</Label>
@@ -169,7 +249,7 @@ export default function RyderCupCreate() {
             id="eventName"
             value={eventName}
             onChange={(e) => setEventName(e.target.value)}
-            placeholder="e.g., 2026 Golf Betting Ryder Cup"
+            placeholder={eventType === EVENT_TYPES.RYDER_CUP ? "e.g., 2026 Ryder Cup" : eventType === EVENT_TYPES.BUDDY_TRIP ? "e.g., Myrtle Beach Trip 2026" : "e.g., Spring Championship"}
             data-testid="input-event-name"
           />
         </div>
@@ -192,6 +272,24 @@ export default function RyderCupCreate() {
             </div>
           </div>
         )}
+
+        <div>
+          <Label>Number of Days</Label>
+          <Select
+            value={numberOfDays.toString()}
+            onValueChange={(val) => updateNumberOfDays(parseInt(val))}
+          >
+            <SelectTrigger data-testid="select-num-days">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[1, 2, 3, 4, 5, 6, 7].map(n => (
+                <SelectItem key={n} value={n.toString()}>{n} {n === 1 ? "day" : "days"}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="flex items-center justify-between">
           <div>
             <Label>Different Course Each Day</Label>
@@ -230,7 +328,7 @@ export default function RyderCupCreate() {
         ) : (
           <div className="space-y-3">
             <Label>Course for Each Day</Label>
-            {[1, 2, 3, 4].map((dayNum) => (
+            {Array.from({ length: numberOfDays }, (_, i) => i + 1).map((dayNum) => (
               <div key={dayNum} className="flex items-center gap-3">
                 <span className="text-sm font-medium w-16">Day {dayNum}</span>
                 <Select
@@ -281,7 +379,7 @@ export default function RyderCupCreate() {
           Set dates and tee times for each day. You can also configure these later.
         </p>
         <div className="space-y-4">
-          {dayConfigs.map((dc, idx) => (
+          {dayConfigs.slice(0, numberOfDays).map((dc, idx) => (
             <div key={dc.dayNumber} className="p-3 border rounded-md space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-medium">Day {dc.dayNumber}</span>
@@ -384,7 +482,7 @@ export default function RyderCupCreate() {
     </div>
   );
 
-  const renderStep2 = () => (
+  const renderTeamStep = () => (
     <div className="space-y-6">
       <div className="grid md:grid-cols-2 gap-6">
         <Card>
@@ -526,7 +624,7 @@ export default function RyderCupCreate() {
     </div>
   );
 
-  const renderStep3 = () => (
+  const renderReviewStep = () => (
     <div className="space-y-6">
       <Card>
         <CardHeader>
@@ -542,10 +640,14 @@ export default function RyderCupCreate() {
               <p className="font-semibold">{eventName}</p>
             </div>
             <div>
+              <Label className="text-muted-foreground">Type</Label>
+              <p className="font-semibold">{EVENT_TYPE_LABELS[eventType]}</p>
+            </div>
+            <div>
               <Label className="text-muted-foreground">Course{useDifferentCourses ? "s" : ""}</Label>
               {useDifferentCourses ? (
                 <div className="space-y-1">
-                  {dayConfigs.map((dc) => (
+                  {dayConfigs.slice(0, numberOfDays).map((dc) => (
                     <p key={dc.dayNumber} className="text-sm flex items-center gap-1">
                       <Flag className="w-3 h-3" /> Day {dc.dayNumber}: {dc.courseName}
                     </p>
@@ -562,28 +664,34 @@ export default function RyderCupCreate() {
               <p className="font-semibold">{useHandicaps ? "Handicapped" : "Scratch"}</p>
             </div>
             <div>
+              <Label className="text-muted-foreground">Duration</Label>
+              <p className="font-semibold">{numberOfDays} {numberOfDays === 1 ? "day" : "days"}</p>
+            </div>
+            <div>
               <Label className="text-muted-foreground">Buy-in</Label>
               <p className="font-semibold">${buyInAmount}</p>
             </div>
           </div>
 
-          <div className="border-t pt-4">
-            <h4 className="font-semibold mb-3">Teams</h4>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="p-3 rounded-lg" style={{ backgroundColor: `${teamAColor}20`, borderLeft: `4px solid ${teamAColor}` }}>
-                <h5 className="font-semibold mb-2">{teamAName}</h5>
-                <ul className="text-sm space-y-1">
-                  {teamAMembers.map(name => <li key={name}>{name}</li>)}
-                </ul>
-              </div>
-              <div className="p-3 rounded-lg" style={{ backgroundColor: `${teamBColor}20`, borderLeft: `4px solid ${teamBColor}` }}>
-                <h5 className="font-semibold mb-2">{teamBName}</h5>
-                <ul className="text-sm space-y-1">
-                  {teamBMembers.map(name => <li key={name}>{name}</li>)}
-                </ul>
+          {isTeamEvent && (
+            <div className="border-t pt-4">
+              <h4 className="font-semibold mb-3">Teams</h4>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="p-3 rounded-md" style={{ backgroundColor: `${teamAColor}10` }}>
+                  <h5 className="font-semibold mb-2" style={{ color: teamAColor }}>{teamAName}</h5>
+                  <ul className="text-sm space-y-1">
+                    {teamAMembers.map(name => <li key={name}>{name}</li>)}
+                  </ul>
+                </div>
+                <div className="p-3 rounded-md" style={{ backgroundColor: `${teamBColor}10` }}>
+                  <h5 className="font-semibold mb-2" style={{ color: teamBColor }}>{teamBName}</h5>
+                  <ul className="text-sm space-y-1">
+                    {teamBMembers.map(name => <li key={name}>{name}</li>)}
+                  </ul>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="border-t pt-4">
             <p className="text-sm text-muted-foreground">
@@ -591,16 +699,41 @@ export default function RyderCupCreate() {
             </p>
           </div>
 
-          <div className="bg-muted/50 p-4 rounded-lg">
+          <div className="bg-muted/50 p-4 rounded-md">
             <p className="text-sm text-muted-foreground">
-              After creation, a 4-day schedule will be automatically generated with 3 matches per day.
-              Each player will partner with 4 of their 5 teammates across the event. First team to 6.5 points wins!
+              {isTeamEvent
+                ? `After creation, a ${numberOfDays}-day schedule will be automatically generated with 3 matches per day. Each player will partner with teammates across the event. First team to ${(65 / 10).toFixed(1)} points wins!`
+                : `Your ${numberOfDays}-day event will be created. You can add side matches, skins, and track scores for each day.`
+              }
             </p>
           </div>
         </CardContent>
       </Card>
     </div>
   );
+
+  const isOnReviewStep = step === totalSteps;
+  const isOnTeamStep = isTeamEvent && step === 2;
+
+  const canProceed = () => {
+    if (step === 1) return canProceedStep1;
+    if (isOnTeamStep) return canProceedStep2Team;
+    return true;
+  };
+
+  const stepTitle = () => {
+    if (step === 1) return "Event Details";
+    if (isOnTeamStep) return "Select Teams";
+    return "Confirm & Create";
+  };
+
+  const stepDescription = () => {
+    if (step === 1) return "Choose your event type and set up the basics";
+    if (isOnTeamStep) return "Pick 6 players for each team";
+    return "Review and create your event";
+  };
+
+  const EventIcon = EVENT_TYPE_CONFIG[eventType].icon;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -610,15 +743,15 @@ export default function RyderCupCreate() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold font-display flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-primary" />
-            Create Ryder Cup Event
+            <EventIcon className="w-6 h-6 text-primary" />
+            Create {EVENT_TYPE_LABELS[eventType]} Event
           </h1>
-          <p className="text-muted-foreground">Step {step} of 3</p>
+          <p className="text-muted-foreground">Step {step} of {totalSteps}</p>
         </div>
       </div>
 
       <div className="flex gap-2 mb-4">
-        {[1, 2, 3].map((s) => (
+        {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
           <div
             key={s}
             className={`flex-1 h-2 rounded-full ${s <= step ? "bg-primary" : "bg-muted"}`}
@@ -628,21 +761,13 @@ export default function RyderCupCreate() {
 
       <Card>
         <CardHeader>
-          <CardTitle>
-            {step === 1 && "Event Details"}
-            {step === 2 && "Select Teams"}
-            {step === 3 && "Confirm & Create"}
-          </CardTitle>
-          <CardDescription>
-            {step === 1 && "Set up your event name, course, and prize structure"}
-            {step === 2 && "Pick 6 players for each team"}
-            {step === 3 && "Review and create your event"}
-          </CardDescription>
+          <CardTitle>{stepTitle()}</CardTitle>
+          <CardDescription>{stepDescription()}</CardDescription>
         </CardHeader>
         <CardContent>
           {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
+          {isOnTeamStep && renderTeamStep()}
+          {isOnReviewStep && renderReviewStep()}
         </CardContent>
       </Card>
 
@@ -656,10 +781,10 @@ export default function RyderCupCreate() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Previous
         </Button>
-        {step < 3 ? (
+        {!isOnReviewStep ? (
           <Button
             onClick={() => setStep(step + 1)}
-            disabled={(step === 1 && !canProceedStep1) || (step === 2 && !canProceedStep2)}
+            disabled={!canProceed()}
             data-testid="button-next"
           >
             Next
