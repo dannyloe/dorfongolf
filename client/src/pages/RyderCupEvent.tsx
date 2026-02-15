@@ -57,6 +57,7 @@ function PayoutSettingsForm({ event, courses, eventId }: {
   courses: CourseWithHoles[]; 
   eventId: string;
 }) {
+  const [buyInAmount, setBuyInAmount] = useState(String(event.buyInAmount / 100));
   const [teamWinBonus, setTeamWinBonus] = useState(String(event.teamWinBonus / 100));
   const [matchWinBonus, setMatchWinBonus] = useState(String(event.matchWinBonus / 100));
   const [dailySkinsPot, setDailySkinsPot] = useState(String(event.dailySkinsPot / 100));
@@ -178,14 +179,24 @@ function PayoutSettingsForm({ event, courses, eventId }: {
       </div>
       
       <div className="border-t pt-4 mt-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm font-medium">Calculated Buy-in</span>
-            <p className="text-xs text-muted-foreground">Total pot ÷ {numPlayers} players</p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <label className="text-sm font-medium block mb-1">Buy-in Amount</label>
+            <Input
+              type="number"
+              value={buyInAmount}
+              onChange={(e) => setBuyInAmount(e.target.value)}
+              onBlur={() => savePayout("buyInAmount", parseFloat(buyInAmount) || 0)}
+              placeholder="0"
+              data-testid="input-buy-in-amount"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Suggested: {formatCurrency(calculatedBuyIn)} (total pot ÷ {numPlayers} players)
+            </p>
           </div>
           <div className="text-right">
-            <span className="text-2xl font-bold">{formatCurrency(calculatedBuyIn)}</span>
-            <p className="text-xs text-muted-foreground">Total pot: {formatCurrency(totalPot)}</p>
+            <span className="text-sm text-muted-foreground">Total pot</span>
+            <p className="text-lg font-bold">{formatCurrency(totalPot)}</p>
           </div>
         </div>
       </div>
@@ -4640,23 +4651,7 @@ export default function RyderCupEvent() {
                 // Calculate net position based on includeBuyInInLedger setting
                 const includeBuyIn = event?.includeBuyInInLedger ?? true;
                 
-                // Calculate buy-in amount (must match PayoutsTab calculation exactly)
-                const numPlayers = 12;
-                const numDays = event.days.length || 4;
-                const matchesPerDay = 3;
-                const playersPerMatch = 2;
-                const par3sByDay = event.days.map(day => {
-                  const dayCourseId = day.courseId || event.courseId;
-                  const dayCourse = courses?.find((c: { id: number }) => c.id === dayCourseId);
-                  return dayCourse?.holes?.filter((h: { par: number }) => h.par === 3).length || 0;
-                });
-                const totalPar3s = par3sByDay.reduce((sum: number, p: number) => sum + p, 0);
-                const totalTeamWin = event.teamWinBonus * 6;
-                const totalMatchWins = event.matchWinBonus * playersPerMatch * matchesPerDay * numDays;
-                const totalSkins = event.dailySkinsPot * numDays;
-                const totalCTH = event.closestToHolePayout * totalPar3s;
-                const totalPot = totalTeamWin + totalMatchWins + totalSkins + totalCTH;
-                const buyInAmount = Math.ceil(totalPot / numPlayers);
+                const buyInAmount = event.buyInAmount;
                 
                 const netPosition: Record<string, number> = {};
                 allPlayers.forEach(name => {
@@ -5159,23 +5154,7 @@ export default function RyderCupEvent() {
                     });
                   });
                   
-                  // Calculate buy-in amount (matching PayoutsTab calculation)
-                  const numPlayers = 12;
-                  const numDays = event?.days.length || 4;
-                  const matchesPerDay = 3;
-                  const playersPerMatch = 2;
-                  const par3sByDay = (event?.days || []).map(day => {
-                    const dayCourseId = day.courseId || event?.courseId;
-                    const dayCourse = courses?.find(c => c.id === dayCourseId);
-                    return dayCourse?.holes?.filter(h => h.par === 3).length || 0;
-                  });
-                  const totalPar3s = par3sByDay.reduce((sum, p) => sum + p, 0);
-                  const totalTeamWin = (event?.teamWinBonus || 0) * 6;
-                  const totalMatchWins = (event?.matchWinBonus || 0) * playersPerMatch * matchesPerDay * numDays;
-                  const totalSkins = (event?.dailySkinsPot || 0) * numDays;
-                  const totalCTH = (event?.closestToHolePayout || 0) * totalPar3s;
-                  const totalPot = totalTeamWin + totalMatchWins + totalSkins + totalCTH;
-                  const buyInAmount = Math.ceil(totalPot / numPlayers);
+                  const buyInAmount = event?.buyInAmount || 0;
                   
                   // Calculate net position including all components
                   const includeBuyIn = event?.includeBuyInInLedger ?? true;
