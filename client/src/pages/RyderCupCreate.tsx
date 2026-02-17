@@ -667,10 +667,6 @@ export default function RyderCupCreate() {
               <Label className="text-muted-foreground">Duration</Label>
               <p className="font-semibold">{numberOfDays} {numberOfDays === 1 ? "day" : "days"}</p>
             </div>
-            <div>
-              <Label className="text-muted-foreground">Buy-in</Label>
-              <p className="font-semibold">${buyInAmount}</p>
-            </div>
           </div>
 
           {isTeamEvent && (
