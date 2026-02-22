@@ -297,6 +297,13 @@ export const api = {
           name: z.string().min(1),
           playerIds: z.array(z.number()).min(1),
         })).optional(),
+        // Death Match specific bet amounts (in cents)
+        deathMatchBaseBet: z.number().min(0).optional(),
+        deathMatchBestBallBet: z.number().min(0).optional(),
+        deathMatchSecondBallBet: z.number().min(0).optional(),
+        deathMatchFirstPressBet: z.number().min(0).optional(),
+        deathMatchSubsequentPressBet: z.number().min(0).optional(),
+        deathMatchSecondBallPressBet: z.number().min(0).optional(),
       }),
       responses: {
         201: z.custom<typeof eventMatches.$inferSelect>(),

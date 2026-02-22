@@ -45,6 +45,7 @@ Preferred communication style: Simple, everyday language.
 - **Scorecard Scanning**: AI-powered feature to scan physical scorecards using Gemini Vision AI, extract scores, and allow user review before saving.
 - **Ryder Cup Match Auto-Results**: Automatic calculation and recording of match results, including clinch detection and margin formatting, when scores are entered sequentially.
 - **Start on Back 9 Mode**: Support for golf rounds starting on the back 9 (holes 10-18 then 1-9) with intelligent hole mapping and transformation utilities to ensure all calculations and displays are correct across bet types.
+- **Death Match Bet Type**: Two-player teams with dual simultaneous bets: Best Ball (stroke play cumulative) and Second Ball (match play hole-by-hole). Configurable base bet amount with auto-calculated tiered press structure (1st press = 1/2 base, subsequent = 1/4 base, rounded to nearest $5). Six stored bet columns: `deathMatchBaseBet`, `deathMatchBestBallBet`, `deathMatchSecondBallBet`, `deathMatchFirstPressBet`, `deathMatchSubsequentPressBet`, `deathMatchSecondBallPressBet` (all in cents). Scoring via `calculateDeathMatchResults()` in `matchplay.ts`. Integrated into ledger and combined settlements.
 
 ### Project Structure
 - `client/`: React frontend.

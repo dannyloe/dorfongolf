@@ -12,7 +12,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -301,6 +301,14 @@ export default function MatchDetail() {
     { name: "Team 1", playerIds: [] },
     { name: "Team 2", playerIds: [] },
   ]);
+  
+  // Death Match state
+  const [deathMatchBaseBet, setDeathMatchBaseBet] = useState<number>(20);
+  const [deathMatchBestBallBet, setDeathMatchBestBallBet] = useState<number>(20);
+  const [deathMatchSecondBallBet, setDeathMatchSecondBallBet] = useState<number>(10);
+  const [deathMatchFirstPressBet, setDeathMatchFirstPressBet] = useState<number>(10);
+  const [deathMatchSubsequentPressBet, setDeathMatchSubsequentPressBet] = useState<number>(5);
+  const [deathMatchSecondBallPressBet, setDeathMatchSecondBallPressBet] = useState<number>(5);
   
   // Net scoring state (for handicapped events) - defaults to true when match is handicapped
   const [useNetScoring, setUseNetScoring] = useState(false);
@@ -775,6 +783,58 @@ export default function MatchDetail() {
         setFiveTeamCount(2);
         setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
         // Keep useNetScoring true for handicapped matches
+        setUseNetScoring(match.isHandicapped ?? false);
+      }
+    });
+  };
+
+  const roundUpToFive = (amount: number): number => {
+    return Math.ceil(amount / 5) * 5;
+  };
+
+  const updateDeathMatchDefaults = (baseBet: number) => {
+    setDeathMatchBaseBet(baseBet);
+    setDeathMatchBestBallBet(baseBet);
+    setDeathMatchSecondBallBet(Math.round(baseBet / 2));
+    setDeathMatchFirstPressBet(roundUpToFive(baseBet / 2));
+    setDeathMatchSubsequentPressBet(roundUpToFive(baseBet / 4));
+    setDeathMatchSecondBallPressBet(roundUpToFive(baseBet / 4));
+  };
+
+  const handleCreateDeathMatch = () => {
+    if (teamAPlayerIds.length !== 2 || teamBPlayerIds.length !== 2) return;
+    
+    const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
+    const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
+    const autoMatchName = `Death Match: ${autoTeamAName} vs ${autoTeamBName}`;
+    
+    createEventMatch.mutate({
+      name: autoMatchName,
+      matchType: MATCH_TYPES.DEATH_MATCH,
+      unitAmount: deathMatchBaseBet * 100,
+      teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
+      teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
+      autoPressOriginal: false,
+      autoPressAllPresses: false,
+      autoPressNassauFront9: false,
+      autoPressNassauBack9: false,
+      autoPressNassauOverall: false,
+      useNetScoring: match.isHandicapped ? useNetScoring : false,
+      startOnBack9: dayStartOnBack9,
+      deathMatchBaseBet: deathMatchBaseBet * 100,
+      deathMatchBestBallBet: deathMatchBestBallBet * 100,
+      deathMatchSecondBallBet: deathMatchSecondBallBet * 100,
+      deathMatchFirstPressBet: deathMatchFirstPressBet * 100,
+      deathMatchSubsequentPressBet: deathMatchSubsequentPressBet * 100,
+      deathMatchSecondBallPressBet: deathMatchSecondBallPressBet * 100,
+    }, {
+      onSuccess: () => {
+        setShowCreateMatch(false);
+        setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
+        setUnitAmount(20);
+        setTeamAPlayerIds([]);
+        setTeamBPlayerIds([]);
+        setDeathMatchBaseBet(20);
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -1963,6 +2023,16 @@ export default function MatchDetail() {
                         setUnitAmount(1); // Default $1 wager for 5-5-5-3
                         setFiveTeamCount(2);
                         setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
+                      } else if (value === MATCH_TYPES.DEATH_MATCH) {
+                        setSelectedMatchType(MATCH_TYPES.DEATH_MATCH);
+                        setDeathMatchBaseBet(20);
+                        setDeathMatchBestBallBet(20);
+                        setDeathMatchSecondBallBet(10);
+                        setDeathMatchFirstPressBet(10);
+                        setDeathMatchSubsequentPressBet(5);
+                        setDeathMatchSecondBallPressBet(5);
+                        setTeamAPlayerIds([]);
+                        setTeamBPlayerIds([]);
                       } else {
                         setSelectedMatchType(value as MatchType);
                         setSkinsPlayerIds([]);
@@ -2163,6 +2233,189 @@ export default function MatchDetail() {
                     {createEventMatch.isPending ? "Creating..." : "Create 5-5-5-3 Match"}
                   </Button>
                 </>
+              ) : selectedMatchType === MATCH_TYPES.DEATH_MATCH ? (
+                <>
+                  <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">Death Match - Two bets in one:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li><strong>Best Ball (Stroke Play)</strong> — Best score of each 2-player team per hole, cumulative</li>
+                      <li><strong>Second Ball (Match Play)</strong> — Other ball for each team, hole-by-hole</li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Base Bet ($)</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={deathMatchBaseBet}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          updateDeathMatchDefaults(val);
+                        }}
+                        className="mt-1"
+                        data-testid="input-death-match-base-bet"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">All other amounts are calculated from this. You can override them below.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Best Ball Bet ($)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={deathMatchBestBallBet}
+                          onChange={(e) => setDeathMatchBestBallBet(parseFloat(e.target.value) || 0)}
+                          className="mt-1 h-8 text-sm"
+                          data-testid="input-death-match-best-ball-bet"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">2nd Ball Bet ($)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={deathMatchSecondBallBet}
+                          onChange={(e) => setDeathMatchSecondBallBet(parseFloat(e.target.value) || 0)}
+                          className="mt-1 h-8 text-sm"
+                          data-testid="input-death-match-second-ball-bet"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">1st Press ($)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="5"
+                          value={deathMatchFirstPressBet}
+                          onChange={(e) => setDeathMatchFirstPressBet(parseFloat(e.target.value) || 0)}
+                          className="mt-1 h-8 text-sm"
+                          data-testid="input-death-match-first-press"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Add'l Press ($)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="5"
+                          value={deathMatchSubsequentPressBet}
+                          onChange={(e) => setDeathMatchSubsequentPressBet(parseFloat(e.target.value) || 0)}
+                          className="mt-1 h-8 text-sm"
+                          data-testid="input-death-match-subsequent-press"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">2nd Ball Press ($)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="5"
+                          value={deathMatchSecondBallPressBet}
+                          onChange={(e) => setDeathMatchSecondBallPressBet(parseFloat(e.target.value) || 0)}
+                          className="mt-1 h-8 text-sm"
+                          data-testid="input-death-match-second-ball-press"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-primary text-sm">
+                          {teamAPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamAPlayerIds) : "Team A (2 players)"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {players.map((p) => {
+                          const isInA = teamAPlayerIds.includes(p.id);
+                          const isInB = teamBPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                if (isInA) {
+                                  setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== p.id));
+                                } else if (!isInB && teamAPlayerIds.length < 2) {
+                                  setTeamAPlayerIds([...teamAPlayerIds, p.id]);
+                                }
+                              }}
+                              disabled={isInB || (!isInA && teamAPlayerIds.length >= 2)}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                isInA
+                                  ? "bg-primary text-primary-foreground"
+                                  : isInB
+                                  ? "bg-muted/50 text-muted-foreground line-through"
+                                  : teamAPlayerIds.length >= 2
+                                  ? "bg-muted/30 text-muted-foreground"
+                                  : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-death-team-a-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-accent text-sm">
+                          {teamBPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamBPlayerIds) : "Team B (2 players)"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {players.map((p) => {
+                          const isInA = teamAPlayerIds.includes(p.id);
+                          const isInB = teamBPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                if (isInB) {
+                                  setTeamBPlayerIds(teamBPlayerIds.filter(id => id !== p.id));
+                                } else if (!isInA && teamBPlayerIds.length < 2) {
+                                  setTeamBPlayerIds([...teamBPlayerIds, p.id]);
+                                }
+                              }}
+                              disabled={isInA || (!isInB && teamBPlayerIds.length >= 2)}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                isInB
+                                  ? "bg-accent text-accent-foreground"
+                                  : isInA
+                                  ? "bg-muted/50 text-muted-foreground line-through"
+                                  : teamBPlayerIds.length >= 2
+                                  ? "bg-muted/30 text-muted-foreground"
+                                  : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-death-team-b-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={handleCreateDeathMatch}
+                    disabled={teamAPlayerIds.length !== 2 || teamBPlayerIds.length !== 2 || createEventMatch.isPending}
+                    className="w-full"
+                    data-testid="button-submit-create-death-match"
+                  >
+                    {createEventMatch.isPending ? "Creating..." : "Create Death Match"}
+                  </Button>
+                </>
               ) : (
                 <>
                   <p className="text-xs text-muted-foreground">
@@ -2303,8 +2556,20 @@ export default function MatchDetail() {
               const emWithCorrectBack9 = { ...em, startOnBack9: isBack9First };
               
               const netContext = buildMatchNetContext(emWithCorrectBack9);
-              const results = calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
-              const status = teamA && teamB ? getMatchStatus(results, teamA, teamB, emWithCorrectBack9.matchType) : 'Not started';
+              const isDeathMatch = emWithCorrectBack9.matchType === 'death_match';
+              const dmResults = isDeathMatch ? calculateDeathMatchResults(emWithCorrectBack9, scores, netContext) : null;
+              const results = isDeathMatch ? [] : calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
+              const status = isDeathMatch && dmResults && teamA && teamB
+                ? (() => {
+                    const bbStatus = dmResults.bestBall.isComplete
+                      ? (dmResults.bestBall.winner === 'A' ? `${teamA.name} wins BB` : dmResults.bestBall.winner === 'B' ? `${teamB.name} wins BB` : 'BB tied')
+                      : (dmResults.bestBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null).length > 0 ? dmResults.bestBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null).slice(-1)[0]?.status || 'BB: N/A' : 'Not started');
+                    const sbStatus = dmResults.secondBall.isComplete
+                      ? (dmResults.secondBall.winner === 'A' ? `${teamA.name} wins 2nd` : dmResults.secondBall.winner === 'B' ? `${teamB.name} wins 2nd` : '2nd halved')
+                      : (dmResults.secondBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null).length > 0 ? dmResults.secondBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null).slice(-1)[0]?.status || '2nd: N/A' : '');
+                    return sbStatus ? `${bbStatus} | ${sbStatus}` : bbStatus;
+                  })()
+                : (teamA && teamB ? getMatchStatus(results, teamA, teamB, emWithCorrectBack9.matchType) : 'Not started');
               const firstNineHoles = isBack9First ? [10, 11, 12, 13, 14, 15, 16, 17, 18] : [1, 2, 3, 4, 5, 6, 7, 8, 9];
               const secondNineHoles = isBack9First ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [10, 11, 12, 13, 14, 15, 16, 17, 18];
               const isExpanded = expandedMatch === em.id;

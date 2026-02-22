@@ -392,6 +392,12 @@ export class DatabaseStorage implements IStorage {
       useNetScoring: data.useNetScoring ?? false,
       startOnBack9: data.startOnBack9 ?? false,
       isRoundRobinGenerated: data.isRoundRobinGenerated ?? false,
+      deathMatchBaseBet: data.deathMatchBaseBet ?? null,
+      deathMatchBestBallBet: data.deathMatchBestBallBet ?? null,
+      deathMatchSecondBallBet: data.deathMatchSecondBallBet ?? null,
+      deathMatchFirstPressBet: data.deathMatchFirstPressBet ?? null,
+      deathMatchSubsequentPressBet: data.deathMatchSubsequentPressBet ?? null,
+      deathMatchSecondBallPressBet: data.deathMatchSecondBallPressBet ?? null,
     }).returning();
 
     // Check if using multiple teams (for 5-5-5-3)
@@ -491,15 +497,36 @@ export class DatabaseStorage implements IStorage {
     const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
     if (!parentMatch) throw new Error("Parent match not found");
 
+    // For Death Match presses, determine the correct press amount
+    let pressUnitAmount = parentMatch.unitAmount;
+    if (parentMatch.matchType === 'death_match') {
+      // Count existing presses to determine if this is the first or subsequent
+      const existingPresses = await db.select().from(eventMatches)
+        .where(eq(eventMatches.parentMatchId, parentMatchId));
+      if (existingPresses.length === 0) {
+        // First press - use first press amount
+        pressUnitAmount = parentMatch.deathMatchFirstPressBet || Math.round((parentMatch.deathMatchBaseBet || parentMatch.unitAmount) / 2);
+      } else {
+        // Subsequent press - use subsequent press amount
+        pressUnitAmount = parentMatch.deathMatchSubsequentPressBet || Math.round((parentMatch.deathMatchBaseBet || parentMatch.unitAmount) / 4);
+      }
+    }
+
     const [newPressMatch] = await db.insert(eventMatches).values({
       eventId: parentMatch.eventId,
       name: `Press from ${startHole}`,
       matchType: parentMatch.matchType,
-      unitAmount: parentMatch.unitAmount,
+      unitAmount: pressUnitAmount,
       parentMatchId: parentMatchId,
       startHole: startHole,
       autoPressOriginal: parentMatch.autoPressOriginal,
       autoPressAllPresses: false,
+      deathMatchBaseBet: parentMatch.deathMatchBaseBet,
+      deathMatchBestBallBet: parentMatch.deathMatchBestBallBet,
+      deathMatchSecondBallBet: parentMatch.deathMatchSecondBallBet,
+      deathMatchFirstPressBet: parentMatch.deathMatchFirstPressBet,
+      deathMatchSubsequentPressBet: parentMatch.deathMatchSubsequentPressBet,
+      deathMatchSecondBallPressBet: parentMatch.deathMatchSecondBallPressBet,
     }).returning();
 
     // Copy teams from parent match

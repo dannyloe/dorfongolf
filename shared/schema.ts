@@ -116,6 +116,12 @@ export const eventMatches = pgTable("event_matches", {
   hasBeenReplicated: boolean("has_been_replicated").notNull().default(false),
   startOnBack9: boolean("start_on_back_9").notNull().default(false), // when true, play starts on hole 10 (back 9 first)
   isRoundRobinGenerated: boolean("is_round_robin_generated").notNull().default(false),
+  deathMatchBaseBet: integer("death_match_base_bet"), // in cents - the base bet for death match
+  deathMatchBestBallBet: integer("death_match_best_ball_bet"), // in cents - best ball stroke play bet (defaults to base)
+  deathMatchSecondBallBet: integer("death_match_second_ball_bet"), // in cents - match play on second ball (defaults to base/2)
+  deathMatchFirstPressBet: integer("death_match_first_press_bet"), // in cents - first press amount (defaults to base/2, rounded to $5)
+  deathMatchSubsequentPressBet: integer("death_match_subsequent_press_bet"), // in cents - subsequent press amount (defaults to base/4, rounded to $5)
+  deathMatchSecondBallPressBet: integer("death_match_second_ball_press_bet"), // in cents - second ball press amount (defaults to base/4, rounded to $5)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -587,6 +593,13 @@ export type CreateEventMatchRequest = {
   teamB: { name: string; playerIds: number[] };
   // Optional: For 5-5-5-3 matches that support multiple teams
   teams?: { name: string; playerIds: number[] }[];
+  // Death Match specific bet amounts (in cents)
+  deathMatchBaseBet?: number;
+  deathMatchBestBallBet?: number;
+  deathMatchSecondBallBet?: number;
+  deathMatchFirstPressBet?: number;
+  deathMatchSubsequentPressBet?: number;
+  deathMatchSecondBallPressBet?: number;
 };
 
 export type GroupWithDetails = Group & {
@@ -638,6 +651,7 @@ export const MATCH_TYPES = {
   NASSAU: "nassau",
   SKINS: "skins",
   FIVE_FIVE_FIVE_THREE: "five_five_five_three",
+  DEATH_MATCH: "death_match",
 } as const;
 
 export type MatchType = typeof MATCH_TYPES[keyof typeof MATCH_TYPES];
@@ -649,6 +663,7 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.NASSAU]: "Nassau",
   [MATCH_TYPES.SKINS]: "Skins",
   [MATCH_TYPES.FIVE_FIVE_FIVE_THREE]: "5-5-5-3",
+  [MATCH_TYPES.DEATH_MATCH]: "Death Match",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({

@@ -141,6 +141,12 @@ interface EventMatch {
   autoPressNassauOverall?: boolean;
   useNetScoring?: boolean;
   startOnBack9?: boolean;
+  deathMatchBaseBet?: number | null;
+  deathMatchBestBallBet?: number | null;
+  deathMatchSecondBallBet?: number | null;
+  deathMatchFirstPressBet?: number | null;
+  deathMatchSubsequentPressBet?: number | null;
+  deathMatchSecondBallPressBet?: number | null;
   teams: Team[];
 }
 
@@ -592,6 +598,129 @@ export function calculateLedger(
           playerTotals.set(stableKey, existing);
         }
       }
+    } else if (em.matchType === 'death_match') {
+      const dmNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
+      const dmResults = calculateDeathMatchResults(em, scores, dmNetContext);
+
+      const bestBallBetCents = em.deathMatchBestBallBet || em.unitAmount || 0;
+      const secondBallBetCents = em.deathMatchSecondBallBet || Math.round((em.unitAmount || 0) / 2);
+      const bestBallBet = bestBallBetCents / 100;
+      const secondBallBet = secondBallBetCents / 100;
+
+      const dmPlayerTeamIndex = new Map<number, number>();
+      for (const m of teamA.members) dmPlayerTeamIndex.set(m.playerId, 0);
+      for (const m of teamB.members) dmPlayerTeamIndex.set(m.playerId, 1);
+
+      const addDeathMatchSettlement = (
+        betType: string, winner: 'A' | 'B' | 'tie' | null, isComplete: boolean, betAmount: number
+      ) => {
+        if (!isComplete || winner === null) {
+          for (const m of [...teamA.members, ...teamB.members]) {
+            entries.push({
+              matchId: em.id,
+              matchName: em.name,
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              amount: 0,
+              isComplete: false,
+              createdAt: em.createdAt,
+              betType,
+              isAutoPress: false,
+              pressHole,
+              teamAMembers,
+              teamBMembers,
+              teamName: teamA.members.some(tm => tm.playerId === m.playerId) ? teamA.name : teamB.name,
+              teamIndex: dmPlayerTeamIndex.get(m.playerId) ?? 0,
+            });
+          }
+          return;
+        }
+
+        const winTeam = winner === 'A' ? teamA : teamB;
+        const loseTeam = winner === 'A' ? teamB : teamA;
+
+        if (winner === 'tie') {
+          for (const m of [...teamA.members, ...teamB.members]) {
+            const teamIdx = dmPlayerTeamIndex.get(m.playerId) ?? 0;
+            entries.push({
+              matchId: em.id,
+              matchName: em.name,
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              amount: 0,
+              isComplete: true,
+              createdAt: em.createdAt,
+              betType,
+              isAutoPress: false,
+              pressHole,
+              teamAMembers,
+              teamBMembers,
+              teamName: teamIdx === 0 ? teamA.name : teamB.name,
+              teamIndex: teamIdx,
+            });
+          }
+          return;
+        }
+
+        for (const m of winTeam.members) {
+          const teamIdx = dmPlayerTeamIndex.get(m.playerId) ?? 0;
+          entries.push({
+            matchId: em.id,
+            matchName: em.name,
+            playerId: m.playerId,
+            playerName: m.player?.name || `Player ${m.playerId}`,
+            amount: betAmount,
+            isComplete: true,
+            createdAt: em.createdAt,
+            betType,
+            isAutoPress: false,
+            pressHole,
+            teamAMembers,
+            teamBMembers,
+            teamName: teamIdx === 0 ? teamA.name : teamB.name,
+            teamIndex: teamIdx,
+          });
+
+          if (isComplete) {
+            const stableKey = playerIdToStableKey.get(m.playerId) || `guest:${(m.player?.name || '').toLowerCase().trim()}`;
+            const existing = playerTotals.get(stableKey) || { name: m.player?.name || '', won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: m.playerId };
+            existing.won += betAmount;
+            existing.matches.add(em.id);
+            playerTotals.set(stableKey, existing);
+          }
+        }
+
+        for (const m of loseTeam.members) {
+          const teamIdx = dmPlayerTeamIndex.get(m.playerId) ?? 0;
+          entries.push({
+            matchId: em.id,
+            matchName: em.name,
+            playerId: m.playerId,
+            playerName: m.player?.name || `Player ${m.playerId}`,
+            amount: -betAmount,
+            isComplete: true,
+            createdAt: em.createdAt,
+            betType,
+            isAutoPress: false,
+            pressHole,
+            teamAMembers,
+            teamBMembers,
+            teamName: teamIdx === 0 ? teamA.name : teamB.name,
+            teamIndex: teamIdx,
+          });
+
+          if (isComplete) {
+            const stableKey = playerIdToStableKey.get(m.playerId) || `guest:${(m.player?.name || '').toLowerCase().trim()}`;
+            const existing = playerTotals.get(stableKey) || { name: m.player?.name || '', won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: m.playerId };
+            existing.lost += betAmount;
+            existing.matches.add(em.id);
+            playerTotals.set(stableKey, existing);
+          }
+        }
+      };
+
+      addDeathMatchSettlement('Best Ball', dmResults.bestBall.winner, dmResults.bestBall.isComplete, bestBallBet);
+      addDeathMatchSettlement('2nd Ball', dmResults.secondBall.winner, dmResults.secondBall.isComplete, secondBallBet);
     } else {
       // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
       const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
@@ -874,6 +1003,33 @@ export function calculateCombinedMatchSettlements(
           }
         }
       }
+    } else if (match.matchType === 'death_match') {
+      totalBets += 2;
+      const dmResults = calculateDeathMatchResults(match, scores, netContext);
+      const bestBallBet = (match.deathMatchBestBallBet || match.unitAmount || 0) / 100;
+      const secondBallBet = (match.deathMatchSecondBallBet || Math.round((match.unitAmount || 0) / 2)) / 100;
+
+      const processDeathBet = (winner: 'A' | 'B' | 'tie' | null, isComplete: boolean, betAmount: number) => {
+        totalPot += betAmount * Math.max(teamA.members.length, teamB.members.length);
+        if (!isComplete || winner === null) return;
+        completedCount++;
+        if (winner === 'tie') return;
+        const winTeam = winner === 'A' ? teamA : teamB;
+        const loseTeam = winner === 'A' ? teamB : teamA;
+        for (const m of winTeam.members) {
+          const existing = playerAmounts.get(m.playerId) || { name: m.player?.name || '', amount: 0 };
+          existing.amount += betAmount;
+          playerAmounts.set(m.playerId, existing);
+        }
+        for (const m of loseTeam.members) {
+          const existing = playerAmounts.get(m.playerId) || { name: m.player?.name || '', amount: 0 };
+          existing.amount -= betAmount;
+          playerAmounts.set(m.playerId, existing);
+        }
+      };
+
+      processDeathBet(dmResults.bestBall.winner, dmResults.bestBall.isComplete, bestBallBet);
+      processDeathBet(dmResults.secondBall.winner, dmResults.secondBall.isComplete, secondBallBet);
     } else {
       // Regular match play or stroke play - 1 bet
       totalBets += 1;
@@ -1659,6 +1815,138 @@ export function calculateFiveSettlements(
   });
   
   return settlements;
+}
+
+export interface DeathMatchResults {
+  bestBall: {
+    results: HoleResult[];
+    isComplete: boolean;
+    totalA: number;
+    totalB: number;
+    winner: 'A' | 'B' | 'tie' | null;
+  };
+  secondBall: {
+    results: HoleResult[];
+    isComplete: boolean;
+    holesWonA: number;
+    holesWonB: number;
+    winner: 'A' | 'B' | 'tie' | null;
+  };
+}
+
+export function calculateDeathMatchResults(
+  eventMatch: EventMatch,
+  scores: Score[],
+  netContext: NetScoringContext | null = null
+): DeathMatchResults {
+  const teamA = eventMatch.teams[0];
+  const teamB = eventMatch.teams[1];
+  const startOnBack9 = eventMatch.startOnBack9 || false;
+
+  if (!teamA || !teamB) {
+    return {
+      bestBall: { results: [], isComplete: false, totalA: 0, totalB: 0, winner: null },
+      secondBall: { results: [], isComplete: false, holesWonA: 0, holesWonB: 0, winner: null },
+    };
+  }
+
+  const teamAPlayerIds = new Set(teamA.members.map(m => m.playerId));
+  const teamBPlayerIds = new Set(teamB.members.map(m => m.playerId));
+
+  let holesToPlay: number[];
+  if (startOnBack9) {
+    holesToPlay = [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+  } else {
+    holesToPlay = [];
+    for (let h = 1; h <= 18; h++) holesToPlay.push(h);
+  }
+
+  const bestBallResults: HoleResult[] = [];
+  const secondBallResults: HoleResult[] = [];
+  let bbCumA = 0, bbCumB = 0;
+  let sbCumA = 0, sbCumB = 0;
+
+  for (const hole of holesToPlay) {
+    const teamAScoresRaw = scores
+      .filter(s => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
+      .map(s => getScoreValue(s, netContext));
+    const teamBScoresRaw = scores
+      .filter(s => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
+      .map(s => getScoreValue(s, netContext));
+
+    const teamASorted = [...teamAScoresRaw].sort((a, b) => a - b);
+    const teamBSorted = [...teamBScoresRaw].sort((a, b) => a - b);
+
+    const bestA = teamASorted.length > 0 ? teamASorted[0] : null;
+    const bestB = teamBSorted.length > 0 ? teamBSorted[0] : null;
+    const secondA = teamASorted.length > 1 ? teamASorted[1] : null;
+    const secondB = teamBSorted.length > 1 ? teamBSorted[1] : null;
+
+    // Best Ball (Stroke Play) - cumulative total strokes
+    if (bestA !== null) bbCumA += bestA;
+    if (bestB !== null) bbCumB += bestB;
+    
+    let bbStatus = 'All Square';
+    const bbDiff = bbCumA - bbCumB;
+    if (bbDiff < 0) bbStatus = `${teamA.name} ${Math.abs(bbDiff)} ahead`;
+    else if (bbDiff > 0) bbStatus = `${teamB.name} ${bbDiff} ahead`;
+
+    bestBallResults.push({
+      holeNumber: hole,
+      teamAScore: bestA,
+      teamBScore: bestB,
+      winner: null,
+      cumulativeA: bbCumA,
+      cumulativeB: bbCumB,
+      status: bbStatus,
+    });
+
+    // Second Ball (Match Play) - hole-by-hole comparison
+    let sbWinner: 'A' | 'B' | 'tie' | null = null;
+    if (secondA !== null && secondB !== null) {
+      if (secondA < secondB) { sbWinner = 'A'; sbCumA++; }
+      else if (secondB < secondA) { sbWinner = 'B'; sbCumB++; }
+      else { sbWinner = 'tie'; }
+    }
+
+    let sbStatus = 'All Square';
+    const sbDiff = sbCumA - sbCumB;
+    if (sbDiff > 0) sbStatus = `${teamA.name} ${sbDiff} UP`;
+    else if (sbDiff < 0) sbStatus = `${teamB.name} ${Math.abs(sbDiff)} UP`;
+
+    secondBallResults.push({
+      holeNumber: hole,
+      teamAScore: secondA,
+      teamBScore: secondB,
+      winner: sbWinner,
+      cumulativeA: sbCumA,
+      cumulativeB: sbCumB,
+      status: sbStatus,
+    });
+  }
+
+  const playedBB = bestBallResults.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+  const bbComplete = playedBB.length === 18;
+  let bbWinner: 'A' | 'B' | 'tie' | null = null;
+  if (bbComplete) {
+    if (bbCumA < bbCumB) bbWinner = 'A';
+    else if (bbCumB < bbCumA) bbWinner = 'B';
+    else bbWinner = 'tie';
+  }
+
+  const playedSB = secondBallResults.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+  const sbComplete = playedSB.length === 18;
+  let sbWinner: 'A' | 'B' | 'tie' | null = null;
+  if (sbComplete) {
+    if (sbCumA > sbCumB) sbWinner = 'A';
+    else if (sbCumB > sbCumA) sbWinner = 'B';
+    else sbWinner = 'tie';
+  }
+
+  return {
+    bestBall: { results: bestBallResults, isComplete: bbComplete, totalA: bbCumA, totalB: bbCumB, winner: bbWinner },
+    secondBall: { results: secondBallResults, isComplete: sbComplete, holesWonA: sbCumA, holesWonB: sbCumB, winner: sbWinner },
+  };
 }
 
 // Storage format for event match results
