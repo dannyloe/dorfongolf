@@ -362,6 +362,142 @@ export default function MatchDetail() {
     }
   }, [match?.isHandicapped, useNetScoringInitialized]);
 
+  // Voice match creation hooks — MUST be before early returns to keep hook call count stable
+  const roundUpToFive = useCallback((amount: number): number => {
+    return Math.ceil(amount / 5) * 5;
+  }, []);
+
+  const updateDeathMatchDefaults = useCallback((baseBet: number) => {
+    setDeathMatchBaseBet(baseBet);
+    setDeathMatchBestBallBet(baseBet);
+    setDeathMatchSecondBallBet(Math.round(baseBet / 2));
+    setDeathMatchFirstPressBet(roundUpToFive(baseBet / 2));
+    setDeathMatchSubsequentPressBet(roundUpToFive(baseBet / 4));
+    setDeathMatchSecondBallPressBet(roundUpToFive(baseBet / 4));
+  }, [roundUpToFive]);
+
+  const applyVoiceMatchResult = useCallback((result: any) => {
+    const {
+      matchType, isRoundRobin, roundRobinSubtype,
+      teamAPlayerIds: tA, teamBPlayerIds: tB,
+      keyedPlayerIds, skinsPlayerIds,
+      unitAmount: ua, deathMatchBaseBet: dmBase,
+      useNet, parsedSummary, unmatchedNames,
+      strokeAllocations,
+    } = result;
+
+    const strokeMap: Record<number, number> = {};
+    if (strokeAllocations && strokeAllocations.length > 0) {
+      for (const { playerId, strokes } of strokeAllocations) {
+        strokeMap[playerId] = strokes;
+      }
+    }
+    voiceStrokeOverridesRef.current = strokeMap;
+    setVoiceStrokeOverrides(strokeMap);
+
+    setShowCreateMatch(true);
+    setVoiceParsedSummary(parsedSummary || "Match parsed successfully");
+    setVoiceUnmatched(unmatchedNames || []);
+
+    if (isRoundRobin) {
+      setIsRoundRobinMode(true);
+      setRoundRobinStep('select');
+      setRoundRobinGroupAIds(tA || []);
+      setRoundRobinGroupBIds(tB || []);
+      setRoundRobinKeyedAIds(keyedPlayerIds || []);
+      setRoundRobinKeyedBIds([]);
+      const subtype = roundRobinSubtype === 'nassau' ? MATCH_TYPES.NASSAU : MATCH_TYPES.MATCH_PLAY_1_BALL;
+      setRoundRobinMatchType(subtype as MatchType);
+      if (ua != null) setUnitAmount(ua);
+    } else if (matchType === 'skins') {
+      setSelectedMatchType(MATCH_TYPES.SKINS);
+      setIsRoundRobinMode(false);
+      setSkinsPlayerIds(skinsPlayerIds || tA || []);
+      if (ua != null) setUnitAmount(ua);
+    } else if (matchType === 'five_five_five_three') {
+      setSelectedMatchType(MATCH_TYPES.FIVE_FIVE_FIVE_THREE);
+      setIsRoundRobinMode(false);
+      if (ua != null) setUnitAmount(ua);
+    } else if (matchType === 'death_match') {
+      setSelectedMatchType(MATCH_TYPES.DEATH_MATCH);
+      setIsRoundRobinMode(false);
+      setTeamAPlayerIds(tA || []);
+      setTeamBPlayerIds(tB || []);
+      const base = dmBase ?? 50;
+      updateDeathMatchDefaults(base);
+    } else {
+      setSelectedMatchType((matchType || MATCH_TYPES.NASSAU) as MatchType);
+      setIsRoundRobinMode(false);
+      setTeamAPlayerIds(tA || []);
+      setTeamBPlayerIds(tB || []);
+      setKeyedTeamAIds(keyedPlayerIds || []);
+      if (ua != null) setUnitAmount(ua);
+    }
+
+    if (useNet != null && match?.isHandicapped) {
+      setUseNetScoring(useNet);
+    }
+  }, [match?.isHandicapped, updateDeathMatchDefaults]);
+
+  const handleVoiceTranscriptComplete = useCallback(async (transcript: string) => {
+    if (!transcript.trim() || isVoiceProcessing) return;
+    setIsVoiceProcessing(true);
+    setVoiceError(null);
+    setVoiceParsedSummary(null);
+    try {
+      const playerList = (match?.players || []).map((p: Player) => ({ id: p.id, name: p.name }));
+      const res = await apiRequest("POST", "/api/ai/parse-match-voice", {
+        transcript,
+        players: playerList,
+      });
+      const data = await res.json();
+      if (data.success) {
+        applyVoiceMatchResult(data);
+      } else {
+        setVoiceError(data.message || "Could not understand the match description");
+      }
+    } catch (err: any) {
+      setVoiceError(err.message || "Failed to process voice input");
+    } finally {
+      setIsVoiceProcessing(false);
+    }
+  }, [match?.players, isVoiceProcessing, applyVoiceMatchResult]);
+
+  const { isListening, isSupported: voiceSupported, toggleListening, stopListening, transcript: liveTranscript } = useVoiceInput({
+    continuous: false,
+    onCommand: (cmd) => {
+      if (cmd.rawTranscript) {
+        setVoiceTranscript(cmd.rawTranscript);
+        handleVoiceTranscriptComplete(cmd.rawTranscript);
+      }
+    },
+  });
+
+  const applyStrokesToEventMatch = useCallback((createdEventMatch: any) => {
+    const overrides = voiceStrokeOverridesRef.current;
+    if (!createdEventMatch || Object.keys(overrides).length === 0) return;
+
+    const allPlayerIds: number[] = [];
+    for (const team of (createdEventMatch.teams || [])) {
+      for (const member of (team.members || [])) {
+        if (member.playerId != null && !allPlayerIds.includes(member.playerId)) {
+          allPlayerIds.push(member.playerId);
+        }
+      }
+    }
+
+    for (const pid of allPlayerIds) {
+      upsertMatchHandicap.mutate({
+        eventMatchId: createdEventMatch.id,
+        playerId: pid,
+        courseHandicap: overrides[pid] ?? 0,
+      });
+    }
+
+    voiceStrokeOverridesRef.current = {};
+    setVoiceStrokeOverrides({});
+  }, [upsertMatchHandicap]);
+
   if (isLoading) return <div className="p-12 text-center text-muted-foreground">Loading event details...</div>;
   if (error || !match) return <div className="p-12 text-center text-destructive">Event not found</div>;
 
@@ -799,144 +935,6 @@ export default function MatchDetail() {
       }
     });
   };
-
-  const roundUpToFive = (amount: number): number => {
-    return Math.ceil(amount / 5) * 5;
-  };
-
-  const updateDeathMatchDefaults = (baseBet: number) => {
-    setDeathMatchBaseBet(baseBet);
-    setDeathMatchBestBallBet(baseBet);
-    setDeathMatchSecondBallBet(Math.round(baseBet / 2));
-    setDeathMatchFirstPressBet(roundUpToFive(baseBet / 2));
-    setDeathMatchSubsequentPressBet(roundUpToFive(baseBet / 4));
-    setDeathMatchSecondBallPressBet(roundUpToFive(baseBet / 4));
-  };
-
-  const applyVoiceMatchResult = useCallback((result: any) => {
-    const {
-      matchType, isRoundRobin, roundRobinSubtype,
-      teamAPlayerIds: tA, teamBPlayerIds: tB,
-      keyedPlayerIds, skinsPlayerIds,
-      unitAmount: ua, deathMatchBaseBet: dmBase,
-      useNet, parsedSummary, unmatchedNames,
-      strokeAllocations,
-    } = result;
-
-    // Build stroke overrides map: mentioned players get their strokes, others will get 0 at apply-time
-    const strokeMap: Record<number, number> = {};
-    if (strokeAllocations && strokeAllocations.length > 0) {
-      for (const { playerId, strokes } of strokeAllocations) {
-        strokeMap[playerId] = strokes;
-      }
-    }
-    voiceStrokeOverridesRef.current = strokeMap;
-    setVoiceStrokeOverrides(strokeMap);
-
-    setShowCreateMatch(true);
-    setVoiceParsedSummary(parsedSummary || "Match parsed successfully");
-    setVoiceUnmatched(unmatchedNames || []);
-
-    if (isRoundRobin) {
-      setIsRoundRobinMode(true);
-      setRoundRobinStep('select');
-      setRoundRobinGroupAIds(tA || []);
-      setRoundRobinGroupBIds(tB || []);
-      setRoundRobinKeyedAIds(keyedPlayerIds || []);
-      setRoundRobinKeyedBIds([]);
-      const subtype = roundRobinSubtype === 'nassau' ? MATCH_TYPES.NASSAU : MATCH_TYPES.MATCH_PLAY_1_BALL;
-      setRoundRobinMatchType(subtype as MatchType);
-      if (ua != null) setUnitAmount(ua);
-    } else if (matchType === 'skins') {
-      setSelectedMatchType(MATCH_TYPES.SKINS);
-      setIsRoundRobinMode(false);
-      setSkinsPlayerIds(skinsPlayerIds || tA || []);
-      if (ua != null) setUnitAmount(ua);
-    } else if (matchType === 'five_five_five_three') {
-      setSelectedMatchType(MATCH_TYPES.FIVE_FIVE_FIVE_THREE);
-      setIsRoundRobinMode(false);
-      if (ua != null) setUnitAmount(ua);
-    } else if (matchType === 'death_match') {
-      setSelectedMatchType(MATCH_TYPES.DEATH_MATCH);
-      setIsRoundRobinMode(false);
-      setTeamAPlayerIds(tA || []);
-      setTeamBPlayerIds(tB || []);
-      const base = dmBase ?? 50;
-      updateDeathMatchDefaults(base);
-    } else {
-      setSelectedMatchType((matchType || MATCH_TYPES.NASSAU) as MatchType);
-      setIsRoundRobinMode(false);
-      setTeamAPlayerIds(tA || []);
-      setTeamBPlayerIds(tB || []);
-      setKeyedTeamAIds(keyedPlayerIds || []);
-      if (ua != null) setUnitAmount(ua);
-    }
-
-    if (useNet != null && match?.isHandicapped) {
-      setUseNetScoring(useNet);
-    }
-  }, [match?.isHandicapped]);
-
-  const handleVoiceTranscriptComplete = useCallback(async (transcript: string) => {
-    if (!transcript.trim() || isVoiceProcessing) return;
-    setIsVoiceProcessing(true);
-    setVoiceError(null);
-    setVoiceParsedSummary(null);
-    try {
-      const playerList = players.map((p: Player) => ({ id: p.id, name: p.name }));
-      const res = await apiRequest("POST", "/api/ai/parse-match-voice", {
-        transcript,
-        players: playerList,
-      });
-      const data = await res.json();
-      if (data.success) {
-        applyVoiceMatchResult(data);
-      } else {
-        setVoiceError(data.message || "Could not understand the match description");
-      }
-    } catch (err: any) {
-      setVoiceError(err.message || "Failed to process voice input");
-    } finally {
-      setIsVoiceProcessing(false);
-    }
-  }, [players, isVoiceProcessing, applyVoiceMatchResult]);
-
-  const { isListening, isSupported: voiceSupported, toggleListening, stopListening, transcript: liveTranscript } = useVoiceInput({
-    continuous: false,
-    onCommand: (cmd) => {
-      if (cmd.rawTranscript) {
-        setVoiceTranscript(cmd.rawTranscript);
-        handleVoiceTranscriptComplete(cmd.rawTranscript);
-      }
-    },
-  });
-
-  // Apply voice stroke overrides to a newly created event match
-  const applyStrokesToEventMatch = useCallback((createdEventMatch: any) => {
-    const overrides = voiceStrokeOverridesRef.current;
-    if (!createdEventMatch || Object.keys(overrides).length === 0) return;
-
-    const allPlayerIds: number[] = [];
-    for (const team of (createdEventMatch.teams || [])) {
-      for (const member of (team.members || [])) {
-        if (member.playerId != null && !allPlayerIds.includes(member.playerId)) {
-          allPlayerIds.push(member.playerId);
-        }
-      }
-    }
-
-    for (const pid of allPlayerIds) {
-      upsertMatchHandicap.mutate({
-        eventMatchId: createdEventMatch.id,
-        playerId: pid,
-        courseHandicap: overrides[pid] ?? 0,
-      });
-    }
-
-    // Clear overrides after applying so they don't carry over to subsequent non-voice matches
-    voiceStrokeOverridesRef.current = {};
-    setVoiceStrokeOverrides({});
-  }, [upsertMatchHandicap]);
 
   const handleCreateDeathMatch = () => {
     if (teamAPlayerIds.length !== 2 || teamBPlayerIds.length !== 2) return;
