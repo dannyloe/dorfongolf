@@ -834,7 +834,7 @@ export default function MatchDetail() {
         setUnitAmount(20);
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
-        setDeathMatchBaseBet(20);
+        setDeathMatchBaseBet(50);
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -2025,12 +2025,12 @@ export default function MatchDetail() {
                         setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
                       } else if (value === MATCH_TYPES.DEATH_MATCH) {
                         setSelectedMatchType(MATCH_TYPES.DEATH_MATCH);
-                        setDeathMatchBaseBet(20);
-                        setDeathMatchBestBallBet(20);
-                        setDeathMatchSecondBallBet(10);
-                        setDeathMatchFirstPressBet(10);
-                        setDeathMatchSubsequentPressBet(5);
-                        setDeathMatchSecondBallPressBet(5);
+                        setDeathMatchBaseBet(50);
+                        setDeathMatchBestBallBet(50);
+                        setDeathMatchSecondBallBet(25);
+                        setDeathMatchFirstPressBet(25);
+                        setDeathMatchSubsequentPressBet(15);
+                        setDeathMatchSecondBallPressBet(15);
                         setTeamAPlayerIds([]);
                         setTeamBPlayerIds([]);
                       } else {
