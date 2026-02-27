@@ -3069,6 +3069,289 @@ export default function MatchDetail() {
                               )}
                             </div>
                           );
+                        })() : em.matchType === 'death_match' && dmResults ? (() => {
+                          const allPlayers = [...(teamA?.members || []), ...(teamB?.members || [])];
+                          return (
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-medium text-primary mb-1">{teamA?.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {teamA?.members.map((m) => (
+                                      <span key={m.id} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                        {m.player?.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="font-medium text-accent mb-1">{teamB?.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {teamB?.members.map((m) => (
+                                      <span key={m.id} className="px-2 py-0.5 bg-accent/10 text-accent rounded text-xs">
+                                        {m.player?.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {em.useNetScoring && netContext && (() => {
+                                const hasMissingPlayers = netContext.playersMissingData.size > 0;
+                                return (
+                                  <div className={`rounded-lg p-3 ${hasMissingPlayers ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted/30'}`}>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Course Handicaps</p>
+                                    <div className="flex flex-wrap gap-2">
+                                      {allPlayers.map((m) => {
+                                        const isMissing = netContext.playersMissingData.has(m.playerId);
+                                        const hcp = netContext.courseHandicaps?.get(m.playerId);
+                                        return (
+                                          <span key={m.playerId} className={`text-xs ${isMissing ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                            {m.player?.name}: {hcp ?? '-'}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="p-2 text-left font-semibold sticky left-0 bg-background min-w-[80px]">Player</th>
+                                      {firstNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
+                                      {secondNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Tot</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {allPlayers.map((m) => {
+                                      const isTeamA = teamA?.members.some(tm => tm.playerId === m.playerId);
+                                      const colorClass = isTeamA ? 'text-primary' : 'text-accent';
+                                      const bgClass = isTeamA ? 'bg-primary/5' : 'bg-accent/5';
+                                      const firstNineTotal = firstNineHoles.reduce((sum, hole) => {
+                                        const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                        return sum + (s?.strokes || 0);
+                                      }, 0);
+                                      const secondNineTotal = secondNineHoles.reduce((sum, hole) => {
+                                        const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                        return sum + (s?.strokes || 0);
+                                      }, 0);
+                                      return (
+                                        <tr key={m.playerId} className={`border-b border-border/30 ${bgClass}`}>
+                                          <td className={`p-2 font-medium sticky left-0 bg-background ${colorClass} text-xs`}>{m.player?.name}</td>
+                                          {firstNineHoles.map((hole) => {
+                                            const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                            return <td key={hole} className="p-2 text-center">{s?.strokes ?? '-'}</td>;
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{firstNineTotal || '-'}</td>
+                                          {secondNineHoles.map((hole) => {
+                                            const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                            return <td key={hole} className="p-2 text-center">{s?.strokes ?? '-'}</td>;
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{secondNineTotal || '-'}</td>
+                                          <td className="p-2 text-center font-bold bg-muted/30">{(firstNineTotal + secondNineTotal) || '-'}</td>
+                                        </tr>
+                                      );
+                                    })}
+
+                                    <tr className="border-t-2 border-border">
+                                      <td colSpan={firstNineHoles.length + secondNineHoles.length + 4} className="p-1"></td>
+                                    </tr>
+
+                                    <tr className="border-b border-border/50 bg-blue-50/50 dark:bg-blue-950/30">
+                                      <td className="p-2 font-semibold sticky left-0 bg-blue-50/50 dark:bg-blue-950/30 text-xs">BB - {teamA?.name}</td>
+                                      {firstNineHoles.map((hole) => {
+                                        const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.teamAScore !== null && r?.teamBScore !== null && r.teamAScore! < r.teamBScore!;
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                            {r?.teamAScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      {(() => {
+                                        const firstNineBBTotal = firstNineHoles.reduce((sum, hole) => {
+                                          const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                          return sum + (r?.teamAScore || 0);
+                                        }, 0);
+                                        return <td className="p-2 text-center font-semibold bg-muted/30">{firstNineBBTotal || '-'}</td>;
+                                      })()}
+                                      {secondNineHoles.map((hole) => {
+                                        const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.teamAScore !== null && r?.teamBScore !== null && r.teamAScore! < r.teamBScore!;
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                            {r?.teamAScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      {(() => {
+                                        const secondNineBBTotal = secondNineHoles.reduce((sum, hole) => {
+                                          const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                          return sum + (r?.teamAScore || 0);
+                                        }, 0);
+                                        return <td className="p-2 text-center font-semibold bg-muted/30">{secondNineBBTotal || '-'}</td>;
+                                      })()}
+                                      <td className="p-2 text-center font-bold bg-muted/30">{dmResults.bestBall.totalA || '-'}</td>
+                                    </tr>
+                                    <tr className="border-b border-border/50 bg-blue-50/50 dark:bg-blue-950/30">
+                                      <td className="p-2 font-semibold sticky left-0 bg-blue-50/50 dark:bg-blue-950/30 text-xs">BB - {teamB?.name}</td>
+                                      {firstNineHoles.map((hole) => {
+                                        const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.teamAScore !== null && r?.teamBScore !== null && r.teamBScore! < r.teamAScore!;
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-accent/20 text-accent font-bold' : ''}`}>
+                                            {r?.teamBScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      {(() => {
+                                        const firstNineBBTotal = firstNineHoles.reduce((sum, hole) => {
+                                          const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                          return sum + (r?.teamBScore || 0);
+                                        }, 0);
+                                        return <td className="p-2 text-center font-semibold bg-muted/30">{firstNineBBTotal || '-'}</td>;
+                                      })()}
+                                      {secondNineHoles.map((hole) => {
+                                        const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.teamAScore !== null && r?.teamBScore !== null && r.teamBScore! < r.teamAScore!;
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-accent/20 text-accent font-bold' : ''}`}>
+                                            {r?.teamBScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      {(() => {
+                                        const secondNineBBTotal = secondNineHoles.reduce((sum, hole) => {
+                                          const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                          return sum + (r?.teamBScore || 0);
+                                        }, 0);
+                                        return <td className="p-2 text-center font-semibold bg-muted/30">{secondNineBBTotal || '-'}</td>;
+                                      })()}
+                                      <td className="p-2 text-center font-bold bg-muted/30">{dmResults.bestBall.totalB || '-'}</td>
+                                    </tr>
+
+                                    <tr className="bg-blue-50/50 dark:bg-blue-950/30">
+                                      <td className="p-2 font-semibold sticky left-0 bg-blue-50/50 dark:bg-blue-950/30 text-xs">BB Status</td>
+                                      {firstNineHoles.map((hole) => {
+                                        const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{Math.abs(diff)} UP</td>;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{diff} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      {secondNineHoles.map((hole) => {
+                                        const r = dmResults.bestBall.results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{Math.abs(diff)} UP</td>;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{diff} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                    </tr>
+
+                                    <tr className="border-t-2 border-border">
+                                      <td colSpan={firstNineHoles.length + secondNineHoles.length + 4} className="p-1"></td>
+                                    </tr>
+
+                                    <tr className="border-b border-border/50 bg-orange-50/50 dark:bg-orange-950/30">
+                                      <td className="p-2 font-semibold sticky left-0 bg-orange-50/50 dark:bg-orange-950/30 text-xs">2nd - {teamA?.name}</td>
+                                      {firstNineHoles.map((hole) => {
+                                        const r = dmResults.secondBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.winner === 'A';
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                            {r?.teamAScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      {secondNineHoles.map((hole) => {
+                                        const r = dmResults.secondBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.winner === 'A';
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                            {r?.teamAScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                    </tr>
+                                    <tr className="border-b border-border/50 bg-orange-50/50 dark:bg-orange-950/30">
+                                      <td className="p-2 font-semibold sticky left-0 bg-orange-50/50 dark:bg-orange-950/30 text-xs">2nd - {teamB?.name}</td>
+                                      {firstNineHoles.map((hole) => {
+                                        const r = dmResults.secondBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.winner === 'B';
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-accent/20 text-accent font-bold' : ''}`}>
+                                            {r?.teamBScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      {secondNineHoles.map((hole) => {
+                                        const r = dmResults.secondBall.results.find(res => res.holeNumber === hole);
+                                        const isWinning = r?.winner === 'B';
+                                        return (
+                                          <td key={hole} className={`p-2 text-center ${isWinning ? 'bg-accent/20 text-accent font-bold' : ''}`}>
+                                            {r?.teamBScore ?? '-'}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                    </tr>
+
+                                    <tr className="bg-orange-50/50 dark:bg-orange-950/30">
+                                      <td className="p-2 font-semibold sticky left-0 bg-orange-50/50 dark:bg-orange-950/30 text-xs">2nd Status</td>
+                                      {firstNineHoles.map((hole) => {
+                                        const r = dmResults.secondBall.results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      {secondNineHoles.map((hole) => {
+                                        const r = dmResults.secondBall.results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      })}
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                      <td className="p-2 text-center bg-muted/30"></td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div className="p-3 bg-muted/30 rounded-lg text-xs space-y-1">
+                                <p className="font-medium text-muted-foreground">
+                                  Best Ball (Stroke Play): ${((em.deathMatchBestBallBet || em.unitAmount || 0) / 100).toFixed(2)} — {dmResults.bestBall.isComplete ? (dmResults.bestBall.winner === 'A' ? `${teamA?.name} wins` : dmResults.bestBall.winner === 'B' ? `${teamB?.name} wins` : 'Tied') : `${teamA?.name}: ${dmResults.bestBall.totalA} | ${teamB?.name}: ${dmResults.bestBall.totalB}`}
+                                </p>
+                                <p className="font-medium text-muted-foreground">
+                                  Second Ball (Match Play): ${((em.deathMatchSecondBallBet || Math.round((em.unitAmount || 0) / 2)) / 100).toFixed(2)} — {dmResults.secondBall.isComplete ? (dmResults.secondBall.winner === 'A' ? `${teamA?.name} wins` : dmResults.secondBall.winner === 'B' ? `${teamB?.name} wins` : 'Halved') : `${teamA?.name}: ${dmResults.secondBall.holesWonA} | ${teamB?.name}: ${dmResults.secondBall.holesWonB}`}
+                                </p>
+                              </div>
+                            </div>
+                          );
                         })() : (
                         <>
                         {/* Team Members */}
