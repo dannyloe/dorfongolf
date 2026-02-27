@@ -1928,6 +1928,100 @@ Rules:
     }
   });
 
+  // AI voice match creation endpoint
+  app.post("/api/ai/parse-match-voice", isAuthenticated, async (req, res) => {
+    try {
+      const bodySchema = z.object({
+        transcript: z.string().min(1),
+        players: z.array(z.object({ id: z.number(), name: z.string() })),
+      });
+      const { transcript, players } = bodySchema.parse(req.body);
+
+      if (!ai) {
+        return res.status(503).json({ message: "AI features are currently unavailable" });
+      }
+
+      const playerList = players.map(p => `  - ID ${p.id}: "${p.name}"`).join("\n");
+
+      const prompt = `You are a golf betting assistant that parses a spoken match description into a structured JSON object.
+
+Available players (use exact IDs when matching names — do fuzzy matching on common nicknames, first names, partial names):
+${playerList}
+
+Match types and their aliases:
+- "nassau" → matchType: "nassau" (also: "nass", "nassau match")
+- "match play" or "match play 1 ball" → matchType: "match_play_1_ball"
+- "match play 2 ball" or "2 ball" → matchType: "match_play_2_ball"
+- "stroke play" → matchType: "stroke_play"
+- "skins" → matchType: "skins"
+- "5-5-5-3" or "five five five three" → matchType: "five_five_five_three"
+- "death match" → matchType: "death_match"
+- "round robin nassau" → matchType: "nassau", isRoundRobin: true, roundRobinSubtype: "nassau"
+- "round robin" or "round robin match play" → matchType: "match_play_1_ball", isRoundRobin: true, roundRobinSubtype: "match_play_1_ball"
+
+For ROUND ROBIN matches:
+- The user will name two groups of players that play against each other
+- If a player is called "the wheel", "the key", "the hub", or "against everyone" or "plays everyone", they are a keyed player — put their ID in keyedPlayerIds
+- teamAPlayerIds = group 1 (often just the "wheel" player if keyed)
+- teamBPlayerIds = group 2 (the opponents)
+
+For STANDARD matches (nassau, match play, stroke play, death match):
+- teamAPlayerIds = first team mentioned
+- teamBPlayerIds = second team (after "vs", "against", "versus")
+- If a player is "keyed" vs all others, put them in keyedPlayerIds
+
+For SKINS:
+- All named players go in skinsPlayerIds
+- teamAPlayerIds and teamBPlayerIds can be empty
+
+For amounts:
+- "twenty", "twenty bucks", "$20" → unitAmount: 20
+- "fifty", "fifty dollar base" → deathMatchBaseBet: 50 (for death match), or unitAmount: 50 otherwise
+
+Net/Gross:
+- "net", "handicap" → useNet: true
+- "gross", no mention → useNet: false
+
+Respond ONLY with a valid JSON object (no markdown, no code blocks, no explanation):
+{
+  "matchType": "nassau" | "match_play_1_ball" | "match_play_2_ball" | "stroke_play" | "skins" | "five_five_five_three" | "death_match",
+  "isRoundRobin": false,
+  "roundRobinSubtype": "nassau" | "match_play_1_ball",
+  "teamAPlayerIds": [],
+  "teamBPlayerIds": [],
+  "keyedPlayerIds": [],
+  "skinsPlayerIds": [],
+  "unitAmount": null,
+  "deathMatchBaseBet": null,
+  "useNet": false,
+  "parsedSummary": "Brief human-readable description of what was understood",
+  "unmatchedNames": []
+}
+
+Transcript to parse: "${transcript}"`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      });
+
+      const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(400).json({ message: "Could not parse match description. Please try again." });
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      res.json({ success: true, ...parsed });
+    } catch (err) {
+      console.error("Voice match parse error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to parse match description" });
+    }
+  });
+
   // Golf Course API integration routes
   app.get(api.golfCourseApi.search.path, isAuthenticated, async (req, res) => {
     try {

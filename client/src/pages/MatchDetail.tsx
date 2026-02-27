@@ -6,9 +6,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useVoiceInput } from "@/hooks/use-voice-input";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
@@ -313,6 +315,13 @@ export default function MatchDetail() {
   // Net scoring state (for handicapped events) - defaults to true when match is handicapped
   const [useNetScoring, setUseNetScoring] = useState(false);
   const [useNetScoringInitialized, setUseNetScoringInitialized] = useState(false);
+
+  // Voice match creation state
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceParsedSummary, setVoiceParsedSummary] = useState<string | null>(null);
+  const [voiceUnmatched, setVoiceUnmatched] = useState<string[]>([]);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -800,6 +809,93 @@ export default function MatchDetail() {
     setDeathMatchSubsequentPressBet(roundUpToFive(baseBet / 4));
     setDeathMatchSecondBallPressBet(roundUpToFive(baseBet / 4));
   };
+
+  const applyVoiceMatchResult = useCallback((result: any) => {
+    const {
+      matchType, isRoundRobin, roundRobinSubtype,
+      teamAPlayerIds: tA, teamBPlayerIds: tB,
+      keyedPlayerIds, skinsPlayerIds,
+      unitAmount: ua, deathMatchBaseBet: dmBase,
+      useNet, parsedSummary, unmatchedNames,
+    } = result;
+
+    setShowCreateMatch(true);
+    setVoiceParsedSummary(parsedSummary || "Match parsed successfully");
+    setVoiceUnmatched(unmatchedNames || []);
+
+    if (isRoundRobin) {
+      setIsRoundRobinMode(true);
+      setRoundRobinStep('select');
+      setRoundRobinGroupAIds(tA || []);
+      setRoundRobinGroupBIds(tB || []);
+      setRoundRobinKeyedAIds(keyedPlayerIds || []);
+      setRoundRobinKeyedBIds([]);
+      const subtype = roundRobinSubtype === 'nassau' ? MATCH_TYPES.NASSAU : MATCH_TYPES.MATCH_PLAY_1_BALL;
+      setRoundRobinMatchType(subtype as MatchType);
+      if (ua != null) setUnitAmount(ua);
+    } else if (matchType === 'skins') {
+      setSelectedMatchType(MATCH_TYPES.SKINS);
+      setIsRoundRobinMode(false);
+      setSkinsPlayerIds(skinsPlayerIds || tA || []);
+      if (ua != null) setUnitAmount(ua);
+    } else if (matchType === 'five_five_five_three') {
+      setSelectedMatchType(MATCH_TYPES.FIVE_FIVE_FIVE_THREE);
+      setIsRoundRobinMode(false);
+      if (ua != null) setUnitAmount(ua);
+    } else if (matchType === 'death_match') {
+      setSelectedMatchType(MATCH_TYPES.DEATH_MATCH);
+      setIsRoundRobinMode(false);
+      setTeamAPlayerIds(tA || []);
+      setTeamBPlayerIds(tB || []);
+      const base = dmBase ?? 50;
+      updateDeathMatchDefaults(base);
+    } else {
+      setSelectedMatchType((matchType || MATCH_TYPES.NASSAU) as MatchType);
+      setIsRoundRobinMode(false);
+      setTeamAPlayerIds(tA || []);
+      setTeamBPlayerIds(tB || []);
+      setKeyedTeamAIds(keyedPlayerIds || []);
+      if (ua != null) setUnitAmount(ua);
+    }
+
+    if (useNet != null && match?.isHandicapped) {
+      setUseNetScoring(useNet);
+    }
+  }, [match?.isHandicapped]);
+
+  const handleVoiceTranscriptComplete = useCallback(async (transcript: string) => {
+    if (!transcript.trim() || isVoiceProcessing) return;
+    setIsVoiceProcessing(true);
+    setVoiceError(null);
+    setVoiceParsedSummary(null);
+    try {
+      const playerList = players.map((p: Player) => ({ id: p.id, name: p.name }));
+      const res = await apiRequest("POST", "/api/ai/parse-match-voice", {
+        transcript,
+        players: playerList,
+      });
+      const data = await res.json();
+      if (data.success) {
+        applyVoiceMatchResult(data);
+      } else {
+        setVoiceError(data.message || "Could not understand the match description");
+      }
+    } catch (err: any) {
+      setVoiceError(err.message || "Failed to process voice input");
+    } finally {
+      setIsVoiceProcessing(false);
+    }
+  }, [players, isVoiceProcessing, applyVoiceMatchResult]);
+
+  const { isListening, isSupported: voiceSupported, toggleListening, stopListening, transcript: liveTranscript } = useVoiceInput({
+    continuous: false,
+    onCommand: (cmd) => {
+      if (cmd.rawTranscript) {
+        setVoiceTranscript(cmd.rawTranscript);
+        handleVoiceTranscriptComplete(cmd.rawTranscript);
+      }
+    },
+  });
 
   const handleCreateDeathMatch = () => {
     if (teamAPlayerIds.length !== 2 || teamBPlayerIds.length !== 2) return;
@@ -1723,6 +1819,30 @@ export default function MatchDetail() {
                   <Copy className="w-4 h-4 mr-2" />
                   Copy From Event
                 </Button>
+                {voiceSupported && (
+                  <Button
+                    size="sm"
+                    variant={isListening ? "destructive" : "outline"}
+                    onClick={() => {
+                      setVoiceError(null);
+                      setVoiceParsedSummary(null);
+                      setVoiceTranscript("");
+                      toggleListening();
+                    }}
+                    disabled={isVoiceProcessing}
+                    title="Describe a match by voice"
+                    data-testid="button-voice-match"
+                    className={isListening ? "animate-pulse" : ""}
+                  >
+                    {isVoiceProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : isListening ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   onClick={() => setShowCreateMatch(true)}
@@ -1777,6 +1897,34 @@ export default function MatchDetail() {
           )}
         </div>
 
+        {/* Voice status banner (shown when form is closed) */}
+        {!showCreateMatch && (isListening || isVoiceProcessing || voiceTranscript || voiceParsedSummary || voiceError) && (
+          <div className="mb-4 space-y-2">
+            {isListening && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
+                <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                <span className="text-destructive font-medium">
+                  {liveTranscript ? `"${liveTranscript}"` : "Listening… speak now"}
+                </span>
+              </div>
+            )}
+            {isVoiceProcessing && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Parsing with AI…</span>
+              </div>
+            )}
+            {voiceError && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
+                <span className="text-destructive">{voiceError}</span>
+                <button onClick={() => setVoiceError(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Create Match Form */}
         {!matchesCollapsed && showCreateMatch && (
           <motion.div
@@ -1788,16 +1936,99 @@ export default function MatchDetail() {
               <h4 className="font-semibold">
                 {isRoundRobinMode ? 'Round Robin - Match Play 1 Ball (2 man teams)' : 'Create Match Play'}
               </h4>
-              <Button size="icon" variant="ghost" onClick={() => {
-                setShowCreateMatch(false);
-                setIsRoundRobinMode(false);
-                setRoundRobinGroupAIds([]);
-                setRoundRobinGroupBIds([]);
-                setRoundRobinStep('select');
-              }}>
-                <X className="w-4 h-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                {voiceSupported && (
+                  <Button
+                    size="icon"
+                    variant={isListening ? "destructive" : "ghost"}
+                    onClick={() => {
+                      setVoiceError(null);
+                      setVoiceParsedSummary(null);
+                      setVoiceTranscript("");
+                      toggleListening();
+                    }}
+                    disabled={isVoiceProcessing}
+                    title={isListening ? "Stop recording" : "Describe a match by voice"}
+                    data-testid="button-voice-match-form"
+                    className={isListening ? "animate-pulse" : ""}
+                  >
+                    {isVoiceProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : isListening ? (
+                      <MicOff className="w-4 h-4" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
+                <Button size="icon" variant="ghost" onClick={() => {
+                  setShowCreateMatch(false);
+                  setIsRoundRobinMode(false);
+                  setRoundRobinGroupAIds([]);
+                  setRoundRobinGroupBIds([]);
+                  setRoundRobinStep('select');
+                  setVoiceParsedSummary(null);
+                  setVoiceError(null);
+                  setVoiceTranscript("");
+                }}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
+
+            {/* Voice status banners */}
+            {(isListening || isVoiceProcessing || voiceTranscript || voiceParsedSummary || voiceError) && (
+              <div className="mb-4 space-y-2">
+                {isListening && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
+                    <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                    <span className="text-destructive font-medium">
+                      {liveTranscript ? `"${liveTranscript}"` : "Listening… speak now"}
+                    </span>
+                  </div>
+                )}
+                {voiceTranscript && !isListening && (
+                  <div className="px-3 py-2 bg-muted/50 border border-border rounded-lg text-sm text-muted-foreground italic">
+                    "{voiceTranscript}"
+                  </div>
+                )}
+                {isVoiceProcessing && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Parsing with AI…</span>
+                  </div>
+                )}
+                {voiceParsedSummary && !isVoiceProcessing && (
+                  <div className="flex items-start justify-between gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-sm">
+                    <div>
+                      <span className="text-emerald-700 dark:text-emerald-400 font-medium">{voiceParsedSummary}</span>
+                      {voiceUnmatched.length > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                          Could not find: {voiceUnmatched.join(", ")} — please assign manually
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => { setVoiceParsedSummary(null); setVoiceTranscript(""); }}
+                      className="text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+                {voiceError && (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
+                    <span className="text-destructive">{voiceError}</span>
+                    <button
+                      onClick={() => setVoiceError(null)}
+                      className="text-muted-foreground hover:text-foreground shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* Round Robin Wizard */}
             {isRoundRobinMode ? (
