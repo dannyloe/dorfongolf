@@ -1982,6 +1982,13 @@ Net/Gross:
 - "net", "handicap" → useNet: true
 - "gross", no mention → useNet: false
 
+Stroke/shot allocations (course handicap overrides):
+- Phrases like "Jordan gets 3 shots", "Jordan gets 3 strokes", "give Jordan 3", "Jordan receives 3" mean that player's course handicap is 3
+- Any player NOT explicitly mentioned gets 0 strokes (course handicap 0)
+- Put allocations in strokeAllocations as an array of { playerId, strokes } objects
+- Only include players who are explicitly given strokes (others default to 0)
+- Examples: "Jordan gets 3 shots and Coach gets 5" → strokeAllocations: [{ playerId: <Jordan's ID>, strokes: 3 }, { playerId: <Coach's ID>, strokes: 5 }]
+
 Respond ONLY with a valid JSON object (no markdown, no code blocks, no explanation):
 {
   "matchType": "nassau" | "match_play_1_ball" | "match_play_2_ball" | "stroke_play" | "skins" | "five_five_five_three" | "death_match",
@@ -1994,6 +2001,7 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks, no explanati
   "unitAmount": null,
   "deathMatchBaseBet": null,
   "useNet": false,
+  "strokeAllocations": [],
   "parsedSummary": "Brief human-readable description of what was understood",
   "unmatchedNames": []
 }

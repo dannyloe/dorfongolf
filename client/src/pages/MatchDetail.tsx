@@ -322,6 +322,8 @@ export default function MatchDetail() {
   const [voiceParsedSummary, setVoiceParsedSummary] = useState<string | null>(null);
   const [voiceUnmatched, setVoiceUnmatched] = useState<string[]>([]);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceStrokeOverrides, setVoiceStrokeOverrides] = useState<Record<number, number>>({});
+  const voiceStrokeOverridesRef = useRef<Record<number, number>>({});
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -583,7 +585,7 @@ export default function MatchDetail() {
               useNetScoring: match.isHandicapped ? useNetScoring : false,
               startOnBack9: dayStartOnBack9,
             }, {
-              onSuccess: () => resolve(),
+              onSuccess: (created) => { applyStrokesToEventMatch(created); resolve(); },
               onError: (err) => reject(err),
             });
           });
@@ -640,7 +642,8 @@ export default function MatchDetail() {
       useNetScoring: match.isHandicapped ? useNetScoring : false,
       startOnBack9: dayStartOnBack9,
     }, {
-      onSuccess: () => {
+      onSuccess: (created) => {
+        applyStrokesToEventMatch(created);
         setShowCreateMatch(false);
         setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(20);
@@ -711,12 +714,12 @@ export default function MatchDetail() {
       useNetScoring: match.isHandicapped ? useNetScoring : false,
       startOnBack9: dayStartOnBack9,
     }, {
-      onSuccess: () => {
+      onSuccess: (created) => {
+        applyStrokesToEventMatch(created);
         setShowCreateMatch(false);
         setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(20);
         setSkinsPlayerIds([]);
-        // Keep useNetScoring true for handicapped matches
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -773,7 +776,7 @@ export default function MatchDetail() {
     createEventMatch.mutate({
       name: matchName,
       matchType: MATCH_TYPES.FIVE_FIVE_FIVE_THREE,
-      unitAmount: unitAmount * 100, // Default $1 wager (100 cents)
+      unitAmount: unitAmount * 100,
       teamA: fiveTeams[0] ? { name: teamNames[0], playerIds: fiveTeams[0].playerIds } : { name: 'Team 1', playerIds: [] },
       teamB: fiveTeams[1] ? { name: teamNames[1], playerIds: fiveTeams[1].playerIds } : { name: 'Team 2', playerIds: [] },
       teams: fiveTeams.map((t, i) => ({ name: teamNames[i], playerIds: t.playerIds })),
@@ -785,13 +788,13 @@ export default function MatchDetail() {
       useNetScoring: match.isHandicapped ? useNetScoring : false,
       startOnBack9: dayStartOnBack9,
     }, {
-      onSuccess: () => {
+      onSuccess: (created) => {
+        applyStrokesToEventMatch(created);
         setShowCreateMatch(false);
         setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
-        setUnitAmount(1); // Reset to $1 default
+        setUnitAmount(1);
         setFiveTeamCount(2);
         setFiveTeams([{ name: "Team 1", playerIds: [] }, { name: "Team 2", playerIds: [] }]);
-        // Keep useNetScoring true for handicapped matches
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -817,7 +820,18 @@ export default function MatchDetail() {
       keyedPlayerIds, skinsPlayerIds,
       unitAmount: ua, deathMatchBaseBet: dmBase,
       useNet, parsedSummary, unmatchedNames,
+      strokeAllocations,
     } = result;
+
+    // Build stroke overrides map: mentioned players get their strokes, others will get 0 at apply-time
+    const strokeMap: Record<number, number> = {};
+    if (strokeAllocations && strokeAllocations.length > 0) {
+      for (const { playerId, strokes } of strokeAllocations) {
+        strokeMap[playerId] = strokes;
+      }
+    }
+    voiceStrokeOverridesRef.current = strokeMap;
+    setVoiceStrokeOverrides(strokeMap);
 
     setShowCreateMatch(true);
     setVoiceParsedSummary(parsedSummary || "Match parsed successfully");
@@ -897,6 +911,33 @@ export default function MatchDetail() {
     },
   });
 
+  // Apply voice stroke overrides to a newly created event match
+  const applyStrokesToEventMatch = useCallback((createdEventMatch: any) => {
+    const overrides = voiceStrokeOverridesRef.current;
+    if (!createdEventMatch || Object.keys(overrides).length === 0) return;
+
+    const allPlayerIds: number[] = [];
+    for (const team of (createdEventMatch.teams || [])) {
+      for (const member of (team.members || [])) {
+        if (member.playerId != null && !allPlayerIds.includes(member.playerId)) {
+          allPlayerIds.push(member.playerId);
+        }
+      }
+    }
+
+    for (const pid of allPlayerIds) {
+      upsertMatchHandicap.mutate({
+        eventMatchId: createdEventMatch.id,
+        playerId: pid,
+        courseHandicap: overrides[pid] ?? 0,
+      });
+    }
+
+    // Clear overrides after applying so they don't carry over to subsequent non-voice matches
+    voiceStrokeOverridesRef.current = {};
+    setVoiceStrokeOverrides({});
+  }, [upsertMatchHandicap]);
+
   const handleCreateDeathMatch = () => {
     if (teamAPlayerIds.length !== 2 || teamBPlayerIds.length !== 2) return;
     
@@ -924,7 +965,8 @@ export default function MatchDetail() {
       deathMatchSubsequentPressBet: deathMatchSubsequentPressBet * 100,
       deathMatchSecondBallPressBet: deathMatchSecondBallPressBet * 100,
     }, {
-      onSuccess: () => {
+      onSuccess: (created) => {
+        applyStrokesToEventMatch(created);
         setShowCreateMatch(false);
         setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
         setUnitAmount(20);
@@ -1031,7 +1073,7 @@ export default function MatchDetail() {
             startOnBack9: dayStartOnBack9,
             isRoundRobinGenerated: true,
           }, {
-            onSuccess: () => resolve(),
+            onSuccess: (created) => { applyStrokesToEventMatch(created); resolve(); },
             onError: (err) => reject(err),
           });
         });
@@ -2000,8 +2042,18 @@ export default function MatchDetail() {
                 )}
                 {voiceParsedSummary && !isVoiceProcessing && (
                   <div className="flex items-start justify-between gap-2 px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-sm">
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <span className="text-emerald-700 dark:text-emerald-400 font-medium">{voiceParsedSummary}</span>
+                      {Object.keys(voiceStrokeOverrides).length > 0 && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">
+                          Strokes:{" "}
+                          {players
+                            .filter(p => voiceStrokeOverrides[p.id] != null)
+                            .map(p => `${p.name}: ${voiceStrokeOverrides[p.id]}`)
+                            .join(", ")}
+                          {" "}· others: 0
+                        </p>
+                      )}
                       {voiceUnmatched.length > 0 && (
                         <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
                           Could not find: {voiceUnmatched.join(", ")} — please assign manually
@@ -2009,7 +2061,7 @@ export default function MatchDetail() {
                       )}
                     </div>
                     <button
-                      onClick={() => { setVoiceParsedSummary(null); setVoiceTranscript(""); }}
+                      onClick={() => { setVoiceParsedSummary(null); setVoiceTranscript(""); setVoiceStrokeOverrides({}); voiceStrokeOverridesRef.current = {}; }}
                       className="text-muted-foreground hover:text-foreground shrink-0"
                     >
                       <X className="w-3.5 h-3.5" />
