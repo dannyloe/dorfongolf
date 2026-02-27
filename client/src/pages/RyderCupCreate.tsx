@@ -175,8 +175,22 @@ export default function RyderCupCreate() {
       toast({ title: "Event Created!", description: `Your ${EVENT_TYPE_LABELS[eventType]} event has been created.` });
       setLocation(`/ryder-cup/${event.id}`);
     },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to create event", variant: "destructive" });
+    onError: (err: Error) => {
+      const msg = err.message || "";
+      if (msg.startsWith("401")) {
+        toast({ title: "Session expired", description: "Please log in again.", variant: "destructive" });
+        setTimeout(() => { window.location.href = "/api/login"; }, 1500);
+        return;
+      }
+      let description = "Failed to create event";
+      try {
+        const jsonStart = msg.indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(msg.slice(jsonStart));
+          if (parsed.message) description = parsed.message;
+        }
+      } catch {}
+      toast({ title: "Error", description, variant: "destructive" });
     },
   });
 
