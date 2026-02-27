@@ -303,12 +303,12 @@ export default function MatchDetail() {
   ]);
   
   // Death Match state
-  const [deathMatchBaseBet, setDeathMatchBaseBet] = useState<number>(20);
-  const [deathMatchBestBallBet, setDeathMatchBestBallBet] = useState<number>(20);
-  const [deathMatchSecondBallBet, setDeathMatchSecondBallBet] = useState<number>(10);
-  const [deathMatchFirstPressBet, setDeathMatchFirstPressBet] = useState<number>(10);
-  const [deathMatchSubsequentPressBet, setDeathMatchSubsequentPressBet] = useState<number>(5);
-  const [deathMatchSecondBallPressBet, setDeathMatchSecondBallPressBet] = useState<number>(5);
+  const [deathMatchBaseBet, setDeathMatchBaseBet] = useState<number>(50);
+  const [deathMatchBestBallBet, setDeathMatchBestBallBet] = useState<number>(50);
+  const [deathMatchSecondBallBet, setDeathMatchSecondBallBet] = useState<number>(25);
+  const [deathMatchFirstPressBet, setDeathMatchFirstPressBet] = useState<number>(25);
+  const [deathMatchSubsequentPressBet, setDeathMatchSubsequentPressBet] = useState<number>(15);
+  const [deathMatchSecondBallPressBet, setDeathMatchSecondBallPressBet] = useState<number>(15);
   
   // Net scoring state (for handicapped events) - defaults to true when match is handicapped
   const [useNetScoring, setUseNetScoring] = useState(false);
@@ -2941,6 +2941,102 @@ export default function MatchDetail() {
                                   </div>
                                 </div>
                               )}
+
+                              {/* Course Handicaps for Net Skins (Editable by creator) */}
+                              {em.useNetScoring && netContext && (() => {
+                                const hasMissingPlayers = netContext.playersMissingData.size > 0;
+                                return (
+                                  <div className={`rounded-lg p-3 ${hasMissingPlayers ? 'bg-destructive/10 border border-destructive/20' : 'bg-muted/30'}`}>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                      {hasMissingPlayers && <AlertTriangle className="w-3.5 h-3.5 text-destructive" />}
+                                      <p className="text-xs font-medium text-muted-foreground">
+                                        {hasMissingPlayers
+                                          ? 'Some players need handicap info — tap to enter course handicap'
+                                          : 'Course Handicaps (click to edit)'}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {(teamA?.members || []).map((m) => {
+                                        const overrides = matchHandicapOverrides?.get(em.id) || [];
+                                        const override = overrides.find(o => o.playerId === m.playerId);
+                                        const isMissingData = netContext.playersMissingData.has(m.playerId);
+                                        const calculatedHcp = netContext.courseHandicaps?.get(m.playerId);
+                                        const displayHcp = override ? override.courseHandicap : (isMissingData ? null : calculatedHcp);
+                                        const isEditing = editingMatchCourseHcp?.eventMatchId === em.id && editingMatchCourseHcp?.playerId === m.playerId;
+                                        const hasOverride = !!override;
+                                        return (
+                                          <div key={m.playerId} className="flex items-center gap-1">
+                                            <span className={`text-xs ${isMissingData && !hasOverride ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>{m.player?.name}:</span>
+                                            {isEditing && canEditScoresAndBets ? (
+                                              <Input
+                                                type="number"
+                                                value={matchCourseHcpEditValue}
+                                                onChange={(e) => setMatchCourseHcpEditValue(e.target.value)}
+                                                onBlur={() => {
+                                                  const val = parseInt(matchCourseHcpEditValue, 10);
+                                                  if (!isNaN(val)) {
+                                                    upsertMatchHandicap.mutate({ eventMatchId: em.id, playerId: m.playerId, courseHandicap: val });
+                                                  }
+                                                  setEditingMatchCourseHcp(null);
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    const val = parseInt(matchCourseHcpEditValue, 10);
+                                                    if (!isNaN(val)) {
+                                                      upsertMatchHandicap.mutate({ eventMatchId: em.id, playerId: m.playerId, courseHandicap: val });
+                                                    }
+                                                    setEditingMatchCourseHcp(null);
+                                                  } else if (e.key === 'Escape') {
+                                                    setEditingMatchCourseHcp(null);
+                                                  }
+                                                }}
+                                                className="w-14 h-6 text-xs p-1"
+                                                autoFocus
+                                                data-testid={`input-match-course-hcp-${em.id}-${m.playerId}`}
+                                              />
+                                            ) : (
+                                              <>
+                                                <button
+                                                  onClick={() => {
+                                                    if (canEditScoresAndBets) {
+                                                      setEditingMatchCourseHcp({ eventMatchId: em.id, playerId: m.playerId });
+                                                      setMatchCourseHcpEditValue(displayHcp?.toString() ?? '');
+                                                    }
+                                                  }}
+                                                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                                    isMissingData && !hasOverride
+                                                      ? 'bg-destructive/20 text-destructive border border-destructive/30 animate-pulse'
+                                                      : hasOverride
+                                                        ? 'bg-primary/20 text-primary border border-primary/30'
+                                                        : 'bg-muted text-muted-foreground'
+                                                  } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
+                                                  disabled={!canEditScoresAndBets}
+                                                  title={isMissingData && !hasOverride ? 'No handicap data — click to enter course handicap' : hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
+                                                  data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
+                                                >
+                                                  {displayHcp ?? '-'}
+                                                </button>
+                                                {canEditScoresAndBets && !isMissingData && calculatedHcp !== undefined && (
+                                                  <button
+                                                    onClick={() => {
+                                                      upsertMatchHandicap.mutate({ eventMatchId: em.id, playerId: m.playerId, courseHandicap: calculatedHcp });
+                                                    }}
+                                                    className="p-0.5 rounded text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                                                    title={`Reset to default (${calculatedHcp})`}
+                                                    data-testid={`button-reset-match-course-hcp-${em.id}-${m.playerId}`}
+                                                  >
+                                                    <RotateCcw className="w-3 h-3" />
+                                                  </button>
+                                                )}
+                                              </>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })() : em.matchType === 'five_five_five_three' ? (() => {
