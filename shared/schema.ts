@@ -685,7 +685,7 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.SKINS]: "Skins",
   [MATCH_TYPES.FIVE_FIVE_FIVE_THREE]: "5-5-5-3",
   [MATCH_TYPES.DEATH_MATCH]: "Death Match",
-  [MATCH_TYPES.TWO_THREE_BALL]: "2 Ball / 3 Ball",
+  [MATCH_TYPES.TWO_THREE_BALL]: "2 Ball / 3rd Ball",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({
@@ -1296,4 +1296,5 @@ export const ALL_MATCH_OPTIONS = [
   { value: MATCH_TYPES.STROKE_PLAY as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.STROKE_PLAY] },
   { value: MATCH_TYPES.FIVE_FIVE_FIVE_THREE as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.FIVE_FIVE_FIVE_THREE] },
   { value: MATCH_TYPES.DEATH_MATCH as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.DEATH_MATCH] },
+  { value: MATCH_TYPES.TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.TWO_THREE_BALL] },
 ];

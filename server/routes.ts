@@ -419,7 +419,7 @@ export async function registerRoutes(
 
       if (input.matchType === "two_three_ball") {
         if (input.teamA.playerIds.length < 3 || input.teamB.playerIds.length < 3) {
-          return res.status(400).json({ message: "2 Ball / 3 Ball matches require at least 3 players per team" });
+          return res.status(400).json({ message: "2 Ball / 3rd Ball matches require at least 3 players per team" });
         }
       }
 
@@ -2018,7 +2018,7 @@ Match types and their aliases:
 - "skins" → matchType: "skins"
 - "5-5-5-3" or "five five five three" → matchType: "five_five_five_three"
 - "death match" → matchType: "death_match"
-- "2 ball 3 ball", "two ball three ball", "2/3 ball", "two-three ball" → matchType: "two_three_ball"
+- "2 ball 3 ball", "2 ball 3rd ball", "two ball third ball", "two ball three ball", "2/3 ball", "two-three ball" → matchType: "two_three_ball"
 - "round robin nassau" → matchType: "nassau", isRoundRobin: true, roundRobinSubtype: "nassau"
 - "round robin" or "round robin match play" → matchType: "match_play_1_ball", isRoundRobin: true, roundRobinSubtype: "match_play_1_ball"
 
@@ -2028,7 +2028,7 @@ For ROUND ROBIN matches:
 - teamAPlayerIds = group 1 (often just the "wheel" player if keyed)
 - teamBPlayerIds = group 2 (the opponents)
 
-For STANDARD matches (nassau, match play, stroke play, death match, 2 ball / 3 ball):
+For STANDARD matches (nassau, match play, stroke play, death match, 2 ball / 3rd ball):
 - teamAPlayerIds = first team mentioned
 - teamBPlayerIds = second team (after "vs", "against", "versus")
 - If a player is "keyed" vs all others, put them in keyedPlayerIds
@@ -2040,7 +2040,7 @@ For SKINS:
 For amounts:
 - "twenty", "twenty bucks", "$20" → unitAmount: 20
 - "fifty", "fifty dollar base" → deathMatchBaseBet: 50 (for death match), or unitAmount: 50 otherwise
-- For 2 ball / 3 ball: "2 ball at 20, 3 ball at 30" → twoBallBet: 20, threeBallBet: 30. If only one amount given, apply it to both. If only unitAmount given, treat it as both.
+- For 2 ball / 3rd ball: "2 ball at 20, 3rd ball at 30" → twoBallBet: 20, threeBallBet: 30. If only one amount given, apply it to both. If only unitAmount given, treat it as both.
 
 Net/Gross:
 - "net", "handicap" → useNet: true

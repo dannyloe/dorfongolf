@@ -767,7 +767,7 @@ export function calculateLedger(
       for (const m of teamA.members) ttbPlayerTeamIndex.set(m.playerId, 0);
       for (const m of teamB.members) ttbPlayerTeamIndex.set(m.playerId, 1);
 
-      const emit = (prefix: '2 Ball' | '3 Ball', settlements: NassauSettlement[]) => {
+      const emit = (prefix: '2 Ball' | '3rd Ball', settlements: NassauSettlement[]) => {
         for (const ns of settlements) {
           const betLabel = `${prefix} – ${ns.betName}`;
           for (const s of ns.settlement.settlements) {
@@ -802,7 +802,7 @@ export function calculateLedger(
       };
 
       emit('2 Ball', twoBallSettlements);
-      emit('3 Ball', threeBallSettlements);
+      emit('3rd Ball', threeBallSettlements);
     } else {
       // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
       const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;

@@ -337,7 +337,16 @@ export function useCreatePress(matchId: number) {
         credentials: "include",
       });
       
-      if (!res.ok) throw new Error("Failed to create press");
+      if (!res.ok) {
+        let serverMsg = "";
+        try {
+          const body = await res.json();
+          serverMsg = body?.message || JSON.stringify(body);
+        } catch {
+          try { serverMsg = await res.text(); } catch { /* ignore */ }
+        }
+        throw new Error(`Failed to create press (${res.status}): ${serverMsg || 'no details'}`);
+      }
       return res.json();
     },
     onSuccess: () => {

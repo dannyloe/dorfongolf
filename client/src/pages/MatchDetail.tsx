@@ -1026,7 +1026,7 @@ export default function MatchDetail() {
 
     const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
     const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
-    const autoMatchName = `2 Ball / 3 Ball: ${autoTeamAName} vs ${autoTeamBName}`;
+    const autoMatchName = `2 Ball / 3rd Ball: ${autoTeamAName} vs ${autoTeamBName}`;
 
     createEventMatch.mutate({
       name: autoMatchName,
@@ -2799,10 +2799,10 @@ export default function MatchDetail() {
               ) : selectedMatchType === MATCH_TYPES.TWO_THREE_BALL ? (
                 <>
                   <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
-                    <p className="font-medium mb-1">2 Ball / 3 Ball — Two Nassaus running at once:</p>
+                    <p className="font-medium mb-1">2 Ball / 3rd Ball — Two Nassaus running at once:</p>
                     <ul className="list-disc list-inside space-y-0.5">
                       <li><strong>2 Ball</strong> — Each hole's team score = sum of the team's two lowest scores (match play)</li>
-                      <li><strong>3 Ball</strong> — Each hole's team score = the team's third-lowest score (match play)</li>
+                      <li><strong>3rd Ball</strong> — Each hole's team score = the team's third-lowest score (match play)</li>
                     </ul>
                     <p className="mt-1">Each Nassau has Front 9, Back 9, and Overall legs with optional auto-press = 6 settleable bets.</p>
                   </div>
@@ -2821,7 +2821,7 @@ export default function MatchDetail() {
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground">3 Ball Bet ($)</label>
+                      <label className="text-xs font-medium text-muted-foreground">3rd Ball Bet ($)</label>
                       <Input
                         type="number"
                         min="0"
@@ -2851,7 +2851,7 @@ export default function MatchDetail() {
                       </label>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-xs font-semibold">3 Ball Auto-Press</p>
+                      <p className="text-xs font-semibold">3rd Ball Auto-Press</p>
                       <label className="flex items-center gap-2 text-xs cursor-pointer">
                         <input type="checkbox" checked={autoPressThreeBallFront9} onChange={(e) => setAutoPressThreeBallFront9(e.target.checked)} data-testid="checkbox-autopress-3b-f9" />
                         Front 9
@@ -2930,7 +2930,7 @@ export default function MatchDetail() {
 
                   {(teamAPlayerIds.length > 0 || teamBPlayerIds.length > 0) && (teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3) && (
                     <p className="text-xs text-destructive" data-testid="text-ttb-min-players">
-                      Each team needs at least 3 players for the 3 Ball portion.
+                      Each team needs at least 3 players for the 3rd Ball portion.
                     </p>
                   )}
 
@@ -2940,7 +2940,7 @@ export default function MatchDetail() {
                     className="w-full"
                     data-testid="button-submit-create-two-three-ball"
                   >
-                    {createEventMatch.isPending ? "Creating..." : "Create 2 Ball / 3 Ball Match"}
+                    {createEventMatch.isPending ? "Creating..." : "Create 2 Ball / 3rd Ball Match"}
                   </Button>
                 </>
               ) : (
@@ -4247,7 +4247,7 @@ export default function MatchDetail() {
                                       return (
                                         <>
                                           {renderBallRows('2 Ball', ttbResults.twoBall.overall, 'bg-blue-50/50 dark:bg-blue-950/30')}
-                                          {renderBallRows('3 Ball', ttbResults.threeBall.overall, 'bg-orange-50/50 dark:bg-orange-950/30')}
+                                          {renderBallRows('3rd Ball', ttbResults.threeBall.overall, 'bg-orange-50/50 dark:bg-orange-950/30')}
                                         </>
                                       );
                                     })()}
@@ -4257,12 +4257,12 @@ export default function MatchDetail() {
 
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 {renderLegSummary(`2 Ball — $${(twoBallBetCents / 100).toFixed(2)}/leg`, ttbResults.twoBall)}
-                                {renderLegSummary(`3 Ball — $${(threeBallBetCents / 100).toFixed(2)}/leg`, ttbResults.threeBall)}
+                                {renderLegSummary(`3rd Ball — $${(threeBallBetCents / 100).toFixed(2)}/leg`, ttbResults.threeBall)}
                               </div>
 
                               <div className="p-3 bg-muted/30 rounded-lg space-y-3">
                                 {renderSettlements('2 Ball', twoBallNs)}
-                                {renderSettlements('3 Ball', threeBallNs)}
+                                {renderSettlements('3rd Ball', threeBallNs)}
                               </div>
                             </div>
                           );
@@ -5025,8 +5025,24 @@ export default function MatchDetail() {
                               <Button
                                 size="sm"
                                 onClick={() => {
-                                  createPress.mutate({ eventMatchId: em.id, startHole: pressStartHole });
-                                  setPressDialogMatch(null);
+                                  createPress.mutate(
+                                    { eventMatchId: em.id, startHole: pressStartHole },
+                                    {
+                                      onSuccess: () => {
+                                        toast({ title: `Press added starting hole ${pressStartHole}` });
+                                      },
+                                      onError: (err: Error) => {
+                                        toast({
+                                          title: "Couldn't add press",
+                                          description: err.message,
+                                          variant: "destructive",
+                                        });
+                                      },
+                                      onSettled: (_data, error) => {
+                                        if (!error) setPressDialogMatch(null);
+                                      },
+                                    },
+                                  );
                                 }}
                                 disabled={createPress.isPending}
                                 data-testid="button-confirm-press-shared"
