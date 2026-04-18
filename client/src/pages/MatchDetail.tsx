@@ -1044,7 +1044,7 @@ export default function MatchDetail() {
       autoPressThreeBallBack9,
       autoPressThreeBallOverall,
       isRoundRobinGenerated: false,
-    } as any, {
+    }, {
       onSuccess: (created) => {
         applyStrokesToEventMatch(created);
         setShowCreateMatch(false);
