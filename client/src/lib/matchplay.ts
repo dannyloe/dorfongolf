@@ -1339,8 +1339,10 @@ export function calculateNassauResults(
   // Nassau press semantics: a press belongs to exactly one leg — the leg that
   // contains the physical hole where the press was started. The other two legs
   // and Overall are returned empty so the settlement layer treats them as $0
-  // no-bets. Parent Nassau bets (matchStartHole === 1) keep all three legs.
-  const isPress = matchStartHole > 1;
+  // no-bets. Parent Nassau bets keep all three legs. We require both
+  // parentMatchId AND matchStartHole > 1 to identify a press, so a parent that
+  // somehow has a non-1 startHole is not misclassified.
+  const isPress = !!eventMatch.parentMatchId && matchStartHole > 1;
   if (isPress) {
     const pressLeg: 'front9' | 'back9' = matchStartHole <= 9 ? 'front9' : 'back9';
     return {
