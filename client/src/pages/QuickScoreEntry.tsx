@@ -167,11 +167,11 @@ export default function QuickScoreEntry() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   
   const [showScanModal, setShowScanModal] = useState(false);
+  const [inFlightSaves, setInFlightSaves] = useState(0);
   const [scannedScores, setScannedScores] = useState<ScannedPlayer[]>([]);
   const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
   const [playerMappings, setPlayerMappings] = useState<Record<string, number | null>>({});
   const [suggestedPresets, setSuggestedPresets] = useState<Record<string, string | null>>({});
-  const [isAddingPlayers, setIsAddingPlayers] = useState(false);
   
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -436,18 +436,23 @@ export default function QuickScoreEntry() {
     e.target.value = '';
   };
 
-  const handleConfirmScores = async () => {
-    setIsAddingPlayers(true);
+  // Runs the player-add + bulk-score-save in the background using a snapshot
+  // of the scan state captured at click time. The modal is closed before this
+  // runs, so it must not read any live React state.
+  const runScorecardSave = async (snapshot: {
+    playerMappings: Record<string, number | null>;
+    suggestedPresets: Record<string, string | null>;
+    editableScores: Record<string, Record<number, string>>;
+  }) => {
     let successCount = 0;
     let errorCount = 0;
     let addedPlayerCount = 0;
-    let addPlayerErrors: string[] = [];
-    
-    // First, add any suggested preset players
-    const updatedMappings = { ...playerMappings };
-    const addedPresets = new Set<string>(); // Track already-added presets to prevent duplicates
-    
-    for (const [scannedName, presetName] of Object.entries(suggestedPresets)) {
+    const addPlayerErrors: string[] = [];
+
+    const updatedMappings = { ...snapshot.playerMappings };
+    const addedPresets = new Set<string>();
+
+    for (const [scannedName, presetName] of Object.entries(snapshot.suggestedPresets)) {
       if (presetName && !updatedMappings[scannedName] && !addedPresets.has(presetName)) {
         try {
           const newPlayer = await addPlayer.mutateAsync({ name: presetName });
@@ -459,17 +464,15 @@ export default function QuickScoreEntry() {
           addPlayerErrors.push(`Failed to add ${presetName}: ${errMsg}`);
         }
       } else if (presetName && addedPresets.has(presetName)) {
-        // Same preset was already added for another scanned name - find and reuse the ID
         for (const [otherName, id] of Object.entries(updatedMappings)) {
-          if (suggestedPresets[otherName] === presetName && id !== null) {
+          if (snapshot.suggestedPresets[otherName] === presetName && id !== null) {
             updatedMappings[scannedName] = id;
             break;
           }
         }
       }
     }
-    
-    // Show errors if any player additions failed
+
     if (addPlayerErrors.length > 0) {
       toast({
         variant: "destructive",
@@ -477,14 +480,13 @@ export default function QuickScoreEntry() {
         description: addPlayerErrors.join("; "),
       });
     }
-    
-    // Now save scores using the updated mappings — single bulk request.
+
     const bulkEntries: { playerId: number; holeNumber: number; strokes: number }[] = [];
-    for (const scannedName of Object.keys(editableScores)) {
+    for (const scannedName of Object.keys(snapshot.editableScores)) {
       const playerId = updatedMappings[scannedName];
       if (!playerId) continue;
 
-      for (const [holeStr, strokesStr] of Object.entries(editableScores[scannedName])) {
+      for (const [holeStr, strokesStr] of Object.entries(snapshot.editableScores[scannedName])) {
         const holeNumber = parseInt(holeStr);
         const strokes = parseInt(strokesStr);
 
@@ -502,14 +504,7 @@ export default function QuickScoreEntry() {
         errorCount += bulkEntries.length;
       }
     }
-    
-    setIsAddingPlayers(false);
-    setShowScanModal(false);
-    setScannedScores([]);
-    setEditableScores({});
-    setSuggestedPresets({});
-    setPlayerMappings({});
-    
+
     if (addedPlayerCount > 0 || successCount > 0) {
       const parts = [];
       if (addedPlayerCount > 0) {
@@ -519,7 +514,7 @@ export default function QuickScoreEntry() {
         parts.push(`${successCount} score${successCount !== 1 ? 's' : ''} saved`);
       }
       toast({
-        title: "Success",
+        title: "Scorecard saved",
         description: parts.join(", ") + ".",
       });
     }
@@ -532,6 +527,27 @@ export default function QuickScoreEntry() {
     }
   };
   
+  const handleConfirmScores = () => {
+    // Snapshot the current scan state and reset the modal immediately so the
+    // user can take another picture while this scorecard saves in the background.
+    const snapshot = {
+      playerMappings: { ...playerMappings },
+      suggestedPresets: { ...suggestedPresets },
+      editableScores: JSON.parse(JSON.stringify(editableScores)) as Record<string, Record<number, string>>,
+    };
+
+    setShowScanModal(false);
+    setScannedScores([]);
+    setEditableScores({});
+    setSuggestedPresets({});
+    setPlayerMappings({});
+
+    setInFlightSaves(n => n + 1);
+    void runScorecardSave(snapshot).finally(() => {
+      setInFlightSaves(n => Math.max(0, n - 1));
+    });
+  };
+
   const calculateTotals = (scannedName: string) => {
     const scores = editableScores[scannedName] || {};
     let front9 = 0;
@@ -629,6 +645,18 @@ export default function QuickScoreEntry() {
               <Camera className="w-5 h-5" />
             )}
           </Button>
+
+          {inFlightSaves > 0 && (
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium border border-primary/20"
+              data-testid="status-scorecard-saves-in-flight"
+            >
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span>
+                Saving {inFlightSaves} scorecard{inFlightSaves !== 1 ? "s" : ""}…
+              </span>
+            </div>
+          )}
         
           {hiddenPlayers.length > 0 && (
           <Popover>
@@ -996,7 +1024,6 @@ export default function QuickScoreEntry() {
                 setPlayerMappings({});
                 setSuggestedPresets({});
               }}
-              disabled={isAddingPlayers}
               data-testid="button-cancel-scan"
             >
               Cancel
@@ -1004,22 +1031,14 @@ export default function QuickScoreEntry() {
             <Button 
               onClick={handleConfirmScores}
               disabled={
-                isAddingPlayers ||
-                (Object.values(playerMappings).every(id => id === null) && 
-                 Object.values(suggestedPresets).every(p => p === null))
+                Object.values(playerMappings).every(id => id === null) &&
+                Object.values(suggestedPresets).every(p => p === null)
               }
               data-testid="button-confirm-scanned-scores"
             >
-              {isAddingPlayers ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Adding Players...
-                </>
-              ) : (
-                Object.values(suggestedPresets).some(p => p !== null) 
-                  ? "Add Players & Save Scores" 
-                  : "Save Scores"
-              )}
+              {Object.values(suggestedPresets).some(p => p !== null) 
+                ? "Add Players & Save Scores" 
+                : "Save Scores"}
             </Button>
           </DialogFooter>
         </DialogContent>
