@@ -416,6 +416,13 @@ export async function registerRoutes(
       }
       
       const input = api.eventMatches.create.input.parse(req.body);
+
+      if (input.matchType === "two_three_ball") {
+        if (input.teamA.playerIds.length < 3 || input.teamB.playerIds.length < 3) {
+          return res.status(400).json({ message: "2 Ball / 3 Ball matches require at least 3 players per team" });
+        }
+      }
+
       const eventMatch = await storage.createEventMatch(eventId, input);
       const withTeams = await storage.getEventMatchWithTeams(eventMatch.id);
       res.status(201).json(withTeams);
