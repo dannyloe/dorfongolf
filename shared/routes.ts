@@ -304,6 +304,16 @@ export const api = {
         deathMatchFirstPressBet: z.number().min(0).optional(),
         deathMatchSubsequentPressBet: z.number().min(0).optional(),
         deathMatchSecondBallPressBet: z.number().min(0).optional(),
+        // 2 Ball / 3 Ball specific bet amounts (in cents)
+        twoThreeBallTwoBallBet: z.number().min(0).optional(),
+        twoThreeBallThreeBallBet: z.number().min(0).optional(),
+        // 2 Ball / 3 Ball auto-press toggles
+        autoPressTwoBallFront9: z.boolean().optional(),
+        autoPressTwoBallBack9: z.boolean().optional(),
+        autoPressTwoBallOverall: z.boolean().optional(),
+        autoPressThreeBallFront9: z.boolean().optional(),
+        autoPressThreeBallBack9: z.boolean().optional(),
+        autoPressThreeBallOverall: z.boolean().optional(),
       }),
       responses: {
         201: z.custom<typeof eventMatches.$inferSelect>(),

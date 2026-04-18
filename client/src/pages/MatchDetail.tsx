@@ -14,7 +14,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, calculateTwoThreeBallResults, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,6 +66,20 @@ interface EventMatch {
   useNetScoring?: boolean;
   startOnBack9?: boolean;
   hasBeenReplicated?: boolean;
+  deathMatchBaseBet?: number | null;
+  deathMatchBestBallBet?: number | null;
+  deathMatchSecondBallBet?: number | null;
+  deathMatchFirstPressBet?: number | null;
+  deathMatchSubsequentPressBet?: number | null;
+  deathMatchSecondBallPressBet?: number | null;
+  twoThreeBallTwoBallBet?: number | null;
+  twoThreeBallThreeBallBet?: number | null;
+  autoPressTwoBallFront9?: boolean;
+  autoPressTwoBallBack9?: boolean;
+  autoPressTwoBallOverall?: boolean;
+  autoPressThreeBallFront9?: boolean;
+  autoPressThreeBallBack9?: boolean;
+  autoPressThreeBallOverall?: boolean;
   teams: Team[];
 }
 
@@ -311,6 +325,16 @@ export default function MatchDetail() {
   const [deathMatchFirstPressBet, setDeathMatchFirstPressBet] = useState<number>(25);
   const [deathMatchSubsequentPressBet, setDeathMatchSubsequentPressBet] = useState<number>(15);
   const [deathMatchSecondBallPressBet, setDeathMatchSecondBallPressBet] = useState<number>(15);
+
+  // 2 Ball / 3 Ball state
+  const [twoBallBet, setTwoBallBet] = useState<number>(20);
+  const [threeBallBet, setThreeBallBet] = useState<number>(20);
+  const [autoPressTwoBallFront9, setAutoPressTwoBallFront9] = useState<boolean>(true);
+  const [autoPressTwoBallBack9, setAutoPressTwoBallBack9] = useState<boolean>(true);
+  const [autoPressTwoBallOverall, setAutoPressTwoBallOverall] = useState<boolean>(true);
+  const [autoPressThreeBallFront9, setAutoPressThreeBallFront9] = useState<boolean>(true);
+  const [autoPressThreeBallBack9, setAutoPressThreeBallBack9] = useState<boolean>(true);
+  const [autoPressThreeBallOverall, setAutoPressThreeBallOverall] = useState<boolean>(true);
   
   // Net scoring state (for handicapped events) - defaults to true when match is handicapped
   const [useNetScoring, setUseNetScoring] = useState(false);
@@ -382,6 +406,7 @@ export default function MatchDetail() {
       teamAPlayerIds: tA, teamBPlayerIds: tB,
       keyedPlayerIds, skinsPlayerIds,
       unitAmount: ua, deathMatchBaseBet: dmBase,
+      twoBallBet: tbb, threeBallBet: trb,
       useNet, parsedSummary, unmatchedNames,
       strokeAllocations,
     } = result;
@@ -425,6 +450,20 @@ export default function MatchDetail() {
       setTeamBPlayerIds(tB || []);
       const base = dmBase ?? 50;
       updateDeathMatchDefaults(base);
+    } else if (matchType === 'two_three_ball') {
+      setSelectedMatchType(MATCH_TYPES.TWO_THREE_BALL);
+      setIsRoundRobinMode(false);
+      setTeamAPlayerIds(tA || []);
+      setTeamBPlayerIds(tB || []);
+      const fallback = ua ?? 20;
+      setTwoBallBet(tbb ?? fallback);
+      setThreeBallBet(trb ?? fallback);
+      setAutoPressTwoBallFront9(true);
+      setAutoPressTwoBallBack9(true);
+      setAutoPressTwoBallOverall(true);
+      setAutoPressThreeBallFront9(true);
+      setAutoPressThreeBallBack9(true);
+      setAutoPressThreeBallOverall(true);
     } else {
       setSelectedMatchType((matchType || MATCH_TYPES.NASSAU) as MatchType);
       setIsRoundRobinMode(false);
@@ -971,6 +1010,48 @@ export default function MatchDetail() {
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
         setDeathMatchBaseBet(50);
+        setUseNetScoring(match.isHandicapped ?? false);
+      }
+    });
+  };
+
+  const handleCreateTwoThreeBall = () => {
+    if (teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3) return;
+
+    const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
+    const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
+    const autoMatchName = `2 Ball / 3 Ball: ${autoTeamAName} vs ${autoTeamBName}`;
+
+    createEventMatch.mutate({
+      name: autoMatchName,
+      matchType: MATCH_TYPES.TWO_THREE_BALL,
+      unitAmount: twoBallBet * 100, // legacy field — primary value pair lives in dedicated columns
+      teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
+      teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
+      autoPressOriginal: false,
+      autoPressAllPresses: false,
+      autoPressNassauFront9: false,
+      autoPressNassauBack9: false,
+      autoPressNassauOverall: false,
+      useNetScoring: match.isHandicapped ? useNetScoring : false,
+      startOnBack9: dayStartOnBack9,
+      twoThreeBallTwoBallBet: twoBallBet * 100,
+      twoThreeBallThreeBallBet: threeBallBet * 100,
+      autoPressTwoBallFront9,
+      autoPressTwoBallBack9,
+      autoPressTwoBallOverall,
+      autoPressThreeBallFront9,
+      autoPressThreeBallBack9,
+      autoPressThreeBallOverall,
+      isRoundRobinGenerated: false,
+    } as any, {
+      onSuccess: (created) => {
+        applyStrokesToEventMatch(created);
+        setShowCreateMatch(false);
+        setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
+        setUnitAmount(20);
+        setTeamAPlayerIds([]);
+        setTeamBPlayerIds([]);
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -2314,6 +2395,18 @@ export default function MatchDetail() {
                         setDeathMatchSecondBallPressBet(15);
                         setTeamAPlayerIds([]);
                         setTeamBPlayerIds([]);
+                      } else if (value === MATCH_TYPES.TWO_THREE_BALL) {
+                        setSelectedMatchType(MATCH_TYPES.TWO_THREE_BALL);
+                        setTwoBallBet(20);
+                        setThreeBallBet(20);
+                        setAutoPressTwoBallFront9(true);
+                        setAutoPressTwoBallBack9(true);
+                        setAutoPressTwoBallOverall(true);
+                        setAutoPressThreeBallFront9(true);
+                        setAutoPressThreeBallBack9(true);
+                        setAutoPressThreeBallOverall(true);
+                        setTeamAPlayerIds([]);
+                        setTeamBPlayerIds([]);
                       } else {
                         setSelectedMatchType(value as MatchType);
                         setSkinsPlayerIds([]);
@@ -2697,6 +2790,153 @@ export default function MatchDetail() {
                     {createEventMatch.isPending ? "Creating..." : "Create Death Match"}
                   </Button>
                 </>
+              ) : selectedMatchType === MATCH_TYPES.TWO_THREE_BALL ? (
+                <>
+                  <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">2 Ball / 3 Ball — Two Nassaus running at once:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li><strong>2 Ball</strong> — Each hole's team score = sum of the team's two lowest scores (match play)</li>
+                      <li><strong>3 Ball</strong> — Each hole's team score = the team's third-lowest score (match play)</li>
+                    </ul>
+                    <p className="mt-1">Each Nassau has Front 9, Back 9, and Overall legs with optional auto-press = 6 settleable bets.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">2 Ball Bet ($)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={twoBallBet}
+                        onChange={(e) => setTwoBallBet(parseFloat(e.target.value) || 0)}
+                        className="mt-1 h-8 text-sm"
+                        data-testid="input-two-ball-bet"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">3 Ball Bet ($)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={threeBallBet}
+                        onChange={(e) => setThreeBallBet(parseFloat(e.target.value) || 0)}
+                        className="mt-1 h-8 text-sm"
+                        data-testid="input-three-ball-bet"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold">2 Ball Auto-Press</p>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressTwoBallFront9} onChange={(e) => setAutoPressTwoBallFront9(e.target.checked)} data-testid="checkbox-autopress-2b-f9" />
+                        Front 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressTwoBallBack9} onChange={(e) => setAutoPressTwoBallBack9(e.target.checked)} data-testid="checkbox-autopress-2b-b9" />
+                        Back 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressTwoBallOverall} onChange={(e) => setAutoPressTwoBallOverall(e.target.checked)} data-testid="checkbox-autopress-2b-overall" />
+                        Overall
+                      </label>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold">3 Ball Auto-Press</p>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressThreeBallFront9} onChange={(e) => setAutoPressThreeBallFront9(e.target.checked)} data-testid="checkbox-autopress-3b-f9" />
+                        Front 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressThreeBallBack9} onChange={(e) => setAutoPressThreeBallBack9(e.target.checked)} data-testid="checkbox-autopress-3b-b9" />
+                        Back 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressThreeBallOverall} onChange={(e) => setAutoPressThreeBallOverall(e.target.checked)} data-testid="checkbox-autopress-3b-overall" />
+                        Overall
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-primary text-sm">
+                          {teamAPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamAPlayerIds) : "Team A (3+ players)"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {players.map((p) => {
+                          const isInA = teamAPlayerIds.includes(p.id);
+                          const isInB = teamBPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                if (isInA) setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== p.id));
+                                else if (!isInB) setTeamAPlayerIds([...teamAPlayerIds, p.id]);
+                              }}
+                              disabled={isInB}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                isInA ? "bg-primary text-primary-foreground" : isInB ? "bg-muted/50 text-muted-foreground line-through" : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-ttb-team-a-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-accent text-sm">
+                          {teamBPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamBPlayerIds) : "Team B (3+ players)"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {players.map((p) => {
+                          const isInA = teamAPlayerIds.includes(p.id);
+                          const isInB = teamBPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                if (isInB) setTeamBPlayerIds(teamBPlayerIds.filter(id => id !== p.id));
+                                else if (!isInA) setTeamBPlayerIds([...teamBPlayerIds, p.id]);
+                              }}
+                              disabled={isInA}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                isInB ? "bg-accent text-accent-foreground" : isInA ? "bg-muted/50 text-muted-foreground line-through" : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-ttb-team-b-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(teamAPlayerIds.length > 0 || teamBPlayerIds.length > 0) && (teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3) && (
+                    <p className="text-xs text-destructive" data-testid="text-ttb-min-players">
+                      Each team needs at least 3 players for the 3 Ball portion.
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={handleCreateTwoThreeBall}
+                    disabled={teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3 || createEventMatch.isPending}
+                    className="w-full"
+                    data-testid="button-submit-create-two-three-ball"
+                  >
+                    {createEventMatch.isPending ? "Creating..." : "Create 2 Ball / 3 Ball Match"}
+                  </Button>
+                </>
               ) : (
                 <>
                   <p className="text-xs text-muted-foreground">
@@ -2838,8 +3078,10 @@ export default function MatchDetail() {
               
               const netContext = buildMatchNetContext(emWithCorrectBack9);
               const isDeathMatch = emWithCorrectBack9.matchType === 'death_match';
+              const isTwoThreeBall = emWithCorrectBack9.matchType === 'two_three_ball';
               const dmResults = isDeathMatch ? calculateDeathMatchResults(emWithCorrectBack9, scores, netContext) : null;
-              const results = isDeathMatch ? [] : calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
+              const ttbResults = isTwoThreeBall ? calculateTwoThreeBallResults(emWithCorrectBack9, scores, netContext) : null;
+              const results = (isDeathMatch || isTwoThreeBall) ? [] : calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
               const status = isDeathMatch && dmResults && teamA && teamB
                 ? (() => {
                     const bbStatus = dmResults.bestBall.isComplete
@@ -3726,6 +3968,165 @@ export default function MatchDetail() {
                                 <p className="font-medium text-muted-foreground">
                                   Second Ball (Match Play): ${((em.deathMatchSecondBallBet || Math.round((em.unitAmount || 0) / 2)) / 100).toFixed(2)} — {dmResults.secondBall.isComplete ? (dmResults.secondBall.winner === 'A' ? `${teamA?.name} wins` : dmResults.secondBall.winner === 'B' ? `${teamB?.name} wins` : 'Halved') : `${teamA?.name}: ${dmResults.secondBall.holesWonA} | ${teamB?.name}: ${dmResults.secondBall.holesWonB}`}
                                 </p>
+                              </div>
+                            </div>
+                          );
+                        })() : em.matchType === 'two_three_ball' && ttbResults && teamA && teamB ? (() => {
+                          const allPlayers = [...(teamA.members || []), ...(teamB.members || [])];
+                          const twoBallBetCents = em.twoThreeBallTwoBallBet ?? em.unitAmount ?? 0;
+                          const threeBallBetCents = em.twoThreeBallThreeBallBet ?? em.unitAmount ?? 0;
+                          const twoBallAutoPress = {
+                            front9: em.autoPressTwoBallFront9 ?? true,
+                            back9: em.autoPressTwoBallBack9 ?? true,
+                            overall: em.autoPressTwoBallOverall ?? true,
+                          };
+                          const threeBallAutoPress = {
+                            front9: em.autoPressThreeBallFront9 ?? true,
+                            back9: em.autoPressThreeBallBack9 ?? true,
+                            overall: em.autoPressThreeBallOverall ?? true,
+                          };
+                          const twoBallNs = calculateNassauSettlements(twoBallBetCents, teamA, teamB, ttbResults.twoBall, twoBallAutoPress);
+                          const threeBallNs = calculateNassauSettlements(threeBallBetCents, teamA, teamB, ttbResults.threeBall, threeBallAutoPress);
+
+                          const renderLegSummary = (label: string, nassau: typeof ttbResults.twoBall) => {
+                            const legRow = (legName: string, holes: typeof nassau.front9) => {
+                              const last = holes.filter(h => h.teamAScore !== null && h.teamBScore !== null).slice(-1)[0];
+                              const status = last ? last.status : 'Not started';
+                              const finalA = holes[holes.length - 1]?.cumulativeA ?? 0;
+                              const finalB = holes[holes.length - 1]?.cumulativeB ?? 0;
+                              return (
+                                <tr className="border-b border-border/30" data-testid={`row-ttb-${label}-${legName}`}>
+                                  <td className="p-2 font-medium">{legName}</td>
+                                  <td className="p-2 text-center">{finalA}</td>
+                                  <td className="p-2 text-center">{finalB}</td>
+                                  <td className="p-2 text-xs text-muted-foreground">{status}</td>
+                                </tr>
+                              );
+                            };
+                            return (
+                              <div className="rounded-lg border border-border overflow-hidden">
+                                <div className="px-3 py-2 bg-muted/40 text-sm font-semibold">{label}</div>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border bg-muted/20">
+                                      <th className="p-2 text-left font-medium">Leg</th>
+                                      <th className="p-2 text-center font-medium">{teamA.name}</th>
+                                      <th className="p-2 text-center font-medium">{teamB.name}</th>
+                                      <th className="p-2 text-left font-medium">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {legRow('Front 9', nassau.front9)}
+                                    {legRow('Back 9', nassau.back9)}
+                                    {legRow('Overall', nassau.overall)}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          };
+
+                          const renderSettlements = (label: string, settlements: ReturnType<typeof calculateNassauSettlements>) => {
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-sm font-semibold">{label} Settlements</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {settlements.map((ns, idx) => (
+                                    <span
+                                      key={`${label}-${ns.betName}-${idx}`}
+                                      className={`px-3 py-1 rounded-lg text-xs ${ns.settlement.isComplete ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+                                      data-testid={`badge-ttb-${label}-${ns.betName.replace(/\s+/g, '-').toLowerCase()}`}
+                                    >
+                                      {ns.betName}{ns.autoPressTriggered ? ' (auto-press)' : ''}: ${(ns.settlement.totalPot / 100).toFixed(2)} {ns.settlement.isComplete ? '✓' : '…'}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          };
+
+                          return (
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-medium text-primary mb-1">{teamA.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {teamA.members.map((m) => (
+                                      <span key={m.id} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                        {m.player?.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="font-medium text-accent mb-1">{teamB.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {teamB.members.map((m) => (
+                                      <span key={m.id} className="px-2 py-0.5 bg-accent/10 text-accent rounded text-xs">
+                                        {m.player?.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="p-2 text-left font-semibold sticky left-0 bg-background min-w-[80px]">Player</th>
+                                      {firstNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
+                                      {secondNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Tot</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {allPlayers.map((m) => {
+                                      const isTeamA = teamA.members.some(tm => tm.playerId === m.playerId);
+                                      const colorClass = isTeamA ? 'text-primary' : 'text-accent';
+                                      const bgClass = isTeamA ? 'bg-primary/5' : 'bg-accent/5';
+                                      const firstNineTotal = firstNineHoles.reduce((sum, hole) => {
+                                        const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                        return sum + (s?.strokes || 0);
+                                      }, 0);
+                                      const secondNineTotal = secondNineHoles.reduce((sum, hole) => {
+                                        const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                        return sum + (s?.strokes || 0);
+                                      }, 0);
+                                      return (
+                                        <tr key={m.playerId} className={`border-b border-border/30 ${bgClass}`}>
+                                          <td className={`p-2 font-medium sticky left-0 bg-background ${colorClass} text-xs`}>{m.player?.name}</td>
+                                          {firstNineHoles.map((hole) => {
+                                            const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                            return <td key={hole} className="p-2 text-center">{s?.strokes ?? '-'}</td>;
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{firstNineTotal || '-'}</td>
+                                          {secondNineHoles.map((hole) => {
+                                            const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                            return <td key={hole} className="p-2 text-center">{s?.strokes ?? '-'}</td>;
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{secondNineTotal || '-'}</td>
+                                          <td className="p-2 text-center font-bold bg-muted/30">{(firstNineTotal + secondNineTotal) || '-'}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {renderLegSummary(`2 Ball — $${(twoBallBetCents / 100).toFixed(2)}/leg`, ttbResults.twoBall)}
+                                {renderLegSummary(`3 Ball — $${(threeBallBetCents / 100).toFixed(2)}/leg`, ttbResults.threeBall)}
+                              </div>
+
+                              <div className="p-3 bg-muted/30 rounded-lg space-y-3">
+                                {renderSettlements('2 Ball', twoBallNs)}
+                                {renderSettlements('3 Ball', threeBallNs)}
                               </div>
                             </div>
                           );

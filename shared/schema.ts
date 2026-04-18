@@ -122,6 +122,16 @@ export const eventMatches = pgTable("event_matches", {
   deathMatchFirstPressBet: integer("death_match_first_press_bet"), // in cents - first press amount (defaults to base/2, rounded to $5)
   deathMatchSubsequentPressBet: integer("death_match_subsequent_press_bet"), // in cents - subsequent press amount (defaults to base/4, rounded to $5)
   deathMatchSecondBallPressBet: integer("death_match_second_ball_press_bet"), // in cents - second ball press amount (defaults to base/4, rounded to $5)
+  // 2 Ball / 3 Ball specific bet amounts (in cents) - each is a Nassau unit amount
+  twoThreeBallTwoBallBet: integer("two_three_ball_two_ball_bet"),
+  twoThreeBallThreeBallBet: integer("two_three_ball_three_ball_bet"),
+  // 2 Ball / 3 Ball auto-press toggles - one per Nassau leg per bet (default true)
+  autoPressTwoBallFront9: boolean("auto_press_two_ball_front9").notNull().default(true),
+  autoPressTwoBallBack9: boolean("auto_press_two_ball_back9").notNull().default(true),
+  autoPressTwoBallOverall: boolean("auto_press_two_ball_overall").notNull().default(true),
+  autoPressThreeBallFront9: boolean("auto_press_three_ball_front9").notNull().default(true),
+  autoPressThreeBallBack9: boolean("auto_press_three_ball_back9").notNull().default(true),
+  autoPressThreeBallOverall: boolean("auto_press_three_ball_overall").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -600,6 +610,16 @@ export type CreateEventMatchRequest = {
   deathMatchFirstPressBet?: number;
   deathMatchSubsequentPressBet?: number;
   deathMatchSecondBallPressBet?: number;
+  // 2 Ball / 3 Ball specific bet amounts (in cents)
+  twoThreeBallTwoBallBet?: number;
+  twoThreeBallThreeBallBet?: number;
+  // 2 Ball / 3 Ball auto-press toggles
+  autoPressTwoBallFront9?: boolean;
+  autoPressTwoBallBack9?: boolean;
+  autoPressTwoBallOverall?: boolean;
+  autoPressThreeBallFront9?: boolean;
+  autoPressThreeBallBack9?: boolean;
+  autoPressThreeBallOverall?: boolean;
 };
 
 export type GroupWithDetails = Group & {
@@ -652,6 +672,7 @@ export const MATCH_TYPES = {
   SKINS: "skins",
   FIVE_FIVE_FIVE_THREE: "five_five_five_three",
   DEATH_MATCH: "death_match",
+  TWO_THREE_BALL: "two_three_ball",
 } as const;
 
 export type MatchType = typeof MATCH_TYPES[keyof typeof MATCH_TYPES];
@@ -664,6 +685,7 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.SKINS]: "Skins",
   [MATCH_TYPES.FIVE_FIVE_FIVE_THREE]: "5-5-5-3",
   [MATCH_TYPES.DEATH_MATCH]: "Death Match",
+  [MATCH_TYPES.TWO_THREE_BALL]: "2 Ball / 3 Ball",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({

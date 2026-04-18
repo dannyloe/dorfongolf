@@ -398,6 +398,14 @@ export class DatabaseStorage implements IStorage {
       deathMatchFirstPressBet: data.deathMatchFirstPressBet ?? null,
       deathMatchSubsequentPressBet: data.deathMatchSubsequentPressBet ?? null,
       deathMatchSecondBallPressBet: data.deathMatchSecondBallPressBet ?? null,
+      twoThreeBallTwoBallBet: data.twoThreeBallTwoBallBet ?? null,
+      twoThreeBallThreeBallBet: data.twoThreeBallThreeBallBet ?? null,
+      autoPressTwoBallFront9: data.autoPressTwoBallFront9 ?? true,
+      autoPressTwoBallBack9: data.autoPressTwoBallBack9 ?? true,
+      autoPressTwoBallOverall: data.autoPressTwoBallOverall ?? true,
+      autoPressThreeBallFront9: data.autoPressThreeBallFront9 ?? true,
+      autoPressThreeBallBack9: data.autoPressThreeBallBack9 ?? true,
+      autoPressThreeBallOverall: data.autoPressThreeBallOverall ?? true,
     }).returning();
 
     // Check if using multiple teams (for 5-5-5-3)
@@ -527,6 +535,14 @@ export class DatabaseStorage implements IStorage {
       deathMatchFirstPressBet: parentMatch.deathMatchFirstPressBet,
       deathMatchSubsequentPressBet: parentMatch.deathMatchSubsequentPressBet,
       deathMatchSecondBallPressBet: parentMatch.deathMatchSecondBallPressBet,
+      twoThreeBallTwoBallBet: parentMatch.twoThreeBallTwoBallBet,
+      twoThreeBallThreeBallBet: parentMatch.twoThreeBallThreeBallBet,
+      autoPressTwoBallFront9: parentMatch.autoPressTwoBallFront9,
+      autoPressTwoBallBack9: parentMatch.autoPressTwoBallBack9,
+      autoPressTwoBallOverall: parentMatch.autoPressTwoBallOverall,
+      autoPressThreeBallFront9: parentMatch.autoPressThreeBallFront9,
+      autoPressThreeBallBack9: parentMatch.autoPressThreeBallBack9,
+      autoPressThreeBallOverall: parentMatch.autoPressThreeBallOverall,
     }).returning();
 
     // Copy teams from parent match
