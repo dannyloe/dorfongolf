@@ -102,6 +102,7 @@ export const eventMatches = pgTable("event_matches", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull(),
   name: text("name").notNull(),
+  customName: text("custom_name"), // Optional user-supplied label for manual presses
   matchType: text("match_type").notNull().default("match_play"),
   unitAmount: integer("unit_amount").notNull().default(0),
   parentMatchId: integer("parent_match_id"),

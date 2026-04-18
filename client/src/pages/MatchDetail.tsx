@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -18,6 +18,7 @@ import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, cal
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface Player {
   id: number;
@@ -54,6 +55,7 @@ interface EventMatch {
   id: number;
   eventId: number;
   name: string;
+  customName?: string | null;
   matchType: string;
   unitAmount: number;
   startHole?: number;
@@ -175,6 +177,8 @@ export default function MatchDetail() {
   const deleteEventMatch = useDeleteEventMatch(matchId, match?.ryderCupEventId);
   const replicateEventMatch = useReplicateEventMatchToSiblings(matchId, match?.ryderCupEventId);
   const createPress = useCreatePress(matchId);
+  const deletePress = useDeletePress(matchId);
+  const renamePress = useRenamePress(matchId);
   const updateAutoPress = useUpdateAutoPress(matchId);
   const updateNetScoring = useUpdateNetScoring(matchId);
   const updateUnitAmount = useUpdateUnitAmount(matchId);
@@ -274,6 +278,12 @@ export default function MatchDetail() {
   const [matchCourseHcpEditValue, setMatchCourseHcpEditValue] = useState("");
   const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
   const [pressStartHole, setPressStartHole] = useState<number>(2);
+  const [pressCustomName, setPressCustomName] = useState<string>("");
+  // Tracks which press is currently being inline-renamed and the working text.
+  const [renamingPressId, setRenamingPressId] = useState<number | null>(null);
+  const [renamingPressValue, setRenamingPressValue] = useState<string>("");
+  // Tracks which press is pending a delete confirmation.
+  const [pendingDeletePress, setPendingDeletePress] = useState<{ eventMatchId: number; pressId: number } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRoleManagement, setShowRoleManagement] = useState(false);
   const [newRoleUserId, setNewRoleUserId] = useState("");
@@ -3368,7 +3378,9 @@ export default function MatchDetail() {
                             className="flex items-center justify-between text-xs py-1 px-3 bg-muted/30 rounded"
                             data-testid={`press-collapsed-${pm.id}`}
                           >
-                            <span className="font-medium">Press (Hole {pm.startHole})</span>
+                            <span className="font-medium" data-testid={`text-press-label-collapsed-${pm.id}`}>
+                              Press (Hole {pm.startHole}){pm.customName ? ` · ${pm.customName}` : ""}
+                            </span>
                             <div className="flex items-center gap-2">
                               <span className="px-2 py-0.5 bg-muted rounded-full">
                                 ${(pm.unitAmount / 100).toFixed(2)}
@@ -3498,7 +3510,8 @@ export default function MatchDetail() {
                                         pressNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
                                       });
                                       const pressStartHole = pm.startHole ?? 1;
-                                      const pressLabel = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
+                                      const pressLabelBase = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
+                                      const pressLabel = pm.customName ? `${pressLabelBase} · ${pm.customName}` : pressLabelBase;
                                       const pSkins = calculateSkinsResults(includedPressIds, pressNames, scores, (pm.unitAmount || 0) / 100, pressNetContext, skinsParsArray, pressStartHole, isBack9First);
                                       const renderCell = (hole: number) => {
                                         const playingPos = physicalToPlayingPosition(hole, isBack9First);
@@ -3524,7 +3537,20 @@ export default function MatchDetail() {
                                           data-testid={`row-press-skins-${pm.id}`}
                                         >
                                           <td className="p-2 pl-3 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
-                                            {pressLabel}
+                                            <span className="inline-flex items-center gap-1">
+                                              <span data-testid={`text-press-row-skins-${pm.id}`}>{pressLabel}</span>
+                                              {canEditScoresAndBets && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                                  className="text-muted-foreground hover:text-destructive"
+                                                  data-testid={`button-delete-press-row-${pm.id}`}
+                                                  title="Delete press"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </button>
+                                              )}
+                                            </span>
                                           </td>
                                           {firstNineHoles.map(renderCell)}
                                           <td className="p-2 text-center font-semibold bg-muted/30 text-[10px]">{sumNine(firstNineHoles)}</td>
@@ -3814,7 +3840,22 @@ export default function MatchDetail() {
                                                 data-testid={`row-press-five-${pm.id}-team-${idx}`}
                                               >
                                                 <td className={`p-2 pl-3 sticky left-0 bg-amber-50/40 dark:bg-amber-950/20 text-xs font-medium ${teamTextColor} border-l-2 border-amber-400`}>
-                                                  Press{numPrefix} (H{pressStartHole}) — {teamTotal.teamName.length > 12 ? teamTotal.teamName.substring(0, 12) + '…' : teamTotal.teamName}
+                                                  <span className="inline-flex items-center gap-1">
+                                                    <span data-testid={`text-press-row-five-${pm.id}-team-${idx}`}>
+                                                      Press{numPrefix} (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""} — {teamTotal.teamName.length > 12 ? teamTotal.teamName.substring(0, 12) + '…' : teamTotal.teamName}
+                                                    </span>
+                                                    {canEditScoresAndBets && idx === 0 && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                                        className="text-muted-foreground hover:text-destructive"
+                                                        data-testid={`button-delete-press-row-${pm.id}`}
+                                                        title="Delete press"
+                                                      >
+                                                        <Trash2 className="w-3 h-3" />
+                                                      </button>
+                                                    )}
+                                                  </span>
                                                 </td>
                                                 {firstNineHoles.map(cellFor)}
                                                 <td className="p-2 text-center font-semibold bg-muted/30 text-[10px]">{sumNine(firstNineHoles) || '-'}</td>
@@ -4151,7 +4192,20 @@ export default function MatchDetail() {
                                         <Fragment key={`press-dm-${pm.id}`}>
                                           <tr className="border-t border-border/40 bg-blue-50/40 dark:bg-blue-950/20" data-testid={`row-press-bb-${pm.id}`}>
                                             <td className="p-2 pl-3 sticky left-0 bg-blue-50/40 dark:bg-blue-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
-                                              Press{numPrefix} BB (H{pressStartHole})
+                                              <span className="inline-flex items-center gap-1">
+                                                <span>Press{numPrefix} BB (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""}</span>
+                                                {canEditScoresAndBets && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                                    className="text-muted-foreground hover:text-destructive"
+                                                    data-testid={`button-delete-press-row-${pm.id}`}
+                                                    title="Delete press"
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </button>
+                                                )}
+                                              </span>
                                             </td>
                                             {firstNineHoles.map((h) => renderDiffCell(h, pdm.bestBall.results, true))}
                                             <td className="p-2 text-center bg-muted/30"></td>
@@ -4161,7 +4215,7 @@ export default function MatchDetail() {
                                           </tr>
                                           <tr className="bg-orange-50/40 dark:bg-orange-950/20" data-testid={`row-press-2nd-${pm.id}`}>
                                             <td className="p-2 pl-3 sticky left-0 bg-orange-50/40 dark:bg-orange-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
-                                              Press{numPrefix} 2nd (H{pressStartHole})
+                                              Press{numPrefix} 2nd (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""}
                                             </td>
                                             {firstNineHoles.map((h) => renderDiffCell(h, pdm.secondBall.results, false))}
                                             <td className="p-2 text-center bg-muted/30"></td>
@@ -4435,7 +4489,20 @@ export default function MatchDetail() {
                                         <Fragment key={`press-ttb-${pm.id}`}>
                                           <tr className="border-t border-border/40 bg-blue-50/40 dark:bg-blue-950/20" data-testid={`row-press-2ball-${pm.id}`}>
                                             <td className="p-2 pl-3 sticky left-0 bg-blue-50/40 dark:bg-blue-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
-                                              Press{numPrefix} 2 Ball (H{pressStartHole})
+                                              <span className="inline-flex items-center gap-1">
+                                                <span>Press{numPrefix} 2 Ball (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""}</span>
+                                                {canEditScoresAndBets && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                                    className="text-muted-foreground hover:text-destructive"
+                                                    data-testid={`button-delete-press-row-${pm.id}`}
+                                                    title="Delete press"
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </button>
+                                                )}
+                                              </span>
                                             </td>
                                             {firstNineHoles.map((h) => renderDiffCell(h, pressTwoBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
@@ -4445,7 +4512,7 @@ export default function MatchDetail() {
                                           </tr>
                                           <tr className="bg-orange-50/40 dark:bg-orange-950/20" data-testid={`row-press-3rdball-${pm.id}`}>
                                             <td className="p-2 pl-3 sticky left-0 bg-orange-50/40 dark:bg-orange-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
-                                              Press{numPrefix} 3rd Ball (H{pressStartHole})
+                                              Press{numPrefix} 3rd Ball (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""}
                                             </td>
                                             {firstNineHoles.map((h) => renderDiffCell(h, pressThreeBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
@@ -5027,7 +5094,8 @@ export default function MatchDetail() {
                                     })()
                                   : calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
                                 const pressStartHole = pm.startHole ?? 1;
-                                const pressLabel = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
+                                const pressLabelBase = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
+                                const pressLabel = pm.customName ? `${pressLabelBase} · ${pm.customName}` : pressLabelBase;
                                 const renderPressCell = (hole: number) => {
                                   const playingPos = physicalToPlayingPosition(hole, isBack9First);
                                   if (playingPos < pressStartHole) {
@@ -5054,7 +5122,20 @@ export default function MatchDetail() {
                                     data-testid={`row-press-status-${pm.id}`}
                                   >
                                     <td className="p-2 pl-3 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
-                                      {pressLabel}
+                                      <span className="inline-flex items-center gap-1">
+                                        <span data-testid={`text-press-row-status-${pm.id}`}>{pressLabel}</span>
+                                        {canEditScoresAndBets && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                            className="text-muted-foreground hover:text-destructive"
+                                            data-testid={`button-delete-press-row-${pm.id}`}
+                                            title="Delete press"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </span>
                                     </td>
                                     {firstNineHoles.map(renderPressCell)}
                                     <td className="p-2 text-center bg-muted/30"></td>
@@ -5224,15 +5305,95 @@ export default function MatchDetail() {
                               return (
                                 <div
                                   key={pm.id}
-                                  className="flex items-center justify-between text-xs py-1 px-3 bg-muted/30 rounded"
+                                  className="flex items-center justify-between gap-2 text-xs py-1 px-3 bg-muted/30 rounded"
                                   data-testid={`press-expanded-${pm.id}`}
                                 >
-                                  <span className="font-medium">Press (Hole {pm.startHole})</span>
+                                  {renamingPressId === pm.id ? (
+                                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                                      <span className="font-medium whitespace-nowrap">
+                                        Press (Hole {pm.startHole}) ·
+                                      </span>
+                                      <Input
+                                        value={renamingPressValue}
+                                        onChange={(e) => setRenamingPressValue(e.target.value)}
+                                        placeholder="Optional name"
+                                        className="h-6 px-2 text-xs"
+                                        maxLength={60}
+                                        autoFocus
+                                        data-testid={`input-rename-press-${pm.id}`}
+                                      />
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() => {
+                                          const trimmed = renamingPressValue.trim();
+                                          renamePress.mutate(
+                                            { eventMatchId: em.id, pressId: pm.id, customName: trimmed.length > 0 ? trimmed : null },
+                                            {
+                                              onSuccess: () => toast({ title: "Press renamed" }),
+                                              onError: (err: Error) =>
+                                                toast({
+                                                  title: "Couldn't rename press",
+                                                  description: err.message,
+                                                  variant: "destructive",
+                                                }),
+                                              onSettled: () => setRenamingPressId(null),
+                                            },
+                                          );
+                                        }}
+                                        disabled={renamePress.isPending}
+                                        data-testid={`button-save-rename-press-${pm.id}`}
+                                      >
+                                        <Check className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() => setRenamingPressId(null)}
+                                        data-testid={`button-cancel-rename-press-${pm.id}`}
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="font-medium" data-testid={`text-press-label-${pm.id}`}>
+                                      Press (Hole {pm.startHole}){pm.customName ? ` · ${pm.customName}` : ""}
+                                    </span>
+                                  )}
                                   <div className="flex items-center gap-2">
                                     <span className="px-2 py-0.5 bg-muted rounded-full">
                                       ${(pm.unitAmount / 100).toFixed(2)}
                                     </span>
                                     <span className="font-medium text-primary">{pressStatus}</span>
+                                    {canEditScoresAndBets && renamingPressId !== pm.id && (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0"
+                                          onClick={() => {
+                                            setRenamingPressId(pm.id);
+                                            setRenamingPressValue(pm.customName ?? "");
+                                          }}
+                                          data-testid={`button-rename-press-${pm.id}`}
+                                          title="Rename press"
+                                        >
+                                          <Pencil className="w-3 h-3" />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                          onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                          data-testid={`button-delete-press-${pm.id}`}
+                                          title="Delete press"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </Button>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -5249,6 +5410,7 @@ export default function MatchDetail() {
                               onClick={() => {
                                 setPressDialogMatch(em.id);
                                 setPressStartHole(2);
+                                setPressCustomName("");
                               }}
                               data-testid={`button-add-press-shared-${em.id}`}
                             >
@@ -5260,8 +5422,8 @@ export default function MatchDetail() {
 
                         {/* Shared Press Dialog (rendered for any bet type) */}
                         {pressDialogMatch === em.id && (
-                          <div className="pt-3 border-t border-border" data-testid={`press-dialog-shared-${em.id}`}>
-                            <div className="flex items-center gap-3">
+                          <div className="pt-3 border-t border-border space-y-2" data-testid={`press-dialog-shared-${em.id}`}>
+                            <div className="flex items-center gap-3 flex-wrap">
                               <span className="text-sm font-medium">Start press on hole:</span>
                               <Select
                                 value={pressStartHole.toString()}
@@ -5278,11 +5440,20 @@ export default function MatchDetail() {
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <Input
+                                value={pressCustomName}
+                                onChange={(e) => setPressCustomName(e.target.value)}
+                                placeholder="Optional name (e.g. Revenge press)"
+                                className="flex-1 min-w-[180px]"
+                                maxLength={60}
+                                data-testid="input-press-name-shared"
+                              />
                               <Button
                                 size="sm"
                                 onClick={() => {
+                                  const trimmed = pressCustomName.trim();
                                   createPress.mutate(
-                                    { eventMatchId: em.id, startHole: pressStartHole },
+                                    { eventMatchId: em.id, startHole: pressStartHole, customName: trimmed || undefined },
                                     {
                                       onSuccess: () => {
                                         toast({ title: `Press added starting hole ${pressStartHole}` });
@@ -5941,6 +6112,46 @@ export default function MatchDetail() {
           </motion.div>
         </div>
       )}
+
+      {/* Confirm-delete dialog for manual presses */}
+      <AlertDialog
+        open={pendingDeletePress !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeletePress(null);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-confirm-delete-press">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete press?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the press and any of its child presses, scores,
+              results, and settlements. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-press">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-delete-press"
+              onClick={() => {
+                const sel = pendingDeletePress;
+                if (sel == null) return;
+                deletePress.mutate(sel, {
+                  onSuccess: () => toast({ title: "Press deleted" }),
+                  onError: (err: Error) =>
+                    toast({
+                      title: "Couldn't delete press",
+                      description: err.message,
+                      variant: "destructive",
+                    }),
+                  onSettled: () => setPendingDeletePress(null),
+                });
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

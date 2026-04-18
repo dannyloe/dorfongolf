@@ -328,12 +328,12 @@ type CreatePressInput = z.infer<typeof api.eventMatches.createPress.input>;
 export function useCreatePress(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ eventMatchId, startHole }: { eventMatchId: number; startHole: number }) => {
+    mutationFn: async ({ eventMatchId, startHole, customName }: { eventMatchId: number; startHole: number; customName?: string | null }) => {
       const url = buildUrl(api.eventMatches.createPress.path, { id: eventMatchId });
       const res = await fetch(url, {
         method: api.eventMatches.createPress.method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startHole }),
+        body: JSON.stringify({ startHole, customName: customName ?? null }),
         credentials: "include",
       });
       
@@ -346,6 +346,51 @@ export function useCreatePress(matchId: number) {
           try { serverMsg = await res.text(); } catch { /* ignore */ }
         }
         throw new Error(`Failed to create press (${res.status}): ${serverMsg || 'no details'}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
+export function useDeletePress(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, pressId }: { eventMatchId: number; pressId: number }) => {
+      const url = buildUrl(api.eventMatches.deletePress.path, { id: eventMatchId, pressId });
+      const res = await fetch(url, {
+        method: api.eventMatches.deletePress.method,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let serverMsg = "";
+        try { serverMsg = (await res.json())?.message || ""; } catch { /* ignore */ }
+        throw new Error(serverMsg || `Failed to delete press (${res.status})`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
+export function useRenamePress(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ eventMatchId, pressId, customName }: { eventMatchId: number; pressId: number; customName: string | null }) => {
+      const url = buildUrl(api.eventMatches.renamePress.path, { id: eventMatchId, pressId });
+      const res = await fetch(url, {
+        method: api.eventMatches.renamePress.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customName }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let serverMsg = "";
+        try { serverMsg = (await res.json())?.message || ""; } catch { /* ignore */ }
+        throw new Error(serverMsg || `Failed to rename press (${res.status})`);
       }
       return res.json();
     },

@@ -501,7 +501,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async createPressMatch(parentMatchId: number, startHole: number): Promise<EventMatch> {
+  async createPressMatch(parentMatchId: number, startHole: number, customName?: string | null): Promise<EventMatch> {
     // Manual-press semantics by bet type:
     //   - Match Play (1 / 2 ball): a fresh match-play bet starting at `startHole`.
     //   - Stroke Play: a fresh stroke-play bet over holes startHole..18.
@@ -536,9 +536,11 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    const trimmedCustomName = customName?.trim();
     const [newPressMatch] = await db.insert(eventMatches).values({
       eventId: parentMatch.eventId,
       name: `Press from ${startHole}`,
+      customName: trimmedCustomName ? trimmedCustomName : null,
       matchType: parentMatch.matchType,
       unitAmount: pressUnitAmount,
       parentMatchId: parentMatchId,
@@ -583,6 +585,39 @@ export class DatabaseStorage implements IStorage {
     }
 
     return newPressMatch;
+  }
+
+  async deletePressMatch(pressMatchId: number): Promise<void> {
+    // Recursively delete any child presses (e.g. press of a press) so we don't
+    // leave orphaned rows referencing this press as their parent.
+    const children = await db.select().from(eventMatches)
+      .where(eq(eventMatches.parentMatchId, pressMatchId));
+    for (const child of children) {
+      await this.deletePressMatch(child.id);
+    }
+
+    // Cached results + per-match handicap overrides for this press
+    await db.delete(eventMatchResults).where(eq(eventMatchResults.eventMatchId, pressMatchId));
+    await db.delete(matchPlayerHandicaps).where(eq(matchPlayerHandicaps.eventMatchId, pressMatchId));
+
+    // Teams + team members for the press
+    const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, pressMatchId));
+    for (const team of teamsList) {
+      await db.delete(teamMembers).where(eq(teamMembers.teamId, team.id));
+    }
+    await db.delete(teams).where(eq(teams.eventMatchId, pressMatchId));
+
+    // Finally remove the press event_match row itself
+    await db.delete(eventMatches).where(eq(eventMatches.id, pressMatchId));
+  }
+
+  async renamePressMatch(pressMatchId: number, customName: string | null): Promise<EventMatch> {
+    const trimmed = customName?.trim();
+    const [updated] = await db.update(eventMatches)
+      .set({ customName: trimmed ? trimmed : null })
+      .where(eq(eventMatches.id, pressMatchId))
+      .returning();
+    return updated;
   }
 
   async getPresetPlayersClaimed(): Promise<{ presetPlayerName: string; userId: string; userName: string }[]> {

@@ -341,10 +341,33 @@ export const api = {
       path: '/api/event-matches/:id/press',
       input: z.object({
         startHole: z.number().min(2).max(17),
+        customName: z.string().trim().max(60).optional().nullable(),
       }),
       responses: {
         201: z.custom<typeof eventMatches.$inferSelect>(),
         400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    deletePress: {
+      method: 'DELETE' as const,
+      path: '/api/event-matches/:id/press/:pressId',
+      responses: {
+        204: z.void(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    renamePress: {
+      method: 'PATCH' as const,
+      path: '/api/event-matches/:id/press/:pressId',
+      input: z.object({
+        customName: z.string().trim().max(60).nullable(),
+      }),
+      responses: {
+        200: z.custom<typeof eventMatches.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: z.object({ message: z.string() }),
         404: errorSchemas.notFound,
       },
     },

@@ -8,6 +8,13 @@
       "when": 1770327702299,
       "tag": "0000_acoustic_snowbird",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776525465004,
+      "tag": "0001_add_event_matches_custom_name",
+      "breakpoints": true
     }
   ]
 }

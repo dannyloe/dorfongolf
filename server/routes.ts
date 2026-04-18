@@ -489,7 +489,7 @@ export async function registerRoutes(
       }
       
       const input = api.eventMatches.createPress.input.parse(req.body);
-      const pressMatch = await storage.createPressMatch(parentMatchId, input.startHole);
+      const pressMatch = await storage.createPressMatch(parentMatchId, input.startHole, input.customName ?? null);
       const withTeams = await storage.getEventMatchWithTeams(pressMatch.id);
       res.status(201).json(withTeams);
     } catch (err) {
@@ -498,6 +498,81 @@ export async function registerRoutes(
       }
       if (err instanceof Error && err.message === "Parent match not found") {
         return res.status(404).json({ message: err.message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Delete a manual press: only the creator or an organizer of the parent match
+  // may delete. Cascades child rows (results, handicap overrides, teams, child
+  // presses) inside storage.deletePressMatch.
+  app.delete(api.eventMatches.deletePress.path, isAuthenticated, async (req, res) => {
+    const parentMatchId = parseInt(req.params.id);
+    const pressId = parseInt(req.params.pressId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const press = await storage.getEventMatch(pressId);
+      if (!press) return res.status(404).json({ message: "Press not found" });
+      if (press.parentMatchId !== parentMatchId) {
+        return res.status(404).json({ message: "Press does not belong to this match" });
+      }
+
+      const match = await storage.getMatch(press.eventId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(press.eventId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can delete presses" });
+      }
+
+      await storage.deletePressMatch(pressId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Rename a manual press by setting (or clearing) its custom label.
+  app.patch(api.eventMatches.renamePress.path, isAuthenticated, async (req, res) => {
+    const parentMatchId = parseInt(req.params.id);
+    const pressId = parseInt(req.params.pressId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const press = await storage.getEventMatch(pressId);
+      if (!press) return res.status(404).json({ message: "Press not found" });
+      if (press.parentMatchId !== parentMatchId) {
+        return res.status(404).json({ message: "Press does not belong to this match" });
+      }
+
+      const match = await storage.getMatch(press.eventId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(press.eventId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can rename presses" });
+      }
+
+      const input = api.eventMatches.renamePress.input.parse(req.body);
+      const updated = await storage.renamePressMatch(pressId, input.customName);
+      const withTeams = await storage.getEventMatchWithTeams(updated.id);
+      res.json(withTeams);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
       }
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });

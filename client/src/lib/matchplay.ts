@@ -131,6 +131,7 @@ interface EventMatch {
   id: number;
   eventId: number;
   name: string;
+  customName?: string | null;
   matchType: string;
   startHole?: number;
   parentMatchId?: number | null;
@@ -457,6 +458,11 @@ export function calculateLedger(
     const teamAMembers = teamA.members.map(m => m.player?.name || `Player ${m.playerId}`);
     const teamBMembers = teamB.members.map(m => m.player?.name || `Player ${m.playerId}`);
     const pressHole = em.startHole && em.startHole > 1 ? em.startHole : null;
+    // Display label: parent bets keep their stored name; presses become
+    // "Press (H#)" with the optional custom label appended.
+    const emDisplayName = em.parentMatchId
+      ? `Press (H${em.startHole ?? 1})${em.customName ? ` · ${em.customName}` : ''}`
+      : em.name;
 
     if (em.matchType === 'skins') {
       // Skins match - use teamA to get the included player IDs
@@ -489,7 +495,7 @@ export function calculateLedger(
       for (const s of skinsResult.settlements) {
         entries.push({
           matchId: em.id,
-          matchName: em.name,
+          matchName: emDisplayName,
           playerId: s.playerId,
           playerName: s.playerName,
           amount: s.amount,
@@ -539,7 +545,7 @@ export function calculateLedger(
           const teamIdx = playerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
           entries.push({
             matchId: em.id,
-            matchName: `${em.name} - ${ns.betName}`,
+            matchName: `${emDisplayName} - ${ns.betName}`,
             playerId: s.playerId,
             playerName: s.playerName,
             amount: s.amount,
@@ -593,7 +599,7 @@ export function calculateLedger(
           
           entries.push({
             matchId: em.id,
-            matchName: em.name,
+            matchName: emDisplayName,
             playerId: member.playerId,
             playerName: playerName,
             amount: Math.round(perPlayerAmount * 100) / 100,
@@ -639,7 +645,7 @@ export function calculateLedger(
           for (const m of [...teamA.members, ...teamB.members]) {
             entries.push({
               matchId: em.id,
-              matchName: em.name,
+              matchName: emDisplayName,
               playerId: m.playerId,
               playerName: m.player?.name || `Player ${m.playerId}`,
               amount: 0,
@@ -665,7 +671,7 @@ export function calculateLedger(
             const teamIdx = dmPlayerTeamIndex.get(m.playerId) ?? 0;
             entries.push({
               matchId: em.id,
-              matchName: em.name,
+              matchName: emDisplayName,
               playerId: m.playerId,
               playerName: m.player?.name || `Player ${m.playerId}`,
               amount: 0,
@@ -687,7 +693,7 @@ export function calculateLedger(
           const teamIdx = dmPlayerTeamIndex.get(m.playerId) ?? 0;
           entries.push({
             matchId: em.id,
-            matchName: em.name,
+            matchName: emDisplayName,
             playerId: m.playerId,
             playerName: m.player?.name || `Player ${m.playerId}`,
             amount: betAmount,
@@ -715,7 +721,7 @@ export function calculateLedger(
           const teamIdx = dmPlayerTeamIndex.get(m.playerId) ?? 0;
           entries.push({
             matchId: em.id,
-            matchName: em.name,
+            matchName: emDisplayName,
             playerId: m.playerId,
             playerName: m.player?.name || `Player ${m.playerId}`,
             amount: -betAmount,
@@ -774,7 +780,7 @@ export function calculateLedger(
             const teamIdx = ttbPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
             entries.push({
               matchId: em.id,
-              matchName: `${em.name} - ${betLabel}`,
+              matchName: `${emDisplayName} - ${betLabel}`,
               playerId: s.playerId,
               playerName: s.playerName,
               amount: s.amount,
@@ -827,7 +833,7 @@ export function calculateLedger(
         const teamIdx = matchPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
         entries.push({
           matchId: em.id,
-          matchName: em.name,
+          matchName: emDisplayName,
           playerId: s.playerId,
           playerName: s.playerName,
           amount: s.amount,
