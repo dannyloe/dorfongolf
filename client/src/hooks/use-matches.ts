@@ -124,6 +124,30 @@ export function useSubmitScore(matchId: number) {
   });
 }
 
+export type BulkScoreEntry = { playerId: number; holeNumber: number; strokes: number };
+
+export function useSubmitScoresBulk(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (scores: BulkScoreEntry[]) => {
+      const res = await fetch(`/api/matches/${matchId}/scores/bulk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scores }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to submit scores");
+      }
+      return res.json() as Promise<{ count: number }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    },
+  });
+}
+
 // Types for event match results
 type EventMatchResultInput = {
   eventMatchId: number;
@@ -840,20 +864,17 @@ export function useMatchPlayerHandicaps(matchId: number | undefined) {
     queryKey: ['/api/matches', matchId, 'match-player-handicaps'],
     queryFn: async (): Promise<Map<number, MatchPlayerHandicap[]>> => {
       if (!matchId) return new Map<number, MatchPlayerHandicap[]>();
-      const res = await fetch(`/api/matches/${matchId}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch match');
-      const match = await res.json();
-      const eventMatches = match.eventMatches || [];
-      
-      const allHandicaps: Array<[number, MatchPlayerHandicap[]]> = [];
-      for (const em of eventMatches) {
-        const hcpRes = await fetch(`/api/event-matches/${em.id}/player-handicaps`, { credentials: 'include' });
-        if (hcpRes.ok) {
-          const handicaps = await hcpRes.json() as MatchPlayerHandicap[];
-          allHandicaps.push([em.id, handicaps]);
-        }
+      // Single bulk endpoint replaces N+1 (one request per event match).
+      const res = await fetch(`/api/matches/${matchId}/all-player-handicaps`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch match handicaps');
+      const handicaps = await res.json() as MatchPlayerHandicap[];
+      const grouped = new Map<number, MatchPlayerHandicap[]>();
+      for (const h of handicaps) {
+        const arr = grouped.get(h.eventMatchId) ?? [];
+        arr.push(h);
+        grouped.set(h.eventMatchId, arr);
       }
-      return new Map(allHandicaps);
+      return grouped;
     },
     enabled: !!matchId,
     structuralSharing: false, // Maps don't work well with structural sharing

@@ -73,6 +73,8 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
 
+  const ADMIN_USER_ID = "52861828";
+
   app.get(api.matches.list.path, isAuthenticated, async (req, res) => {
     const matches = await storage.getMatchesWithPlayers();
     res.json(matches);
@@ -151,15 +153,15 @@ export async function registerRoutes(
     const match = await storage.getMatch(matchId);
     if (!match) return res.status(404).json({ message: "Match not found" });
 
-    const players = await storage.getMatchPlayers(matchId);
-    let scores = await storage.getMatchScores(matchId);
-    const creator = await storage.getUser(match.creatorId);
-    
-    // Get event matches with teams
-    const eventMatchesList = await storage.getEventMatches(matchId);
-    const eventMatchesWithTeams = await Promise.all(
-      eventMatchesList.map(async (em) => storage.getEventMatchWithTeams(em.id))
-    );
+    // Run independent fetches in parallel.
+    const [players, initialScores, creator, eventMatchesWithTeams] = await Promise.all([
+      storage.getMatchPlayers(matchId),
+      storage.getMatchScores(matchId),
+      storage.getUser(match.creatorId),
+      storage.getEventMatchesWithTeamsBulk(matchId),
+    ]);
+
+    let scores = initialScores;
 
     // For side matches (linked to Ryder Cup events), fetch scores from Ryder Cup pairings
     if (match.ryderCupEventId && match.ryderCupDayNumber && scores.length === 0) {
@@ -176,8 +178,20 @@ export async function registerRoutes(
       creator,
       players,
       scores,
-      eventMatches: eventMatchesWithTeams.filter(Boolean)
+      eventMatches: eventMatchesWithTeams,
     });
+  });
+
+  // Bulk: all per-event-match handicap overrides for a match in one query.
+  app.get('/api/matches/:id/all-player-handicaps', isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const handicaps = await storage.getAllMatchPlayerHandicapsForMatch(matchId);
+      res.json(handicaps);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.post(api.matches.addPlayer.path, isAuthenticated, async (req, res) => {
@@ -274,6 +288,37 @@ export async function registerRoutes(
     }
   });
 
+  // Shared permission check for score writes. Short-circuits the common case
+  // (hardcoded admin or match creator) before issuing any extra DB queries.
+  async function canWriteScores(matchId: number, userId: string, match: { creatorId: string }) {
+    if (userId === ADMIN_USER_ID) return true;
+    if (match.creatorId === userId) return true;
+
+    const [isAdmin, matchRole] = await Promise.all([
+      storage.isUserAdmin(userId),
+      storage.getMatchRole(matchId, userId),
+    ]);
+    if (isAdmin) return true;
+    if (matchRole?.role === 'organizer') return true;
+
+    // Participant check
+    const matchPlayers = await storage.getMatchPlayers(matchId);
+    if (matchPlayers.some(p => p.userId === userId)) return true;
+
+    const currentUser = await storage.getUser(userId);
+    if (currentUser?.presetPlayerName) {
+      const presetName = currentUser.presetPlayerName.toLowerCase().trim();
+      const aliases = await storage.getPlayerAliases(currentUser.presetPlayerName);
+      const aliasNames = aliases.map(a => a.alias.toLowerCase().trim());
+      if (matchPlayers.some(p => {
+        const playerName = p.name.toLowerCase().trim();
+        return playerName === presetName || aliasNames.includes(playerName);
+      })) return true;
+    }
+
+    return false;
+  }
+
   app.post(api.matches.submitScore.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
@@ -286,44 +331,11 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Match not found" });
       }
       
-      // Check if user is admin, creator, organizer, or participant
-      const isAdmin = await storage.isUserAdmin(userId);
-      const isCreator = match.creatorId === userId;
-      
-      // Check for organizer role
-      const matchRole = await storage.getMatchRole(matchId, userId);
-      const isOrganizer = matchRole?.role === 'organizer';
-      
-      if (!isAdmin && !isCreator && !isOrganizer) {
-        // Check if user is a participant in the match
-        const matchPlayers = await storage.getMatchPlayers(matchId);
-        
-        // Check by userId linkage
-        let isParticipant = matchPlayers.some(p => p.userId === userId);
-        
-        // Also check by preset player name or aliases (many players added without userId)
-        if (!isParticipant) {
-          const currentUser = await storage.getUser(userId);
-          if (currentUser?.presetPlayerName) {
-            const presetName = currentUser.presetPlayerName.toLowerCase().trim();
-            
-            // Get aliases for this user's preset player
-            const aliases = await storage.getPlayerAliases(currentUser.presetPlayerName);
-            const aliasNames = aliases.map(a => a.alias.toLowerCase().trim());
-            
-            // Check if any match player's name matches preset name or any alias
-            isParticipant = matchPlayers.some(p => {
-              const playerName = p.name.toLowerCase().trim();
-              return playerName === presetName || aliasNames.includes(playerName);
-            });
-          }
-        }
-        
-        if (!isParticipant) {
-          return res.status(403).json({ message: "Only match participants can submit scores" });
-        }
+      const allowed = await canWriteScores(matchId, userId, match);
+      if (!allowed) {
+        return res.status(403).json({ message: "Only match participants can submit scores" });
       }
-      
+
       const input = api.matches.submitScore.input.parse(req.body);
       const score = await storage.submitScore({
         matchId,
@@ -341,7 +353,40 @@ export async function registerRoutes(
     }
   });
 
-  const ADMIN_USER_ID = "52861828";
+  // Bulk version for scorecard scans / multi-hole writes.
+  app.post('/api/matches/:id/scores/bulk', isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const allowed = await canWriteScores(matchId, userId, match);
+      if (!allowed) {
+        return res.status(403).json({ message: "Only match participants can submit scores" });
+      }
+
+      const schema = z.object({
+        scores: z.array(z.object({
+          playerId: z.number().int(),
+          holeNumber: z.number().int().min(1).max(18),
+          strokes: z.number().int().min(1),
+        })).min(1).max(500),
+      });
+      const { scores: entries } = schema.parse(req.body);
+
+      const saved = await storage.submitScoresBulk(matchId, entries);
+      res.json({ count: saved.length });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
@@ -687,31 +732,33 @@ export async function registerRoutes(
     const eventMatchId = parseInt(req.params.id);
     const user = req.user as any;
     const userId = user.claims.sub;
-    
-    const eventMatch = await storage.getEventMatchWithTeams(eventMatchId);
+
+    // Lighter than getEventMatchWithTeams — we only need the eventId for the perm check.
+    const eventMatch = await storage.getEventMatch(eventMatchId);
     if (!eventMatch) {
       return res.status(404).json({ message: "Event match not found" });
     }
-    
+
     const match = await storage.getMatch(eventMatch.eventId);
     if (!match) {
       return res.status(404).json({ message: "Match not found" });
     }
-    
-    const isAdmin = userId === ADMIN_USER_ID;
+
     const isCreator = match.creatorId === userId;
-    const matchRole = await storage.getMatchRole(eventMatch.eventId, userId);
-    const isOrganizer = matchRole?.role === 'organizer';
-    
-    if (!isAdmin && !isCreator && !isOrganizer) {
-      return res.status(403).json({ message: "Only the creator or organizer can change the wager amount" });
+    const isAdminFast = userId === ADMIN_USER_ID;
+    if (!isCreator && !isAdminFast) {
+      // Only hit the role table when the cheap checks didn't pass.
+      const matchRole = await storage.getMatchRole(eventMatch.eventId, userId);
+      if (matchRole?.role !== 'organizer') {
+        return res.status(403).json({ message: "Only the creator or organizer can change the wager amount" });
+      }
     }
-    
+
     try {
       const input = api.eventMatches.updateUnitAmount.input.parse(req.body);
       const updated = await storage.updateEventMatchUnitAmount(eventMatchId, input.unitAmount);
-      const withTeams = await storage.getEventMatchWithTeams(updated.id);
-      res.json(withTeams);
+      // Client only invalidates the match cache from the response — no need to refetch teams.
+      res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });

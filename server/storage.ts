@@ -286,6 +286,100 @@ export class DatabaseStorage implements IStorage {
     return newScore;
   }
 
+  async submitScoresBulk(matchId: number, entries: Array<{ playerId: number; holeNumber: number; strokes: number }>): Promise<Score[]> {
+    if (entries.length === 0) return [];
+
+    const dedup = new Map<string, { playerId: number; holeNumber: number; strokes: number }>();
+    for (const e of entries) dedup.set(`${e.playerId}-${e.holeNumber}`, e);
+    const deduped = Array.from(dedup.values());
+
+    const playerIds = Array.from(new Set(deduped.map(e => e.playerId)));
+    const holes = Array.from(new Set(deduped.map(e => e.holeNumber)));
+
+    const existingRows = await db.select().from(scores).where(and(
+      eq(scores.matchId, matchId),
+      inArray(scores.playerId, playerIds),
+      inArray(scores.holeNumber, holes),
+    ));
+    const existingMap = new Map<string, Score>();
+    for (const r of existingRows) existingMap.set(`${r.playerId}-${r.holeNumber}`, r);
+
+    const toInsert: InsertScore[] = [];
+    const toUpdate: Array<{ id: number; strokes: number }> = [];
+    const unchanged: Score[] = [];
+
+    for (const e of deduped) {
+      const ex = existingMap.get(`${e.playerId}-${e.holeNumber}`);
+      if (ex) {
+        if (ex.strokes !== e.strokes) {
+          toUpdate.push({ id: ex.id, strokes: e.strokes });
+        } else {
+          unchanged.push(ex);
+        }
+      } else {
+        toInsert.push({ matchId, playerId: e.playerId, holeNumber: e.holeNumber, strokes: e.strokes });
+      }
+    }
+
+    const results: Score[] = [...unchanged];
+
+    if (toInsert.length > 0) {
+      const inserted = await db.insert(scores).values(toInsert).returning();
+      results.push(...inserted);
+    }
+
+    if (toUpdate.length > 0) {
+      const updated = await Promise.all(toUpdate.map(u =>
+        db.update(scores).set({ strokes: u.strokes }).where(eq(scores.id, u.id)).returning().then(r => r[0])
+      ));
+      results.push(...updated);
+    }
+
+    return results;
+  }
+
+  async getAllMatchPlayerHandicapsForMatch(matchId: number): Promise<MatchPlayerHandicap[]> {
+    const eventMatchRows = await db.select({ id: eventMatches.id }).from(eventMatches).where(eq(eventMatches.eventId, matchId));
+    const ids = eventMatchRows.map(r => r.id);
+    if (ids.length === 0) return [];
+    return db.select().from(matchPlayerHandicaps).where(inArray(matchPlayerHandicaps.eventMatchId, ids));
+  }
+
+  async getEventMatchesWithTeamsBulk(matchId: number) {
+    const ems = await db.select().from(eventMatches).where(eq(eventMatches.eventId, matchId));
+    if (ems.length === 0) return [];
+    const emIds = ems.map(e => e.id);
+
+    const allTeams = await db.select().from(teams).where(inArray(teams.eventMatchId, emIds));
+    const teamIds = allTeams.map(t => t.id);
+
+    const allMembers = teamIds.length > 0
+      ? await db.select().from(teamMembers).where(inArray(teamMembers.teamId, teamIds))
+      : [];
+
+    const playerIds = Array.from(new Set(allMembers.map(m => m.playerId)));
+    const allPlayers = playerIds.length > 0
+      ? await db.select().from(players).where(inArray(players.id, playerIds))
+      : [];
+    const playerMap = new Map(allPlayers.map(p => [p.id, p]));
+
+    const membersByTeam = new Map<number, Array<TeamMember & { player: Player | undefined }>>();
+    for (const m of allMembers) {
+      const arr = membersByTeam.get(m.teamId) ?? [];
+      arr.push({ ...m, player: playerMap.get(m.playerId) });
+      membersByTeam.set(m.teamId, arr);
+    }
+
+    const teamsByEm = new Map<number, Array<Team & { members: Array<TeamMember & { player: Player | undefined }> }>>();
+    for (const t of allTeams) {
+      const arr = teamsByEm.get(t.eventMatchId) ?? [];
+      arr.push({ ...t, members: membersByTeam.get(t.id) ?? [] });
+      teamsByEm.set(t.eventMatchId, arr);
+    }
+
+    return ems.map(em => ({ ...em, teams: teamsByEm.get(em.id) ?? [] }));
+  }
+
   async updateMatchStatus(matchId: number, completed: boolean): Promise<Match> {
     const [updated] = await db.update(matches)
       .set({ completed })
@@ -330,21 +424,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteMatch(matchId: number): Promise<void> {
-    // Delete event match data first
-    const eventMatchesList = await db.select().from(eventMatches).where(eq(eventMatches.eventId, matchId));
-    for (const em of eventMatchesList) {
-      const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, em.id));
-      for (const team of teamsList) {
-        await db.delete(teamMembers).where(eq(teamMembers.teamId, team.id));
+    // Bulk delete: a few queries scoped by IN (...) instead of hundreds of small per-row deletes.
+    const eventMatchRows = await db.select({ id: eventMatches.id }).from(eventMatches).where(eq(eventMatches.eventId, matchId));
+    const eventMatchIds = eventMatchRows.map(r => r.id);
+
+    if (eventMatchIds.length > 0) {
+      const teamRows = await db.select({ id: teams.id }).from(teams).where(inArray(teams.eventMatchId, eventMatchIds));
+      const teamIds = teamRows.map(r => r.id);
+
+      if (teamIds.length > 0) {
+        await db.delete(teamMembers).where(inArray(teamMembers.teamId, teamIds));
+        await db.delete(teams).where(inArray(teams.id, teamIds));
       }
-      await db.delete(teams).where(eq(teams.eventMatchId, em.id));
+
+      // Clean up rows that reference event_matches so they don't become orphans.
+      await db.delete(matchPlayerHandicaps).where(inArray(matchPlayerHandicaps.eventMatchId, eventMatchIds));
+      await db.delete(eventMatchResults).where(inArray(eventMatchResults.eventMatchId, eventMatchIds));
+      await db.delete(eventMatches).where(inArray(eventMatches.id, eventMatchIds));
     }
-    await db.delete(eventMatches).where(eq(eventMatches.eventId, matchId));
-    // Delete scores
+
     await db.delete(scores).where(eq(scores.matchId, matchId));
-    // Delete players
     await db.delete(players).where(eq(players.matchId, matchId));
-    // Delete match
     await db.delete(matches).where(eq(matches.id, matchId));
   }
 

@@ -1,4 +1,4 @@
-import { useMatch, useSubmitScore, useCourses, useScanScorecard, ScannedPlayer, ScannedHole, useAddPlayer } from "@/hooks/use-matches";
+import { useMatch, useSubmitScore, useSubmitScoresBulk, useCourses, useScanScorecard, ScannedPlayer, ScannedHole, useAddPlayer } from "@/hooks/use-matches";
 import { useAuth } from "@/hooks/use-auth";
 import { useVoiceInput, VoiceCommand } from "@/hooks/use-voice-input";
 import { resolvePlayerAlias, PRESET_PLAYERS } from "@shared/models/auth";
@@ -152,6 +152,7 @@ export default function QuickScoreEntry() {
   const { data: coursesList } = useCourses();
   const { user } = useAuth();
   const submitScore = useSubmitScore(matchId);
+  const submitScoresBulk = useSubmitScoresBulk(matchId);
   const scanScorecard = useScanScorecard();
   const addPlayer = useAddPlayer(matchId);
   const { toast } = useToast();
@@ -477,23 +478,28 @@ export default function QuickScoreEntry() {
       });
     }
     
-    // Now save scores using the updated mappings
+    // Now save scores using the updated mappings — single bulk request.
+    const bulkEntries: { playerId: number; holeNumber: number; strokes: number }[] = [];
     for (const scannedName of Object.keys(editableScores)) {
       const playerId = updatedMappings[scannedName];
       if (!playerId) continue;
-      
+
       for (const [holeStr, strokesStr] of Object.entries(editableScores[scannedName])) {
         const holeNumber = parseInt(holeStr);
         const strokes = parseInt(strokesStr);
-        
+
         if (!isNaN(strokes) && strokes > 0 && holeNumber >= 1 && holeNumber <= 18) {
-          try {
-            await submitScore.mutateAsync({ playerId, holeNumber, strokes });
-            successCount++;
-          } catch {
-            errorCount++;
-          }
+          bulkEntries.push({ playerId, holeNumber, strokes });
         }
+      }
+    }
+
+    if (bulkEntries.length > 0) {
+      try {
+        const result = await submitScoresBulk.mutateAsync(bulkEntries);
+        successCount += result.count;
+      } catch {
+        errorCount += bulkEntries.length;
       }
     }
     
