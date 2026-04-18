@@ -899,9 +899,13 @@ export function calculateBetSettlements(
   if (autoPress && results.length >= 2 && matchType !== 'stroke_play') {
     // Get played holes with scores (in playing order)
     const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
-    
-    // Only check auto-press if all 18 holes are complete
-    if (playedHoles.length === 18) {
+
+    // Auto-press fires when the bet's full hole range has been played and has at
+    // least 2 holes. For a parent Match Play bet that's all 18 holes (2-up at
+    // hole 17 → press on hole 18). For a manual press child (results.length < 18,
+    // e.g. holes 5..18) it's the press's own closing hole (2-up at the press's
+    // second-to-last hole → press on the press's final hole).
+    if (playedHoles.length === results.length && playedHoles.length >= 2) {
       // Get the second-to-last and last played holes (by position, not physical number)
       const secondToLastHole = playedHoles[playedHoles.length - 2];
       const lastHole = playedHoles[playedHoles.length - 1];
@@ -1423,6 +1427,12 @@ export function calculateNassauSettlements(
   // Front 9 = playing positions 1-9, Back 9 = playing positions 10-18, Overall = 1-18
   // For manual presses (child match with startHole > 1) the leg's hole list is shorter
   // so we derive expected/final/check hole numbers from the actual results array.
+  // Auto-press rule for manual presses (post tasks #10/#11):
+  //   - A manual press lives on exactly one leg. Front-9 presses (start hole <= 9)
+  //     fire Auto Press on the leg's natural close — hole 9 (2-up at hole 8 → press
+  //     on hole 9). Back-9 presses (start hole 10–18) fire on hole 18 (2-up at hole
+  //     17 → press on hole 18). The Overall leg is empty for a manual press and
+  //     therefore never triggers a separate auto-press.
   const bets: { name: string; results: HoleResult[]; autoPress: boolean }[] = [
     { name: 'Front 9', results: nassauResults.front9, autoPress: settings.front9 },
     { name: 'Back 9', results: nassauResults.back9, autoPress: settings.back9 },
