@@ -4202,8 +4202,8 @@ export default function MatchDetail() {
                                             return <td key={hole} className="p-2 text-center">-</td>;
                                           }
                                           const diff = r.cumulativeA - r.cumulativeB;
-                                          if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{Math.abs(diff)} UP</td>;
-                                          if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{diff} UP</td>;
+                                          if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                          if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
                                           return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
                                         };
                                         return (
