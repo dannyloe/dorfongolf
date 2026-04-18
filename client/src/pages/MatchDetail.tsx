@@ -8,7 +8,7 @@ import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Fragment } from "react";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -3478,6 +3478,55 @@ export default function MatchDetail() {
                                         {skinsResult.totalSkins}
                                       </td>
                                     </tr>
+
+                                    {/* Per-press status rows for Skins */}
+                                    {pressMatches.map((pm) => {
+                                      const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                                      const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
+                                      const includedPressIds = Array.from(new Set([
+                                        ...(pm.teams[0]?.members.map(m => m.playerId) || []),
+                                        ...(pm.teams[1]?.members.map(m => m.playerId) || []),
+                                      ]));
+                                      const pressNames = new Map<number, string>();
+                                      [...(pm.teams[0]?.members || []), ...(pm.teams[1]?.members || [])].forEach(m => {
+                                        pressNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
+                                      });
+                                      const pressStartHole = pm.startHole ?? 1;
+                                      const pSkins = calculateSkinsResults(includedPressIds, pressNames, scores, (pm.unitAmount || 0) / 100, pressNetContext, skinsParsArray, pressStartHole, isBack9First);
+                                      const renderCell = (hole: number) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        if (playingPos < pressStartHole) {
+                                          return <td key={hole} className="p-2 text-center text-muted-foreground/40 text-[10px]">-</td>;
+                                        }
+                                        const r = pSkins.holeResults[playingPos - 1];
+                                        return (
+                                          <td key={hole} className={`p-2 text-center text-[10px] ${r?.isSkin ? 'bg-primary/20 text-primary font-bold' : ''}`}>
+                                            {r?.isSkin ? r.winnerName?.split(' ')[0] : (r?.lowestScore !== null && r?.lowestScore !== undefined ? '-' : '')}
+                                          </td>
+                                        );
+                                      };
+                                      const sumNine = (holes: number[]) => holes.reduce((c, h) => {
+                                        const pp = physicalToPlayingPosition(h, isBack9First);
+                                        if (pp < pressStartHole) return c;
+                                        return c + (pSkins.holeResults[pp - 1]?.isSkin ? 1 : 0);
+                                      }, 0);
+                                      return (
+                                        <tr
+                                          key={`press-skins-${pm.id}`}
+                                          className="border-t border-border/40 bg-amber-50/40 dark:bg-amber-950/20"
+                                          data-testid={`row-press-skins-${pm.id}`}
+                                        >
+                                          <td className="p-2 pl-3 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                            Press (H{pressStartHole})
+                                          </td>
+                                          {firstNineHoles.map(renderCell)}
+                                          <td className="p-2 text-center font-semibold bg-muted/30 text-[10px]">{sumNine(firstNineHoles)}</td>
+                                          {secondNineHoles.map(renderCell)}
+                                          <td className="p-2 text-center font-semibold bg-muted/30 text-[10px]">{sumNine(secondNineHoles)}</td>
+                                          <td className="p-2 text-center font-bold bg-muted/30 text-[10px]">{pSkins.totalSkins}</td>
+                                        </tr>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>
@@ -4015,6 +4064,50 @@ export default function MatchDetail() {
                                       <td className="p-2 text-center bg-muted/30"></td>
                                       <td className="p-2 text-center bg-muted/30"></td>
                                     </tr>
+
+                                    {/* Per-press status rows for Death Match (BB + 2nd) */}
+                                    {pressMatches.map((pm) => {
+                                      const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                                      const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
+                                      const pdm = calculateDeathMatchResults(pmWithCorrectBack9, scores, pressNetContext);
+                                      const pressStartHole = pm.startHole ?? 1;
+                                      const renderDiffCell = (hole: number, results: HoleResult[]) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        if (playingPos < pressStartHole) {
+                                          return <td key={hole} className="p-2 text-center text-muted-foreground/40 text-[10px]">-</td>;
+                                        }
+                                        const r = results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center text-[10px]">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      };
+                                      return (
+                                        <Fragment key={`press-dm-${pm.id}`}>
+                                          <tr className="border-t border-border/40 bg-blue-50/40 dark:bg-blue-950/20" data-testid={`row-press-bb-${pm.id}`}>
+                                            <td className="p-2 pl-3 sticky left-0 bg-blue-50/40 dark:bg-blue-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                              Press BB (H{pressStartHole})
+                                            </td>
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pdm.bestBall.results))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pdm.bestBall.results))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                          </tr>
+                                          <tr className="bg-orange-50/40 dark:bg-orange-950/20" data-testid={`row-press-2nd-${pm.id}`}>
+                                            <td className="p-2 pl-3 sticky left-0 bg-orange-50/40 dark:bg-orange-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                              Press 2nd (H{pressStartHole})
+                                            </td>
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pdm.secondBall.results))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pdm.secondBall.results))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                          </tr>
+                                        </Fragment>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>
@@ -4251,6 +4344,50 @@ export default function MatchDetail() {
                                         </>
                                       );
                                     })()}
+
+                                    {/* Per-press status rows for 2 Ball / 3rd Ball */}
+                                    {pressMatches.map((pm) => {
+                                      const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                                      const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
+                                      const pttb = calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext);
+                                      const pressStartHole = pm.startHole ?? 1;
+                                      const renderDiffCell = (hole: number, results: HoleResult[]) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        if (playingPos < pressStartHole) {
+                                          return <td key={hole} className="p-2 text-center text-muted-foreground/40 text-[10px]">-</td>;
+                                        }
+                                        const r = results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center text-[10px]">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      };
+                                      return (
+                                        <Fragment key={`press-ttb-${pm.id}`}>
+                                          <tr className="border-t border-border/40 bg-blue-50/40 dark:bg-blue-950/20" data-testid={`row-press-2ball-${pm.id}`}>
+                                            <td className="p-2 pl-3 sticky left-0 bg-blue-50/40 dark:bg-blue-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                              Press 2 Ball (H{pressStartHole})
+                                            </td>
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pttb.twoBall.overall))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pttb.twoBall.overall))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                          </tr>
+                                          <tr className="bg-orange-50/40 dark:bg-orange-950/20" data-testid={`row-press-3rdball-${pm.id}`}>
+                                            <td className="p-2 pl-3 sticky left-0 bg-orange-50/40 dark:bg-orange-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                              Press 3rd Ball (H{pressStartHole})
+                                            </td>
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pttb.threeBall.overall))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pttb.threeBall.overall))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                          </tr>
+                                        </Fragment>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               </div>
@@ -4811,9 +4948,50 @@ export default function MatchDetail() {
                                   )}
                                 </tr>
                               )}
-                              {/* Press rows are rendered below the type-specific table in a
-                                  unified, bet-type-aware section so every bet type shows
-                                  expanded press progress consistently. */}
+                              {/* Per-press status row(s) for Match Play / Stroke Play / Nassau */}
+                              {pressMatches.map((pm) => {
+                                const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                                const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
+                                const pressResults: HoleResult[] = pm.matchType === 'nassau'
+                                  ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
+                                  : calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
+                                const pressStartHole = pm.startHole ?? 1;
+                                const renderPressCell = (hole: number) => {
+                                  const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                  if (playingPos < pressStartHole) {
+                                    return <td key={hole} className="p-2 text-center text-muted-foreground/40 text-[10px]">-</td>;
+                                  }
+                                  const r = pressResults.find(res => res.holeNumber === hole);
+                                  const hasScores = r?.teamAScore !== null && r?.teamBScore !== null;
+                                  if (!r || !hasScores) return <td key={hole} className="p-2 text-center text-[10px]">-</td>;
+                                  const diff = r.cumulativeA - r.cumulativeB;
+                                  if (em.matchType === 'stroke_play') {
+                                    if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{Math.abs(diff)}</td>;
+                                    if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{diff}</td>;
+                                    return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">T</td>;
+                                  }
+                                  if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                  if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                  return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                };
+                                const hasAutoPressCol = (em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball' || em.matchType === 'nassau') && !em.parentMatchId;
+                                return (
+                                  <tr
+                                    key={`press-status-${pm.id}`}
+                                    className="border-t border-border/40 bg-amber-50/40 dark:bg-amber-950/20"
+                                    data-testid={`row-press-status-${pm.id}`}
+                                  >
+                                    <td className="p-2 pl-3 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                      Press (H{pressStartHole})
+                                    </td>
+                                    {firstNineHoles.map(renderPressCell)}
+                                    <td className="p-2 text-center bg-muted/30"></td>
+                                    {secondNineHoles.map(renderPressCell)}
+                                    <td className="p-2 text-center bg-muted/30"></td>
+                                    {hasAutoPressCol && <td></td>}
+                                  </tr>
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
