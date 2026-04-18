@@ -3314,9 +3314,13 @@ export default function MatchDetail() {
                           const sbStatus = playedSB.length > 0 ? playedSB[playedSB.length - 1].status : '';
                           pressStatus = sbStatus ? `${bbStatus} | ${sbStatus}` : bbStatus;
                         } else if (pm.matchType === 'nassau' || pm.matchType === 'two_three_ball') {
-                          // Show overall leg's running status for the press summary.
+                          // Nassau presses live on a single leg; use the leg that contains the press start.
+                          const pmStart = pm.startHole ?? 1;
+                          const useBack9Leg = pmStart > 9;
                           const nassauResults = pm.matchType === 'nassau'
-                            ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
+                            ? (useBack9Leg
+                                ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).back9
+                                : calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).front9)
                             : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.overall;
                           const played = nassauResults.filter(r => r.teamAScore !== null && r.teamBScore !== null);
                           pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';
@@ -5012,7 +5016,10 @@ export default function MatchDetail() {
                                 const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
                                 const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
                                 const pressResults: HoleResult[] = pm.matchType === 'nassau'
-                                  ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
+                                  ? (() => {
+                                      const nr = calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext);
+                                      return (pm.startHole ?? 1) > 9 ? nr.back9 : nr.front9;
+                                    })()
                                   : calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
                                 const pressStartHole = pm.startHole ?? 1;
                                 const pressLabel = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
@@ -5163,8 +5170,12 @@ export default function MatchDetail() {
                                 const sbStatus = playedSB.length > 0 ? playedSB[playedSB.length - 1].status : '';
                                 pressStatus = sbStatus ? `BB: ${bbStatus} | SB: ${sbStatus}` : `BB: ${bbStatus}`;
                               } else if (pm.matchType === 'nassau' || pm.matchType === 'two_three_ball') {
+                                // Nassau presses live on a single leg; use the leg that contains the press start.
+                                const pmStart = pm.startHole ?? 1;
                                 const overall = pm.matchType === 'nassau'
-                                  ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
+                                  ? (pmStart > 9
+                                      ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).back9
+                                      : calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).front9)
                                   : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.overall;
                                 const played = overall.filter(r => r.teamAScore !== null && r.teamBScore !== null);
                                 pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';

@@ -1336,26 +1336,22 @@ export function calculateNassauResults(
     return results;
   };
 
-  // Compute leg ranges from the press start, respecting playing order.
-  // - startOnBack9=false: Front 9 = max(start,1)..9; Back 9 = max(start,10)..18.
-  // - startOnBack9=true:  play order is 10..18, 1..9.
-  //     If start >= 10 (still on back nine): Back 9 covers start..18; Front 9 still covers full 1..9.
-  //     If start <= 9  (front nine, after back 9): Back 9 already played pre-press (empty leg);
-  //                                                Front 9 covers max(start,1)..9.
-  let f9Start = 1, b9Start = 10;
-  if (!startOnBack9) {
-    f9Start = Math.max(matchStartHole, 1);
-    b9Start = Math.max(matchStartHole, 10);
-  } else if (matchStartHole >= 10) {
-    f9Start = 1;
-    b9Start = matchStartHole;
-  } else {
-    f9Start = Math.max(matchStartHole, 1);
-    b9Start = 19; // empty leg
+  // Nassau press semantics: a press belongs to exactly one leg — the leg that
+  // contains the physical hole where the press was started. The other two legs
+  // and Overall are returned empty so the settlement layer treats them as $0
+  // no-bets. Parent Nassau bets (matchStartHole === 1) keep all three legs.
+  const isPress = matchStartHole > 1;
+  if (isPress) {
+    const pressLeg: 'front9' | 'back9' = matchStartHole <= 9 ? 'front9' : 'back9';
+    return {
+      front9: pressLeg === 'front9' ? calculateRange(matchStartHole, 9) : [],
+      back9: pressLeg === 'back9' ? calculateRange(matchStartHole, 18) : [],
+      overall: [],
+    };
   }
   return {
-    front9: calculateRange(f9Start, 9),
-    back9: calculateRange(b9Start, 18),
+    front9: calculateRange(1, 9),
+    back9: calculateRange(10, 18),
     overall: calculateOverall(),
   };
 }
