@@ -3321,7 +3321,9 @@ export default function MatchDetail() {
                             ? (useBack9Leg
                                 ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).back9
                                 : calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).front9)
-                            : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.overall;
+                            : (useBack9Leg
+                                ? calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.back9
+                                : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.front9);
                           const played = nassauResults.filter(r => r.teamAScore !== null && r.teamBScore !== null);
                           pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';
                         } else if (pm.matchType === 'skins') {
@@ -4414,6 +4416,9 @@ export default function MatchDetail() {
                                       const pttb = calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext);
                                       const pressStartHole = pm.startHole ?? 1;
                                       const numPrefix = pmIdx === 0 ? "" : ` ${pmIdx + 1}`;
+                                      // 2/3 Ball presses live on a single leg; pick the leg containing the press start.
+                                      const pressTwoBallResults = pressStartHole > 9 ? pttb.twoBall.back9 : pttb.twoBall.front9;
+                                      const pressThreeBallResults = pressStartHole > 9 ? pttb.threeBall.back9 : pttb.threeBall.front9;
                                       const renderDiffCell = (hole: number, results: HoleResult[]) => {
                                         const playingPos = physicalToPlayingPosition(hole, isBack9First);
                                         if (playingPos < pressStartHole) {
@@ -4432,9 +4437,9 @@ export default function MatchDetail() {
                                             <td className="p-2 pl-3 sticky left-0 bg-blue-50/40 dark:bg-blue-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
                                               Press{numPrefix} 2 Ball (H{pressStartHole})
                                             </td>
-                                            {firstNineHoles.map((h) => renderDiffCell(h, pttb.twoBall.overall))}
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pressTwoBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
-                                            {secondNineHoles.map((h) => renderDiffCell(h, pttb.twoBall.overall))}
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pressTwoBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                           </tr>
@@ -4442,9 +4447,9 @@ export default function MatchDetail() {
                                             <td className="p-2 pl-3 sticky left-0 bg-orange-50/40 dark:bg-orange-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
                                               Press{numPrefix} 3rd Ball (H{pressStartHole})
                                             </td>
-                                            {firstNineHoles.map((h) => renderDiffCell(h, pttb.threeBall.overall))}
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pressThreeBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
-                                            {secondNineHoles.map((h) => renderDiffCell(h, pttb.threeBall.overall))}
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pressThreeBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                           </tr>
@@ -5176,7 +5181,9 @@ export default function MatchDetail() {
                                   ? (pmStart > 9
                                       ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).back9
                                       : calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).front9)
-                                  : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.overall;
+                                  : (pmStart > 9
+                                      ? calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.back9
+                                      : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.front9);
                                 const played = overall.filter(r => r.teamAScore !== null && r.teamBScore !== null);
                                 pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';
                               } else if (pm.matchType === 'skins') {

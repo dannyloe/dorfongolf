@@ -2294,34 +2294,39 @@ export function calculateTwoThreeBallResults(
     return results;
   };
 
-  // Compute leg ranges from the press start, respecting playing order.
-  // - startOnBack9=false: play order is 1..18. Front 9 = max(start,1)..9; Back 9 = max(start,10)..18.
-  // - startOnBack9=true:  play order is 10..18, 1..9.
-  //     If start is on back nine (>=10): Back 9 covers start..18, Front 9 still covers full 1..9.
-  //     If start is on front nine (<=9): Back 9 was already played pre-press (empty leg),
-  //                                       Front 9 covers max(start,1)..9.
-  let f9Start = 1, f9End = 9, b9Start = 10, b9End = 18;
-  if (!startOnBack9) {
-    f9Start = Math.max(matchStartHole, 1);
-    b9Start = Math.max(matchStartHole, 10);
-  } else {
-    if (matchStartHole >= 10) {
-      f9Start = 1;
-      b9Start = matchStartHole;
-    } else {
-      f9Start = Math.max(matchStartHole, 1);
-      b9Start = 19; // empty leg (back 9 already played before press)
-    }
+  // 2 Ball / 3 Ball press semantics (mirrors Nassau): a press belongs to exactly
+  // one leg — the leg that contains the physical hole where the press was started
+  // — and never produces an Overall result. The other two legs (and Overall) are
+  // returned empty so the settlement layer treats them as $0 no-bets. Parent
+  // bets keep all three legs. Require both parentMatchId AND startHole > 1 so a
+  // parent with a non-1 startHole is not misclassified as a press.
+  const isPress = !!eventMatch.parentMatchId && matchStartHole > 1;
+  if (isPress) {
+    const pressLeg: 'front9' | 'back9' = matchStartHole <= 9 ? 'front9' : 'back9';
+    const f9Start = matchStartHole, f9End = 9;
+    const b9Start = matchStartHole, b9End = 18;
+    return {
+      twoBall: {
+        front9: pressLeg === 'front9' ? calculateRange(f9Start, f9End, sumOfTwoLowest, teamA.name, teamB.name) : [],
+        back9: pressLeg === 'back9' ? calculateRange(b9Start, b9End, sumOfTwoLowest, teamA.name, teamB.name) : [],
+        overall: [],
+      },
+      threeBall: {
+        front9: pressLeg === 'front9' ? calculateRange(f9Start, f9End, thirdLowest, teamA.name, teamB.name) : [],
+        back9: pressLeg === 'back9' ? calculateRange(b9Start, b9End, thirdLowest, teamA.name, teamB.name) : [],
+        overall: [],
+      },
+    };
   }
   return {
     twoBall: {
-      front9: calculateRange(f9Start, f9End, sumOfTwoLowest, teamA.name, teamB.name),
-      back9: calculateRange(b9Start, b9End, sumOfTwoLowest, teamA.name, teamB.name),
+      front9: calculateRange(1, 9, sumOfTwoLowest, teamA.name, teamB.name),
+      back9: calculateRange(10, 18, sumOfTwoLowest, teamA.name, teamB.name),
       overall: calculateOverall(sumOfTwoLowest, teamA.name, teamB.name),
     },
     threeBall: {
-      front9: calculateRange(f9Start, f9End, thirdLowest, teamA.name, teamB.name),
-      back9: calculateRange(b9Start, b9End, thirdLowest, teamA.name, teamB.name),
+      front9: calculateRange(1, 9, thirdLowest, teamA.name, teamB.name),
+      back9: calculateRange(10, 18, thirdLowest, teamA.name, teamB.name),
       overall: calculateOverall(thirdLowest, teamA.name, teamB.name),
     },
   };
