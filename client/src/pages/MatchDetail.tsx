@@ -14,7 +14,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, calculateTwoThreeBallResults, physicalToPlayingPosition, type NetScoringContext } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, calculateTwoThreeBallResults, physicalToPlayingPosition, type NetScoringContext, type HoleResult } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -4167,6 +4167,84 @@ export default function MatchDetail() {
                                         </tr>
                                       );
                                     })}
+
+                                    {(() => {
+                                      const renderBallRows = (
+                                        label: string,
+                                        nassauOverall: HoleResult[],
+                                        bandClass: string,
+                                      ) => {
+                                        const find = (hole: number) => nassauOverall.find(r => r.holeNumber === hole);
+                                        const sumA = (holes: number[]) => holes.reduce((sum, h) => sum + (find(h)?.teamAScore || 0), 0);
+                                        const sumB = (holes: number[]) => holes.reduce((sum, h) => sum + (find(h)?.teamBScore || 0), 0);
+                                        const aOut = sumA(firstNineHoles);
+                                        const bOut = sumB(firstNineHoles);
+                                        const aIn = sumA(secondNineHoles);
+                                        const bIn = sumB(secondNineHoles);
+                                        const renderTeamCell = (hole: number, isA: boolean) => {
+                                          const r = find(hole);
+                                          const value = isA ? r?.teamAScore : r?.teamBScore;
+                                          const isWinning = r?.winner === (isA ? 'A' : 'B');
+                                          const colorWin = isA ? 'bg-primary/20 text-primary font-bold' : 'bg-accent/20 text-accent font-bold';
+                                          return (
+                                            <td
+                                              key={hole}
+                                              className={`p-2 text-center ${isWinning ? colorWin : ''}`}
+                                              data-testid={`cell-ttb-${label}-${isA ? 'A' : 'B'}-${hole}`}
+                                            >
+                                              {value ?? '-'}
+                                            </td>
+                                          );
+                                        };
+                                        const renderStatusCell = (hole: number) => {
+                                          const r = find(hole);
+                                          if (!r || r.teamAScore === null || r.teamBScore === null) {
+                                            return <td key={hole} className="p-2 text-center">-</td>;
+                                          }
+                                          const diff = r.cumulativeA - r.cumulativeB;
+                                          if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{Math.abs(diff)} UP</td>;
+                                          if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{diff} UP</td>;
+                                          return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                        };
+                                        return (
+                                          <>
+                                            <tr className="border-t-2 border-border">
+                                              <td colSpan={firstNineHoles.length + secondNineHoles.length + 4} className="p-1"></td>
+                                            </tr>
+                                            <tr className={`border-b border-border/50 ${bandClass}`}>
+                                              <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} - {teamA.name}</td>
+                                              {firstNineHoles.map((hole) => renderTeamCell(hole, true))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{aOut || '-'}</td>
+                                              {secondNineHoles.map((hole) => renderTeamCell(hole, true))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{aIn || '-'}</td>
+                                              <td className="p-2 text-center font-bold bg-muted/30">{(aOut + aIn) || '-'}</td>
+                                            </tr>
+                                            <tr className={`border-b border-border/50 ${bandClass}`}>
+                                              <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} - {teamB.name}</td>
+                                              {firstNineHoles.map((hole) => renderTeamCell(hole, false))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{bOut || '-'}</td>
+                                              {secondNineHoles.map((hole) => renderTeamCell(hole, false))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{bIn || '-'}</td>
+                                              <td className="p-2 text-center font-bold bg-muted/30">{(bOut + bIn) || '-'}</td>
+                                            </tr>
+                                            <tr className={bandClass}>
+                                              <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} Status</td>
+                                              {firstNineHoles.map((hole) => renderStatusCell(hole))}
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                              {secondNineHoles.map((hole) => renderStatusCell(hole))}
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                            </tr>
+                                          </>
+                                        );
+                                      };
+                                      return (
+                                        <>
+                                          {renderBallRows('2 Ball', ttbResults.twoBall.overall, 'bg-blue-50/50 dark:bg-blue-950/30')}
+                                          {renderBallRows('3 Ball', ttbResults.threeBall.overall, 'bg-orange-50/50 dark:bg-orange-950/30')}
+                                        </>
+                                      );
+                                    })()}
                                   </tbody>
                                 </table>
                               </div>
