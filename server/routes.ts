@@ -2046,6 +2046,19 @@ Net/Gross:
 - "net", "handicap" → useNet: true
 - "gross", no mention → useNet: false
 
+Auto-press preferences (ONLY for matchType "two_three_ball"):
+- By default, ALL six auto-press flags are true: autoPressTwoBallFront9, autoPressTwoBallBack9, autoPressTwoBallOverall, autoPressThreeBallFront9, autoPressThreeBallBack9, autoPressThreeBallOverall.
+- If the user mentions disabling presses, set the corresponding flag(s) to false. If they don't mention presses, leave all flags true (or omit the field entirely — null means "use default true").
+- Phrase guide:
+  - "no auto-press" / "no presses" / "presses off" / "disable auto-press" (with no qualifier) → set ALL six flags to false
+  - "no auto-press on the front 9" / "no front 9 presses" → autoPressTwoBallFront9: false AND autoPressThreeBallFront9: false
+  - "no auto-press on the back 9" / "no back 9 presses" → autoPressTwoBallBack9: false AND autoPressThreeBallBack9: false
+  - "no overall press" / "no auto-press overall" → autoPressTwoBallOverall: false AND autoPressThreeBallOverall: false
+  - "no 2 ball presses" / "no two ball auto-press" → autoPressTwoBallFront9: false, autoPressTwoBallBack9: false, autoPressTwoBallOverall: false
+  - "no 3 ball presses" / "no three ball auto-press" → autoPressThreeBallFront9: false, autoPressThreeBallBack9: false, autoPressThreeBallOverall: false
+  - Combined like "no 2 ball presses on the front 9" → autoPressTwoBallFront9: false only
+- Only include flags you are explicitly setting to false; flags you don't include will default to true on the client.
+
 Stroke/shot allocations (course handicap overrides):
 - Phrases like "Jordan gets 3 shots", "Jordan gets 3 strokes", "give Jordan 3", "Jordan receives 3" mean that player's course handicap is 3
 - Any player NOT explicitly mentioned gets 0 strokes (course handicap 0)
@@ -2066,6 +2079,12 @@ Respond ONLY with a valid JSON object (no markdown, no code blocks, no explanati
   "deathMatchBaseBet": null,
   "twoBallBet": null,
   "threeBallBet": null,
+  "autoPressTwoBallFront9": null,
+  "autoPressTwoBallBack9": null,
+  "autoPressTwoBallOverall": null,
+  "autoPressThreeBallFront9": null,
+  "autoPressThreeBallBack9": null,
+  "autoPressThreeBallOverall": null,
   "useNet": false,
   "strokeAllocations": [],
   "parsedSummary": "Brief human-readable description of what was understood",

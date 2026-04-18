@@ -407,6 +407,12 @@ export default function MatchDetail() {
       keyedPlayerIds, skinsPlayerIds,
       unitAmount: ua, deathMatchBaseBet: dmBase,
       twoBallBet: tbb, threeBallBet: trb,
+      autoPressTwoBallFront9: apTBF9,
+      autoPressTwoBallBack9: apTBB9,
+      autoPressTwoBallOverall: apTBO,
+      autoPressThreeBallFront9: apThBF9,
+      autoPressThreeBallBack9: apThBB9,
+      autoPressThreeBallOverall: apThBO,
       useNet, parsedSummary, unmatchedNames,
       strokeAllocations,
     } = result;
@@ -458,12 +464,12 @@ export default function MatchDetail() {
       const fallback = ua ?? 20;
       setTwoBallBet(tbb ?? fallback);
       setThreeBallBet(trb ?? fallback);
-      setAutoPressTwoBallFront9(true);
-      setAutoPressTwoBallBack9(true);
-      setAutoPressTwoBallOverall(true);
-      setAutoPressThreeBallFront9(true);
-      setAutoPressThreeBallBack9(true);
-      setAutoPressThreeBallOverall(true);
+      setAutoPressTwoBallFront9(apTBF9 ?? true);
+      setAutoPressTwoBallBack9(apTBB9 ?? true);
+      setAutoPressTwoBallOverall(apTBO ?? true);
+      setAutoPressThreeBallFront9(apThBF9 ?? true);
+      setAutoPressThreeBallBack9(apThBB9 ?? true);
+      setAutoPressThreeBallOverall(apThBO ?? true);
     } else {
       setSelectedMatchType((matchType || MATCH_TYPES.NASSAU) as MatchType);
       setIsRoundRobinMode(false);
