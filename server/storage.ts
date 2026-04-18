@@ -502,6 +502,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPressMatch(parentMatchId: number, startHole: number): Promise<EventMatch> {
+    // Manual-press semantics by bet type:
+    //   - Match Play (1 / 2 ball): a fresh match-play bet starting at `startHole`.
+    //   - Stroke Play: a fresh stroke-play bet over holes startHole..18.
+    //   - Nassau: a fresh Nassau (Front 9 / Back 9 / Overall) starting at `startHole`.
+    //     Legs whose hole range falls entirely before `startHole` (e.g. Front 9 when
+    //     startHole > 9) settle as no-bets (0). Auto-press toggles are inherited from
+    //     the parent so the press follows the same Auto Press preferences.
+    //   - Skins: a fresh skins game over holes startHole..18 with the same player pool.
+    //   - Death Match: existing behavior — the press is a separate bet at the correct
+    //     first/subsequent press amount; both Best Ball and Second Ball share the
+    //     parent's hole range.
+    //   - 5-5-5-3: a fresh 5-5-5-3 over holes startHole..18 (the per-hole best-ball
+    //     count is still based on physical hole number).
+    //   - 2 Ball / 3 Ball: like Nassau but for both nested Nassaus.
+    // All bet-type-specific configuration fields are copied so the child settles using
+    // the same engine as the parent.
     const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
     if (!parentMatch) throw new Error("Parent match not found");
 
@@ -529,12 +545,21 @@ export class DatabaseStorage implements IStorage {
       startHole: startHole,
       autoPressOriginal: parentMatch.autoPressOriginal,
       autoPressAllPresses: false,
+      // Inherit Nassau auto-press toggles so a Nassau press follows parent settings.
+      autoPressNassauFront9: parentMatch.autoPressNassauFront9,
+      autoPressNassauBack9: parentMatch.autoPressNassauBack9,
+      autoPressNassauOverall: parentMatch.autoPressNassauOverall,
+      // Inherit net-scoring + back-9 + handicapping flags so the press scores the same way.
+      useNetScoring: parentMatch.useNetScoring,
+      startOnBack9: parentMatch.startOnBack9,
+      // Death Match bet config
       deathMatchBaseBet: parentMatch.deathMatchBaseBet,
       deathMatchBestBallBet: parentMatch.deathMatchBestBallBet,
       deathMatchSecondBallBet: parentMatch.deathMatchSecondBallBet,
       deathMatchFirstPressBet: parentMatch.deathMatchFirstPressBet,
       deathMatchSubsequentPressBet: parentMatch.deathMatchSubsequentPressBet,
       deathMatchSecondBallPressBet: parentMatch.deathMatchSecondBallPressBet,
+      // 2 Ball / 3 Ball bet config + auto-press toggles
       twoThreeBallTwoBallBet: parentMatch.twoThreeBallTwoBallBet,
       twoThreeBallThreeBallBet: parentMatch.twoThreeBallThreeBallBet,
       autoPressTwoBallFront9: parentMatch.autoPressTwoBallFront9,

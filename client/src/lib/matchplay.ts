@@ -212,17 +212,18 @@ export function calculateMatchPlayResults(
 
   const isStrokePlay = matchType === 'stroke_play';
 
-  // Build the list of holes to iterate in playing order
-  // When startOnBack9=true, play holes 10-18 first, then 1-9
-  // Otherwise, play holes in physical order starting from startHole
+  // Build the list of holes to iterate in playing order, sliced from press start.
+  // When startOnBack9=true, play holes 10-18 first, then 1-9.
+  // For press children (startHole > 1) trim everything before the press start in
+  // playing order so already-played holes are excluded.
   let holesToPlay: number[];
   if (startOnBack9) {
-    // Playing order: 10,11,12,13,14,15,16,17,18,1,2,3,4,5,6,7,8,9
-    holesToPlay = [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const baseOrder = [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    const idx = startHole > 1 ? baseOrder.indexOf(startHole) : 0;
+    holesToPlay = idx >= 0 ? baseOrder.slice(idx) : baseOrder;
   } else {
-    // Normal order starting from startHole
     holesToPlay = [];
-    for (let h = startHole; h <= 18; h++) {
+    for (let h = Math.max(1, startHole); h <= 18; h++) {
       holesToPlay.push(h);
     }
   }
@@ -302,8 +303,10 @@ export function getMatchStatus(results: HoleResult[], teamA: Team, teamB: Team, 
   
   const isStrokePlay = matchType === 'stroke_play';
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
-  // Use played-hole count for completion (handles startOnBack9 where last hole may be physical 9)
-  const holesRemaining = 18 - playedHoles.length;
+  // Bet window = the hole list this match was scored on (handles press children
+  // with startHole > 1 and back-9-first orderings).
+  const totalHoles = results.length;
+  const holesRemaining = Math.max(0, totalHoles - playedHoles.length);
   
   if (isStrokePlay) {
     // Stroke play: lower total strokes wins
@@ -354,11 +357,13 @@ export function getMatchWinner(results: HoleResult[], matchType?: string): 'A' |
   
   const isStrokePlay = matchType === 'stroke_play';
   const diff = lastPlayedHole.cumulativeA - lastPlayedHole.cumulativeB;
-  // Use played-hole count for completion (handles startOnBack9 where last hole may be physical 9)
-  const holesRemaining = 18 - playedHoles.length;
+  // Bet window = the hole list this match was scored on (press children may
+  // have fewer than 18 holes).
+  const totalHoles = results.length;
+  const holesRemaining = Math.max(0, totalHoles - playedHoles.length);
   
   if (isStrokePlay) {
-    // Stroke play: only complete after 18 holes, lower strokes wins
+    // Stroke play: complete once every hole in the bet window is played
     if (holesRemaining === 0) {
       if (diff < 0) return 'A';
       if (diff > 0) return 'B';
@@ -471,7 +476,15 @@ export function calculateLedger(
       // Only use netContext if this specific event match has useNetScoring enabled
       const skinsNetContextRaw = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       const skinsNetContext = transformNetContextToPlayingOrder(skinsNetContextRaw, startOnBack9);
-      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, transformedScores, (em.unitAmount || 0) / 100, skinsNetContext, transformedPars);
+      // For press children, only count holes from press start onward.
+      // (When startOnBack9 is on, startHole is still a physical hole number; convert to
+      //  playing position so it lines up with already-transformed scores.)
+      // For parent rounds (no startHole / startHole === 1), pass 1 to keep all 18 holes.
+      const physicalStartHole = em.parentMatchId && em.startHole && em.startHole > 1 ? em.startHole : 1;
+      const skinsStartHole = physicalStartHole > 1 && startOnBack9
+        ? physicalToPlayingPosition(physicalStartHole, true)
+        : physicalStartHole;
+      const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, transformedScores, (em.unitAmount || 0) / 100, skinsNetContext, transformedPars, skinsStartHole);
       
       for (const s of skinsResult.settlements) {
         entries.push({
@@ -1198,6 +1211,8 @@ export function calculateNassauResults(
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
   const startOnBack9 = eventMatch.startOnBack9 || false;
+  // Manual-press support: a child match has startHole > 1 and only counts from that hole onward.
+  const matchStartHole = eventMatch.startHole && eventMatch.startHole > 1 ? eventMatch.startHole : 1;
 
   if (!teamA || !teamB) return { front9: [], back9: [], overall: [] };
 
@@ -1209,6 +1224,7 @@ export function calculateNassauResults(
     let cumulativeA = 0;
     let cumulativeB = 0;
 
+    if (startHole > endHole) return results;
     for (let hole = startHole; hole <= endHole; hole++) {
       const teamAScores = scores
         .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
@@ -1264,9 +1280,13 @@ export function calculateNassauResults(
     let cumulativeB = 0;
 
     // Determine hole order based on startOnBack9
-    const holesToPlay = startOnBack9
+    const baseOrder = startOnBack9
       ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    // For presses, drop holes before the press start.
+    const holesToPlay = matchStartHole > 1
+      ? baseOrder.slice(baseOrder.indexOf(matchStartHole))
+      : baseOrder;
 
     for (const hole of holesToPlay) {
       const teamAScores = scores
@@ -1316,9 +1336,26 @@ export function calculateNassauResults(
     return results;
   };
 
+  // Compute leg ranges from the press start, respecting playing order.
+  // - startOnBack9=false: Front 9 = max(start,1)..9; Back 9 = max(start,10)..18.
+  // - startOnBack9=true:  play order is 10..18, 1..9.
+  //     If start >= 10 (still on back nine): Back 9 covers start..18; Front 9 still covers full 1..9.
+  //     If start <= 9  (front nine, after back 9): Back 9 already played pre-press (empty leg);
+  //                                                Front 9 covers max(start,1)..9.
+  let f9Start = 1, b9Start = 10;
+  if (!startOnBack9) {
+    f9Start = Math.max(matchStartHole, 1);
+    b9Start = Math.max(matchStartHole, 10);
+  } else if (matchStartHole >= 10) {
+    f9Start = 1;
+    b9Start = matchStartHole;
+  } else {
+    f9Start = Math.max(matchStartHole, 1);
+    b9Start = 19; // empty leg
+  }
   return {
-    front9: calculateRange(1, 9),
-    back9: calculateRange(10, 18),
+    front9: calculateRange(f9Start, 9),
+    back9: calculateRange(b9Start, 18),
     overall: calculateOverall(),
   };
 }
@@ -1380,27 +1417,63 @@ export function calculateNassauSettlements(
   // Note: Scores should be transformed to playing order BEFORE calculating Nassau results
   // when startOnBack9 is enabled. This way all bets use standard playing positions 1-18.
   // Front 9 = playing positions 1-9, Back 9 = playing positions 10-18, Overall = 1-18
-  const bets: { name: string; results: HoleResult[]; finalHole: number; autoPressCheckHole: number; autoPress: boolean; expectedHoleCount: number }[] = [
-    { name: 'Front 9', results: nassauResults.front9, finalHole: 9, autoPressCheckHole: 8, autoPress: settings.front9, expectedHoleCount: 9 },
-    { name: 'Back 9', results: nassauResults.back9, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.back9, expectedHoleCount: 9 },
-    { name: 'Overall', results: nassauResults.overall, finalHole: 18, autoPressCheckHole: 17, autoPress: settings.overall, expectedHoleCount: 18 },
+  // For manual presses (child match with startHole > 1) the leg's hole list is shorter
+  // so we derive expected/final/check hole numbers from the actual results array.
+  const bets: { name: string; results: HoleResult[]; autoPress: boolean }[] = [
+    { name: 'Front 9', results: nassauResults.front9, autoPress: settings.front9 },
+    { name: 'Back 9', results: nassauResults.back9, autoPress: settings.back9 },
+    { name: 'Overall', results: nassauResults.overall, autoPress: settings.overall },
   ];
 
   return bets.map(bet => {
-    const winner = getNassauBetWinner(bet.results, bet.finalHole, bet.expectedHoleCount);
+    const expectedHoleCount = bet.results.length;
+    const finalHole = expectedHoleCount > 0 ? bet.results[expectedHoleCount - 1].holeNumber : 0;
+    const autoPressCheckHole = expectedHoleCount >= 2 ? bet.results[expectedHoleCount - 2].holeNumber : 0;
+    const winner = expectedHoleCount > 0 ? getNassauBetWinner(bet.results, finalHole, expectedHoleCount) : null;
     const unitAmount = unitAmountCents / 100;
     
     const teamASize = teamA.members.length;
     const teamBSize = teamB.members.length;
     const maxTeamSize = Math.max(teamASize, teamBSize);
+
+    // Empty leg (e.g. a press starting after the leg's holes have been played):
+    // settle as a complete no-bet so the parent bet's accounting can finalize.
+    if (expectedHoleCount === 0) {
+      return {
+        betName: bet.name,
+        settlement: {
+          isComplete: true,
+          isTie: true,
+          winner: null,
+          winningTeamName: null,
+          settlements: [
+            ...teamA.members.map((m) => ({
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              teamName: teamA.name,
+              amount: 0,
+            })),
+            ...teamB.members.map((m) => ({
+              playerId: m.playerId,
+              playerName: m.player?.name || `Player ${m.playerId}`,
+              teamName: teamB.name,
+              amount: 0,
+            })),
+          ],
+          totalPot: 0,
+        },
+        autoPressTriggered: false,
+        autoPressMultiplier: 1,
+      };
+    }
     
     let autoPressMultiplier = 1;
     let autoPressNullified = false;
     let autoPressTriggered = false;
     
-    if (bet.autoPress && bet.results.length >= 2) {
-      const checkHoleResult = bet.results.find(r => r.holeNumber === bet.autoPressCheckHole);
-      const finalHoleResult = bet.results.find(r => r.holeNumber === bet.finalHole);
+    if (bet.autoPress && expectedHoleCount >= 2) {
+      const checkHoleResult = bet.results.find(r => r.holeNumber === autoPressCheckHole);
+      const finalHoleResult = bet.results.find(r => r.holeNumber === finalHole);
       
       if (checkHoleResult && finalHoleResult && 
           finalHoleResult.teamAScore !== null && finalHoleResult.teamBScore !== null) {
@@ -1571,19 +1644,38 @@ export function calculateSkinsResults(
   scores: Score[],
   unitAmount: number,
   netContext: NetScoringContext | null = null,
-  pars: number[] | null = null
+  pars: number[] | null = null,
+  // For manual presses: only count holes from this hole forward (1-18). Default 1.
+  // When `startOnBack9` is true, holesToPlay follows playing order (10..18, 1..9).
+  startHole: number = 1,
+  startOnBack9: boolean = false
 ): SkinsMatchResult {
   const holeResults: SkinResult[] = [];
   const skinCounts = new Map<number, number>();
+  const firstHole = Math.max(1, Math.min(18, startHole));
+  // Determine which holes to count.
+  // - Parent bet (firstHole === 1): count all 18 holes (order does not affect skin tallies).
+  // - Manual press child (firstHole > 1): count only holes from press start onward,
+  //   honoring playing order so a back-9-first round excludes already-played holes.
+  let holesToCount: number[];
+  if (firstHole === 1) {
+    holesToCount = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+  } else {
+    const baseOrder = startOnBack9
+      ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    const idx = baseOrder.indexOf(firstHole);
+    holesToCount = idx >= 0 ? baseOrder.slice(idx) : baseOrder;
+  }
   
   // Initialize skin counts for all included players
   for (const playerId of includedPlayerIds) {
     skinCounts.set(playerId, 0);
   }
   
-  // Check if all 18 holes have scores for all included players
+  // Check that every hole in the press window has scores for all included players.
   let allHolesComplete = true;
-  for (let hole = 1; hole <= 18; hole++) {
+  for (const hole of holesToCount) {
     const holesScored = includedPlayerIds.every(pid => 
       scores.some(s => s.playerId === pid && s.holeNumber === hole)
     );
@@ -1593,8 +1685,8 @@ export function calculateSkinsResults(
     }
   }
   
-  // Calculate skins for each hole
-  for (let hole = 1; hole <= 18; hole++) {
+  // Calculate skins for each hole in the press window (playing order honored).
+  for (const hole of holesToCount) {
     const holeScores = includedPlayerIds.map(playerId => {
       const score = scores.find(s => s.playerId === playerId && s.holeNumber === hole);
       const grossStrokes = score?.strokes ?? null;
@@ -1633,9 +1725,13 @@ export function calculateSkinsResults(
     
     const potentialWinner = playersWithMinScore[0];
     
-    // For holes 1-17: must make net par or better on next hole to validate the skin
-    if (hole < 18) {
-      const nextHole = hole + 1;
+    // Validation hole = the next hole in PLAYING ORDER (so back-9-first wraps 18 -> 1).
+    // The very last played hole has no "next hole" check.
+    const orderIdx = holesToCount.indexOf(hole);
+    const nextHole = orderIdx >= 0 && orderIdx < holesToCount.length - 1
+      ? holesToCount[orderIdx + 1]
+      : null;
+    if (nextHole !== null) {
       const nextHolePar = pars && pars.length >= nextHole ? pars[nextHole - 1] : null;
       
       // Get the potential winner's score on the next hole
@@ -1685,7 +1781,7 @@ export function calculateSkinsResults(
         });
       }
     } else {
-      // Hole 18: just needs lone low score
+      // Last played hole: lone low score wins (no validation hole exists).
       const currentCount = skinCounts.get(potentialWinner.playerId) || 0;
       skinCounts.set(potentialWinner.playerId, currentCount + 1);
       
@@ -1813,6 +1909,19 @@ export function calculateFiveMatchResults(
   
   // Find the smallest team size
   const smallestTeamSize = Math.min(...teams.map(t => t.members.length));
+  // Manual-press support: only score holes from startHole onward in PLAYING ORDER.
+  // For startOnBack9=true, the play sequence is 10..18, 1..9 — so a press starting on
+  // physical hole 14 still includes 1..9 (those are after 14 in play order); a press
+  // starting on physical hole 2 excludes 10..18 (already played pre-press).
+  const startOnBack9 = eventMatch.startOnBack9 || false;
+  const firstHole = eventMatch.startHole && eventMatch.startHole > 1 ? eventMatch.startHole : 1;
+  const baseOrder = startOnBack9
+    ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+  const holesToPlay = firstHole > 1
+    ? baseOrder.slice(baseOrder.indexOf(firstHole))
+    : baseOrder;
+  const totalHolesInBet = holesToPlay.length;
   
   // Build player ID sets for each team
   const teamPlayerIds = teams.map(team => 
@@ -1824,7 +1933,7 @@ export function calculateFiveMatchResults(
   const teamHolesCompleted = teams.map(() => 0);
   let allComplete = true;
   
-  for (let hole = 1; hole <= 18; hole++) {
+  for (const hole of holesToPlay) {
     const bestBallCount = getBestBallCount(hole, smallestTeamSize);
     
     const teamScoresForHole = teams.map((team, teamIdx) => {
@@ -1863,8 +1972,8 @@ export function calculateFiveMatchResults(
     holesCompleted: teamHolesCompleted[idx],
   }));
   
-  // Check if all teams have completed all 18 holes
-  const isComplete = allComplete && teamHolesCompleted.every(h => h === 18);
+  // Check if all teams have completed every hole in the bet's range
+  const isComplete = allComplete && teamHolesCompleted.every(h => h === totalHolesInBet);
   
   return {
     holeResults,
@@ -2071,6 +2180,8 @@ export function calculateTwoThreeBallResults(
   const teamA = eventMatch.teams[0];
   const teamB = eventMatch.teams[1];
   const startOnBack9 = eventMatch.startOnBack9 || false;
+  // Manual-press support: child match with startHole > 1 starts both nested Nassaus from that hole.
+  const matchStartHole = eventMatch.startHole && eventMatch.startHole > 1 ? eventMatch.startHole : 1;
 
   const empty: NassauResults = { front9: [], back9: [], overall: [] };
   if (!teamA || !teamB) return { twoBall: empty, threeBall: empty };
@@ -2092,6 +2203,7 @@ export function calculateTwoThreeBallResults(
     let cumulativeA = 0;
     let cumulativeB = 0;
 
+    if (startHole > endHole) return results;
     for (let hole = startHole; hole <= endHole; hole++) {
       const teamARaw = scores
         .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
@@ -2137,9 +2249,12 @@ export function calculateTwoThreeBallResults(
     let cumulativeA = 0;
     let cumulativeB = 0;
 
-    const holesToPlay = startOnBack9
+    const baseOrder = startOnBack9
       ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
       : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    const holesToPlay = matchStartHole > 1
+      ? baseOrder.slice(baseOrder.indexOf(matchStartHole))
+      : baseOrder;
 
     for (const hole of holesToPlay) {
       const teamARaw = scores
@@ -2181,15 +2296,34 @@ export function calculateTwoThreeBallResults(
     return results;
   };
 
+  // Compute leg ranges from the press start, respecting playing order.
+  // - startOnBack9=false: play order is 1..18. Front 9 = max(start,1)..9; Back 9 = max(start,10)..18.
+  // - startOnBack9=true:  play order is 10..18, 1..9.
+  //     If start is on back nine (>=10): Back 9 covers start..18, Front 9 still covers full 1..9.
+  //     If start is on front nine (<=9): Back 9 was already played pre-press (empty leg),
+  //                                       Front 9 covers max(start,1)..9.
+  let f9Start = 1, f9End = 9, b9Start = 10, b9End = 18;
+  if (!startOnBack9) {
+    f9Start = Math.max(matchStartHole, 1);
+    b9Start = Math.max(matchStartHole, 10);
+  } else {
+    if (matchStartHole >= 10) {
+      f9Start = 1;
+      b9Start = matchStartHole;
+    } else {
+      f9Start = Math.max(matchStartHole, 1);
+      b9Start = 19; // empty leg (back 9 already played before press)
+    }
+  }
   return {
     twoBall: {
-      front9: calculateRange(1, 9, sumOfTwoLowest, teamA.name, teamB.name),
-      back9: calculateRange(10, 18, sumOfTwoLowest, teamA.name, teamB.name),
+      front9: calculateRange(f9Start, f9End, sumOfTwoLowest, teamA.name, teamB.name),
+      back9: calculateRange(b9Start, b9End, sumOfTwoLowest, teamA.name, teamB.name),
       overall: calculateOverall(sumOfTwoLowest, teamA.name, teamB.name),
     },
     threeBall: {
-      front9: calculateRange(1, 9, thirdLowest, teamA.name, teamB.name),
-      back9: calculateRange(10, 18, thirdLowest, teamA.name, teamB.name),
+      front9: calculateRange(f9Start, f9End, thirdLowest, teamA.name, teamB.name),
+      back9: calculateRange(b9Start, b9End, thirdLowest, teamA.name, teamB.name),
       overall: calculateOverall(thirdLowest, teamA.name, teamB.name),
     },
   };

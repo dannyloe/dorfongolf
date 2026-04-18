@@ -3294,10 +3294,62 @@ export default function MatchDetail() {
                         // Press matches inherit startOnBack9 from parent
                         const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
                         const pressNetContext = buildMatchNetContext(pmWithCorrectBack9);
-                        const pressResults = calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
                         const pressTeamA = pm.teams[0];
                         const pressTeamB = pm.teams[1];
-                        const pressStatus = pressTeamA && pressTeamB ? getMatchStatus(pressResults, pressTeamA, pressTeamB, pm.matchType) : 'Not started';
+                        // Use the bet-type-appropriate status renderer for the press summary.
+                        let pressStatus: string;
+                        if (!pressTeamA || !pressTeamB) {
+                          pressStatus = 'Not started';
+                        } else if (pm.matchType === 'death_match') {
+                          const pdm = calculateDeathMatchResults(pmWithCorrectBack9, scores, pressNetContext);
+                          const playedBB = pdm.bestBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+                          const playedSB = pdm.secondBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+                          const bbStatus = playedBB.length > 0 ? playedBB[playedBB.length - 1].status : 'Not started';
+                          const sbStatus = playedSB.length > 0 ? playedSB[playedSB.length - 1].status : '';
+                          pressStatus = sbStatus ? `${bbStatus} | ${sbStatus}` : bbStatus;
+                        } else if (pm.matchType === 'nassau' || pm.matchType === 'two_three_ball') {
+                          // Show overall leg's running status for the press summary.
+                          const nassauResults = pm.matchType === 'nassau'
+                            ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
+                            : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.overall;
+                          const played = nassauResults.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+                          pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';
+                        } else if (pm.matchType === 'skins') {
+                          // Skins matches store the same player IDs in both teams; dedupe
+                          // so the calculator does not see duplicate scores per hole.
+                          const includedSkinsPlayerIds = Array.from(new Set([
+                            ...pressTeamA.members.map(m => m.playerId),
+                            ...pressTeamB.members.map(m => m.playerId),
+                          ]));
+                          const skinsPlayerNames = new Map<number, string>();
+                          [...pressTeamA.members, ...pressTeamB.members].forEach(m => {
+                            skinsPlayerNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
+                          });
+                          const sParsArray = matchCourse?.holes.length
+                            ? Array.from({ length: 18 }, (_, i) => matchCourse.holes.find(h => h.holeNumber === i + 1)?.par ?? 4)
+                            : null;
+                          const skinsRes = calculateSkinsResults(includedSkinsPlayerIds, skinsPlayerNames, scores, (pm.unitAmount || 0) / 100, pressNetContext, sParsArray, pm.startHole ?? 1, isBack9First);
+                          if (skinsRes.isComplete) {
+                            const winners = skinsRes.skinWinners.filter(w => w.skinsWon > 0);
+                            pressStatus = winners.length > 0 ? `${winners.length} skin${winners.length === 1 ? '' : 's'} won` : 'No skins won';
+                          } else {
+                            const wonCount = skinsRes.holeResults.filter(h => h.winnerId !== null).length;
+                            pressStatus = wonCount > 0 ? `${wonCount} skin${wonCount === 1 ? '' : 's'} so far` : 'In progress';
+                          }
+                        } else if (pm.matchType === 'five_five_five_three') {
+                          const fiveResult = calculateFiveMatchResults(pmWithCorrectBack9, scores, pressNetContext);
+                          if (fiveResult.isComplete) {
+                            const sorted = [...fiveResult.teamTotals].sort((a, b) => a.totalScore - b.totalScore);
+                            pressStatus = `${sorted[0].teamName} leads`;
+                          } else {
+                            const completed = Math.min(...fiveResult.teamTotals.map(t => t.holesCompleted));
+                            pressStatus = completed > 0 ? `${completed} holes played` : 'Not started';
+                          }
+                        } else {
+                          // Match Play / Stroke Play
+                          const pressResults = calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
+                          pressStatus = getMatchStatus(pressResults, pressTeamA, pressTeamB, pm.matchType);
+                        }
                         return (
                           <div 
                             key={pm.id} 
@@ -3338,7 +3390,7 @@ export default function MatchDetail() {
                                 return hole?.par ?? 4;
                               })
                             : null;
-                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext, skinsParsArray);
+                          const skinsResult = calculateSkinsResults(includedPlayerIds, playerNames, scores, (em.unitAmount || 0) / 100, netContext, skinsParsArray, em.parentMatchId ? (em.startHole ?? 1) : 1, isBack9First);
                           
                           return (
                             <div className="space-y-4">
@@ -4675,70 +4727,9 @@ export default function MatchDetail() {
                                   )}
                                 </tr>
                               )}
-                              {/* Press Match Rows */}
-                              {pressMatches.map((pm) => {
-                                // Press matches inherit startOnBack9 from parent
-                                const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
-                                const pressNetContext = buildMatchNetContext(pmWithCorrectBack9);
-                                const pressResults = calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
-                                const pressStartPlayingPos = pm.startHole || 1;
-                                return (
-                                  <tr key={pm.id} className="border-t border-border/50 bg-muted/20">
-                                    <td className="p-2 font-semibold text-xs">
-                                      Press #{pressStartPlayingPos}
-                                      <span className="ml-1 text-muted-foreground">(${(pm.unitAmount / 100).toFixed(2)})</span>
-                                    </td>
-                                    {firstNineHoles.map((hole) => {
-                                      const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                      if (playingPos < pressStartPlayingPos) {
-                                        return <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>;
-                                      }
-                                      // Access by physical hole number, not playing position
-                                      const pressResult = pressResults.find(r => r.holeNumber === hole);
-                                      if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
-                                        return <td key={hole} className="p-2 text-center">-</td>;
-                                      }
-                                      const diff = pressResult.cumulativeA - pressResult.cumulativeB;
-                                      if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
-                                      if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
-                                      return <td key={hole} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
-                                    })}
-                                    <td className="p-2 text-center bg-muted/30"></td>
-                                    {secondNineHoles.map((hole) => {
-                                      const playingPos = physicalToPlayingPosition(hole, isBack9First);
-                                      if (playingPos < pressStartPlayingPos) {
-                                        return <td key={hole} className="p-2 text-center text-muted-foreground/30">-</td>;
-                                      }
-                                      // Access by physical hole number, not playing position
-                                      const pressResult = pressResults.find(r => r.holeNumber === hole);
-                                      if (!pressResult || pressResult.teamAScore === null || pressResult.teamBScore === null) {
-                                        return <td key={hole} className="p-2 text-center">-</td>;
-                                      }
-                                      const diff = pressResult.cumulativeA - pressResult.cumulativeB;
-                                      if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-xs">{diff} UP</td>;
-                                      if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-xs">{Math.abs(diff)} UP</td>;
-                                      return <td key={hole} className="p-2 text-center text-muted-foreground text-xs">AS</td>;
-                                    })}
-                                    <td className="p-2 text-center bg-muted/30"></td>
-                                    {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && (
-                                      <td className="p-2 text-center">
-                                        <Checkbox
-                                          id={`autopress-press-${pm.id}`}
-                                          checked={pm.autoPressOriginal ?? true}
-                                          onCheckedChange={(checked) => {
-                                            updateAutoPress.mutate({ 
-                                              eventMatchId: pm.id, 
-                                              autoPressOriginal: checked === true 
-                                            });
-                                          }}
-                                          disabled={updateAutoPress.isPending}
-                                          data-testid={`checkbox-autopress-${pm.id}`}
-                                        />
-                                      </td>
-                                    )}
-                                  </tr>
-                                );
-                              })}
+                              {/* Press rows are rendered below the type-specific table in a
+                                  unified, bet-type-aware section so every bet type shows
+                                  expanded press progress consistently. */}
                             </tbody>
                           </table>
                         </div>
@@ -4763,20 +4754,6 @@ export default function MatchDetail() {
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            {(em.matchType === 'match_play_1_ball' || em.matchType === 'match_play_2_ball') && !em.parentMatchId && canEditScoresAndBets && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setPressDialogMatch(em.id);
-                                  setPressStartHole(2);
-                                }}
-                                data-testid={`button-add-press-${em.id}`}
-                              >
-                                <Plus className="w-3 h-3 mr-1" />
-                                Press
-                              </Button>
-                            )}
                             {isCreator && (
                               <Button
                                 size="sm"
@@ -4790,49 +4767,6 @@ export default function MatchDetail() {
                             )}
                           </div>
                         </div>
-
-                        {/* Press Dialog */}
-                        {pressDialogMatch === em.id && (
-                          <div className="pt-3 border-t border-border">
-                            <div className="flex items-center gap-3">
-                              <span className="text-sm font-medium">Start press on hole:</span>
-                              <Select
-                                value={pressStartHole.toString()}
-                                onValueChange={(val) => setPressStartHole(parseInt(val))}
-                              >
-                                <SelectTrigger className="w-20" data-testid="select-press-hole">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {Array.from({ length: 16 }, (_, i) => i + 2).map((hole) => (
-                                    <SelectItem key={hole} value={hole.toString()}>
-                                      {hole}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  createPress.mutate({ eventMatchId: em.id, startHole: pressStartHole });
-                                  setPressDialogMatch(null);
-                                }}
-                                disabled={createPress.isPending}
-                                data-testid="button-confirm-press"
-                              >
-                                {createPress.isPending ? "Creating..." : "Create Press"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setPressDialogMatch(null)}
-                                data-testid="button-cancel-press"
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Wager Summary - Combined for parent + all presses */}
                         {em.unitAmount > 0 && (() => {
@@ -4885,6 +4819,146 @@ export default function MatchDetail() {
                           );
                         })()}
                         </>
+                        )}
+
+                        {/* Active Presses (expanded view, all bet types) */}
+                        {!em.parentMatchId && pressMatches.length > 0 && (
+                          <div className="pt-3 border-t border-border space-y-1" data-testid={`press-expanded-list-${em.id}`}>
+                            <h5 className="font-semibold text-sm mb-1">Active Presses</h5>
+                            {pressMatches.map((pm) => {
+                              const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                              const pressNetContext = buildMatchNetContext(pmWithCorrectBack9);
+                              const pressTeamA = pm.teams[0];
+                              const pressTeamB = pm.teams[1];
+                              let pressStatus: string;
+                              if (!pressTeamA || !pressTeamB) {
+                                pressStatus = 'Not started';
+                              } else if (pm.matchType === 'death_match') {
+                                const pdm = calculateDeathMatchResults(pmWithCorrectBack9, scores, pressNetContext);
+                                const playedBB = pdm.bestBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+                                const playedSB = pdm.secondBall.results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+                                const bbStatus = playedBB.length > 0 ? playedBB[playedBB.length - 1].status : 'Not started';
+                                const sbStatus = playedSB.length > 0 ? playedSB[playedSB.length - 1].status : '';
+                                pressStatus = sbStatus ? `BB: ${bbStatus} | SB: ${sbStatus}` : `BB: ${bbStatus}`;
+                              } else if (pm.matchType === 'nassau' || pm.matchType === 'two_three_ball') {
+                                const overall = pm.matchType === 'nassau'
+                                  ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
+                                  : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.overall;
+                                const played = overall.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+                                pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';
+                              } else if (pm.matchType === 'skins') {
+                                // Skins matches store the same player IDs in both teams; dedupe
+                                // so the calculator does not see duplicate scores per hole.
+                                const includedSkinsPlayerIds = Array.from(new Set([
+                                  ...pressTeamA.members.map(m => m.playerId),
+                                  ...pressTeamB.members.map(m => m.playerId),
+                                ]));
+                                const skinsPlayerNames = new Map<number, string>();
+                                [...pressTeamA.members, ...pressTeamB.members].forEach(m => {
+                                  skinsPlayerNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
+                                });
+                                const sParsArray = matchCourse?.holes.length
+                                  ? Array.from({ length: 18 }, (_, i) => matchCourse.holes.find(h => h.holeNumber === i + 1)?.par ?? 4)
+                                  : null;
+                                const skinsRes = calculateSkinsResults(includedSkinsPlayerIds, skinsPlayerNames, scores, (pm.unitAmount || 0) / 100, pressNetContext, sParsArray, pm.startHole ?? 1, isBack9First);
+                                if (skinsRes.isComplete) {
+                                  const winners = skinsRes.skinWinners.filter(w => w.skinsWon > 0);
+                                  pressStatus = winners.length > 0 ? `${winners.length} skin${winners.length === 1 ? '' : 's'} won` : 'No skins won';
+                                } else {
+                                  const wonCount = skinsRes.holeResults.filter(h => h.winnerId !== null).length;
+                                  pressStatus = wonCount > 0 ? `${wonCount} skin${wonCount === 1 ? '' : 's'} so far` : 'In progress';
+                                }
+                              } else if (pm.matchType === 'five_five_five_three') {
+                                const fiveResult = calculateFiveMatchResults(pmWithCorrectBack9, scores, pressNetContext);
+                                if (fiveResult.isComplete) {
+                                  const sorted = [...fiveResult.teamTotals].sort((a, b) => a.totalScore - b.totalScore);
+                                  pressStatus = `${sorted[0].teamName} leads`;
+                                } else {
+                                  const completed = Math.min(...fiveResult.teamTotals.map(t => t.holesCompleted));
+                                  pressStatus = completed > 0 ? `${completed} holes played` : 'Not started';
+                                }
+                              } else {
+                                const pressResults = calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
+                                pressStatus = getMatchStatus(pressResults, pressTeamA, pressTeamB, pm.matchType);
+                              }
+                              return (
+                                <div
+                                  key={pm.id}
+                                  className="flex items-center justify-between text-xs py-1 px-3 bg-muted/30 rounded"
+                                  data-testid={`press-expanded-${pm.id}`}
+                                >
+                                  <span className="font-medium">Press (Hole {pm.startHole})</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2 py-0.5 bg-muted rounded-full">
+                                      ${(pm.unitAmount / 100).toFixed(2)}
+                                    </span>
+                                    <span className="font-medium text-primary">{pressStatus}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Manual Press: available for ALL bet types on parent bets */}
+                        {!em.parentMatchId && canEditScoresAndBets && (
+                          <div className="pt-3 border-t border-border flex items-center gap-2 justify-end">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setPressDialogMatch(em.id);
+                                setPressStartHole(2);
+                              }}
+                              data-testid={`button-add-press-shared-${em.id}`}
+                            >
+                              <Plus className="w-3 h-3 mr-1" />
+                              Add Press
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Shared Press Dialog (rendered for any bet type) */}
+                        {pressDialogMatch === em.id && (
+                          <div className="pt-3 border-t border-border" data-testid={`press-dialog-shared-${em.id}`}>
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-medium">Start press on hole:</span>
+                              <Select
+                                value={pressStartHole.toString()}
+                                onValueChange={(val) => setPressStartHole(parseInt(val))}
+                              >
+                                <SelectTrigger className="w-20" data-testid="select-press-hole-shared">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Array.from({ length: 16 }, (_, i) => i + 2).map((hole) => (
+                                    <SelectItem key={hole} value={hole.toString()}>
+                                      {hole}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  createPress.mutate({ eventMatchId: em.id, startHole: pressStartHole });
+                                  setPressDialogMatch(null);
+                                }}
+                                disabled={createPress.isPending}
+                                data-testid="button-confirm-press-shared"
+                              >
+                                {createPress.isPending ? "Creating..." : "Create Press"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setPressDialogMatch(null)}
+                                data-testid="button-cancel-press-shared"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
                         )}
 
                       </div>
