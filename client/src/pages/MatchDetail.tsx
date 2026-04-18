@@ -3492,7 +3492,7 @@ export default function MatchDetail() {
                                         pressNames.set(m.playerId, m.player?.name || `Player ${m.playerId}`);
                                       });
                                       const pressStartHole = pm.startHole ?? 1;
-                                      const pressLabel = pressMatches.length > 1 ? `Press ${pmIdx + 1} (H${pressStartHole})` : `Press (H${pressStartHole})`;
+                                      const pressLabel = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
                                       const pSkins = calculateSkinsResults(includedPressIds, pressNames, scores, (pm.unitAmount || 0) / 100, pressNetContext, skinsParsArray, pressStartHole, isBack9First);
                                       const renderCell = (hole: number) => {
                                         const playingPos = physicalToPlayingPosition(hole, isBack9First);
@@ -3775,7 +3775,7 @@ export default function MatchDetail() {
                                       const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
                                       const pFive = calculateFiveMatchResults(pmWithCorrectBack9, scores, pressNetContext);
                                       const pressStartHole = pm.startHole ?? 1;
-                                      const numPrefix = pressMatches.length > 1 ? ` ${pmIdx + 1}` : '';
+                                      const numPrefix = pmIdx === 0 ? "" : ` ${pmIdx + 1}`;
                                       return (
                                         <Fragment key={`press-five-${pm.id}`}>
                                           {pFive.teamTotals.map((teamTotal, idx) => {
@@ -4125,7 +4125,7 @@ export default function MatchDetail() {
                                       const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
                                       const pdm = calculateDeathMatchResults(pmWithCorrectBack9, scores, pressNetContext);
                                       const pressStartHole = pm.startHole ?? 1;
-                                      const numPrefix = pressMatches.length > 1 ? ` ${pmIdx + 1}` : '';
+                                      const numPrefix = pmIdx === 0 ? "" : ` ${pmIdx + 1}`;
                                       // BB is stroke-play oriented (lower cumulative is better, like parent BB Status row).
                                       // 2nd is match-play oriented (positive diff means A leading, like parent 2nd Status row).
                                       const renderDiffCell = (hole: number, results: HoleResult[], lowerIsBetter: boolean) => {
@@ -4409,7 +4409,7 @@ export default function MatchDetail() {
                                       const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
                                       const pttb = calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext);
                                       const pressStartHole = pm.startHole ?? 1;
-                                      const numPrefix = pressMatches.length > 1 ? ` ${pmIdx + 1}` : '';
+                                      const numPrefix = pmIdx === 0 ? "" : ` ${pmIdx + 1}`;
                                       const renderDiffCell = (hole: number, results: HoleResult[]) => {
                                         const playingPos = physicalToPlayingPosition(hole, isBack9First);
                                         if (playingPos < pressStartHole) {
@@ -5015,7 +5015,7 @@ export default function MatchDetail() {
                                   ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).overall
                                   : calculateMatchPlayResults(pmWithCorrectBack9, scores, pressNetContext);
                                 const pressStartHole = pm.startHole ?? 1;
-                                const pressLabel = pressMatches.length > 1 ? `Press ${pmIdx + 1} (H${pressStartHole})` : `Press (H${pressStartHole})`;
+                                const pressLabel = pmIdx === 0 ? `Press (H${pressStartHole})` : `Press ${pmIdx + 1} (H${pressStartHole})`;
                                 const renderPressCell = (hole: number) => {
                                   const playingPos = physicalToPlayingPosition(hole, isBack9First);
                                   if (playingPos < pressStartHole) {
