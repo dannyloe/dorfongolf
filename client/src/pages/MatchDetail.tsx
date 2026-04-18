@@ -5141,7 +5141,49 @@ export default function MatchDetail() {
                                     <td className="p-2 text-center bg-muted/30"></td>
                                     {secondNineHoles.map(renderPressCell)}
                                     <td className="p-2 text-center bg-muted/30"></td>
-                                    {hasAutoPressCol && <td></td>}
+                                    {hasAutoPressCol && (
+                                      <td className="p-2 text-center">
+                                        {(() => {
+                                          let pressKey:
+                                            | 'autoPressOriginal'
+                                            | 'autoPressNassauFront9'
+                                            | 'autoPressNassauBack9'
+                                            | null = null;
+                                          let checked = true;
+                                          if (pm.matchType === 'nassau') {
+                                            if ((pm.startHole ?? 1) > 9) {
+                                              pressKey = 'autoPressNassauBack9';
+                                              checked = pm.autoPressNassauBack9 ?? true;
+                                            } else {
+                                              pressKey = 'autoPressNassauFront9';
+                                              checked = pm.autoPressNassauFront9 ?? true;
+                                            }
+                                          } else if (
+                                            pm.matchType === 'match_play_1_ball' ||
+                                            pm.matchType === 'match_play_2_ball'
+                                          ) {
+                                            pressKey = 'autoPressOriginal';
+                                            checked = pm.autoPressOriginal ?? true;
+                                          }
+                                          if (!pressKey) return null;
+                                          const key = pressKey;
+                                          return (
+                                            <Checkbox
+                                              id={`autopress-press-${pm.id}`}
+                                              checked={checked}
+                                              onCheckedChange={(c) => {
+                                                updateAutoPress.mutate({
+                                                  eventMatchId: pm.id,
+                                                  [key]: c === true,
+                                                });
+                                              }}
+                                              disabled={updateAutoPress.isPending}
+                                              data-testid={`checkbox-autopress-press-${pm.id}`}
+                                            />
+                                          );
+                                        })()}
+                                      </td>
+                                    )}
                                   </tr>
                                 );
                               })}
