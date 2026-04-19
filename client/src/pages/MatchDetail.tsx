@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
 import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, calculateTwoThreeBallResults, physicalToPlayingPosition, type NetScoringContext, type HoleResult } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
-import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type MatchType } from "@shared/schema";
+import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
@@ -2135,7 +2135,9 @@ export default function MatchDetail() {
           >
             <div className="flex justify-between items-center mb-4">
               <h4 className="font-semibold">
-                {isRoundRobinMode ? 'Round Robin - Match Play 1 Ball (2 man teams)' : 'Create Match Play'}
+                {isRoundRobinMode
+                  ? `Round Robin - ${MATCH_TYPE_LABELS[roundRobinMatchType]} (2 man teams)`
+                  : 'Create Match Play'}
               </h4>
               <div className="flex items-center gap-2">
                 {voiceSupported && (
@@ -2246,6 +2248,41 @@ export default function MatchDetail() {
               <div className="space-y-4">
                 {roundRobinStep === 'select' ? (
                   <>
+                    <div className="grid grid-cols-2 gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={true}
+                          onChange={(e) => {
+                            if (!e.target.checked) {
+                              setIsRoundRobinMode(false);
+                              setRoundRobinGroupAIds([]);
+                              setRoundRobinGroupBIds([]);
+                              setRoundRobinKeyedAIds([]);
+                              setRoundRobinKeyedBIds([]);
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-border"
+                          data-testid="checkbox-round-robin-on"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">Round Robin</span>
+                          <span className="text-xs text-muted-foreground">Uncheck to switch back to standard {MATCH_TYPE_LABELS[roundRobinMatchType]}</span>
+                        </div>
+                      </label>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Players per team</label>
+                        <Input
+                          type="number"
+                          value={2}
+                          readOnly
+                          disabled
+                          className="mt-1 h-8 text-sm"
+                          data-testid="input-rr-players-per-team-active"
+                        />
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm font-medium text-muted-foreground">Wager ($ per player per match)</label>
@@ -2444,19 +2481,7 @@ export default function MatchDetail() {
                   <Select
                     value={selectedMatchType}
                     onValueChange={(value) => {
-                      if (value === WIZARD_TYPES.ROUND_ROBIN_2_MAN) {
-                        setIsRoundRobinMode(true);
-                        setRoundRobinMatchType(MATCH_TYPES.MATCH_PLAY_1_BALL);
-                        setRoundRobinGroupAIds([]);
-                        setRoundRobinGroupBIds([]);
-                        setRoundRobinStep('select');
-                      } else if (value === WIZARD_TYPES.ROUND_ROBIN_NASSAU) {
-                        setIsRoundRobinMode(true);
-                        setRoundRobinMatchType(MATCH_TYPES.NASSAU);
-                        setRoundRobinGroupAIds([]);
-                        setRoundRobinGroupBIds([]);
-                        setRoundRobinStep('select');
-                      } else if (value === MATCH_TYPES.SKINS) {
+                      if (value === MATCH_TYPES.SKINS) {
                         setSelectedMatchType(MATCH_TYPES.SKINS);
                         setSkinsPlayerIds(players.map(p => p.id));
                       } else if (value === MATCH_TYPES.FIVE_FIVE_FIVE_THREE) {
@@ -2536,6 +2561,46 @@ export default function MatchDetail() {
                       ? "When 2+ down: Win doubles bet, loss pushes. Applies to Front 9 (hole 9), Back 9 (hole 18), and Overall (hole 18)"
                       : "When 2+ down going into 18: Win doubles bet, loss pushes, tie unchanged"}
                   </p>
+                </div>
+              )}
+
+              {/* Round Robin Toggle - Only for Match Play 1 Ball and Nassau */}
+              {(selectedMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || selectedMatchType === MATCH_TYPES.NASSAU) && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setIsRoundRobinMode(true);
+                          setRoundRobinMatchType(selectedMatchType);
+                          setRoundRobinGroupAIds([]);
+                          setRoundRobinGroupBIds([]);
+                          setRoundRobinKeyedAIds([]);
+                          setRoundRobinKeyedBIds([]);
+                          setRoundRobinStep('select');
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-border"
+                      data-testid="checkbox-round-robin"
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">Round Robin</span>
+                      <span className="text-xs text-muted-foreground">Generate all team-vs-team matches between two groups</span>
+                    </div>
+                  </label>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Players per team</label>
+                    <Input
+                      type="number"
+                      value={2}
+                      readOnly
+                      disabled
+                      className="mt-1 h-8 text-sm"
+                      data-testid="input-rr-players-per-team"
+                    />
+                  </div>
                 </div>
               )}
 
