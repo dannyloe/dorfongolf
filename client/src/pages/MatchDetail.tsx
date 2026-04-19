@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutationState } from "@tanstack/react-query";
 import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
@@ -277,6 +277,24 @@ export default function MatchDetail() {
   // Get match-specific player handicap overrides
   const { data: matchHandicapOverrides } = useMatchPlayerHandicaps(matchId);
   const upsertMatchHandicap = useUpsertMatchPlayerHandicap(matchId);
+
+  // Track which (eventMatchId, playerId) pills are currently saving so we can
+  // show a per-cell pending visual without disabling the rest of the page.
+  const pendingCourseHandicapEdits = useMutationState({
+    filters: { mutationKey: ['upsertMatchPlayerHandicap', matchId], status: 'pending' },
+    select: (m) => m.state.variables as { eventMatchId: number; playerId: number } | undefined,
+  });
+  const isCourseHcpSaving = (eventMatchId: number, playerId: number) =>
+    pendingCourseHandicapEdits.some(
+      (v) => v?.eventMatchId === eventMatchId && v?.playerId === playerId
+    );
+
+  const pendingHandicapIndexEdits = useMutationState({
+    filters: { mutationKey: ['updatePlayerMatchHandicap', matchId], status: 'pending' },
+    select: (m) => m.state.variables as { playerId: number } | undefined,
+  });
+  const isHandicapIndexSaving = (playerId: number) =>
+    pendingHandicapIndexEdits.some((v) => v?.playerId === playerId);
   
   // Get user's role for this match
   const { data: myRole } = useMyMatchRole(matchId);
@@ -3699,18 +3717,21 @@ export default function MatchDetail() {
                                                       setMatchCourseHcpEditValue(displayHcp?.toString() ?? '');
                                                     }
                                                   }}
-                                                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors inline-flex items-center gap-1 ${
                                                     isMissingData && !hasOverride
                                                       ? 'bg-destructive/20 text-destructive border border-destructive/30 animate-pulse'
                                                       : hasOverride
                                                         ? 'bg-primary/20 text-primary border border-primary/30'
                                                         : 'bg-muted text-muted-foreground'
-                                                  } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
+                                                  } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'} ${isCourseHcpSaving(em.id, m.playerId) ? 'opacity-60' : ''}`}
                                                   disabled={!canEditScoresAndBets}
                                                   title={isMissingData && !hasOverride ? 'No handicap data — click to enter course handicap' : hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
                                                   data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
                                                 >
                                                   {displayHcp ?? '-'}
+                                                  {isCourseHcpSaving(em.id, m.playerId) && (
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                  )}
                                                 </button>
                                                 {canEditScoresAndBets && !isMissingData && calculatedHcp !== undefined && (
                                                   <button
@@ -4667,18 +4688,21 @@ export default function MatchDetail() {
                                               setMatchCourseHcpEditValue(displayHcp?.toString() ?? '');
                                             }
                                           }}
-                                          className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                                          className={`px-2 py-0.5 rounded text-xs font-medium transition-colors inline-flex items-center gap-1 ${
                                             isMissingData && !hasOverride
                                               ? 'bg-destructive/20 text-destructive border border-destructive/30 animate-pulse'
                                               : hasOverride 
                                                 ? 'bg-primary/20 text-primary border border-primary/30' 
                                                 : 'bg-muted text-muted-foreground'
-                                          } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'}`}
+                                          } ${canEditScoresAndBets ? 'hover:bg-primary/10 cursor-pointer' : 'cursor-default'} ${isCourseHcpSaving(em.id, m.playerId) ? 'opacity-60' : ''}`}
                                           disabled={!canEditScoresAndBets}
                                           title={isMissingData && !hasOverride ? 'No handicap data — click to enter course handicap' : hasOverride ? 'Custom override (click to edit)' : 'Calculated from handicap index (click to override)'}
                                           data-testid={`button-edit-match-course-hcp-${em.id}-${m.playerId}`}
                                         >
                                           {displayHcp ?? '-'}
+                                          {isCourseHcpSaving(em.id, m.playerId) && (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                          )}
                                         </button>
                                         {canEditScoresAndBets && !isMissingData && calculatedHcp !== undefined && (
                                           <button
@@ -5982,12 +6006,15 @@ export default function MatchDetail() {
                                     const hcp = p.handicapIndex;
                                     setPlayerHandicapEditValue(hcp !== null && hcp !== undefined ? (hcp / 10).toFixed(1) : '');
                                   }}
-                                  className="w-8 h-4 text-center text-[10px] bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal cursor-pointer inline-flex items-center justify-center flex-shrink-0"
+                                  className={`min-w-8 h-4 px-1 text-center text-[10px] bg-muted/50 border rounded hover:bg-muted text-muted-foreground font-normal cursor-pointer inline-flex items-center justify-center gap-0.5 flex-shrink-0 ${isHandicapIndexSaving(p.id) ? 'opacity-60' : ''}`}
                                   data-testid={`button-player-handicap-${p.id}`}
                                 >
                                   {p.handicapIndex !== null && p.handicapIndex !== undefined 
                                     ? (p.handicapIndex / 10).toFixed(1) 
                                     : '-'}
+                                  {isHandicapIndexSaving(p.id) && (
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                  )}
                                 </span>
                               )
                             ) : (

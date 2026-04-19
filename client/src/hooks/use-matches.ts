@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
 
 // Types derived from shared routes
 type MatchListResponse = z.infer<typeof api.matches.list.responses[200]>;
@@ -718,7 +719,10 @@ export function useUpsertPlayerHandicap() {
 
 export function useUpdatePlayerMatchHandicap(matchId: number) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const queryKey = [api.matches.get.path, matchId] as const;
   return useMutation({
+    mutationKey: ['updatePlayerMatchHandicap', matchId],
     mutationFn: async ({ playerId, handicapIndex }: { playerId: number; handicapIndex: number | null }) => {
       const url = buildUrl(api.matches.updatePlayerHandicap.path, { matchId, playerId });
       const res = await fetch(url, {
@@ -727,12 +731,57 @@ export function useUpdatePlayerMatchHandicap(matchId: number) {
         body: JSON.stringify({ handicapIndex }),
         credentials: "include",
       });
-      
+
       if (!res.ok) throw new Error("Failed to update player handicap");
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    onMutate: async ({ playerId, handicapIndex }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const prev = queryClient.getQueryData<MatchDetailResponse>(queryKey);
+      const prevHandicapIndex = prev?.players?.find((p) => p.id === playerId)?.handicapIndex ?? null;
+      if (prev?.players) {
+        const next = {
+          ...prev,
+          players: prev.players.map((p) =>
+            p.id === playerId ? { ...p, handicapIndex } : p
+          ),
+        };
+        queryClient.setQueryData(queryKey, next);
+      }
+      // Field-scoped rollback so concurrent mutations don't clobber each other.
+      return { prevHandicapIndex };
+    },
+    onSuccess: (data, { playerId }) => {
+      // Reconcile with the server's authoritative value for just this player.
+      const serverHandicapIndex =
+        data && typeof data === 'object' && 'handicapIndex' in data
+          ? (data as { handicapIndex: number | null }).handicapIndex
+          : undefined;
+      if (serverHandicapIndex === undefined) return;
+      const current = queryClient.getQueryData<MatchDetailResponse>(queryKey);
+      if (!current?.players) return;
+      queryClient.setQueryData(queryKey, {
+        ...current,
+        players: current.players.map((p) =>
+          p.id === playerId ? { ...p, handicapIndex: serverHandicapIndex } : p
+        ),
+      });
+    },
+    onError: (err, { playerId }, ctx) => {
+      const current = queryClient.getQueryData<MatchDetailResponse>(queryKey);
+      if (current?.players) {
+        queryClient.setQueryData(queryKey, {
+          ...current,
+          players: current.players.map((p) =>
+            p.id === playerId ? { ...p, handicapIndex: ctx?.prevHandicapIndex ?? null } : p
+          ),
+        });
+      }
+      toast({
+        title: "Couldn't save handicap",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 }
@@ -883,7 +932,10 @@ export function useMatchPlayerHandicaps(matchId: number | undefined) {
 
 export function useUpsertMatchPlayerHandicap(matchId: number) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const queryKey = ['/api/matches', matchId, 'match-player-handicaps'] as const;
   return useMutation({
+    mutationKey: ['upsertMatchPlayerHandicap', matchId],
     mutationFn: async ({ eventMatchId, playerId, courseHandicap }: { eventMatchId: number; playerId: number; courseHandicap: number }) => {
       const res = await fetch(`/api/event-matches/${eventMatchId}/player-handicaps/${playerId}`, {
         method: 'PUT',
@@ -897,9 +949,55 @@ export function useUpsertMatchPlayerHandicap(matchId: number) {
       }
       return res.json() as Promise<MatchPlayerHandicap>;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/matches', matchId, 'match-player-handicaps'] });
-      queryClient.invalidateQueries({ queryKey: [api.matches.get.path, matchId] });
+    onMutate: async ({ eventMatchId, playerId, courseHandicap }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const prev = queryClient.getQueryData<Map<number, MatchPlayerHandicap[]>>(queryKey);
+      // Snapshot ONLY the cell being edited so concurrent edits to other cells
+      // don't get clobbered if this one fails and rolls back.
+      const prevCell = prev?.get(eventMatchId)?.find((h) => h.playerId === playerId) ?? null;
+      const next = new Map<number, MatchPlayerHandicap[]>(prev ?? new Map());
+      const arr = next.get(eventMatchId) ?? [];
+      const exists = arr.some((h) => h.playerId === playerId);
+      const newArr = exists
+        ? arr.map((h) => (h.playerId === playerId ? { ...h, courseHandicap } : h))
+        : [...arr, { id: -Date.now(), eventMatchId, playerId, courseHandicap }];
+      next.set(eventMatchId, newArr);
+      queryClient.setQueryData(queryKey, next);
+      return { prevCell };
+    },
+    onSuccess: (data) => {
+      // Replace optimistic temp id with the real server row, no refetch needed.
+      const current = queryClient.getQueryData<Map<number, MatchPlayerHandicap[]>>(queryKey);
+      if (!current) return;
+      const merged = new Map<number, MatchPlayerHandicap[]>(current);
+      const arr = merged.get(data.eventMatchId) ?? [];
+      const newArr = arr.some((h) => h.playerId === data.playerId)
+        ? arr.map((h) => (h.playerId === data.playerId ? data : h))
+        : [...arr, data];
+      merged.set(data.eventMatchId, newArr);
+      queryClient.setQueryData(queryKey, merged);
+    },
+    onError: (err, { eventMatchId, playerId }, ctx) => {
+      // Field-scoped rollback: restore only this cell to its prior value.
+      const current = queryClient.getQueryData<Map<number, MatchPlayerHandicap[]>>(queryKey);
+      const merged = new Map<number, MatchPlayerHandicap[]>(current ?? new Map());
+      const arr = merged.get(eventMatchId) ?? [];
+      let newArr: MatchPlayerHandicap[];
+      if (ctx?.prevCell) {
+        newArr = arr.some((h) => h.playerId === playerId)
+          ? arr.map((h) => (h.playerId === playerId ? ctx.prevCell! : h))
+          : [...arr, ctx.prevCell];
+      } else {
+        // No prior override existed — drop our optimistic insert.
+        newArr = arr.filter((h) => h.playerId !== playerId);
+      }
+      merged.set(eventMatchId, newArr);
+      queryClient.setQueryData(queryKey, merged);
+      toast({
+        title: "Couldn't save handicap",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 }
