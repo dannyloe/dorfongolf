@@ -380,6 +380,12 @@ export const api = {
         autoPressNassauFront9: z.boolean().optional(),
         autoPressNassauBack9: z.boolean().optional(),
         autoPressNassauOverall: z.boolean().optional(),
+        autoPressTwoBallFront9: z.boolean().optional(),
+        autoPressTwoBallBack9: z.boolean().optional(),
+        autoPressTwoBallOverall: z.boolean().optional(),
+        autoPressThreeBallFront9: z.boolean().optional(),
+        autoPressThreeBallBack9: z.boolean().optional(),
+        autoPressThreeBallOverall: z.boolean().optional(),
       }),
       responses: {
         200: z.custom<typeof eventMatches.$inferSelect>(),

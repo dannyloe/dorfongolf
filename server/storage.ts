@@ -561,6 +561,12 @@ export class DatabaseStorage implements IStorage {
     autoPressNassauFront9?: boolean;
     autoPressNassauBack9?: boolean;
     autoPressNassauOverall?: boolean;
+    autoPressTwoBallFront9?: boolean;
+    autoPressTwoBallBack9?: boolean;
+    autoPressTwoBallOverall?: boolean;
+    autoPressThreeBallFront9?: boolean;
+    autoPressThreeBallBack9?: boolean;
+    autoPressThreeBallOverall?: boolean;
   }): Promise<EventMatch> {
     const [updated] = await db.update(eventMatches)
       .set(data)

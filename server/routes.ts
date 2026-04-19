@@ -653,6 +653,7 @@ export async function registerRoutes(
       if (eventMatch.parentMatchId) {
         const isMatchPlay = eventMatch.matchType === 'match_play_1_ball' || eventMatch.matchType === 'match_play_2_ball';
         const isNassau = eventMatch.matchType === 'nassau';
+        const isTwoThreeBall = eventMatch.matchType === 'two_three_ball';
         if (input.autoPressAllPresses !== undefined) {
           return res.status(400).json({ message: "autoPressAllPresses cannot be set on a press" });
         }
@@ -667,14 +668,23 @@ export async function registerRoutes(
         ) {
           return res.status(400).json({ message: "This bet type does not support per-press auto-press" });
         }
-        if (isNassau) {
-          // A Nassau press starting on hole 10+ has no Front 9 leg, so reject
-          // toggling that leg's auto-press. (Back 9 and Overall always exist
-          // for any Nassau press startHole 2-18.)
-          const startsOnBack9 = (eventMatch.startHole ?? 1) > 9;
-          if (startsOnBack9 && input.autoPressNassauFront9 !== undefined) {
-            return res.status(400).json({ message: "This press doesn't include the Front 9 leg" });
-          }
+        if (
+          (input.autoPressTwoBallFront9 !== undefined ||
+            input.autoPressTwoBallBack9 !== undefined ||
+            input.autoPressTwoBallOverall !== undefined ||
+            input.autoPressThreeBallFront9 !== undefined ||
+            input.autoPressThreeBallBack9 !== undefined ||
+            input.autoPressThreeBallOverall !== undefined) &&
+          !isTwoThreeBall
+        ) {
+          return res.status(400).json({ message: "This bet type does not support per-press auto-press" });
+        }
+        const startsOnBack9 = (eventMatch.startHole ?? 1) > 9;
+        if (isNassau && startsOnBack9 && input.autoPressNassauFront9 !== undefined) {
+          return res.status(400).json({ message: "This press doesn't include the Front 9 leg" });
+        }
+        if (isTwoThreeBall && startsOnBack9 && (input.autoPressTwoBallFront9 !== undefined || input.autoPressThreeBallFront9 !== undefined)) {
+          return res.status(400).json({ message: "This press doesn't include the Front 9 leg" });
         }
       }
 

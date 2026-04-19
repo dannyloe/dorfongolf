@@ -4472,6 +4472,7 @@ export default function MatchDetail() {
                                       ))}
                                       <th className="p-2 text-center font-semibold bg-muted/30">In</th>
                                       <th className="p-2 text-center font-semibold bg-muted/30">Tot</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30 min-w-[70px]">Auto Press</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -4501,15 +4502,84 @@ export default function MatchDetail() {
                                           })}
                                           <td className="p-2 text-center font-semibold bg-muted/30">{secondNineTotal || '-'}</td>
                                           <td className="p-2 text-center font-bold bg-muted/30">{(firstNineTotal + secondNineTotal) || '-'}</td>
+                                          <td className="p-2 text-center bg-muted/30"></td>
                                         </tr>
                                       );
                                     })}
 
                                     {(() => {
+                                      const renderAutoPressLegToggles = (
+                                        targetMatch: typeof em,
+                                        ballType: 'twoBall' | 'threeBall',
+                                        showFront9: boolean,
+                                        showBack9: boolean,
+                                      ) => {
+                                        const f9Key = ballType === 'twoBall' ? 'autoPressTwoBallFront9' : 'autoPressThreeBallFront9';
+                                        const b9Key = ballType === 'twoBall' ? 'autoPressTwoBallBack9' : 'autoPressThreeBallBack9';
+                                        const ovKey = ballType === 'twoBall' ? 'autoPressTwoBallOverall' : 'autoPressThreeBallOverall';
+                                        const f9Checked = (targetMatch as any)[f9Key] ?? true;
+                                        const b9Checked = (targetMatch as any)[b9Key] ?? true;
+                                        const ovChecked = (targetMatch as any)[ovKey] ?? true;
+                                        const tid = `${ballType}-${targetMatch.id}`;
+                                        return (
+                                          <div className="flex flex-col items-center gap-0.5">
+                                            {showFront9 && (
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-${tid}-f9`}
+                                                  checked={f9Checked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: targetMatch.id,
+                                                      [f9Key]: c === true,
+                                                    } as any);
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-${tid}-f9`}
+                                                />
+                                                <span>F9</span>
+                                              </label>
+                                            )}
+                                            {showBack9 && (
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-${tid}-b9`}
+                                                  checked={b9Checked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: targetMatch.id,
+                                                      [b9Key]: c === true,
+                                                    } as any);
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-${tid}-b9`}
+                                                />
+                                                <span>B9</span>
+                                              </label>
+                                            )}
+                                            <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                              <Checkbox
+                                                id={`autopress-${tid}-ov`}
+                                                checked={ovChecked}
+                                                onCheckedChange={(c) => {
+                                                  updateAutoPress.mutate({
+                                                    eventMatchId: targetMatch.id,
+                                                    [ovKey]: c === true,
+                                                  } as any);
+                                                }}
+                                                disabled={updateAutoPress.isPending}
+                                                data-testid={`checkbox-autopress-${tid}-ov`}
+                                              />
+                                              <span>Ovr</span>
+                                            </label>
+                                          </div>
+                                        );
+                                      };
                                       const renderBallRows = (
                                         label: string,
                                         nassauOverall: HoleResult[],
                                         bandClass: string,
+                                        ballType: 'twoBall' | 'threeBall',
                                       ) => {
                                         const find = (hole: number) => nassauOverall.find(r => r.holeNumber === hole);
                                         const sumA = (holes: number[]) => holes.reduce((sum, h) => sum + (find(h)?.teamAScore || 0), 0);
@@ -4546,7 +4616,7 @@ export default function MatchDetail() {
                                         return (
                                           <>
                                             <tr className="border-t-2 border-border">
-                                              <td colSpan={firstNineHoles.length + secondNineHoles.length + 4} className="p-1"></td>
+                                              <td colSpan={firstNineHoles.length + secondNineHoles.length + 5} className="p-1"></td>
                                             </tr>
                                             <tr className={`border-b border-border/50 ${bandClass}`}>
                                               <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} - {teamA.name}</td>
@@ -4555,6 +4625,7 @@ export default function MatchDetail() {
                                               {secondNineHoles.map((hole) => renderTeamCell(hole, true))}
                                               <td className="p-2 text-center font-semibold bg-muted/30">{aIn || '-'}</td>
                                               <td className="p-2 text-center font-bold bg-muted/30">{(aOut + aIn) || '-'}</td>
+                                              <td className="p-2 text-center bg-muted/30"></td>
                                             </tr>
                                             <tr className={`border-b border-border/50 ${bandClass}`}>
                                               <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} - {teamB.name}</td>
@@ -4563,6 +4634,7 @@ export default function MatchDetail() {
                                               {secondNineHoles.map((hole) => renderTeamCell(hole, false))}
                                               <td className="p-2 text-center font-semibold bg-muted/30">{bIn || '-'}</td>
                                               <td className="p-2 text-center font-bold bg-muted/30">{(bOut + bIn) || '-'}</td>
+                                              <td className="p-2 text-center bg-muted/30"></td>
                                             </tr>
                                             <tr className={bandClass}>
                                               <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} Status</td>
@@ -4571,14 +4643,17 @@ export default function MatchDetail() {
                                               {secondNineHoles.map((hole) => renderStatusCell(hole))}
                                               <td className="p-2 text-center bg-muted/30"></td>
                                               <td className="p-2 text-center bg-muted/30"></td>
+                                              <td className="p-2 text-center align-middle">
+                                                {renderAutoPressLegToggles(em, ballType, true, true)}
+                                              </td>
                                             </tr>
                                           </>
                                         );
                                       };
                                       return (
                                         <>
-                                          {renderBallRows('2 Ball', ttbResults.twoBall.overall, 'bg-blue-50/50 dark:bg-blue-950/30')}
-                                          {renderBallRows('3rd Ball', ttbResults.threeBall.overall, 'bg-orange-50/50 dark:bg-orange-950/30')}
+                                          {renderBallRows('2 Ball', ttbResults.twoBall.overall, 'bg-blue-50/50 dark:bg-blue-950/30', 'twoBall')}
+                                          {renderBallRows('3rd Ball', ttbResults.threeBall.overall, 'bg-orange-50/50 dark:bg-orange-950/30', 'threeBall')}
                                         </>
                                       );
                                     })()}
@@ -4629,6 +4704,9 @@ export default function MatchDetail() {
                                             {secondNineHoles.map((h) => renderDiffCell(h, pressTwoBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center align-middle">
+                                              {renderAutoPressLegToggles(pm, 'twoBall', pressStartHole <= 9, pressStartHole > 9)}
+                                            </td>
                                           </tr>
                                           <tr className="bg-orange-50/40 dark:bg-orange-950/20" data-testid={`row-press-3rdball-${pm.id}`}>
                                             <td className="p-2 pl-3 sticky left-0 bg-orange-50/40 dark:bg-orange-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
@@ -4639,6 +4717,9 @@ export default function MatchDetail() {
                                             {secondNineHoles.map((h) => renderDiffCell(h, pressThreeBallResults))}
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center align-middle">
+                                              {renderAutoPressLegToggles(pm, 'threeBall', pressStartHole <= 9, pressStartHole > 9 || pressStartHole <= 9)}
+                                            </td>
                                           </tr>
                                         </Fragment>
                                       );
@@ -5267,43 +5348,69 @@ export default function MatchDetail() {
                                     {hasAutoPressCol && (
                                       <td className="p-2 text-center">
                                         {(() => {
-                                          let pressKey:
-                                            | 'autoPressOriginal'
-                                            | 'autoPressNassauFront9'
-                                            | 'autoPressNassauBack9'
-                                            | null = null;
-                                          let checked = true;
                                           if (pm.matchType === 'nassau') {
-                                            if ((pm.startHole ?? 1) > 9) {
-                                              pressKey = 'autoPressNassauBack9';
-                                              checked = pm.autoPressNassauBack9 ?? true;
-                                            } else {
-                                              pressKey = 'autoPressNassauFront9';
-                                              checked = pm.autoPressNassauFront9 ?? true;
-                                            }
-                                          } else if (
+                                            const startsOnBack9 = (pm.startHole ?? 1) > 9;
+                                            const legKey = startsOnBack9 ? 'autoPressNassauBack9' : 'autoPressNassauFront9';
+                                            const legChecked = startsOnBack9
+                                              ? (pm.autoPressNassauBack9 ?? true)
+                                              : (pm.autoPressNassauFront9 ?? true);
+                                            const legLabel = startsOnBack9 ? 'B9' : 'F9';
+                                            const overallChecked = pm.autoPressNassauOverall ?? true;
+                                            return (
+                                              <div className="flex flex-col items-center gap-1">
+                                                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                  <Checkbox
+                                                    id={`autopress-press-${pm.id}-leg`}
+                                                    checked={legChecked}
+                                                    onCheckedChange={(c) => {
+                                                      updateAutoPress.mutate({
+                                                        eventMatchId: pm.id,
+                                                        [legKey]: c === true,
+                                                      });
+                                                    }}
+                                                    disabled={updateAutoPress.isPending}
+                                                    data-testid={`checkbox-autopress-press-${pm.id}-leg`}
+                                                  />
+                                                  <span>{legLabel}</span>
+                                                </label>
+                                                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                  <Checkbox
+                                                    id={`autopress-press-${pm.id}-overall`}
+                                                    checked={overallChecked}
+                                                    onCheckedChange={(c) => {
+                                                      updateAutoPress.mutate({
+                                                        eventMatchId: pm.id,
+                                                        autoPressNassauOverall: c === true,
+                                                      });
+                                                    }}
+                                                    disabled={updateAutoPress.isPending}
+                                                    data-testid={`checkbox-autopress-press-${pm.id}-overall`}
+                                                  />
+                                                  <span>Ovr</span>
+                                                </label>
+                                              </div>
+                                            );
+                                          }
+                                          if (
                                             pm.matchType === 'match_play_1_ball' ||
                                             pm.matchType === 'match_play_2_ball'
                                           ) {
-                                            pressKey = 'autoPressOriginal';
-                                            checked = pm.autoPressOriginal ?? true;
+                                            return (
+                                              <Checkbox
+                                                id={`autopress-press-${pm.id}`}
+                                                checked={pm.autoPressOriginal ?? true}
+                                                onCheckedChange={(c) => {
+                                                  updateAutoPress.mutate({
+                                                    eventMatchId: pm.id,
+                                                    autoPressOriginal: c === true,
+                                                  });
+                                                }}
+                                                disabled={updateAutoPress.isPending}
+                                                data-testid={`checkbox-autopress-press-${pm.id}`}
+                                              />
+                                            );
                                           }
-                                          if (!pressKey) return null;
-                                          const key = pressKey;
-                                          return (
-                                            <Checkbox
-                                              id={`autopress-press-${pm.id}`}
-                                              checked={checked}
-                                              onCheckedChange={(c) => {
-                                                updateAutoPress.mutate({
-                                                  eventMatchId: pm.id,
-                                                  [key]: c === true,
-                                                });
-                                              }}
-                                              disabled={updateAutoPress.isPending}
-                                              data-testid={`checkbox-autopress-press-${pm.id}`}
-                                            />
-                                          );
+                                          return null;
                                         })()}
                                       </td>
                                     )}
