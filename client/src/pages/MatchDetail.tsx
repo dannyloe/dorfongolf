@@ -1139,6 +1139,18 @@ export default function MatchDetail() {
 
   // Generate all 2-player combinations from selected players
   // If keyedIds is provided and non-empty, only generate teams that include at least one keyed player
+  const setRoundRobinEnabled = (on: boolean) => {
+    setIsRoundRobinMode(on);
+    if (on) {
+      setRoundRobinMatchType(selectedMatchType as MatchType);
+      setRoundRobinStep('select');
+    }
+    setRoundRobinGroupAIds([]);
+    setRoundRobinGroupBIds([]);
+    setRoundRobinKeyedAIds([]);
+    setRoundRobinKeyedBIds([]);
+  };
+
   const generateTwoPlayerTeams = (playerIds: number[], keyedIds: number[] = []): [number, number][] => {
     const teams: [number, number][] = [];
     for (let i = 0; i < playerIds.length; i++) {
@@ -2246,22 +2258,14 @@ export default function MatchDetail() {
             {/* Round Robin Wizard */}
             {isRoundRobinMode ? (
               <div className="space-y-4">
-                {roundRobinStep === 'select' ? (
-                  <>
+                {(() => {
+                  const rrToggleRow = (
                     <div className="grid grid-cols-2 gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={true}
-                          onChange={(e) => {
-                            if (!e.target.checked) {
-                              setIsRoundRobinMode(false);
-                              setRoundRobinGroupAIds([]);
-                              setRoundRobinGroupBIds([]);
-                              setRoundRobinKeyedAIds([]);
-                              setRoundRobinKeyedBIds([]);
-                            }
-                          }}
+                          checked={isRoundRobinMode}
+                          onChange={(e) => setRoundRobinEnabled(e.target.checked)}
                           className="w-4 h-4 rounded border-border"
                           data-testid="checkbox-round-robin-on"
                         />
@@ -2282,6 +2286,10 @@ export default function MatchDetail() {
                         />
                       </div>
                     </div>
+                  );
+                  return roundRobinStep === 'select' ? (
+                  <>
+                    {rrToggleRow}
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -2431,6 +2439,8 @@ export default function MatchDetail() {
                   </>
                 ) : (
                   <>
+                    {rrToggleRow}
+
                     <div className="max-h-64 overflow-y-auto space-y-2">
                       {generateRoundRobinMatches(roundRobinGroupAIds, roundRobinGroupBIds, roundRobinKeyedAIds, roundRobinKeyedBIds).map((match, idx) => {
                         const teamAName = match.teamA.map(id => getPlayerNameById(id)).join('/');
@@ -2471,7 +2481,8 @@ export default function MatchDetail() {
                       </Button>
                     </div>
                   </>
-                )}
+                  );
+                })()}
               </div>
             ) : (
             <div className="space-y-4">
@@ -2570,18 +2581,8 @@ export default function MatchDetail() {
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={false}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setIsRoundRobinMode(true);
-                          setRoundRobinMatchType(selectedMatchType);
-                          setRoundRobinGroupAIds([]);
-                          setRoundRobinGroupBIds([]);
-                          setRoundRobinKeyedAIds([]);
-                          setRoundRobinKeyedBIds([]);
-                          setRoundRobinStep('select');
-                        }
-                      }}
+                      checked={isRoundRobinMode}
+                      onChange={(e) => setRoundRobinEnabled(e.target.checked)}
                       className="w-4 h-4 rounded border-border"
                       data-testid="checkbox-round-robin"
                     />
