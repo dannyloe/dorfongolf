@@ -20,6 +20,52 @@ import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, WIZARD_TYPES, type M
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
+type BetAmountInputProps = Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "value" | "onChange" | "type"
+> & {
+  value: number;
+  onChange: (next: number) => void;
+};
+
+function BetAmountInput({ value, onChange, onFocus, onBlur, ...rest }: BetAmountInputProps) {
+  const [raw, setRaw] = useState<string>(() => String(value));
+  const [focused, setFocused] = useState(false);
+
+  // While the field is not being edited, mirror the parent value exactly.
+  // This means external updates (defaults, voice match, DB load, fan-out from
+  // base bet, etc.) are always reflected when the user isn't typing.
+  useEffect(() => {
+    if (!focused) {
+      setRaw(String(value));
+    }
+  }, [value, focused]);
+
+  return (
+    <Input
+      {...rest}
+      type="number"
+      value={raw}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        // Normalize display to the saved numeric value when the user leaves the field.
+        setRaw(String(value));
+        onBlur?.(e);
+      }}
+      onChange={(e) => {
+        const r = e.target.value;
+        setRaw(r);
+        const n = parseFloat(r);
+        onChange(Number.isFinite(n) ? n : 0);
+      }}
+    />
+  );
+}
+
 interface Player {
   id: number;
   matchId: number;
@@ -2185,13 +2231,12 @@ export default function MatchDetail() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="text-sm font-medium text-muted-foreground">Wager ($ per player per match)</label>
-                        <Input
-                          type="number"
+                        <BetAmountInput
                           min="0"
                           step="1"
                           placeholder="20"
                           value={unitAmount}
-                          onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
+                          onChange={setUnitAmount}
                           className="mt-1"
                           data-testid="input-rr-unit-amount"
                         />
@@ -2443,13 +2488,12 @@ export default function MatchDetail() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
-                  <Input
-                    type="number"
+                  <BetAmountInput
                     min="0"
                     step="1"
                     placeholder="5"
                     value={unitAmount}
-                    onChange={(e) => setUnitAmount(parseFloat(e.target.value) || 0)}
+                    onChange={setUnitAmount}
                     className="mt-1"
                     data-testid="input-unit-amount"
                   />
@@ -2636,15 +2680,11 @@ export default function MatchDetail() {
                   <div className="space-y-3">
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">Base Bet ($)</label>
-                      <Input
-                        type="number"
+                      <BetAmountInput
                         min="1"
                         step="1"
                         value={deathMatchBaseBet}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          updateDeathMatchDefaults(val);
-                        }}
+                        onChange={(val) => updateDeathMatchDefaults(val)}
                         className="mt-1"
                         data-testid="input-death-match-base-bet"
                       />
@@ -2654,24 +2694,22 @@ export default function MatchDetail() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-muted-foreground">Best Ball Bet ($)</label>
-                        <Input
-                          type="number"
+                        <BetAmountInput
                           min="0"
                           step="1"
                           value={deathMatchBestBallBet}
-                          onChange={(e) => setDeathMatchBestBallBet(parseFloat(e.target.value) || 0)}
+                          onChange={setDeathMatchBestBallBet}
                           className="mt-1 h-8 text-sm"
                           data-testid="input-death-match-best-ball-bet"
                         />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-muted-foreground">2nd Ball Bet ($)</label>
-                        <Input
-                          type="number"
+                        <BetAmountInput
                           min="0"
                           step="1"
                           value={deathMatchSecondBallBet}
-                          onChange={(e) => setDeathMatchSecondBallBet(parseFloat(e.target.value) || 0)}
+                          onChange={setDeathMatchSecondBallBet}
                           className="mt-1 h-8 text-sm"
                           data-testid="input-death-match-second-ball-bet"
                         />
@@ -2681,36 +2719,33 @@ export default function MatchDetail() {
                     <div className="grid grid-cols-3 gap-3">
                       <div>
                         <label className="text-xs font-medium text-muted-foreground">1st Press ($)</label>
-                        <Input
-                          type="number"
+                        <BetAmountInput
                           min="0"
                           step="5"
                           value={deathMatchFirstPressBet}
-                          onChange={(e) => setDeathMatchFirstPressBet(parseFloat(e.target.value) || 0)}
+                          onChange={setDeathMatchFirstPressBet}
                           className="mt-1 h-8 text-sm"
                           data-testid="input-death-match-first-press"
                         />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-muted-foreground">Add'l Press ($)</label>
-                        <Input
-                          type="number"
+                        <BetAmountInput
                           min="0"
                           step="5"
                           value={deathMatchSubsequentPressBet}
-                          onChange={(e) => setDeathMatchSubsequentPressBet(parseFloat(e.target.value) || 0)}
+                          onChange={setDeathMatchSubsequentPressBet}
                           className="mt-1 h-8 text-sm"
                           data-testid="input-death-match-subsequent-press"
                         />
                       </div>
                       <div>
                         <label className="text-xs font-medium text-muted-foreground">2nd Ball Press ($)</label>
-                        <Input
-                          type="number"
+                        <BetAmountInput
                           min="0"
                           step="5"
                           value={deathMatchSecondBallPressBet}
-                          onChange={(e) => setDeathMatchSecondBallPressBet(parseFloat(e.target.value) || 0)}
+                          onChange={setDeathMatchSecondBallPressBet}
                           className="mt-1 h-8 text-sm"
                           data-testid="input-death-match-second-ball-press"
                         />
@@ -2820,24 +2855,22 @@ export default function MatchDetail() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs font-medium text-muted-foreground">2 Ball Bet ($)</label>
-                      <Input
-                        type="number"
+                      <BetAmountInput
                         min="0"
                         step="1"
                         value={twoBallBet}
-                        onChange={(e) => setTwoBallBet(parseFloat(e.target.value) || 0)}
+                        onChange={setTwoBallBet}
                         className="mt-1 h-8 text-sm"
                         data-testid="input-two-ball-bet"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-medium text-muted-foreground">3rd Ball Bet ($)</label>
-                      <Input
-                        type="number"
+                      <BetAmountInput
                         min="0"
                         step="1"
                         value={threeBallBet}
-                        onChange={(e) => setThreeBallBet(parseFloat(e.target.value) || 0)}
+                        onChange={setThreeBallBet}
                         className="mt-1 h-8 text-sm"
                         data-testid="input-three-ball-bet"
                       />
