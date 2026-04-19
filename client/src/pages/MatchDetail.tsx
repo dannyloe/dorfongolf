@@ -341,6 +341,18 @@ export default function MatchDetail() {
   const [editingMatchCourseHcp, setEditingMatchCourseHcp] = useState<{eventMatchId: number; playerId: number} | null>(null);
   const [matchCourseHcpEditValue, setMatchCourseHcpEditValue] = useState("");
   const [pressDialogMatch, setPressDialogMatch] = useState<number | null>(null);
+  const [expandedBreakdownIds, setExpandedBreakdownIds] = useState<Set<number>>(new Set());
+  const toggleBreakdown = (matchId: number) => {
+    setExpandedBreakdownIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(matchId)) {
+        next.delete(matchId);
+      } else {
+        next.add(matchId);
+      }
+      return next;
+    });
+  };
   const [pressStartHole, setPressStartHole] = useState<number>(2);
   const [pressCustomName, setPressCustomName] = useState<string>("");
   // Tracks which press is currently being inline-renamed and the working text.
@@ -5462,6 +5474,8 @@ export default function MatchDetail() {
                           // Build netContext for consistent calculation with ledger
                           const wagerNetContext = em.useNetScoring ? buildMatchNetContext(emWithCorrectBack9) : null;
                           const combined = calculateCombinedMatchSettlements(emWithCorrectBack9, pressMatchesWithCorrectBack9, scores, wagerNetContext);
+                          const isBreakdownExpanded = expandedBreakdownIds.has(em.id);
+                          const lineItems = combined.lineItems ?? [];
                           return (
                             <div className="pt-3 border-t border-border">
                               <div className="flex items-center justify-between mb-2">
@@ -5471,13 +5485,112 @@ export default function MatchDetail() {
                                     ({combined.totalMatches} {combined.totalMatches === 1 ? 'match' : 'matches'} - ${combined.totalPot.toFixed(2)} total pot)
                                   </span>
                                 </h5>
-                                {combined.completedCount > 0 && (
-                                  <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                                    {combined.completedCount}/{combined.totalMatches} complete
-                                  </span>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  {combined.completedCount > 0 && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                      {combined.completedCount}/{combined.totalMatches} complete
+                                    </span>
+                                  )}
+                                  {lineItems.length > 0 && (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 px-2 text-xs"
+                                      onClick={() => toggleBreakdown(em.id)}
+                                      aria-expanded={isBreakdownExpanded}
+                                      data-testid={`button-toggle-breakdown-${em.id}`}
+                                    >
+                                      {isBreakdownExpanded ? (
+                                        <ChevronUp className="w-3.5 h-3.5 mr-1" />
+                                      ) : (
+                                        <ChevronDown className="w-3.5 h-3.5 mr-1" />
+                                      )}
+                                      {isBreakdownExpanded ? 'Hide breakdown' : 'Show breakdown'}
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
-                              
+
+                              {isBreakdownExpanded && lineItems.length > 0 && (
+                                <div
+                                  className="mb-3 rounded-lg border border-border overflow-hidden"
+                                  data-testid={`wager-breakdown-${em.id}`}
+                                >
+                                  <div className="px-3 py-1.5 bg-muted/40 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                                    Bet-by-bet breakdown
+                                  </div>
+                                  <ul className="divide-y divide-border">
+                                    {lineItems.map((li) => {
+                                      const baseLabel = li.isPress
+                                        ? `${li.pressLabel}${li.betName && li.betName !== 'Match Play' ? ` · ${li.betName}` : ''}`
+                                        : li.betName;
+                                      const multiplierBadge = li.autoPressNullified
+                                        ? 'Auto-press nullified'
+                                        : li.autoPressTriggered && li.autoPressMultiplier === 2
+                                        ? 'Auto Press 2×'
+                                        : li.autoPressTriggered && li.autoPressMultiplier === 1
+                                        ? 'Auto Press 1× (no double)'
+                                        : null;
+                                      return (
+                                        <li
+                                          key={li.key}
+                                          className="px-3 py-2 text-xs space-y-1"
+                                          data-testid={`wager-breakdown-row-${li.key}`}
+                                        >
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <span className="font-semibold text-foreground truncate">{baseLabel}</span>
+                                              {multiplierBadge && (
+                                                <span
+                                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                                    li.autoPressNullified
+                                                      ? 'bg-destructive/10 text-destructive'
+                                                      : li.autoPressMultiplier === 2
+                                                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                                      : 'bg-muted text-muted-foreground'
+                                                  }`}
+                                                  data-testid={`badge-autopress-${li.key}`}
+                                                >
+                                                  {multiplierBadge}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                                              <span>
+                                                Base ${li.baseWager.toFixed(2)}
+                                              </span>
+                                              <span>
+                                                Pot <span className="font-semibold text-foreground">${li.finalPot.toFixed(2)}</span>
+                                              </span>
+                                              <span
+                                                className={
+                                                  li.isComplete
+                                                    ? li.winnerLabel.includes('wins')
+                                                      ? 'text-primary font-medium'
+                                                      : ''
+                                                    : 'italic'
+                                                }
+                                              >
+                                                {li.winnerLabel}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          {li.autoPressReason && (
+                                            <p
+                                              className="text-[11px] text-muted-foreground"
+                                              data-testid={`text-autopress-reason-${li.key}`}
+                                            >
+                                              {li.autoPressReason}
+                                            </p>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                </div>
+                              )}
+
                               {combined.completedCount === 0 ? (
                                 <p className="text-xs text-muted-foreground">Matches in progress</p>
                               ) : (
