@@ -4730,7 +4730,7 @@ export default function MatchDetail() {
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center align-middle">
-                                              {renderAutoPressLegToggles(pm, 'threeBall', pressStartHole <= 9, pressStartHole > 9 || pressStartHole <= 9)}
+                                              {renderAutoPressLegToggles(pm, 'threeBall', pressStartHole <= 9, pressStartHole > 9)}
                                             </td>
                                           </tr>
                                         </Fragment>
