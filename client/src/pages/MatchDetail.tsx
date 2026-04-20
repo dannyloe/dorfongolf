@@ -4525,6 +4525,7 @@ export default function MatchDetail() {
                                         ballType: 'twoBall' | 'threeBall',
                                         showFront9: boolean,
                                         showBack9: boolean,
+                                        showOverall: boolean,
                                       ) => {
                                         const f9Key = ballType === 'twoBall' ? 'autoPressTwoBallFront9' : 'autoPressThreeBallFront9';
                                         const b9Key = ballType === 'twoBall' ? 'autoPressTwoBallBack9' : 'autoPressThreeBallBack9';
@@ -4569,21 +4570,23 @@ export default function MatchDetail() {
                                                 <span>B9</span>
                                               </label>
                                             )}
-                                            <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                              <Checkbox
-                                                id={`autopress-${tid}-ov`}
-                                                checked={ovChecked}
-                                                onCheckedChange={(c) => {
-                                                  updateAutoPress.mutate({
-                                                    eventMatchId: targetMatch.id,
-                                                    [ovKey]: c === true,
-                                                  } as any);
-                                                }}
-                                                disabled={updateAutoPress.isPending}
-                                                data-testid={`checkbox-autopress-${tid}-ov`}
-                                              />
-                                              <span>Ovr</span>
-                                            </label>
+                                            {showOverall && (
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-${tid}-ov`}
+                                                  checked={ovChecked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: targetMatch.id,
+                                                      [ovKey]: c === true,
+                                                    } as any);
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-${tid}-ov`}
+                                                />
+                                                <span>Ovr</span>
+                                              </label>
+                                            )}
                                           </div>
                                         );
                                       };
@@ -4656,7 +4659,7 @@ export default function MatchDetail() {
                                               <td className="p-2 text-center bg-muted/30"></td>
                                               <td className="p-2 text-center bg-muted/30"></td>
                                               <td className="p-2 text-center align-middle">
-                                                {renderAutoPressLegToggles(em, ballType, true, true)}
+                                                {renderAutoPressLegToggles(em, ballType, true, true, true)}
                                               </td>
                                             </tr>
                                           </>
@@ -4717,7 +4720,7 @@ export default function MatchDetail() {
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center align-middle">
-                                              {renderAutoPressLegToggles(pm, 'twoBall', pressStartHole <= 9, pressStartHole > 9)}
+                                              {renderAutoPressLegToggles(pm, 'twoBall', pressStartHole <= 9, pressStartHole > 9, false)}
                                             </td>
                                           </tr>
                                           <tr className="bg-orange-50/40 dark:bg-orange-950/20" data-testid={`row-press-3rdball-${pm.id}`}>
@@ -4730,7 +4733,7 @@ export default function MatchDetail() {
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center align-middle">
-                                              {renderAutoPressLegToggles(pm, 'threeBall', pressStartHole <= 9, pressStartHole > 9)}
+                                              {renderAutoPressLegToggles(pm, 'threeBall', pressStartHole <= 9, pressStartHole > 9, false)}
                                             </td>
                                           </tr>
                                         </Fragment>
@@ -5367,40 +5370,22 @@ export default function MatchDetail() {
                                               ? (pm.autoPressNassauBack9 ?? true)
                                               : (pm.autoPressNassauFront9 ?? true);
                                             const legLabel = startsOnBack9 ? 'B9' : 'F9';
-                                            const overallChecked = pm.autoPressNassauOverall ?? true;
                                             return (
-                                              <div className="flex flex-col items-center gap-1">
-                                                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                  <Checkbox
-                                                    id={`autopress-press-${pm.id}-leg`}
-                                                    checked={legChecked}
-                                                    onCheckedChange={(c) => {
-                                                      updateAutoPress.mutate({
-                                                        eventMatchId: pm.id,
-                                                        [legKey]: c === true,
-                                                      });
-                                                    }}
-                                                    disabled={updateAutoPress.isPending}
-                                                    data-testid={`checkbox-autopress-press-${pm.id}-leg`}
-                                                  />
-                                                  <span>{legLabel}</span>
-                                                </label>
-                                                <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                  <Checkbox
-                                                    id={`autopress-press-${pm.id}-overall`}
-                                                    checked={overallChecked}
-                                                    onCheckedChange={(c) => {
-                                                      updateAutoPress.mutate({
-                                                        eventMatchId: pm.id,
-                                                        autoPressNassauOverall: c === true,
-                                                      });
-                                                    }}
-                                                    disabled={updateAutoPress.isPending}
-                                                    data-testid={`checkbox-autopress-press-${pm.id}-overall`}
-                                                  />
-                                                  <span>Ovr</span>
-                                                </label>
-                                              </div>
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-press-${pm.id}-leg`}
+                                                  checked={legChecked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: pm.id,
+                                                      [legKey]: c === true,
+                                                    });
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-press-${pm.id}-leg`}
+                                                />
+                                                <span>{legLabel}</span>
+                                              </label>
                                             );
                                           }
                                           if (
