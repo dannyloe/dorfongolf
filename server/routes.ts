@@ -2144,9 +2144,39 @@ Rules:
 
       const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-      let parsed: any;
+      // Loose schema for what Gemini might return. We validate with zod so
+      // the rest of the pipeline operates on a typed value rather than `any`.
+      const geminiHoleSchema = z
+        .object({
+          holeNumber: z.union([z.number(), z.string()]).optional(),
+          strokes: z.union([z.number(), z.string(), z.null()]).optional(),
+          confidence: z.enum(['high', 'medium', 'low']).optional(),
+          status: z.string().optional(),
+          annotation: z.string().optional(),
+          result: z.string().optional(),
+          note: z.string().optional(),
+          mark: z.string().optional(),
+          symbol: z.string().optional(),
+        })
+        .passthrough();
+      const geminiPlayerSchema = z
+        .object({
+          playerName: z.string().optional(),
+          holes: z.array(geminiHoleSchema).optional(),
+        })
+        .passthrough();
+      const geminiResponseSchema = z
+        .object({
+          scores: z.array(geminiPlayerSchema).optional(),
+          rawText: z.string().optional(),
+        })
+        .passthrough();
+      type GeminiHole = z.infer<typeof geminiHoleSchema>;
+      type GeminiPlayer = z.infer<typeof geminiPlayerSchema>;
+
+      let parsed: z.infer<typeof geminiResponseSchema>;
       try {
-        parsed = JSON.parse(text);
+        parsed = geminiResponseSchema.parse(JSON.parse(text));
       } catch {
         return res.status(400).json({
           message: "Could not parse scorecard. Please try with a clearer image.",
@@ -2168,22 +2198,25 @@ Rules:
         if (/\b(PICK(ED)?\s*UP|DID\s*NOT\s*FINISH|NO\s*RETURN|WITHDR(AW|EW)|SCRATCH)\b/.test(t)) return true;
         return false;
       };
-      const normalizeHole = (h: any) => {
-        const holeNumber = typeof h?.holeNumber === 'number'
+
+      interface NormalizedHole {
+        holeNumber: number;
+        strokes: number | null;
+        confidence?: 'high' | 'medium' | 'low';
+      }
+      const normalizeHole = (h: GeminiHole): NormalizedHole => {
+        const holeNumber = typeof h.holeNumber === 'number'
           ? h.holeNumber
-          : parseInt(String(h?.holeNumber ?? ''), 10);
+          : parseInt(String(h.holeNumber ?? ''), 10);
         let strokes: number | null = null;
-        let confidence: 'high' | 'medium' | 'low' | undefined =
-          h?.confidence === 'high' || h?.confidence === 'medium' || h?.confidence === 'low'
-            ? h.confidence
-            : undefined;
+        let confidence: 'high' | 'medium' | 'low' | undefined = h.confidence;
 
         // Pickup/X/DNF can land in any of several auxiliary fields the model
         // might emit alongside (or instead of) `strokes`.
-        const auxFields = [h?.status, h?.annotation, h?.result, h?.note, h?.mark, h?.symbol];
+        const auxFields: Array<unknown> = [h.status, h.annotation, h.result, h.note, h.mark, h.symbol];
         const auxIsPickup = auxFields.some(isPickupMarker);
 
-        const raw = h?.strokes;
+        const raw = h.strokes;
         if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
           strokes = Math.round(raw);
         } else if (typeof raw === 'string') {
@@ -2209,21 +2242,17 @@ Rules:
         return { holeNumber, strokes, confidence };
       };
 
-      const scores = Array.isArray(parsed?.scores)
-        ? parsed.scores.map((p: any) => ({
-            playerName: String(p?.playerName ?? ''),
-            holes: Array.isArray(p?.holes)
-              ? p.holes
-                  .map(normalizeHole)
-                  .filter((h: any) => Number.isFinite(h.holeNumber) && h.holeNumber >= 1 && h.holeNumber <= 18)
-              : [],
-          }))
-        : [];
+      const scores = (parsed.scores ?? []).map((p: GeminiPlayer) => ({
+        playerName: String(p.playerName ?? ''),
+        holes: (p.holes ?? [])
+          .map(normalizeHole)
+          .filter((h: NormalizedHole) => Number.isFinite(h.holeNumber) && h.holeNumber >= 1 && h.holeNumber <= 18),
+      }));
 
       res.json({
         success: true,
         scores,
-        rawText: typeof parsed?.rawText === 'string' ? parsed.rawText : '',
+        rawText: parsed.rawText ?? '',
       });
     } catch (err) {
       console.error("Scorecard scan error:", err);
