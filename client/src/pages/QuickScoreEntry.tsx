@@ -371,9 +371,11 @@ export default function QuickScoreEntry() {
   const holePar = getHolePar(currentHole);
 
   // Downscale + recompress the chosen image in the browser before upload so we
-  // don't ship a 4-6 MB base64 blob over the wire. Targets ~1600 px on the
-  // long edge as JPEG q=0.82, which keeps scorecards plenty legible to Gemini
-  // while typically dropping payload size by 5-10x.
+  // never ship a multi-MB blob over the wire. Targets ~1600 px on the long
+  // edge as JPEG q=0.82, which keeps scorecards plenty legible to Gemini
+  // while typically dropping payload size by 5-10x. If compression cannot
+  // produce a JPEG we throw so the caller can surface a clear error to the
+  // user rather than silently uploading the raw photo.
   const compressImage = async (file: File, maxEdge = 1600, quality = 0.82): Promise<string> => {
     const dataUrl: string = await new Promise((resolve, reject) => {
       const r = new FileReader();
@@ -381,29 +383,29 @@ export default function QuickScoreEntry() {
       r.onloadend = () => resolve(r.result as string);
       r.readAsDataURL(file);
     });
-    try {
-      const img: HTMLImageElement = await new Promise((resolve, reject) => {
-        const i = new Image();
-        i.onload = () => resolve(i);
-        i.onerror = () => reject(new Error('Failed to decode image'));
-        i.src = dataUrl;
-      });
-      const longEdge = Math.max(img.width, img.height);
-      const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return dataUrl;
-      ctx.drawImage(img, 0, 0, w, h);
-      const out = canvas.toDataURL('image/jpeg', quality);
-      // Only use the compressed version if it's actually smaller.
-      return out.length < dataUrl.length ? out : dataUrl;
-    } catch {
-      return dataUrl;
+    const img: HTMLImageElement = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("Couldn't decode that image. Try a different photo."));
+      i.src = dataUrl;
+    });
+    const longEdge = Math.max(img.width, img.height);
+    const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error("Your browser couldn't prepare the image for upload.");
     }
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = canvas.toDataURL('image/jpeg', quality);
+    if (!out || !out.startsWith('data:image/jpeg')) {
+      throw new Error("Your browser couldn't prepare the image for upload.");
+    }
+    return out;
   };
 
   const runScan = async (file: File) => {

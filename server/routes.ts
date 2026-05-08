@@ -2148,20 +2148,9 @@ Rules:
       try {
         parsed = JSON.parse(text);
       } catch {
-        // Last-resort fallback for non-conforming responses
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          return res.status(400).json({
-            message: "Could not parse scorecard. Please try with a clearer image.",
-          });
-        }
-        try {
-          parsed = JSON.parse(jsonMatch[0]);
-        } catch {
-          return res.status(400).json({
-            message: "Could not parse scorecard. Please try with a clearer image.",
-          });
-        }
+        return res.status(400).json({
+          message: "Could not parse scorecard. Please try with a clearer image.",
+        });
       }
 
       // Normalize strokes: coerce numeric strings to numbers, treat "X"/pickup
@@ -2170,6 +2159,15 @@ Rules:
         'X', 'X-OUT', 'XOUT', 'PICKUP', 'PICK UP', 'PICKED UP',
         'NF', 'DNF', 'NR', 'WD',
       ]);
+      const isPickupMarker = (v: unknown): boolean => {
+        if (typeof v !== 'string') return false;
+        const t = v.trim().toUpperCase();
+        if (!t) return false;
+        if (PICKUP_MARKERS.has(t)) return true;
+        // Tolerate phrasing like "picked up", "did not finish", "no return".
+        if (/\b(PICK(ED)?\s*UP|DID\s*NOT\s*FINISH|NO\s*RETURN|WITHDR(AW|EW)|SCRATCH)\b/.test(t)) return true;
+        return false;
+      };
       const normalizeHole = (h: any) => {
         const holeNumber = typeof h?.holeNumber === 'number'
           ? h.holeNumber
@@ -2179,6 +2177,12 @@ Rules:
           h?.confidence === 'high' || h?.confidence === 'medium' || h?.confidence === 'low'
             ? h.confidence
             : undefined;
+
+        // Pickup/X/DNF can land in any of several auxiliary fields the model
+        // might emit alongside (or instead of) `strokes`.
+        const auxFields = [h?.status, h?.annotation, h?.result, h?.note, h?.mark, h?.symbol];
+        const auxIsPickup = auxFields.some(isPickupMarker);
+
         const raw = h?.strokes;
         if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
           strokes = Math.round(raw);
@@ -2186,7 +2190,7 @@ Rules:
           const trimmed = raw.trim();
           if (trimmed === '' || trimmed === '-' || trimmed.toLowerCase() === 'null') {
             strokes = null;
-          } else if (PICKUP_MARKERS.has(trimmed.toUpperCase())) {
+          } else if (isPickupMarker(trimmed)) {
             strokes = 8;
             confidence = 'low';
           } else {
@@ -2194,6 +2198,13 @@ Rules:
             strokes = Number.isFinite(n) && n > 0 ? n : null;
           }
         }
+
+        // Auxiliary pickup marker overrides a missing/blank stroke value.
+        if (auxIsPickup && strokes === null) {
+          strokes = 8;
+          confidence = 'low';
+        }
+
         return { holeNumber, strokes, confidence };
       };
 
