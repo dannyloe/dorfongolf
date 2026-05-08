@@ -172,6 +172,9 @@ export default function QuickScoreEntry() {
   const [editableScores, setEditableScores] = useState<Record<string, Record<number, string>>>({});
   const [playerMappings, setPlayerMappings] = useState<Record<string, number | null>>({});
   const [suggestedPresets, setSuggestedPresets] = useState<Record<string, string | null>>({});
+  const [scanInProgress, setScanInProgress] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const lastScanFileRef = useRef<File | null>(null);
   
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -367,73 +370,108 @@ export default function QuickScoreEntry() {
   const allPlayersHaveScore = visiblePlayers.every(p => getScore(p.id, currentHole) !== null);
   const holePar = getHolePar(currentHole);
 
+  // Downscale + recompress the chosen image in the browser before upload so we
+  // don't ship a 4-6 MB base64 blob over the wire. Targets ~1600 px on the
+  // long edge as JPEG q=0.82, which keeps scorecards plenty legible to Gemini
+  // while typically dropping payload size by 5-10x.
+  const compressImage = async (file: File, maxEdge = 1600, quality = 0.82): Promise<string> => {
+    const dataUrl: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onerror = () => reject(new Error('Failed to read image'));
+      r.onloadend = () => resolve(r.result as string);
+      r.readAsDataURL(file);
+    });
+    try {
+      const img: HTMLImageElement = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject(new Error('Failed to decode image'));
+        i.src = dataUrl;
+      });
+      const longEdge = Math.max(img.width, img.height);
+      const scale = longEdge > maxEdge ? maxEdge / longEdge : 1;
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return dataUrl;
+      ctx.drawImage(img, 0, 0, w, h);
+      const out = canvas.toDataURL('image/jpeg', quality);
+      // Only use the compressed version if it's actually smaller.
+      return out.length < dataUrl.length ? out : dataUrl;
+    } catch {
+      return dataUrl;
+    }
+  };
+
+  const runScan = async (file: File) => {
+    setScanError(null);
+    setScanInProgress(true);
+    setShowScanModal(true);
+    setScannedScores([]);
+    setEditableScores({});
+    setPlayerMappings({});
+    setSuggestedPresets({});
+
+    try {
+      const base64 = await compressImage(file);
+      const result = await scanScorecard.mutateAsync({
+        imageBase64: base64,
+        playerNames: players.map(p => p.name),
+        courseName: match.courseName,
+      });
+
+      if (result.success && result.scores.length > 0) {
+        setScannedScores(result.scores);
+        const editable: Record<string, Record<number, string>> = {};
+        const mappings: Record<string, number | null> = {};
+        const presets: Record<string, string | null> = {};
+
+        result.scores.forEach(ps => {
+          editable[ps.playerName] = {};
+          ps.holes.forEach(h => {
+            if (h.holeNumber >= 1 && h.holeNumber <= 18) {
+              editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
+            }
+          });
+          const resolvedName = resolvePlayerAlias(ps.playerName);
+          const matchedPlayer = players.find(p =>
+            p.name.toLowerCase() === ps.playerName.toLowerCase() ||
+            p.name.toLowerCase() === resolvedName.toLowerCase()
+          );
+          mappings[ps.playerName] = matchedPlayer?.id || null;
+
+          if (!matchedPlayer) {
+            const presetMatch = PRESET_PLAYERS.find(preset =>
+              preset.toLowerCase() === ps.playerName.toLowerCase() ||
+              preset.toLowerCase() === resolvedName.toLowerCase()
+            );
+            presets[ps.playerName] = presetMatch || null;
+          } else {
+            presets[ps.playerName] = null;
+          }
+        });
+        setEditableScores(editable);
+        setPlayerMappings(mappings);
+        setSuggestedPresets(presets);
+      } else {
+        setScanError("Could not extract scores from the image. Please try a clearer photo.");
+      }
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "Failed to process scorecard");
+    } finally {
+      setScanInProgress(false);
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64 = reader.result as string;
-      
-      try {
-        const result = await scanScorecard.mutateAsync({
-          imageBase64: base64,
-          playerNames: players.map(p => p.name),
-          courseName: match.courseName,
-        });
-        
-        if (result.success && result.scores.length > 0) {
-          setScannedScores(result.scores);
-          const editable: Record<string, Record<number, string>> = {};
-          const mappings: Record<string, number | null> = {};
-          const presets: Record<string, string | null> = {};
-          
-          result.scores.forEach(ps => {
-            editable[ps.playerName] = {};
-            ps.holes.forEach(h => {
-              if (h.holeNumber >= 1 && h.holeNumber <= 18) {
-                editable[ps.playerName][h.holeNumber] = h.strokes?.toString() || '';
-              }
-            });
-            const resolvedName = resolvePlayerAlias(ps.playerName);
-            const matchedPlayer = players.find(p => 
-              p.name.toLowerCase() === ps.playerName.toLowerCase() ||
-              p.name.toLowerCase() === resolvedName.toLowerCase()
-            );
-            mappings[ps.playerName] = matchedPlayer?.id || null;
-            
-            // If no match found, check if scanned name matches a preset player
-            if (!matchedPlayer) {
-              const presetMatch = PRESET_PLAYERS.find(preset => 
-                preset.toLowerCase() === ps.playerName.toLowerCase() ||
-                preset.toLowerCase() === resolvedName.toLowerCase()
-              );
-              presets[ps.playerName] = presetMatch || null;
-            } else {
-              presets[ps.playerName] = null;
-            }
-          });
-          setEditableScores(editable);
-          setPlayerMappings(mappings);
-          setSuggestedPresets(presets);
-          setShowScanModal(true);
-        } else {
-          toast({
-            variant: "destructive",
-            title: "Scan Failed",
-            description: "Could not extract scores from the image. Please try a clearer photo.",
-          });
-        }
-      } catch (err) {
-        toast({
-          variant: "destructive",
-          title: "Scan Error",
-          description: err instanceof Error ? err.message : "Failed to process scorecard",
-        });
-      }
-    };
-    reader.readAsDataURL(file);
+    lastScanFileRef.current = file;
     e.target.value = '';
+    void runScan(file);
   };
 
   // Runs the player-add + bulk-score-save in the background using a snapshot
@@ -813,12 +851,88 @@ export default function QuickScoreEntry() {
         </Button>
       )}
 
-      <Dialog open={showScanModal} onOpenChange={setShowScanModal}>
+      <Dialog open={showScanModal} onOpenChange={(open) => {
+        setShowScanModal(open);
+        if (!open) {
+          setScannedScores([]);
+          setEditableScores({});
+          setPlayerMappings({});
+          setSuggestedPresets({});
+          setScanError(null);
+          setScanInProgress(false);
+        }
+      }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>Review Scanned Scores</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {scanInProgress ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span>Scanning scorecard…</span>
+                </>
+              ) : scanError ? (
+                <>
+                  <AlertCircle className="w-4 h-4 text-destructive" />
+                  <span>Scan failed</span>
+                </>
+              ) : (
+                <span>Review Scanned Scores</span>
+              )}
+            </DialogTitle>
           </DialogHeader>
-          
+
+          {scanInProgress && scannedScores.length === 0 && (
+            <div className="space-y-3 py-4" data-testid="scan-skeleton">
+              <p className="text-sm text-muted-foreground">
+                Reading the scorecard. The review will appear here in a few seconds.
+              </p>
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="space-y-2 p-3 border rounded-lg animate-pulse">
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-32 bg-muted rounded" />
+                    <div className="h-8 w-48 bg-muted rounded" />
+                  </div>
+                  <div className="grid grid-cols-10 gap-1">
+                    {Array.from({ length: 10 }).map((_, k) => (
+                      <div key={k} className="h-8 bg-muted rounded" />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-10 gap-1">
+                    {Array.from({ length: 10 }).map((_, k) => (
+                      <div key={k} className="h-8 bg-muted rounded" />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {scanError && !scanInProgress && (
+            <div
+              className="my-4 p-4 border border-destructive/40 bg-destructive/5 rounded-lg flex items-start gap-3"
+              data-testid="scan-error"
+            >
+              <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1 space-y-3">
+                <p className="text-sm text-foreground">{scanError}</p>
+                {lastScanFileRef.current && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const f = lastScanFileRef.current;
+                      if (f) void runScan(f);
+                    }}
+                    data-testid="button-retry-scan"
+                  >
+                    <Camera className="w-3 h-3 mr-1.5" />
+                    Try again
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-6">
             {scannedScores.map((playerScore) => {
               const mappedPlayerId = playerMappings[playerScore.playerName];
@@ -1015,31 +1129,35 @@ export default function QuickScoreEntry() {
           </div>
           
           <DialogFooter className="gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setShowScanModal(false);
                 setScannedScores([]);
                 setEditableScores({});
                 setPlayerMappings({});
                 setSuggestedPresets({});
+                setScanError(null);
+                setScanInProgress(false);
               }}
               data-testid="button-cancel-scan"
             >
-              Cancel
+              {scanInProgress || scanError ? "Close" : "Cancel"}
             </Button>
-            <Button 
-              onClick={handleConfirmScores}
-              disabled={
-                Object.values(playerMappings).every(id => id === null) &&
-                Object.values(suggestedPresets).every(p => p === null)
-              }
-              data-testid="button-confirm-scanned-scores"
-            >
-              {Object.values(suggestedPresets).some(p => p !== null) 
-                ? "Add Players & Save Scores" 
-                : "Save Scores"}
-            </Button>
+            {!scanInProgress && !scanError && scannedScores.length > 0 && (
+              <Button
+                onClick={handleConfirmScores}
+                disabled={
+                  Object.values(playerMappings).every(id => id === null) &&
+                  Object.values(suggestedPresets).every(p => p === null)
+                }
+                data-testid="button-confirm-scanned-scores"
+              >
+                {Object.values(suggestedPresets).some(p => p !== null)
+                  ? "Add Players & Save Scores"
+                  : "Save Scores"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

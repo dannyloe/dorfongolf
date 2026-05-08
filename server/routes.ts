@@ -8,6 +8,7 @@ import { db } from "./db";
 import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable } from "@shared/schema";
 import { eq, sql, count } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
+import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
 
 // Helper to send match invitation notification to a player (non-blocking)
@@ -2065,45 +2066,28 @@ export async function registerRoutes(
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.scorecard.scan.input.parse(req.body);
-      
-      const prompt = `You are analyzing a golf scorecard image. Extract the scores for each player.
 
-Known players in this match are: ${input.playerNames.join(', ')}
-${input.courseName ? `The course is: ${input.courseName}` : ''}
+      const prompt = `You are reading a golf scorecard photo. Extract per-hole scores.
 
-Please analyze this scorecard image and extract scores for each hole (1-18).
-
-IMPORTANT: Return ONLY a valid JSON object in this exact format, with no additional text before or after:
-{
-  "scores": [
-    {
-      "playerName": "Player Name",
-      "holes": [
-        {"holeNumber": 1, "strokes": 4, "confidence": "high"},
-        {"holeNumber": 2, "strokes": 5, "confidence": "medium"},
-        ...
-      ]
-    }
-  ],
-  "rawText": "any notes about the scorecard"
-}
+Known players in this match: ${input.playerNames.join(', ')}
+${input.courseName ? `Course: ${input.courseName}` : ''}
 
 Rules:
-- ONLY include players whose scores are actually visible/written on the scorecard
-- Do NOT include players who have no scores on this scorecard
-- Try to match visible names to known players: ${input.playerNames.join(', ')}
-- If a name on the scorecard doesn't match any known player, use the name exactly as written
-- Use null for strokes if a specific hole score is unreadable
-- confidence should be "high", "medium", or "low" based on legibility
-- Include all 18 holes for each player found on the card
-- Do NOT include Front 9, Back 9, or Total scores - only individual hole scores (1-18)
-- rawText can include any observations about the scorecard quality`;
+- Only include players whose scores are actually visible on the card.
+- For each included player, include all 18 holes (holeNumber 1..18).
+- "strokes" must be a STRING. Use the digits for a numeric score (e.g. "4", "10").
+  - If a hole shows an "X", "X-out", "pickup", "NF", or "DNF" mark, return "X" (the player did not finish that hole).
+  - If a specific hole score is blank or unreadable, return "" (empty string).
+- Set "confidence" to "high", "medium", or "low" based on legibility of that hole.
+- Try to match visible names to the known players list; otherwise use the name as written.
+- Do NOT include Front 9, Back 9, or Total subtotals — only the 18 hole rows.
+- "rawText" is optional free-form notes about the card.`;
 
       // Extract MIME type from data URL (supports jpeg, png, heic, webp, etc.)
       const mimeMatch = input.imageBase64.match(/^data:(image\/[^;]+);base64,/);
       const mimeType = mimeMatch?.[1] || "image/jpeg";
       const base64Data = input.imageBase64.replace(/^data:image\/[^;]+;base64,/, '');
-      
+
       if (!base64Data) {
         return res.status(400).json({ message: "Invalid image data" });
       }
@@ -2114,36 +2098,120 @@ Rules:
 
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: GenAIType.OBJECT,
+            properties: {
+              scores: {
+                type: GenAIType.ARRAY,
+                items: {
+                  type: GenAIType.OBJECT,
+                  properties: {
+                    playerName: { type: GenAIType.STRING },
+                    holes: {
+                      type: GenAIType.ARRAY,
+                      items: {
+                        type: GenAIType.OBJECT,
+                        properties: {
+                          holeNumber: { type: GenAIType.INTEGER },
+                          strokes: { type: GenAIType.STRING },
+                          confidence: {
+                            type: GenAIType.STRING,
+                            enum: ["high", "medium", "low"],
+                          },
+                        },
+                        required: ["holeNumber", "strokes"],
+                      },
+                    },
+                  },
+                  required: ["playerName", "holes"],
+                },
+              },
+              rawText: { type: GenAIType.STRING },
+            },
+            required: ["scores"],
+          },
+        },
         contents: [{
           role: "user",
           parts: [
             { text: prompt },
-            { 
-              inlineData: {
-                mimeType,
-                data: base64Data
-              }
-            }
-          ]
-        }]
+            { inlineData: { mimeType, data: base64Data } },
+          ],
+        }],
       });
 
       const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      
-      // Extract JSON from the response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return res.status(400).json({ 
-          message: "Could not parse scorecard. Please try with a clearer image." 
-        });
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        // Last-resort fallback for non-conforming responses
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          return res.status(400).json({
+            message: "Could not parse scorecard. Please try with a clearer image.",
+          });
+        }
+        try {
+          parsed = JSON.parse(jsonMatch[0]);
+        } catch {
+          return res.status(400).json({
+            message: "Could not parse scorecard. Please try with a clearer image.",
+          });
+        }
       }
-      
-      const parsed = JSON.parse(jsonMatch[0]);
-      
+
+      // Normalize strokes: coerce numeric strings to numbers, treat "X"/pickup
+      // markers as 8 with low confidence, and convert blanks/unreadable to null.
+      const PICKUP_MARKERS = new Set([
+        'X', 'X-OUT', 'XOUT', 'PICKUP', 'PICK UP', 'PICKED UP',
+        'NF', 'DNF', 'NR', 'WD',
+      ]);
+      const normalizeHole = (h: any) => {
+        const holeNumber = typeof h?.holeNumber === 'number'
+          ? h.holeNumber
+          : parseInt(String(h?.holeNumber ?? ''), 10);
+        let strokes: number | null = null;
+        let confidence: 'high' | 'medium' | 'low' | undefined =
+          h?.confidence === 'high' || h?.confidence === 'medium' || h?.confidence === 'low'
+            ? h.confidence
+            : undefined;
+        const raw = h?.strokes;
+        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+          strokes = Math.round(raw);
+        } else if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          if (trimmed === '' || trimmed === '-' || trimmed.toLowerCase() === 'null') {
+            strokes = null;
+          } else if (PICKUP_MARKERS.has(trimmed.toUpperCase())) {
+            strokes = 8;
+            confidence = 'low';
+          } else {
+            const n = parseInt(trimmed, 10);
+            strokes = Number.isFinite(n) && n > 0 ? n : null;
+          }
+        }
+        return { holeNumber, strokes, confidence };
+      };
+
+      const scores = Array.isArray(parsed?.scores)
+        ? parsed.scores.map((p: any) => ({
+            playerName: String(p?.playerName ?? ''),
+            holes: Array.isArray(p?.holes)
+              ? p.holes
+                  .map(normalizeHole)
+                  .filter((h: any) => Number.isFinite(h.holeNumber) && h.holeNumber >= 1 && h.holeNumber <= 18)
+              : [],
+          }))
+        : [];
+
       res.json({
         success: true,
-        scores: parsed.scores || [],
-        rawText: parsed.rawText || ''
+        scores,
+        rawText: typeof parsed?.rawText === 'string' ? parsed.rawText : '',
       });
     } catch (err) {
       console.error("Scorecard scan error:", err);
