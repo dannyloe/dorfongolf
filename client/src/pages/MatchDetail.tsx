@@ -6087,6 +6087,13 @@ export default function MatchDetail() {
                             const isTie = group.teamATotal === 0 && group.teamBTotal === 0;
                             const winAmount = Math.max(Math.abs(group.teamATotal), Math.abs(group.teamBTotal));
                             const isSkinsBet = group.betType === 'Skins';
+                            const perPersonAmount = Math.abs(
+                              group.teamAMembers[0]?.amount ?? group.teamBMembers[0]?.amount ?? 0
+                            );
+                            const teamAHasSelected = selectedStandingsPlayer !== null &&
+                              group.teamAMembers.some(m => m.playerId === selectedStandingsPlayer);
+                            const teamBHasSelected = selectedStandingsPlayer !== null &&
+                              group.teamBMembers.some(m => m.playerId === selectedStandingsPlayer);
                             
                             return (
                               <div key={gIdx} className={gIdx > 0 ? 'mt-3 pt-3 border-t border-border' : ''}>
@@ -6103,7 +6110,11 @@ export default function MatchDetail() {
                                     )}
                                   </div>
                                   <span className={`text-sm font-bold ${isTie ? 'text-muted-foreground' : 'text-primary'}`}>
-                                    {isTie ? 'Tie' : `$${winAmount.toFixed(2)}`}
+                                    {isTie
+                                      ? 'Tie'
+                                      : isSkinsBet
+                                        ? `$${winAmount.toFixed(2)}`
+                                        : `$${perPersonAmount.toFixed(2)}/person`}
                                   </span>
                                 </div>
                                 
@@ -6131,41 +6142,15 @@ export default function MatchDetail() {
                                   </div>
                                 ) : (
                                   <div className="grid grid-cols-2 gap-2">
-                                    <div className={`rounded-lg p-2 ${teamAWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'}`}>
-                                      <div className={`text-xs font-medium mb-1 ${teamAWon ? 'text-primary' : 'text-muted-foreground'}`}>
+                                    <div className={`rounded-lg p-2 ${teamAWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'} ${teamAHasSelected ? 'ring-1 ring-primary' : ''}`}>
+                                      <div className={`text-xs font-medium ${teamAWon ? 'text-primary' : isTie ? 'text-muted-foreground' : 'text-destructive'}`}>
                                         {teamA?.name || 'Team A'} {teamAWon && '(Won)'}
                                       </div>
-                                      {group.teamAMembers.map((m, mIdx) => (
-                                        <div 
-                                          key={mIdx}
-                                          className={`flex justify-between text-xs px-1 py-0.5 ${
-                                            selectedStandingsPlayer === m.playerId ? 'ring-1 ring-primary rounded' : ''
-                                          }`}
-                                        >
-                                          <span>{m.name}</span>
-                                          <span className={`font-medium ${m.amount > 0 ? 'text-primary' : m.amount < 0 ? 'text-destructive' : ''}`}>
-                                            {m.amount > 0 ? '+' : ''}${m.amount.toFixed(2)}
-                                          </span>
-                                        </div>
-                                      ))}
                                     </div>
-                                    <div className={`rounded-lg p-2 ${teamBWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'}`}>
-                                      <div className={`text-xs font-medium mb-1 ${teamBWon ? 'text-primary' : 'text-muted-foreground'}`}>
+                                    <div className={`rounded-lg p-2 ${teamBWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'} ${teamBHasSelected ? 'ring-1 ring-primary' : ''}`}>
+                                      <div className={`text-xs font-medium ${teamBWon ? 'text-primary' : isTie ? 'text-muted-foreground' : 'text-destructive'}`}>
                                         {teamB?.name || 'Team B'} {teamBWon && '(Won)'}
                                       </div>
-                                      {group.teamBMembers.map((m, mIdx) => (
-                                        <div 
-                                          key={mIdx}
-                                          className={`flex justify-between text-xs px-1 py-0.5 ${
-                                            selectedStandingsPlayer === m.playerId ? 'ring-1 ring-primary rounded' : ''
-                                          }`}
-                                        >
-                                          <span>{m.name}</span>
-                                          <span className={`font-medium ${m.amount > 0 ? 'text-primary' : m.amount < 0 ? 'text-destructive' : ''}`}>
-                                            {m.amount > 0 ? '+' : ''}${m.amount.toFixed(2)}
-                                          </span>
-                                        </div>
-                                      ))}
                                     </div>
                                   </div>
                                 )}

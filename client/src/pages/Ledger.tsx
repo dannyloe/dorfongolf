@@ -1369,65 +1369,118 @@ export default function Ledger() {
               
               return (
                 <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Match</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredEntries.map((entry, idx) => (
-                        <TableRow key={`${entry.matchId}-${entry.betType}-${idx}`}>
-                          <TableCell className="text-sm">
-                            <div className="flex flex-col">
-                              <span>
-                                {(() => {
-                                  // Show opponent name instead of full match name
-                                  // First try teamAMembers/teamBMembers from metadata
-                                  const opponentMembers = entry.teamIndex === 0 
-                                    ? entry.teamBMembers 
-                                    : entry.teamAMembers;
-                                  if (opponentMembers && opponentMembers.length > 0) {
-                                    return `vs ${opponentMembers.join(' & ')}`;
-                                  }
-                                  // Fallback: Find opponent from ALL entries in same match with different teamIndex
-                                  const opponentEntry = combinedLedgerResults.entries.find(e => 
-                                    e.matchId === entry.matchId && 
-                                    e.betType === entry.betType &&
-                                    e.teamIndex !== entry.teamIndex &&
-                                    e.teamName
-                                  );
-                                  if (opponentEntry?.teamName) {
-                                    return `vs ${opponentEntry.teamName}`;
-                                  }
-                                  return entry.matchName?.split(' - ')[0] || 'Match';
-                                })()}
+                  <div className="space-y-2">
+                    {filteredEntries.map((entry, idx) => {
+                      const isSkins = entry.betType === 'Skins';
+                      const isManual = entry.betType === 'Manual Bet';
+                      const hasTeamData = !!(entry.teamAMembers && entry.teamBMembers &&
+                        entry.teamAMembers.length > 0 && entry.teamBMembers.length > 0);
+                      const isTeamBet = !isSkins && !isManual && hasTeamData;
+                      const dateLabel = entry.createdAt
+                        ? format(new Date(entry.createdAt), "MMM d, yyyy")
+                        : null;
+
+                      if (isTeamBet) {
+                        const playerTeamIdx = entry.teamIndex ?? 0;
+                        const teamAName = entry.teamAMembers!.join('/');
+                        const teamBName = entry.teamBMembers!.join('/');
+                        const isTie = entry.amount === 0;
+                        const playerWon = entry.amount > 0;
+                        const teamAWon = !isTie && (
+                          (playerTeamIdx === 0 && playerWon) ||
+                          (playerTeamIdx === 1 && !playerWon)
+                        );
+                        const teamBWon = !isTie && (
+                          (playerTeamIdx === 1 && playerWon) ||
+                          (playerTeamIdx === 0 && !playerWon)
+                        );
+                        const perPerson = Math.abs(entry.amount);
+                        const teamAHasSelected = playerTeamIdx === 0;
+                        const teamBHasSelected = playerTeamIdx === 1;
+
+                        return (
+                          <div
+                            key={`${entry.matchId}-${entry.betType}-${idx}`}
+                            className="bg-muted/50 rounded-lg p-3"
+                            data-testid={`detail-row-${idx}`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm font-semibold truncate">{entry.betType || 'Match Play'}</span>
+                                {entry.isAutoPress && (
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-amber-500 text-amber-600 text-[10px] font-bold" title="Auto Press">
+                                    P
+                                  </span>
+                                )}
+                                {entry.pressHole && (
+                                  <span className="text-xs text-muted-foreground">Press hole {entry.pressHole}</span>
+                                )}
+                              </div>
+                              <span className={`text-sm font-bold ${isTie ? 'text-muted-foreground' : 'text-primary'}`}>
+                                {isTie ? 'Tie' : `$${perPerson.toFixed(2)}/person`}
                               </span>
-                              {entry.createdAt && (
-                                <span className="text-xs text-muted-foreground">
-                                  {format(new Date(entry.createdAt), "MMM d, yyyy")}
-                                </span>
-                              )}
                             </div>
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <div className="flex flex-col">
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className={`rounded-lg p-2 ${teamAWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'} ${teamAHasSelected ? 'ring-1 ring-primary' : ''}`}>
+                                <div className={`text-xs font-medium ${teamAWon ? 'text-primary' : isTie ? 'text-muted-foreground' : 'text-destructive'}`}>
+                                  {teamAName} {teamAWon && '(Won)'}
+                                </div>
+                              </div>
+                              <div className={`rounded-lg p-2 ${teamBWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'} ${teamBHasSelected ? 'ring-1 ring-primary' : ''}`}>
+                                <div className={`text-xs font-medium ${teamBWon ? 'text-primary' : isTie ? 'text-muted-foreground' : 'text-destructive'}`}>
+                                  {teamBName} {teamBWon && '(Won)'}
+                                </div>
+                              </div>
+                            </div>
+                            {dateLabel && (
+                              <div className="text-xs text-muted-foreground mt-2">{dateLabel}</div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Skins / Manual / fallback: simple row
+                      const matchLabel = (() => {
+                        const opponentMembers = entry.teamIndex === 0
+                          ? entry.teamBMembers
+                          : entry.teamAMembers;
+                        if (opponentMembers && opponentMembers.length > 0) {
+                          return `vs ${opponentMembers.join(' & ')}`;
+                        }
+                        const opponentEntry = combinedLedgerResults.entries.find(e =>
+                          e.matchId === entry.matchId &&
+                          e.betType === entry.betType &&
+                          e.teamIndex !== entry.teamIndex &&
+                          e.teamName
+                        );
+                        if (opponentEntry?.teamName) {
+                          return `vs ${opponentEntry.teamName}`;
+                        }
+                        return entry.matchName?.split(' - ')[0] || 'Match';
+                      })();
+
+                      return (
+                        <div
+                          key={`${entry.matchId}-${entry.betType}-${idx}`}
+                          className="bg-muted/50 rounded-lg p-3 flex items-center justify-between gap-3"
+                          data-testid={`detail-row-${idx}`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium truncate">{matchLabel}</div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
                               <span>{entry.betType || 'Match Play'}</span>
-                              {entry.pressHole && (
-                                <span className="text-xs text-muted-foreground">Press #{entry.pressHole}</span>
-                              )}
+                              {entry.pressHole && <span>· Press #{entry.pressHole}</span>}
+                              {dateLabel && <span>· {dateLabel}</span>}
                             </div>
-                          </TableCell>
-                          <TableCell className={`text-right font-medium ${entry.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
-                            {entry.amount >= 0 ? "+" : ""}${entry.amount.toFixed(2)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <div className="border-t pt-2 flex justify-between items-center font-bold" data-testid="row-total">
+                          </div>
+                          <div className={`text-sm font-bold ${entry.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {entry.amount >= 0 ? '+' : ''}${entry.amount.toFixed(2)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="border-t pt-2 mt-2 flex justify-between items-center font-bold" data-testid="row-total">
                     <span>Total</span>
                     <span className={total >= 0 ? "text-green-600" : "text-red-600"} data-testid="text-total-amount">
                       {total >= 0 ? "+" : ""}${total.toFixed(2)}
