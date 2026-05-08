@@ -175,7 +175,11 @@ export default function QuickScoreEntry() {
   const [scanInProgress, setScanInProgress] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const lastScanFileRef = useRef<File | null>(null);
-  
+  // Monotonically increasing token; in-flight scans only apply their result
+  // if they're still the most recent scan when they resolve. Closing the
+  // modal or starting a new scan invalidates older requests.
+  const scanTokenRef = useRef(0);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -409,6 +413,7 @@ export default function QuickScoreEntry() {
   };
 
   const runScan = async (file: File) => {
+    const myToken = ++scanTokenRef.current;
     setScanError(null);
     setScanInProgress(true);
     setShowScanModal(true);
@@ -424,6 +429,9 @@ export default function QuickScoreEntry() {
         playerNames: players.map(p => p.name),
         courseName: match.courseName,
       });
+
+      // A newer scan started (or the modal was closed) — drop this result.
+      if (myToken !== scanTokenRef.current) return;
 
       if (result.success && result.scores.length > 0) {
         setScannedScores(result.scores);
@@ -462,9 +470,12 @@ export default function QuickScoreEntry() {
         setScanError("Could not extract scores from the image. Please try a clearer photo.");
       }
     } catch (err) {
+      if (myToken !== scanTokenRef.current) return;
       setScanError(err instanceof Error ? err.message : "Failed to process scorecard");
     } finally {
-      setScanInProgress(false);
+      if (myToken === scanTokenRef.current) {
+        setScanInProgress(false);
+      }
     }
   };
 
@@ -856,6 +867,8 @@ export default function QuickScoreEntry() {
       <Dialog open={showScanModal} onOpenChange={(open) => {
         setShowScanModal(open);
         if (!open) {
+          // Invalidate any in-flight scan so its result is dropped on arrival.
+          scanTokenRef.current++;
           setScannedScores([]);
           setEditableScores({});
           setPlayerMappings({});
@@ -1134,6 +1147,7 @@ export default function QuickScoreEntry() {
             <Button
               variant="outline"
               onClick={() => {
+                scanTokenRef.current++;
                 setShowScanModal(false);
                 setScannedScores([]);
                 setEditableScores({});

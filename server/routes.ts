@@ -2199,8 +2199,9 @@ Rules:
           }
         }
 
-        // Auxiliary pickup marker overrides a missing/blank stroke value.
-        if (auxIsPickup && strokes === null) {
+        // Auxiliary pickup marker is authoritative — a "did not finish"
+        // annotation overrides any numeric strokes the model also emitted.
+        if (auxIsPickup) {
           strokes = 8;
           confidence = 'low';
         }
