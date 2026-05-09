@@ -15,6 +15,13 @@
       "when": 1776525465004,
       "tag": "0001_add_event_matches_custom_name",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1746835200000,
+      "tag": "0002_add_match_code_and_pending_scans",
+      "breakpoints": true
     }
   ]
 }

@@ -78,6 +78,19 @@ export const matches = pgTable("matches", {
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),
   isHandicapped: boolean("is_handicapped").default(false),
+  matchCode: text("match_code").unique(), // 4-char code for texting in scorecard photos
+});
+
+// Pending scorecard scans submitted via MMS (text message)
+export const pendingScorecardScans = pgTable("pending_scorecard_scans", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id").notNull(),
+  fromPhone: text("from_phone").notNull(), // masked sender phone
+  mediaUrl: text("media_url").notNull(), // Twilio media URL
+  status: text("status").notNull().default("pending"), // pending, processing, done, error
+  scanResult: text("scan_result"), // JSON string of scan result
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const players = pgTable("players", {
@@ -504,6 +517,11 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   readAt: true,
 });
 
+export const insertPendingScorecardScanSchema = createInsertSchema(pendingScorecardScans).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -574,6 +592,9 @@ export type InsertNotificationPreferences = z.infer<typeof insertNotificationPre
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+export type PendingScorecardScan = typeof pendingScorecardScans.$inferSelect;
+export type InsertPendingScorecardScan = z.infer<typeof insertPendingScorecardScanSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

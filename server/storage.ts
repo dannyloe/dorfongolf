@@ -6,6 +6,7 @@ import {
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
   settlements, settlementPayments,
+  pendingScorecardScans,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -24,6 +25,7 @@ import {
   type RyderCupTransaction, type RyderCupTransactionSplit, type RyderCupClosestToHole,
   type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
   type Settlement, type SettlementPayment, type SettlementWithPayments,
+  type PendingScorecardScan,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
@@ -122,6 +124,17 @@ export interface IStorage {
   removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean>;
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
   getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
+
+  // Match code methods
+  getMatchByCode(code: string): Promise<Match | undefined>;
+  backfillMatchCodes(): Promise<number>;
+
+  // Pending scorecard scans
+  createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string }): Promise<PendingScorecardScan>;
+  updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null }>): Promise<PendingScorecardScan>;
+  listPendingScans(matchId: number): Promise<PendingScorecardScan[]>;
+  getPendingScan(id: number): Promise<PendingScorecardScan | undefined>;
+  deletePendingScan(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -130,6 +143,37 @@ export class DatabaseStorage implements IStorage {
   }
   async upsertUser(user: typeof users.$inferInsert) {
     return authStorage.upsertUser(user);
+  }
+
+  // Generates an unambiguous 4-char match code (no 0/O/1/I) and retries on collision
+  private generateMatchCode(): string {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 4; i++) {
+      code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return code;
+  }
+
+  async getMatchByCode(code: string): Promise<Match | undefined> {
+    const [match] = await db.select().from(matches).where(eq(matches.matchCode, code.toUpperCase()));
+    return match;
+  }
+
+  async backfillMatchCodes(): Promise<number> {
+    const uncodedMatches = await db.select({ id: matches.id }).from(matches).where(isNull(matches.matchCode));
+    for (const m of uncodedMatches) {
+      let attempts = 0;
+      let code: string;
+      do {
+        code = this.generateMatchCode();
+        attempts++;
+        const existing = await db.select({ id: matches.id }).from(matches).where(eq(matches.matchCode, code)).limit(1);
+        if (existing.length === 0) break;
+      } while (attempts < 20);
+      await db.update(matches).set({ matchCode: code! }).where(eq(matches.id, m.id));
+    }
+    return uncodedMatches.length;
   }
 
   async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match> {
@@ -141,6 +185,16 @@ export class DatabaseStorage implements IStorage {
         courseId = course.id;
       }
     }
+    // Generate a unique 4-char match code with collision retry
+    let matchCode: string | undefined;
+    let attempts = 0;
+    do {
+      matchCode = this.generateMatchCode();
+      attempts++;
+      const existing = await db.select({ id: matches.id }).from(matches).where(eq(matches.matchCode, matchCode)).limit(1);
+      if (existing.length === 0) break;
+    } while (attempts < 20);
+
     const [newMatch] = await db.insert(matches).values({ 
       name: match.name,
       courseName: match.courseName,
@@ -150,8 +204,43 @@ export class DatabaseStorage implements IStorage {
       ryderCupEventId: match.ryderCupEventId ?? null,
       ryderCupDayNumber: match.ryderCupDayNumber ?? null,
       isHandicapped: match.isHandicapped ?? false,
+      matchCode,
     }).returning();
     return newMatch;
+  }
+
+  async createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string }): Promise<PendingScorecardScan> {
+    const [scan] = await db.insert(pendingScorecardScans).values({
+      matchId: data.matchId,
+      fromPhone: data.fromPhone,
+      mediaUrl: data.mediaUrl,
+      status: 'pending',
+    }).returning();
+    return scan;
+  }
+
+  async updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null }>): Promise<PendingScorecardScan> {
+    const [updated] = await db.update(pendingScorecardScans)
+      .set(data)
+      .where(eq(pendingScorecardScans.id, id))
+      .returning();
+    return updated;
+  }
+
+  async listPendingScans(matchId: number): Promise<PendingScorecardScan[]> {
+    return db.select().from(pendingScorecardScans)
+      .where(eq(pendingScorecardScans.matchId, matchId))
+      .orderBy(desc(pendingScorecardScans.createdAt));
+  }
+
+  async getPendingScan(id: number): Promise<PendingScorecardScan | undefined> {
+    const [scan] = await db.select().from(pendingScorecardScans).where(eq(pendingScorecardScans.id, id));
+    return scan;
+  }
+
+  async deletePendingScan(id: number): Promise<boolean> {
+    const result = await db.delete(pendingScorecardScans).where(eq(pendingScorecardScans.id, id)).returning();
+    return result.length > 0;
   }
 
   async getMatches(): Promise<Match[]> {

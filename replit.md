@@ -69,3 +69,7 @@ Preferred communication style: Simple, everyday language.
 
 ### SMS Integration
 - **Twilio**: For phone verification, match notifications, and in-app messaging.
+- **Inbound MMS Scorecard Flow**: Users text a photo of their scorecard to the Twilio number with a 4-character match code in the message body (e.g. "AB3K"). The server processes the image with Gemini AI and surfaces it as a pending scan in the match detail page for the organizer to review and apply.
+  - Twilio webhook URL: `POST /api/sms/inbound` (must be set in the Twilio console as the "A message comes in" webhook for the app's phone number)
+  - Match codes are 4 chars from the alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no ambiguous chars like 0/O/1/I)
+  - Set `VITE_TWILIO_PHONE_NUMBER` environment variable to display the number in the match detail UI

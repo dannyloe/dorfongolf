@@ -937,6 +937,33 @@ export const api = {
         500: errorSchemas.internal,
       },
     },
+    listPendingScans: {
+      method: 'GET' as const,
+      path: '/api/matches/:id/pending-scans',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          matchId: z.number(),
+          fromPhone: z.string(),
+          mediaUrl: z.string(),
+          status: z.string(),
+          scanResult: z.string().nullable(),
+          errorMessage: z.string().nullable(),
+          createdAt: z.string().nullable(),
+        })),
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
+    dismissPendingScan: {
+      method: 'DELETE' as const,
+      path: '/api/matches/:id/pending-scans/:scanId',
+      responses: {
+        204: z.void(),
+        403: errorSchemas.forbidden,
+        404: errorSchemas.notFound,
+      },
+    },
   },
   groups: {
     list: {

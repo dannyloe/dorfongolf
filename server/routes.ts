@@ -9,7 +9,10 @@ import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as 
 import { eq, sql, count } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
-import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult } from "./twilio";
+import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
+import { scanScorecardImage } from "./scanHelper";
+import express from "express";
+import twilioLib from "twilio";
 
 // Helper to send match invitation notification to a player (non-blocking)
 async function notifyPlayerOfMatchInvitation(
@@ -2066,200 +2069,311 @@ export async function registerRoutes(
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.scorecard.scan.input.parse(req.body);
-
-      const prompt = `You are reading a golf scorecard photo. Extract per-hole scores.
-
-Known players in this match: ${input.playerNames.join(', ')}
-${input.courseName ? `Course: ${input.courseName}` : ''}
-
-Rules:
-- Only include players whose scores are actually visible on the card.
-- For each included player, include all 18 holes (holeNumber 1..18).
-- "strokes" must be a STRING. Use the digits for a numeric score (e.g. "4", "10").
-  - If a hole shows an "X", "X-out", "pickup", "NF", or "DNF" mark, return "X" (the player did not finish that hole).
-  - If a specific hole score is blank or unreadable, return "" (empty string).
-- Set "confidence" to "high", "medium", or "low" based on legibility of that hole.
-- Try to match visible names to the known players list; otherwise use the name as written.
-- Do NOT include Front 9, Back 9, or Total subtotals — only the 18 hole rows.
-- "rawText" is optional free-form notes about the card.`;
-
-      // Extract MIME type from data URL (supports jpeg, png, heic, webp, etc.)
-      const mimeMatch = input.imageBase64.match(/^data:(image\/[^;]+);base64,/);
-      const mimeType = mimeMatch?.[1] || "image/jpeg";
-      const base64Data = input.imageBase64.replace(/^data:image\/[^;]+;base64,/, '');
-
-      if (!base64Data) {
-        return res.status(400).json({ message: "Invalid image data" });
-      }
-
-      if (!ai) {
-        return res.status(503).json({ message: "AI features are currently unavailable" });
-      }
-
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: GenAIType.OBJECT,
-            properties: {
-              scores: {
-                type: GenAIType.ARRAY,
-                items: {
-                  type: GenAIType.OBJECT,
-                  properties: {
-                    playerName: { type: GenAIType.STRING },
-                    holes: {
-                      type: GenAIType.ARRAY,
-                      items: {
-                        type: GenAIType.OBJECT,
-                        properties: {
-                          holeNumber: { type: GenAIType.INTEGER },
-                          strokes: { type: GenAIType.STRING },
-                          confidence: {
-                            type: GenAIType.STRING,
-                            enum: ["high", "medium", "low"],
-                          },
-                        },
-                        required: ["holeNumber", "strokes"],
-                      },
-                    },
-                  },
-                  required: ["playerName", "holes"],
-                },
-              },
-              rawText: { type: GenAIType.STRING },
-            },
-            required: ["scores"],
-          },
-        },
-        contents: [{
-          role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType, data: base64Data } },
-          ],
-        }],
+      const result = await scanScorecardImage({
+        imageBase64: input.imageBase64,
+        playerNames: input.playerNames,
+        courseName: input.courseName,
       });
-
-      const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      // Loose schema for what Gemini might return. We validate with zod so
-      // the rest of the pipeline operates on a typed value rather than `any`.
-      const geminiHoleSchema = z
-        .object({
-          holeNumber: z.union([z.number(), z.string()]).optional(),
-          strokes: z.union([z.number(), z.string(), z.null()]).optional(),
-          confidence: z.enum(['high', 'medium', 'low']).optional(),
-          status: z.string().optional(),
-          annotation: z.string().optional(),
-          result: z.string().optional(),
-          note: z.string().optional(),
-          mark: z.string().optional(),
-          symbol: z.string().optional(),
-        })
-        .passthrough();
-      const geminiPlayerSchema = z
-        .object({
-          playerName: z.string().optional(),
-          holes: z.array(geminiHoleSchema).optional(),
-        })
-        .passthrough();
-      const geminiResponseSchema = z
-        .object({
-          scores: z.array(geminiPlayerSchema).optional(),
-          rawText: z.string().optional(),
-        })
-        .passthrough();
-      type GeminiHole = z.infer<typeof geminiHoleSchema>;
-      type GeminiPlayer = z.infer<typeof geminiPlayerSchema>;
-
-      let parsed: z.infer<typeof geminiResponseSchema>;
-      try {
-        parsed = geminiResponseSchema.parse(JSON.parse(text));
-      } catch {
-        return res.status(400).json({
-          message: "Could not parse scorecard. Please try with a clearer image.",
-        });
-      }
-
-      // Normalize strokes: coerce numeric strings to numbers, treat "X"/pickup
-      // markers as 8 with low confidence, and convert blanks/unreadable to null.
-      const PICKUP_MARKERS = new Set([
-        'X', 'X-OUT', 'XOUT', 'PICKUP', 'PICK UP', 'PICKED UP',
-        'NF', 'DNF', 'NR', 'WD',
-      ]);
-      const isPickupMarker = (v: unknown): boolean => {
-        if (typeof v !== 'string') return false;
-        const t = v.trim().toUpperCase();
-        if (!t) return false;
-        if (PICKUP_MARKERS.has(t)) return true;
-        // Tolerate phrasing like "picked up", "did not finish", "no return".
-        if (/\b(PICK(ED)?\s*UP|DID\s*NOT\s*FINISH|NO\s*RETURN|WITHDR(AW|EW)|SCRATCH)\b/.test(t)) return true;
-        return false;
-      };
-
-      interface NormalizedHole {
-        holeNumber: number;
-        strokes: number | null;
-        confidence?: 'high' | 'medium' | 'low';
-      }
-      const normalizeHole = (h: GeminiHole): NormalizedHole => {
-        const holeNumber = typeof h.holeNumber === 'number'
-          ? h.holeNumber
-          : parseInt(String(h.holeNumber ?? ''), 10);
-        let strokes: number | null = null;
-        let confidence: 'high' | 'medium' | 'low' | undefined = h.confidence;
-
-        // Pickup/X/DNF can land in any of several auxiliary fields the model
-        // might emit alongside (or instead of) `strokes`.
-        const auxFields: Array<unknown> = [h.status, h.annotation, h.result, h.note, h.mark, h.symbol];
-        const auxIsPickup = auxFields.some(isPickupMarker);
-
-        const raw = h.strokes;
-        if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
-          strokes = Math.round(raw);
-        } else if (typeof raw === 'string') {
-          const trimmed = raw.trim();
-          if (trimmed === '' || trimmed === '-' || trimmed.toLowerCase() === 'null') {
-            strokes = null;
-          } else if (isPickupMarker(trimmed)) {
-            strokes = 8;
-            confidence = 'low';
-          } else {
-            const n = parseInt(trimmed, 10);
-            strokes = Number.isFinite(n) && n > 0 ? n : null;
-          }
-        }
-
-        // Auxiliary pickup marker is authoritative — a "did not finish"
-        // annotation overrides any numeric strokes the model also emitted.
-        if (auxIsPickup) {
-          strokes = 8;
-          confidence = 'low';
-        }
-
-        return { holeNumber, strokes, confidence };
-      };
-
-      const scores = (parsed.scores ?? []).map((p: GeminiPlayer) => ({
-        playerName: String(p.playerName ?? ''),
-        holes: (p.holes ?? [])
-          .map(normalizeHole)
-          .filter((h: NormalizedHole) => Number.isFinite(h.holeNumber) && h.holeNumber >= 1 && h.holeNumber <= 18),
-      }));
-
-      res.json({
-        success: true,
-        scores,
-        rawText: parsed.rawText ?? '',
-      });
+      res.json(result);
     } catch (err) {
       console.error("Scorecard scan error:", err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
-      res.status(500).json({ message: "Failed to process scorecard image" });
+      const msg = err instanceof Error ? err.message : "Failed to process scorecard image";
+      const status = msg.includes("unavailable") ? 503 : msg.includes("Invalid image") ? 400 : 500;
+      res.status(status).json({ message: msg });
+    }
+  });
+
+  // Helper: fetch Twilio credentials from Replit Connectors, supplemented by env vars.
+  // Auth token is required for webhook validation and media downloads; it comes from
+  // TWILIO_AUTH_TOKEN env var (primary) or connector settings (fallback).
+  async function getTwilioRawCredentials(): Promise<{ accountSid?: string; apiKey?: string; apiKeySecret?: string; authToken?: string } | null> {
+    try {
+      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const xReplitToken = process.env.REPL_IDENTITY
+        ? 'repl ' + process.env.REPL_IDENTITY
+        : process.env.WEB_REPL_RENEWAL
+        ? 'depl ' + process.env.WEB_REPL_RENEWAL
+        : null;
+
+      let accountSid: string | undefined;
+      let apiKey: string | undefined;
+      let apiKeySecret: string | undefined;
+      let authToken: string | undefined;
+
+      // Try to load from connector
+      if (hostname && xReplitToken) {
+        const r = await fetch(`https://${hostname}/api/v2/connection?include_secrets=true&connector_names=twilio`, {
+          headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken },
+        });
+        if (r.ok) {
+          const d = await r.json();
+          const s = d.items?.[0]?.settings;
+          if (s) {
+            accountSid = s.account_sid;
+            apiKey = s.api_key;
+            apiKeySecret = s.api_key_secret;
+            authToken = s.auth_token; // may be undefined if connector doesn't expose it
+          }
+        }
+      }
+
+      // Auth token from env var takes precedence (connectors typically only provide API key/secret)
+      if (process.env.TWILIO_AUTH_TOKEN) authToken = process.env.TWILIO_AUTH_TOKEN;
+      if (process.env.TWILIO_ACCOUNT_SID) accountSid = process.env.TWILIO_ACCOUNT_SID;
+
+      if (!accountSid && !apiKey) return null;
+      return { accountSid, apiKey, apiKeySecret, authToken };
+    } catch {
+      return null;
+    }
+  }
+
+  // Helper: validate Twilio webhook signature using the Twilio SDK (requires auth token).
+  // Twilio signs requests with HMAC-SHA1 using the account auth token as the secret.
+  function validateTwilioSignature(req: any, authToken: string | undefined): boolean {
+    if (!authToken) return false;
+    const twilioSignature = req.headers['x-twilio-signature'];
+    if (!twilioSignature) return false;
+
+    // Build canonical URL
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+    const url = `${protocol}://${host}/api/sms/inbound`;
+
+    return twilioLib.validateRequest(authToken, twilioSignature, url, req.body as Record<string, string>);
+  }
+
+  // Inbound MMS webhook — Twilio posts here when a text with a photo arrives
+  // NOTE: This endpoint is intentionally public (no isAuthenticated) so Twilio can reach it.
+  // Twilio signature validation using X-Twilio-Signature is performed to reject forgeries.
+  app.post("/api/sms/inbound", express.urlencoded({ extended: false }), async (req, res) => {
+    const twimlEmpty = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+
+    try {
+      // Validate Twilio signature to reject forged requests.
+      // If credentials cannot be fetched we fail closed — reject the request rather than process untrusted data.
+      const creds = await getTwilioRawCredentials();
+      if (!creds?.authToken) {
+        // Auth token is required for signature validation; fail closed.
+        // Set TWILIO_AUTH_TOKEN env var (from Twilio console → Account → Auth Token).
+        console.error("[SMS Inbound] No auth token available — rejecting request. Set TWILIO_AUTH_TOKEN secret.");
+        res.status(403).type("text/xml").send(twimlEmpty);
+        return;
+      }
+      const valid = validateTwilioSignature(req, creds.authToken);
+      if (!valid) {
+        console.warn("[SMS Inbound] Invalid or missing Twilio signature — rejected");
+        res.status(403).type("text/xml").send(twimlEmpty);
+        return;
+      }
+
+      const from: string = req.body.From || "";
+      const rawBody: string = req.body.Body || "";
+      const numMedia = parseInt(req.body.NumMedia || "0", 10);
+
+      if (!from) {
+        res.type("text/xml").send(twimlEmpty);
+        return;
+      }
+
+      // Extract the first valid 4-char match code from anywhere in the message body
+      const codeMatch = rawBody.toUpperCase().match(/\b([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4})\b/);
+      const matchCode = codeMatch?.[1];
+
+      if (!matchCode) {
+        const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Please include your 4-character match code in the message body along with a photo of the scorecard.</Message></Response>`;
+        res.type("text/xml").send(twimlReply);
+        return;
+      }
+
+      // Look up match by extracted 4-char code
+      const match = await storage.getMatchByCode(matchCode);
+      if (!match) {
+        const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, we couldn't find a match with code "${matchCode}". Check the code and try again.</Message></Response>`;
+        res.type("text/xml").send(twimlReply);
+        return;
+      }
+
+      if (numMedia === 0) {
+        const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>No photo received. Please attach a photo of your scorecard and include code ${match.matchCode} in the message.</Message></Response>`;
+        res.type("text/xml").send(twimlReply);
+        return;
+      }
+
+      // Collect all image media URLs (one pending scan per image attachment)
+      const mediaUrls: string[] = [];
+      for (let i = 0; i < numMedia; i++) {
+        const url = req.body[`MediaUrl${i}`];
+        const ct: string = (req.body[`MediaContentType${i}`] || "").toLowerCase();
+        if (url && ct.startsWith("image/")) {
+          mediaUrls.push(url);
+        }
+      }
+
+      if (mediaUrls.length === 0) {
+        const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>No image found. Please attach a JPG or PNG of your scorecard.</Message></Response>`;
+        res.type("text/xml").send(twimlReply);
+        return;
+      }
+
+      // Create one pending scan per image, then respond immediately
+      const scans = await Promise.all(
+        mediaUrls.map((url) => storage.createPendingScan({ matchId: match.id, fromPhone: from, mediaUrl: url }))
+      );
+
+      const count = mediaUrls.length;
+      const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! ${count === 1 ? "Your scorecard" : `${count} scorecards`} for "${match.name || match.courseName}" ${count === 1 ? "is" : "are"} being processed. The organizer will review and apply the scores shortly.</Message></Response>`;
+      res.type("text/xml").send(twimlReply);
+
+      // Background: for each scan, fetch image from Twilio and run AI scan
+      const processScan = async (scan: { id: number }, mediaUrl: string) => {
+        try {
+          // Twilio media requires accountSid:authToken Basic auth
+          const fetchHeaders: Record<string, string> = {};
+          if (creds.accountSid && creds.authToken) {
+            fetchHeaders["Authorization"] = `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`;
+          }
+          const imgRes = await fetch(mediaUrl, { headers: fetchHeaders });
+          if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
+          const imageBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+          const imageBase64 = `data:${contentType};base64,${imageBuffer.toString("base64")}`;
+
+          const matchPlayers = await storage.getMatchPlayers(match.id);
+          const playerNames = matchPlayers.map((p: { name: string }) => p.name);
+
+          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName });
+
+          await storage.updatePendingScan(scan.id, { status: "ready", scanResult: JSON.stringify(result) });
+        } catch (err) {
+          console.error(`Background MMS scan error (scan ${scan.id}):`, err);
+          await storage.updatePendingScan(scan.id, {
+            status: "error",
+            errorMessage: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      };
+
+      // Fire all scans in parallel (non-blocking)
+      Promise.all(scans.map((scan, i) => processScan(scan, mediaUrls[i]))).catch((err) => {
+        console.error("Background scan processing error:", err);
+      });
+
+    } catch (err) {
+      console.error("Inbound SMS webhook error:", err);
+      res.type("text/xml").send(twimlEmpty);
+    }
+  });
+
+  // List pending scans for a match
+  app.get("/api/matches/:id/pending-scans", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      if (isNaN(matchId)) return res.status(400).json({ message: "Invalid match ID" });
+
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const [match, roleRecord] = await Promise.all([
+        storage.getMatch(matchId),
+        storage.getMatchRole(matchId, userId),
+      ]);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
+      if (!isOrganizerOrCreator) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const scans = await storage.listPendingScans(matchId);
+      // Mask the sender phone number — show only last 4 digits for privacy
+      const maskedScans = scans.map((s) => ({
+        ...s,
+        fromPhone: s.fromPhone ? `***-***-${s.fromPhone.slice(-4)}` : "Unknown",
+      }));
+      res.json(maskedScans);
+    } catch (err) {
+      console.error("List pending scans error:", err);
+      res.status(500).json({ message: "Failed to list pending scans" });
+    }
+  });
+
+  // Dismiss / delete a pending scan
+  app.delete("/api/matches/:id/pending-scans/:scanId", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      const scanId = parseInt(req.params.scanId, 10);
+      if (isNaN(matchId) || isNaN(scanId)) return res.status(400).json({ message: "Invalid ID" });
+
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const [match, roleRecord] = await Promise.all([
+        storage.getMatch(matchId),
+        storage.getMatchRole(matchId, userId),
+      ]);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
+      if (!isOrganizerOrCreator) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      // Verify the scan belongs to this match before deleting (prevents IDOR)
+      const scan = await storage.getPendingScan(scanId);
+      if (!scan || scan.matchId !== matchId) return res.status(404).json({ message: "Scan not found" });
+
+      const deleted = await storage.deletePendingScan(scanId);
+      if (!deleted) return res.status(404).json({ message: "Scan not found" });
+      res.status(204).send();
+    } catch (err) {
+      console.error("Delete pending scan error:", err);
+      res.status(500).json({ message: "Failed to delete pending scan" });
+    }
+  });
+
+  // Proxy Twilio-hosted image through the server (avoids exposing Twilio credentials to frontend)
+  app.get("/api/matches/:id/pending-scans/:scanId/image", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      const scanId = parseInt(req.params.scanId, 10);
+      if (isNaN(matchId) || isNaN(scanId)) return res.status(400).json({ message: "Invalid ID" });
+
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const [match, roleRecord] = await Promise.all([
+        storage.getMatch(matchId),
+        storage.getMatchRole(matchId, userId),
+      ]);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      // Enforce organizer/creator authorization (same as list/delete)
+      const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
+      if (!isOrganizerOrCreator) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const scan = await storage.getPendingScan(scanId);
+      if (!scan || scan.matchId !== matchId) return res.status(404).json({ message: "Scan not found" });
+
+      // Fetch image from Twilio — requires accountSid:authToken Basic auth
+      const imageCreds = await getTwilioRawCredentials();
+      const fetchHeaders: Record<string, string> = {};
+      if (imageCreds?.accountSid && imageCreds?.authToken) {
+        fetchHeaders["Authorization"] = `Basic ${Buffer.from(`${imageCreds.accountSid}:${imageCreds.authToken}`).toString("base64")}`;
+      }
+
+      const imgRes = await fetch(scan.mediaUrl, { headers: fetchHeaders });
+      if (!imgRes.ok) return res.status(502).json({ message: "Failed to fetch image" });
+
+      const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+      const data = await imgRes.arrayBuffer();
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.send(Buffer.from(data));
+    } catch (err) {
+      console.error("Image proxy error:", err);
+      res.status(500).json({ message: "Failed to proxy image" });
     }
   });
 

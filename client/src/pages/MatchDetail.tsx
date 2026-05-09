@@ -1,12 +1,13 @@
-import { useQuery, useMutationState } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, type MatchPlayerHandicap, type UserMatchRole } from "@/hooks/use-matches";
+import { useQuery, useMutationState, useQueryClient } from "@tanstack/react-query";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2 } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { useState, useRef, useEffect, useCallback, Fragment } from "react";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -237,6 +238,9 @@ export default function MatchDetail() {
   const { data: playerHandicaps } = usePlayerHandicaps();
   const { data: fullPlayerData = [] } = useFullPlayerData();
   const upsertPlayerHandicap = useUpsertPlayerHandicap();
+  const submitScoresBulk = useSubmitScoresBulk(matchId);
+  const { data: pendingScans = [] } = usePendingScans(matchId);
+  const dismissPendingScan = useDismissPendingScan(matchId);
   
   const { data: groupPlayerNames } = useQuery<string[]>({
     queryKey: ['/api/groups', match?.groupId, 'player-names'],
@@ -451,6 +455,13 @@ export default function MatchDetail() {
   
   // Selected player in standings (for filtering Match Results)
   const [selectedStandingsPlayer, setSelectedStandingsPlayer] = useState<number | null>(null);
+
+  // Pending scan review modal state
+  const [reviewingScan, setReviewingScan] = useState<PendingScorecardScan | null>(null);
+  const [scanEditableScores, setScanEditableScores] = useState<Record<string, Record<number, string>>>({});
+  const [scanPlayerMappings, setScanPlayerMappings] = useState<Record<string, number | null>>({});
+  const [scanSuggestedPresets, setScanSuggestedPresets] = useState<Record<string, string | null>>({});
+  const [scanApplying, setScanApplying] = useState(false);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -1820,6 +1831,177 @@ export default function MatchDetail() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Match Code Card + Pending Scans — visible to creator/organizer */}
+      {(isCreator || isOrganizer) && !isDailyMatchContainer && match && (
+        <div className="bg-white rounded-xl shadow-md border border-border/50 overflow-hidden">
+          <div className="px-4 py-3 border-b border-border/30 flex items-center justify-between gap-2">
+            <h3 className="font-display font-semibold text-sm flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-primary" />
+              Text in a Scorecard
+            </h3>
+            {match.matchCode && (
+              <button
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-mono font-bold text-base tracking-widest transition-colors"
+                title="Tap to copy"
+                onClick={() => {
+                  navigator.clipboard.writeText(match.matchCode!).then(() => {
+                    toast({ title: "Code copied!" });
+                  });
+                }}
+                data-testid="button-copy-match-code"
+              >
+                <Hash className="w-3 h-3" />
+                {match.matchCode}
+                <Copy className="w-3 h-3 ml-0.5 opacity-60" />
+              </button>
+            )}
+          </div>
+          <div className="px-4 py-3 space-y-2">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Anyone can text a photo of their scorecard to{" "}
+              <span className="font-medium text-foreground">
+                {import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number"}
+              </span>{" "}
+              with the code{" "}
+              {match.matchCode ? (
+                <span className="font-mono font-bold text-primary">{match.matchCode}</span>
+              ) : (
+                "shown above"
+              )}{" "}
+              in the message body. The scan will appear below for your review.
+            </p>
+            {match.matchCode && (
+              <button
+                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                data-testid="button-share-scorecard-instructions"
+                onClick={() => {
+                  const phone = import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number";
+                  const text = `Text a photo of your scorecard to ${phone} with the code ${match.matchCode} in the message body to submit your scores.`;
+                  if (navigator.share) {
+                    navigator.share({ text }).catch(() => {});
+                  } else {
+                    navigator.clipboard.writeText(text).then(() => {
+                      toast({ title: "Instructions copied!", description: "Share this with your playing partners." });
+                    });
+                  }
+                }}
+              >
+                <Share2 className="w-3 h-3" />
+                Share instructions via text
+              </button>
+            )}
+
+            {/* Pending scans list */}
+            {pendingScans.length > 0 && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pending Scans</p>
+                {pendingScans.map((scan) => {
+                  const isPending = scan.status === "pending";
+                  const isError = scan.status === "error";
+                  const isReady = scan.status === "ready";
+                  return (
+                    <div
+                      key={scan.id}
+                      className="flex items-center gap-3 p-2 rounded-lg border border-border/50 bg-muted/30"
+                      data-testid={`pending-scan-${scan.id}`}
+                    >
+                      <div className="w-10 h-10 rounded overflow-hidden shrink-0 bg-muted flex items-center justify-center">
+                        {isReady || isPending ? (
+                          <img
+                            src={`/api/matches/${matchId}/pending-scans/${scan.id}/image`}
+                            alt="Scorecard thumbnail"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <Camera className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{scan.fromPhone}</p>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {isPending && (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                              <span className="text-xs text-muted-foreground">Scanning…</span>
+                            </>
+                          )}
+                          {isReady && (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-green-500" />
+                              <span className="text-xs text-green-600 font-medium">Ready to review</span>
+                            </>
+                          )}
+                          {isError && (
+                            <>
+                              <AlertCircle className="w-3 h-3 text-destructive" />
+                              <span className="text-xs text-destructive truncate">{scan.errorMessage || "Scan failed"}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isReady && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              const result = scan.scanResult ? JSON.parse(scan.scanResult) : null;
+                              if (result?.scores) {
+                                const initialEditable: Record<string, Record<number, string>> = {};
+                                const initialMappings: Record<string, number | null> = {};
+                                const initialPresets: Record<string, string | null> = {};
+                                for (const p of result.scores) {
+                                  initialEditable[p.playerName] = {};
+                                  initialMappings[p.playerName] = null;
+                                  initialPresets[p.playerName] = null;
+                                  for (const h of p.holes) {
+                                    if (h.strokes !== null) {
+                                      initialEditable[p.playerName][h.holeNumber] = String(h.strokes);
+                                    }
+                                  }
+                                  // Auto-map if name matches a player
+                                  const matchedPlayer = players.find(
+                                    (pl) => pl.name.toLowerCase() === p.playerName.toLowerCase()
+                                  );
+                                  if (matchedPlayer) {
+                                    initialMappings[p.playerName] = matchedPlayer.id;
+                                  }
+                                }
+                                setScanEditableScores(initialEditable);
+                                setScanPlayerMappings(initialMappings);
+                                setScanSuggestedPresets(initialPresets);
+                              }
+                              setReviewingScan(scan);
+                            }}
+                            data-testid={`button-review-scan-${scan.id}`}
+                          >
+                            Review
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => dismissPendingScan.mutate(scan.id)}
+                          disabled={dismissPendingScan.isPending}
+                          data-testid={`button-dismiss-scan-${scan.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -6510,6 +6692,210 @@ export default function MatchDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Pending scan review modal */}
+      {reviewingScan && (() => {
+        const scanData = reviewingScan.scanResult ? (() => { try { return JSON.parse(reviewingScan.scanResult!); } catch { return null; } })() : null;
+        const scannedPlayers: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null; confidence?: string }> }> = scanData?.scores ?? [];
+
+        const getConfidenceIcon = (confidence?: string) => {
+          if (confidence === "high") return <CheckCircle2 className="w-2.5 h-2.5 text-green-500" />;
+          if (confidence === "medium") return <AlertCircle className="w-2.5 h-2.5 text-yellow-500" />;
+          if (confidence === "low") return <AlertCircle className="w-2.5 h-2.5 text-red-500" />;
+          return null;
+        };
+
+        const calculateTotals = (playerName: string) => {
+          const holes = scanEditableScores[playerName] || {};
+          let front9 = 0; let back9 = 0; let hasAll = true;
+          for (let h = 1; h <= 9; h++) { const v = parseInt(holes[h] || "", 10); if (!isNaN(v)) front9 += v; else hasAll = false; }
+          for (let h = 10; h <= 18; h++) { const v = parseInt(holes[h] || "", 10); if (!isNaN(v)) back9 += v; else hasAll = false; }
+          return { front9: front9 || null, back9: back9 || null, total: hasAll ? front9 + back9 : null };
+        };
+
+        const handleApplyScores = async () => {
+          setScanApplying(true);
+          try {
+            for (const scannedPlayer of scannedPlayers) {
+              const mappedPlayerId = scanPlayerMappings[scannedPlayer.playerName];
+              if (!mappedPlayerId) continue;
+              const holeScores = scanEditableScores[scannedPlayer.playerName] || {};
+              const entries: Array<{ playerId: number; holeNumber: number; strokes: number }> = [];
+              for (let h = 1; h <= 18; h++) {
+                const v = parseInt(holeScores[h] || "", 10);
+                if (!isNaN(v) && v > 0) {
+                  entries.push({ playerId: mappedPlayerId, holeNumber: h, strokes: v });
+                }
+              }
+              if (entries.length > 0) {
+                await submitScoresBulk.mutateAsync(entries);
+              }
+            }
+            await dismissPendingScan.mutateAsync(reviewingScan.id);
+            toast({ title: "Scores applied successfully!" });
+            setReviewingScan(null);
+          } catch (err) {
+            toast({ title: "Failed to apply scores", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
+          } finally {
+            setScanApplying(false);
+          }
+        };
+
+        const hasAnyMapping = Object.values(scanPlayerMappings).some((id) => id !== null);
+
+        return (
+          <Dialog open={true} onOpenChange={(open) => { if (!open) setReviewingScan(null); }}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+              <DialogHeader>
+                <DialogTitle>Review Scanned Scorecard</DialogTitle>
+              </DialogHeader>
+              <div className="mb-2">
+                <img
+                  src={`/api/matches/${matchId}/pending-scans/${reviewingScan.id}/image`}
+                  alt="Scanned scorecard"
+                  className="w-full max-h-48 object-contain rounded-lg border"
+                />
+              </div>
+
+              <div className="space-y-6">
+                {scannedPlayers.map((scannedPlayer) => {
+                  const mappedPlayerId = scanPlayerMappings[scannedPlayer.playerName];
+                  const totals = calculateTotals(scannedPlayer.playerName);
+                  return (
+                    <div key={scannedPlayer.playerName} className="space-y-3 p-3 border rounded-lg">
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Scanned:</span>
+                          <span className="font-semibold">{scannedPlayer.playerName}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Assign to:</span>
+                          <Select
+                            value={mappedPlayerId ? `id:${mappedPlayerId}` : "unassigned"}
+                            onValueChange={(val) => {
+                              if (val === "unassigned") {
+                                setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: null }));
+                              } else if (val.startsWith("id:")) {
+                                setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: parseInt(val.substring(3)) }));
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="w-44" data-testid={`select-scan-player-${scannedPlayer.playerName}`}>
+                              <SelectValue placeholder="Select player" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">-- Skip --</SelectItem>
+                              {players.map((p) => (
+                                <SelectItem key={`id:${p.id}`} value={`id:${p.id}`}>{p.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {mappedPlayerId && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-10 gap-1">
+                        {[1,2,3,4,5,6,7,8,9].map((hole) => {
+                          const holeData = scannedPlayer.holes.find((h) => h.holeNumber === hole);
+                          const value = scanEditableScores[scannedPlayer.playerName]?.[hole] || "";
+                          return (
+                            <div key={hole} className="text-center">
+                              <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                              <div className="relative">
+                                <input
+                                  type="text" inputMode="numeric" value={value}
+                                  onChange={(e) => {
+                                    const v = e.target.value.replace(/\D/g, "");
+                                    setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
+                                  }}
+                                  className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                  data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
+                                />
+                                <div className="absolute -top-1 -right-1">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="text-center">
+                          <div className="text-xs text-muted-foreground mb-1">OUT</div>
+                          <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">{totals.front9 ?? "-"}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-10 gap-1">
+                        {[10,11,12,13,14,15,16,17,18].map((hole) => {
+                          const holeData = scannedPlayer.holes.find((h) => h.holeNumber === hole);
+                          const value = scanEditableScores[scannedPlayer.playerName]?.[hole] || "";
+                          return (
+                            <div key={hole} className="text-center">
+                              <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                              <div className="relative">
+                                <input
+                                  type="text" inputMode="numeric" value={value}
+                                  onChange={(e) => {
+                                    const v = e.target.value.replace(/\D/g, "");
+                                    setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
+                                  }}
+                                  className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                  data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
+                                />
+                                <div className="absolute -top-1 -right-1">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="text-center">
+                          <div className="text-xs text-muted-foreground mb-1">IN</div>
+                          <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">{totals.back9 ?? "-"}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <div className="text-center">
+                          <div className="text-xs text-muted-foreground mb-1">TOTAL</div>
+                          <div className="h-8 w-12 flex items-center justify-center text-sm font-bold bg-primary/10 text-primary rounded">{totals.total ?? "-"}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                <CheckCircle2 className="w-4 h-4 text-green-500" /><span>High</span>
+                <AlertCircle className="w-4 h-4 text-yellow-500 ml-2" /><span>Medium</span>
+                <AlertCircle className="w-4 h-4 text-red-500 ml-2" /><span>Low confidence</span>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  disabled={scanApplying || dismissPendingScan.isPending}
+                  onClick={async () => {
+                    try {
+                      await dismissPendingScan.mutateAsync(reviewingScan.id);
+                    } catch {
+                      // Ignore error — close modal regardless
+                    } finally {
+                      setReviewingScan(null);
+                    }
+                  }}
+                  data-testid="button-dismiss-pending-scan-review"
+                >
+                  {dismissPendingScan.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Dismissing…</> : "Dismiss Scan"}
+                </Button>
+                <Button
+                  onClick={handleApplyScores}
+                  disabled={!hasAnyMapping || scanApplying}
+                  data-testid="button-apply-pending-scan-scores"
+                >
+                  {scanApplying ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Applying…</> : "Save Scores"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }

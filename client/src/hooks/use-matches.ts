@@ -1172,3 +1172,47 @@ export function useDeleteRyderCupEvent() {
     },
   });
 }
+
+// Pending scorecard scans (from inbound MMS)
+export interface PendingScorecardScan {
+  id: number;
+  matchId: number;
+  fromPhone: string;
+  mediaUrl: string;
+  status: string;
+  scanResult: string | null;
+  errorMessage: string | null;
+  createdAt: string | null;
+}
+
+export function usePendingScans(matchId: number) {
+  return useQuery<PendingScorecardScan[]>({
+    queryKey: ["/api/matches", matchId, "pending-scans"],
+    queryFn: async () => {
+      const res = await fetch(`/api/matches/${matchId}/pending-scans`, { credentials: "include" });
+      if (res.status === 403) return [];
+      if (!res.ok) throw new Error("Failed to fetch pending scans");
+      return res.json();
+    },
+    refetchInterval: 8000,
+  });
+}
+
+export function useDismissPendingScan(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (scanId: number) => {
+      const res = await fetch(`/api/matches/${matchId}/pending-scans/${scanId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to dismiss scan");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-scans"] });
+    },
+  });
+}

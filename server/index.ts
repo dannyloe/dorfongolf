@@ -68,6 +68,15 @@ app.use((req, res, next) => {
 
     await registerRoutes(httpServer, app);
 
+    // Backfill any existing matches that are missing 4-char match codes
+    try {
+      const { storage } = await import("./storage");
+      const count = await storage.backfillMatchCodes();
+      if (count > 0) log(`Backfilled match codes for ${count} existing matches`);
+    } catch (err) {
+      console.error("Match code backfill error:", err);
+    }
+
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";
