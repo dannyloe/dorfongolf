@@ -661,7 +661,6 @@ export default function QuickScoreEntry() {
             type="file"
             ref={fileInputRef}
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={handleFileSelect}
             data-testid="input-scorecard-file"
@@ -688,6 +687,8 @@ export default function QuickScoreEntry() {
             size="icon"
             onClick={() => fileInputRef.current?.click()}
             disabled={scanScorecard.isPending}
+            title="Scan or upload scorecard"
+            aria-label="Scan or upload scorecard"
             data-testid="button-scan-scorecard"
           >
             {scanScorecard.isPending ? (
