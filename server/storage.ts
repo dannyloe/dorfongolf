@@ -161,6 +161,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async backfillMatchCodes(): Promise<number> {
+    // Check the column exists before querying it — production DB may lag behind dev schema
+    const { pool } = await import("./db");
+    const colCheck = await pool.query(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'matches' AND column_name = 'match_code' LIMIT 1`
+    );
+    if (colCheck.rowCount === 0) return 0;
+
     const uncodedMatches = await db.select({ id: matches.id }).from(matches).where(isNull(matches.matchCode));
     for (const m of uncodedMatches) {
       let attempts = 0;
