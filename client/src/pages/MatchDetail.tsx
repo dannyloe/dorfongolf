@@ -3603,9 +3603,11 @@ export default function MatchDetail() {
               const netContext = buildMatchNetContext(emWithCorrectBack9);
               const isDeathMatch = emWithCorrectBack9.matchType === 'death_match';
               const isTwoThreeBall = emWithCorrectBack9.matchType === 'two_three_ball';
+              const isOneTwoThreeBall = emWithCorrectBack9.matchType === 'one_two_three_ball';
               const dmResults = isDeathMatch ? calculateDeathMatchResults(emWithCorrectBack9, scores, netContext) : null;
               const ttbResults = isTwoThreeBall ? calculateTwoThreeBallResults(emWithCorrectBack9, scores, netContext) : null;
-              const results = (isDeathMatch || isTwoThreeBall) ? [] : calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
+              const otzbResults: OneTwoThreeBallResults | null = isOneTwoThreeBall ? calculateOneTwoThreeBallResults(emWithCorrectBack9, scores, netContext) : null;
+              const results = (isDeathMatch || isTwoThreeBall || isOneTwoThreeBall) ? [] : calculateMatchPlayResults(emWithCorrectBack9, scores, netContext);
               const status = isDeathMatch && dmResults && teamA && teamB
                 ? (() => {
                     const bbStatus = dmResults.bestBall.isComplete
@@ -3831,17 +3833,23 @@ export default function MatchDetail() {
                           const bbStatus = playedBB.length > 0 ? playedBB[playedBB.length - 1].status : 'Not started';
                           const sbStatus = playedSB.length > 0 ? playedSB[playedSB.length - 1].status : '';
                           pressStatus = sbStatus ? `${bbStatus} | ${sbStatus}` : bbStatus;
-                        } else if (pm.matchType === 'nassau' || pm.matchType === 'two_three_ball') {
+                        } else if (pm.matchType === 'nassau' || pm.matchType === 'two_three_ball' || pm.matchType === 'one_two_three_ball') {
                           // Nassau presses live on a single leg; use the leg that contains the press start.
                           const pmStart = pm.startHole ?? 1;
                           const useBack9Leg = pmStart > 9;
-                          const nassauResults = pm.matchType === 'nassau'
-                            ? (useBack9Leg
-                                ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).back9
-                                : calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).front9)
-                            : (useBack9Leg
-                                ? calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.back9
-                                : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.front9);
+                          let nassauResults: HoleResult[];
+                          if (pm.matchType === 'nassau') {
+                            nassauResults = useBack9Leg
+                              ? calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).back9
+                              : calculateNassauResults(pmWithCorrectBack9, scores, pressNetContext).front9;
+                          } else if (pm.matchType === 'one_two_three_ball') {
+                            const pOtzb = calculateOneTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext);
+                            nassauResults = useBack9Leg ? pOtzb.oneBall.back9 : pOtzb.oneBall.front9;
+                          } else {
+                            nassauResults = useBack9Leg
+                              ? calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.back9
+                              : calculateTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext).twoBall.front9;
+                          }
                           const played = nassauResults.filter(r => r.teamAScore !== null && r.teamBScore !== null);
                           pressStatus = played.length > 0 ? played[played.length - 1].status : 'Not started';
                         } else if (pm.matchType === 'skins') {
@@ -4748,6 +4756,427 @@ export default function MatchDetail() {
                                 <p className="font-medium text-muted-foreground">
                                   Second Ball (Match Play): ${((em.deathMatchSecondBallBet || Math.round((em.unitAmount || 0) / 2)) / 100).toFixed(2)} — {dmResults.secondBall.isComplete ? (dmResults.secondBall.winner === 'A' ? `${teamA?.name} wins` : dmResults.secondBall.winner === 'B' ? `${teamB?.name} wins` : 'Halved') : `${teamA?.name}: ${dmResults.secondBall.holesWonA} | ${teamB?.name}: ${dmResults.secondBall.holesWonB}`}
                                 </p>
+                              </div>
+                            </div>
+                          );
+                        })() : em.matchType === 'one_two_three_ball' && otzbResults && teamA && teamB ? (() => {
+                          const allPlayers = [...(teamA.members || []), ...(teamB.members || [])];
+                          const oneBallBetCents = em.oneTwoThreeBallOneBallBet ?? em.unitAmount ?? 0;
+                          const twoThirdBallBetCents = em.oneTwoThreeBallTwoThirdBallBet ?? em.unitAmount ?? 0;
+                          const oneBallAutoPress = {
+                            front9: em.autoPressOneBallFront9 ?? true,
+                            back9: em.autoPressOneBallBack9 ?? true,
+                            overall: em.autoPressOneBallOverall ?? true,
+                          };
+                          const twoThirdBallAutoPress = {
+                            front9: em.autoPressTwoThirdBallFront9 ?? true,
+                            back9: em.autoPressTwoThirdBallBack9 ?? true,
+                            overall: em.autoPressTwoThirdBallOverall ?? true,
+                          };
+                          const oneBallNs = calculateNassauSettlements(oneBallBetCents, teamA, teamB, otzbResults.oneBall, oneBallAutoPress);
+                          const twoThirdBallNs = calculateNassauSettlements(twoThirdBallBetCents, teamA, teamB, otzbResults.twoThirdBall, twoThirdBallAutoPress);
+
+                          const renderLegSummary = (label: string, nassau: typeof otzbResults.oneBall) => {
+                            const legRow = (legName: string, holes: typeof nassau.front9) => {
+                              const last = holes.filter(h => h.teamAScore !== null && h.teamBScore !== null).slice(-1)[0];
+                              const status = last ? last.status : 'Not started';
+                              const finalA = holes[holes.length - 1]?.cumulativeA ?? 0;
+                              const finalB = holes[holes.length - 1]?.cumulativeB ?? 0;
+                              return (
+                                <tr className="border-b border-border/30" data-testid={`row-otzb-${label}-${legName}`}>
+                                  <td className="p-2 font-medium">{legName}</td>
+                                  <td className="p-2 text-center">{finalA}</td>
+                                  <td className="p-2 text-center">{finalB}</td>
+                                  <td className="p-2 text-xs text-muted-foreground">{status}</td>
+                                </tr>
+                              );
+                            };
+                            return (
+                              <div className="rounded-lg border border-border overflow-hidden">
+                                <div className="px-3 py-2 bg-muted/40 text-sm font-semibold">{label}</div>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border bg-muted/20">
+                                      <th className="p-2 text-left font-medium">Leg</th>
+                                      <th className="p-2 text-center font-medium">{teamA.name}</th>
+                                      <th className="p-2 text-center font-medium">{teamB.name}</th>
+                                      <th className="p-2 text-left font-medium">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {legRow('Front 9', nassau.front9)}
+                                    {legRow('Back 9', nassau.back9)}
+                                    {legRow('Overall', nassau.overall)}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          };
+
+                          const renderSettlements = (label: string, settlements: ReturnType<typeof calculateNassauSettlements>) => {
+                            return (
+                              <div className="space-y-1">
+                                <p className="text-sm font-semibold">{label} Settlements</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {settlements.map((ns, idx) => (
+                                    <span
+                                      key={`${label}-${ns.betName}-${idx}`}
+                                      className={`px-3 py-1 rounded-lg text-xs ${ns.settlement.isComplete ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}
+                                      data-testid={`badge-otzb-${label}-${ns.betName.replace(/\s+/g, '-').toLowerCase()}`}
+                                    >
+                                      {ns.betName}{ns.autoPressTriggered ? ' (auto-press)' : ''}: ${(ns.settlement.totalPot / 100).toFixed(2)} {ns.settlement.isComplete ? '✓' : '…'}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          };
+
+                          return (
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-medium text-primary mb-1">{teamA.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {teamA.members.map((m) => (
+                                      <span key={m.id} className="px-2 py-0.5 bg-primary/10 text-primary rounded text-xs">
+                                        {m.player?.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <p className="font-medium text-accent mb-1">{teamB.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {teamB.members.map((m) => (
+                                      <span key={m.id} className="px-2 py-0.5 bg-accent/10 text-accent rounded text-xs">
+                                        {m.player?.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="border-b border-border">
+                                      <th className="p-2 text-left font-semibold sticky left-0 bg-background min-w-[80px]">Player</th>
+                                      {firstNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Out</th>
+                                      {secondNineHoles.map((hole) => (
+                                        <th key={hole} className="p-2 text-center font-medium min-w-[28px]">{hole}</th>
+                                      ))}
+                                      <th className="p-2 text-center font-semibold bg-muted/30">In</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30">Tot</th>
+                                      <th className="p-2 text-center font-semibold bg-muted/30 min-w-[70px]">Auto Press</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {allPlayers.map((m) => {
+                                      const isTeamA = teamA.members.some(tm => tm.playerId === m.playerId);
+                                      const colorClass = isTeamA ? 'text-primary' : 'text-accent';
+                                      const bgClass = isTeamA ? 'bg-primary/5' : 'bg-accent/5';
+                                      const firstNineTotal = firstNineHoles.reduce((sum, hole) => {
+                                        const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                        return sum + (s?.strokes || 0);
+                                      }, 0);
+                                      const secondNineTotal = secondNineHoles.reduce((sum, hole) => {
+                                        const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                        return sum + (s?.strokes || 0);
+                                      }, 0);
+                                      return (
+                                        <tr key={m.playerId} className={`border-b border-border/30 ${bgClass}`}>
+                                          <td className={`p-2 font-medium sticky left-0 bg-background ${colorClass} text-xs`}>{m.player?.name}</td>
+                                          {firstNineHoles.map((hole) => {
+                                            const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                            return <td key={hole} className="p-2 text-center">{s?.strokes ?? '-'}</td>;
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{firstNineTotal || '-'}</td>
+                                          {secondNineHoles.map((hole) => {
+                                            const s = scores.find((sc: Score) => sc.playerId === m.playerId && sc.holeNumber === hole);
+                                            return <td key={hole} className="p-2 text-center">{s?.strokes ?? '-'}</td>;
+                                          })}
+                                          <td className="p-2 text-center font-semibold bg-muted/30">{secondNineTotal || '-'}</td>
+                                          <td className="p-2 text-center font-bold bg-muted/30">{(firstNineTotal + secondNineTotal) || '-'}</td>
+                                          <td className="p-2 text-center bg-muted/30"></td>
+                                        </tr>
+                                      );
+                                    })}
+
+                                    {(() => {
+                                      const renderAutoPressLegTogglesOtzb = (
+                                        targetMatch: typeof em,
+                                        ballType: 'oneBall' | 'twoThirdBall',
+                                        showFront9: boolean,
+                                        showBack9: boolean,
+                                        showOverall: boolean,
+                                      ) => {
+                                        const f9Key = ballType === 'oneBall' ? 'autoPressOneBallFront9' : 'autoPressTwoThirdBallFront9';
+                                        const b9Key = ballType === 'oneBall' ? 'autoPressOneBallBack9' : 'autoPressTwoThirdBallBack9';
+                                        const ovKey = ballType === 'oneBall' ? 'autoPressOneBallOverall' : 'autoPressTwoThirdBallOverall';
+                                        const f9Checked = (targetMatch as any)[f9Key] ?? true;
+                                        const b9Checked = (targetMatch as any)[b9Key] ?? true;
+                                        const ovChecked = (targetMatch as any)[ovKey] ?? true;
+                                        const tid = `${ballType}-${targetMatch.id}`;
+                                        return (
+                                          <div className="flex flex-col items-center gap-0.5">
+                                            {showFront9 && (
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-otzb-${tid}-f9`}
+                                                  checked={f9Checked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: targetMatch.id,
+                                                      [f9Key]: c === true,
+                                                    } as any);
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-otzb-${tid}-f9`}
+                                                />
+                                                <span>F9</span>
+                                              </label>
+                                            )}
+                                            {showBack9 && (
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-otzb-${tid}-b9`}
+                                                  checked={b9Checked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: targetMatch.id,
+                                                      [b9Key]: c === true,
+                                                    } as any);
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-otzb-${tid}-b9`}
+                                                />
+                                                <span>B9</span>
+                                              </label>
+                                            )}
+                                            {showOverall && (
+                                              <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                <Checkbox
+                                                  id={`autopress-otzb-${tid}-ov`}
+                                                  checked={ovChecked}
+                                                  onCheckedChange={(c) => {
+                                                    updateAutoPress.mutate({
+                                                      eventMatchId: targetMatch.id,
+                                                      [ovKey]: c === true,
+                                                    } as any);
+                                                  }}
+                                                  disabled={updateAutoPress.isPending}
+                                                  data-testid={`checkbox-autopress-otzb-${tid}-ov`}
+                                                />
+                                                <span>Ovr</span>
+                                              </label>
+                                            )}
+                                          </div>
+                                        );
+                                      };
+                                      const renderBallRowsOtzb = (
+                                        label: string,
+                                        nassauOverall: HoleResult[],
+                                        bandClass: string,
+                                        ballType: 'oneBall' | 'twoThirdBall',
+                                      ) => {
+                                        const find = (hole: number) => nassauOverall.find(r => r.holeNumber === hole);
+                                        const sumA = (holes: number[]) => holes.reduce((sum, h) => sum + (find(h)?.teamAScore || 0), 0);
+                                        const sumB = (holes: number[]) => holes.reduce((sum, h) => sum + (find(h)?.teamBScore || 0), 0);
+                                        const aOut = sumA(firstNineHoles);
+                                        const bOut = sumB(firstNineHoles);
+                                        const aIn = sumA(secondNineHoles);
+                                        const bIn = sumB(secondNineHoles);
+                                        const renderTeamCell = (hole: number, isA: boolean) => {
+                                          const r = find(hole);
+                                          const value = isA ? r?.teamAScore : r?.teamBScore;
+                                          const isWinning = r?.winner === (isA ? 'A' : 'B');
+                                          const colorWin = isA ? 'bg-primary/20 text-primary font-bold' : 'bg-accent/20 text-accent font-bold';
+                                          return (
+                                            <td
+                                              key={hole}
+                                              className={`p-2 text-center ${isWinning ? colorWin : ''}`}
+                                              data-testid={`cell-otzb-${label}-${isA ? 'A' : 'B'}-${hole}`}
+                                            >
+                                              {value ?? '-'}
+                                            </td>
+                                          );
+                                        };
+                                        const renderStatusCell = (hole: number) => {
+                                          const r = find(hole);
+                                          if (!r || r.teamAScore === null || r.teamBScore === null) {
+                                            return <td key={hole} className="p-2 text-center">-</td>;
+                                          }
+                                          const diff = r.cumulativeA - r.cumulativeB;
+                                          if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                          if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                          return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                        };
+                                        return (
+                                          <>
+                                            <tr className="border-t-2 border-border">
+                                              <td colSpan={firstNineHoles.length + secondNineHoles.length + 5} className="p-1"></td>
+                                            </tr>
+                                            <tr className={`border-b border-border/50 ${bandClass}`}>
+                                              <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} - {teamA.name}</td>
+                                              {firstNineHoles.map((hole) => renderTeamCell(hole, true))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{aOut || '-'}</td>
+                                              {secondNineHoles.map((hole) => renderTeamCell(hole, true))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{aIn || '-'}</td>
+                                              <td className="p-2 text-center font-bold bg-muted/30">{(aOut + aIn) || '-'}</td>
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                            </tr>
+                                            <tr className={`border-b border-border/50 ${bandClass}`}>
+                                              <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} - {teamB.name}</td>
+                                              {firstNineHoles.map((hole) => renderTeamCell(hole, false))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{bOut || '-'}</td>
+                                              {secondNineHoles.map((hole) => renderTeamCell(hole, false))}
+                                              <td className="p-2 text-center font-semibold bg-muted/30">{bIn || '-'}</td>
+                                              <td className="p-2 text-center font-bold bg-muted/30">{(bOut + bIn) || '-'}</td>
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                            </tr>
+                                            <tr className={bandClass}>
+                                              <td className={`p-2 font-semibold sticky left-0 ${bandClass} text-xs`}>{label} Status</td>
+                                              {firstNineHoles.map((hole) => renderStatusCell(hole))}
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                              {secondNineHoles.map((hole) => renderStatusCell(hole))}
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                              <td className="p-2 text-center bg-muted/30"></td>
+                                              <td className="p-2 text-center align-middle">
+                                                {renderAutoPressLegTogglesOtzb(em, ballType, true, true, true)}
+                                              </td>
+                                            </tr>
+                                          </>
+                                        );
+                                      };
+                                      return (
+                                        <>
+                                          {renderBallRowsOtzb('1 Ball', otzbResults.oneBall.overall, 'bg-emerald-50/50 dark:bg-emerald-950/30', 'oneBall')}
+                                          {renderBallRowsOtzb('2nd3rd Ball', otzbResults.twoThirdBall.overall, 'bg-purple-50/50 dark:bg-purple-950/30', 'twoThirdBall')}
+                                        </>
+                                      );
+                                    })()}
+
+                                    {/* Per-press status rows for 1 Ball / 2nd3rd Ball */}
+                                    {pressMatches.map((pm, pmIdx) => {
+                                      const pmWithCorrectBack9 = { ...pm, startOnBack9: isBack9First };
+                                      const pressNetContext = pm.useNetScoring ? buildMatchNetContext(pmWithCorrectBack9) : null;
+                                      const pOtzb = calculateOneTwoThreeBallResults(pmWithCorrectBack9, scores, pressNetContext);
+                                      const pressStartHole = pm.startHole ?? 1;
+                                      const numPrefix = pmIdx === 0 ? "" : ` ${pmIdx + 1}`;
+                                      const pressOneBallResults = pressStartHole > 9 ? pOtzb.oneBall.back9 : pOtzb.oneBall.front9;
+                                      const pressTwoThirdBallResults = pressStartHole > 9 ? pOtzb.twoThirdBall.back9 : pOtzb.twoThirdBall.front9;
+                                      const renderDiffCell = (hole: number, results: HoleResult[]) => {
+                                        const playingPos = physicalToPlayingPosition(hole, isBack9First);
+                                        if (playingPos < pressStartHole) {
+                                          return <td key={hole} className="p-2 text-center text-muted-foreground/40 text-[10px]">-</td>;
+                                        }
+                                        const r = results.find(res => res.holeNumber === hole);
+                                        if (!r || r.teamAScore === null || r.teamBScore === null) return <td key={hole} className="p-2 text-center text-[10px]">-</td>;
+                                        const diff = r.cumulativeA - r.cumulativeB;
+                                        if (diff > 0) return <td key={hole} className="p-2 text-center font-bold text-primary text-[10px]">{diff} UP</td>;
+                                        if (diff < 0) return <td key={hole} className="p-2 text-center font-bold text-accent text-[10px]">{Math.abs(diff)} UP</td>;
+                                        return <td key={hole} className="p-2 text-center text-muted-foreground text-[10px]">AS</td>;
+                                      };
+                                      return (
+                                        <Fragment key={`press-otzb-${pm.id}`}>
+                                          <tr className="border-t border-border/40 bg-emerald-50/40 dark:bg-emerald-950/20" data-testid={`row-press-1ball-${pm.id}`}>
+                                            <td className="p-2 pl-3 sticky left-0 bg-emerald-50/40 dark:bg-emerald-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                              <span className="inline-flex items-center gap-1">
+                                                <span>Press{numPrefix} 1 Ball (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""}</span>
+                                                {canEditScoresAndBets && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setPendingDeletePress({ eventMatchId: em.id, pressId: pm.id })}
+                                                    className="text-muted-foreground hover:text-destructive"
+                                                    data-testid={`button-delete-press-row-otzb-${pm.id}`}
+                                                    title="Delete press"
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </button>
+                                                )}
+                                              </span>
+                                            </td>
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pressOneBallResults))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pressOneBallResults))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center align-middle">
+                                              {(() => {
+                                                const f9Key = 'autoPressOneBallFront9';
+                                                const b9Key = 'autoPressOneBallBack9';
+                                                const tid = `oneBall-${pm.id}`;
+                                                return (
+                                                  <div className="flex flex-col items-center gap-0.5">
+                                                    {pressStartHole <= 9 && (
+                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                        <Checkbox checked={(pm as any)[f9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [f9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-f9`} />
+                                                        <span>F9</span>
+                                                      </label>
+                                                    )}
+                                                    {pressStartHole > 9 && (
+                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                        <Checkbox checked={(pm as any)[b9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [b9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-b9`} />
+                                                        <span>B9</span>
+                                                      </label>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })()}
+                                            </td>
+                                          </tr>
+                                          <tr className="bg-purple-50/40 dark:bg-purple-950/20" data-testid={`row-press-23ball-${pm.id}`}>
+                                            <td className="p-2 pl-3 sticky left-0 bg-purple-50/40 dark:bg-purple-950/20 text-xs font-medium text-amber-700 dark:text-amber-400 border-l-2 border-amber-400">
+                                              Press{numPrefix} 2nd3rd Ball (H{pressStartHole}){pm.customName ? ` · ${pm.customName}` : ""}
+                                            </td>
+                                            {firstNineHoles.map((h) => renderDiffCell(h, pressTwoThirdBallResults))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            {secondNineHoles.map((h) => renderDiffCell(h, pressTwoThirdBallResults))}
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center bg-muted/30"></td>
+                                            <td className="p-2 text-center align-middle">
+                                              {(() => {
+                                                const f9Key = 'autoPressTwoThirdBallFront9';
+                                                const b9Key = 'autoPressTwoThirdBallBack9';
+                                                const tid = `twoThirdBall-${pm.id}`;
+                                                return (
+                                                  <div className="flex flex-col items-center gap-0.5">
+                                                    {pressStartHole <= 9 && (
+                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                        <Checkbox checked={(pm as any)[f9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [f9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-f9`} />
+                                                        <span>F9</span>
+                                                      </label>
+                                                    )}
+                                                    {pressStartHole > 9 && (
+                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                        <Checkbox checked={(pm as any)[b9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [b9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-b9`} />
+                                                        <span>B9</span>
+                                                      </label>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })()}
+                                            </td>
+                                          </tr>
+                                        </Fragment>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {renderLegSummary(`1 Ball — $${(oneBallBetCents / 100).toFixed(2)}/leg`, otzbResults.oneBall)}
+                                {renderLegSummary(`2nd3rd Ball — $${(twoThirdBallBetCents / 100).toFixed(2)}/leg`, otzbResults.twoThirdBall)}
+                              </div>
+
+                              <div className="p-3 bg-muted/30 rounded-lg space-y-3">
+                                {renderSettlements('1 Ball', oneBallNs)}
+                                {renderSettlements('2nd3rd Ball', twoThirdBallNs)}
                               </div>
                             </div>
                           );
