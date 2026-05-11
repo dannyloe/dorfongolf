@@ -156,6 +156,14 @@ interface EventMatch {
   autoPressThreeBallFront9?: boolean;
   autoPressThreeBallBack9?: boolean;
   autoPressThreeBallOverall?: boolean;
+  oneTwoThreeBallOneBallBet?: number | null;
+  oneTwoThreeBallTwoThirdBallBet?: number | null;
+  autoPressOneBallFront9?: boolean;
+  autoPressOneBallBack9?: boolean;
+  autoPressOneBallOverall?: boolean;
+  autoPressTwoThirdBallFront9?: boolean;
+  autoPressTwoThirdBallBack9?: boolean;
+  autoPressTwoThirdBallOverall?: boolean;
   teams: Team[];
 }
 
@@ -813,6 +821,67 @@ export function calculateLedger(
 
       emit('2 Ball', twoBallSettlements);
       emit('3rd Ball', threeBallSettlements);
+    } else if (em.matchType === 'one_two_three_ball') {
+      const otzbNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
+      const otzbResults = calculateOneTwoThreeBallResults(em, scores, otzbNetContext);
+
+      const oneBallBetCents = em.oneTwoThreeBallOneBallBet ?? em.unitAmount ?? 0;
+      const twoThirdBallBetCents = em.oneTwoThreeBallTwoThirdBallBet ?? em.unitAmount ?? 0;
+
+      const oneBallAutoPress = {
+        front9: em.autoPressOneBallFront9 ?? true,
+        back9: em.autoPressOneBallBack9 ?? true,
+        overall: em.autoPressOneBallOverall ?? true,
+      };
+      const twoThirdBallAutoPress = {
+        front9: em.autoPressTwoThirdBallFront9 ?? true,
+        back9: em.autoPressTwoThirdBallBack9 ?? true,
+        overall: em.autoPressTwoThirdBallOverall ?? true,
+      };
+
+      const oneBallSettlements = calculateNassauSettlements(oneBallBetCents, teamA, teamB, otzbResults.oneBall, oneBallAutoPress);
+      const twoThirdBallSettlements = calculateNassauSettlements(twoThirdBallBetCents, teamA, teamB, otzbResults.twoThirdBall, twoThirdBallAutoPress);
+
+      const otzbPlayerTeamIndex = new Map<number, number>();
+      for (const m of teamA.members) otzbPlayerTeamIndex.set(m.playerId, 0);
+      for (const m of teamB.members) otzbPlayerTeamIndex.set(m.playerId, 1);
+
+      const emitOtzb = (prefix: '1 Ball' | '2nd3rd Ball', settlements: NassauSettlement[]) => {
+        for (const ns of settlements) {
+          const betLabel = `${prefix} – ${ns.betName}`;
+          for (const s of ns.settlement.settlements) {
+            const teamIdx = otzbPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
+            entries.push({
+              matchId: em.id,
+              matchName: `${emDisplayName} - ${betLabel}`,
+              playerId: s.playerId,
+              playerName: s.playerName,
+              amount: s.amount,
+              isComplete: ns.settlement.isComplete,
+              createdAt: em.createdAt,
+              betType: betLabel,
+              isAutoPress: ns.autoPressTriggered || false,
+              pressHole,
+              teamAMembers,
+              teamBMembers,
+              teamName: s.teamName,
+              teamIndex: teamIdx,
+            });
+
+            if (ns.settlement.isComplete) {
+              const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName.toLowerCase().trim()}`;
+              const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
+              if (s.amount > 0) existing.won += s.amount;
+              else if (s.amount < 0) existing.lost += Math.abs(s.amount);
+              existing.matches.add(em.id);
+              playerTotals.set(stableKey, existing);
+            }
+          }
+        }
+      };
+
+      emitOtzb('1 Ball', oneBallSettlements);
+      emitOtzb('2nd3rd Ball', twoThirdBallSettlements);
     } else {
       // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
       const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
@@ -1366,6 +1435,51 @@ export function calculateCombinedMatchSettlements(
       };
       pushTtbItems(twoBallSettlements, '2 Ball', twoBallBetCents);
       pushTtbItems(threeBallSettlements, '3rd Ball', threeBallBetCents);
+    } else if (match.matchType === 'one_two_three_ball') {
+      // 1 Ball / 2nd3rd Ball - 6 sub-bets total (2 Nassaus x 3 legs each)
+      totalBets += 6;
+      const otzbResults = calculateOneTwoThreeBallResults(match, scores, netContext);
+      const oneBallBetCents = match.oneTwoThreeBallOneBallBet ?? match.unitAmount ?? 0;
+      const twoThirdBallBetCents = match.oneTwoThreeBallTwoThirdBallBet ?? match.unitAmount ?? 0;
+
+      const oneBallAutoPress = {
+        front9: match.autoPressOneBallFront9 ?? true,
+        back9: match.autoPressOneBallBack9 ?? true,
+        overall: match.autoPressOneBallOverall ?? true,
+      };
+      const twoThirdBallAutoPress = {
+        front9: match.autoPressTwoThirdBallFront9 ?? true,
+        back9: match.autoPressTwoThirdBallBack9 ?? true,
+        overall: match.autoPressTwoThirdBallOverall ?? true,
+      };
+
+      const oneBallSettlements = calculateNassauSettlements(oneBallBetCents, teamA, teamB, otzbResults.oneBall, oneBallAutoPress);
+      const twoThirdBallSettlements = calculateNassauSettlements(twoThirdBallBetCents, teamA, teamB, otzbResults.twoThirdBall, twoThirdBallAutoPress);
+
+      const pushOtzbItems = (settlements: typeof oneBallSettlements, prefix: string, betCents: number) => {
+        for (const ns of settlements) {
+          totalPot += ns.settlement.totalPot;
+          if (ns.settlement.isComplete) {
+            completedCount++;
+            for (const s of ns.settlement.settlements) {
+              const existing = playerAmounts.get(s.playerId) || { name: s.playerName, amount: 0 };
+              existing.amount += s.amount;
+              playerAmounts.set(s.playerId, existing);
+            }
+          }
+          lineItems.push(buildLineItem(
+            match,
+            `${prefix} - ${ns.betName}`,
+            betCents / 100,
+            ns.settlement,
+            teamA,
+            teamB,
+            `${prefix.replace(/\s+/g, '-').toLowerCase()}-${ns.betName}`,
+          ));
+        }
+      };
+      pushOtzbItems(oneBallSettlements, '1 Ball', oneBallBetCents);
+      pushOtzbItems(twoThirdBallSettlements, '2nd3rd Ball', twoThirdBallBetCents);
     } else {
       // Regular match play or stroke play - 1 bet
       totalBets += 1;
@@ -2594,6 +2708,172 @@ export function calculateTwoThreeBallResults(
       front9: calculateRange(1, 9, thirdLowest, teamA.name, teamB.name),
       back9: calculateRange(10, 18, thirdLowest, teamA.name, teamB.name),
       overall: calculateOverall(thirdLowest, teamA.name, teamB.name),
+    },
+  };
+}
+
+// ============================================================================
+// 1 Ball / 2nd3rd Ball
+// ============================================================================
+// Two simultaneous Nassau matches:
+//   - 1 Ball: per-hole team score = team's lowest (best) score (match play)
+//   - 2nd3rd Ball: per-hole team score = sum of team's 2nd-best + 3rd-best scores (match play)
+// Each Nassau has Front 9 / Back 9 / Overall legs with independent auto-press.
+
+export interface OneTwoThreeBallResults {
+  oneBall: NassauResults;
+  twoThirdBall: NassauResults;
+}
+
+export function calculateOneTwoThreeBallResults(
+  eventMatch: EventMatch,
+  scores: Score[],
+  netContext: NetScoringContext | null = null
+): OneTwoThreeBallResults {
+  const teamA = eventMatch.teams[0];
+  const teamB = eventMatch.teams[1];
+  const startOnBack9 = eventMatch.startOnBack9 || false;
+  const matchStartHole = eventMatch.startHole && eventMatch.startHole > 1 ? eventMatch.startHole : 1;
+
+  const empty: NassauResults = { front9: [], back9: [], overall: [] };
+  if (!teamA || !teamB) return { oneBall: empty, twoThirdBall: empty };
+
+  const teamAPlayerIds = new Set(teamA.members.map((m) => m.playerId));
+  const teamBPlayerIds = new Set(teamB.members.map((m) => m.playerId));
+
+  const lowestScore = (sorted: number[]): number | null =>
+    sorted.length >= 1 ? sorted[0] : null;
+  const sumOfSecondAndThird = (sorted: number[]): number | null =>
+    sorted.length >= 3 ? sorted[1] + sorted[2] : null;
+
+  type Deriver = (sorted: number[]) => number | null;
+
+  const calculateRange = (startHole: number, endHole: number, derive: Deriver, teamAName: string, teamBName: string): HoleResult[] => {
+    const results: HoleResult[] = [];
+    let cumulativeA = 0;
+    let cumulativeB = 0;
+
+    if (startHole > endHole) return results;
+    for (let hole = startHole; hole <= endHole; hole++) {
+      const teamARaw = scores
+        .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
+        .map((s) => getScoreValue(s, netContext));
+      const teamBRaw = scores
+        .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
+        .map((s) => getScoreValue(s, netContext));
+
+      const teamASorted = [...teamARaw].sort((a, b) => a - b);
+      const teamBSorted = [...teamBRaw].sort((a, b) => a - b);
+
+      const teamAHoleScore = derive(teamASorted);
+      const teamBHoleScore = derive(teamBSorted);
+
+      let winner: 'A' | 'B' | 'tie' | null = null;
+      if (teamAHoleScore !== null && teamBHoleScore !== null) {
+        if (teamAHoleScore < teamBHoleScore) { winner = 'A'; cumulativeA++; }
+        else if (teamBHoleScore < teamAHoleScore) { winner = 'B'; cumulativeB++; }
+        else { winner = 'tie'; }
+      }
+
+      const diff = cumulativeA - cumulativeB;
+      let status = 'All Square';
+      if (diff > 0) status = `${teamAName} ${diff} UP`;
+      else if (diff < 0) status = `${teamBName} ${Math.abs(diff)} UP`;
+
+      results.push({
+        holeNumber: hole,
+        teamAScore: teamAHoleScore,
+        teamBScore: teamBHoleScore,
+        winner,
+        cumulativeA,
+        cumulativeB,
+        status,
+      });
+    }
+
+    return results;
+  };
+
+  const calculateOverall = (derive: Deriver, teamAName: string, teamBName: string): HoleResult[] => {
+    const results: HoleResult[] = [];
+    let cumulativeA = 0;
+    let cumulativeB = 0;
+
+    const baseOrder = startOnBack9
+      ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    const holesToPlay = matchStartHole > 1
+      ? baseOrder.slice(baseOrder.indexOf(matchStartHole))
+      : baseOrder;
+
+    for (const hole of holesToPlay) {
+      const teamARaw = scores
+        .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
+        .map((s) => getScoreValue(s, netContext));
+      const teamBRaw = scores
+        .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
+        .map((s) => getScoreValue(s, netContext));
+
+      const teamASorted = [...teamARaw].sort((a, b) => a - b);
+      const teamBSorted = [...teamBRaw].sort((a, b) => a - b);
+
+      const teamAHoleScore = derive(teamASorted);
+      const teamBHoleScore = derive(teamBSorted);
+
+      let winner: 'A' | 'B' | 'tie' | null = null;
+      if (teamAHoleScore !== null && teamBHoleScore !== null) {
+        if (teamAHoleScore < teamBHoleScore) { winner = 'A'; cumulativeA++; }
+        else if (teamBHoleScore < teamAHoleScore) { winner = 'B'; cumulativeB++; }
+        else { winner = 'tie'; }
+      }
+
+      const diff = cumulativeA - cumulativeB;
+      let status = 'All Square';
+      if (diff > 0) status = `${teamAName} ${diff} UP`;
+      else if (diff < 0) status = `${teamBName} ${Math.abs(diff)} UP`;
+
+      results.push({
+        holeNumber: hole,
+        teamAScore: teamAHoleScore,
+        teamBScore: teamBHoleScore,
+        winner,
+        cumulativeA,
+        cumulativeB,
+        status,
+      });
+    }
+
+    return results;
+  };
+
+  const isPress = !!eventMatch.parentMatchId && matchStartHole > 1;
+  if (isPress) {
+    const pressLeg: 'front9' | 'back9' = matchStartHole <= 9 ? 'front9' : 'back9';
+    const f9Start = matchStartHole, f9End = 9;
+    const b9Start = matchStartHole, b9End = 18;
+    return {
+      oneBall: {
+        front9: pressLeg === 'front9' ? calculateRange(f9Start, f9End, lowestScore, teamA.name, teamB.name) : [],
+        back9: pressLeg === 'back9' ? calculateRange(b9Start, b9End, lowestScore, teamA.name, teamB.name) : [],
+        overall: [],
+      },
+      twoThirdBall: {
+        front9: pressLeg === 'front9' ? calculateRange(f9Start, f9End, sumOfSecondAndThird, teamA.name, teamB.name) : [],
+        back9: pressLeg === 'back9' ? calculateRange(b9Start, b9End, sumOfSecondAndThird, teamA.name, teamB.name) : [],
+        overall: [],
+      },
+    };
+  }
+  return {
+    oneBall: {
+      front9: calculateRange(1, 9, lowestScore, teamA.name, teamB.name),
+      back9: calculateRange(10, 18, lowestScore, teamA.name, teamB.name),
+      overall: calculateOverall(lowestScore, teamA.name, teamB.name),
+    },
+    twoThirdBall: {
+      front9: calculateRange(1, 9, sumOfSecondAndThird, teamA.name, teamB.name),
+      back9: calculateRange(10, 18, sumOfSecondAndThird, teamA.name, teamB.name),
+      overall: calculateOverall(sumOfSecondAndThird, teamA.name, teamB.name),
     },
   };
 }

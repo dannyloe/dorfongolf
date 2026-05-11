@@ -472,6 +472,12 @@ export async function registerRoutes(
         }
       }
 
+      if (input.matchType === "one_two_three_ball") {
+        if (input.teamA.playerIds.length < 3 || input.teamB.playerIds.length < 3) {
+          return res.status(400).json({ message: "1 Ball / 2nd3rd Ball matches require at least 3 players per team" });
+        }
+      }
+
       const eventMatch = await storage.createEventMatch(eventId, input);
       const withTeams = await storage.getEventMatchWithTeams(eventMatch.id);
       res.status(201).json(withTeams);
@@ -658,6 +664,7 @@ export async function registerRoutes(
         const isMatchPlay = eventMatch.matchType === 'match_play_1_ball' || eventMatch.matchType === 'match_play_2_ball';
         const isNassau = eventMatch.matchType === 'nassau';
         const isTwoThreeBall = eventMatch.matchType === 'two_three_ball';
+        const isOneTwoThreeBall = eventMatch.matchType === 'one_two_three_ball';
         if (input.autoPressAllPresses !== undefined) {
           return res.status(400).json({ message: "autoPressAllPresses cannot be set on a press" });
         }
@@ -683,11 +690,25 @@ export async function registerRoutes(
         ) {
           return res.status(400).json({ message: "This bet type does not support per-press auto-press" });
         }
+        if (
+          (input.autoPressOneBallFront9 !== undefined ||
+            input.autoPressOneBallBack9 !== undefined ||
+            input.autoPressOneBallOverall !== undefined ||
+            input.autoPressTwoThirdBallFront9 !== undefined ||
+            input.autoPressTwoThirdBallBack9 !== undefined ||
+            input.autoPressTwoThirdBallOverall !== undefined) &&
+          !isOneTwoThreeBall
+        ) {
+          return res.status(400).json({ message: "This bet type does not support per-press auto-press" });
+        }
         const startsOnBack9 = (eventMatch.startHole ?? 1) > 9;
         if (isNassau && startsOnBack9 && input.autoPressNassauFront9 !== undefined) {
           return res.status(400).json({ message: "This press doesn't include the Front 9 leg" });
         }
         if (isTwoThreeBall && startsOnBack9 && (input.autoPressTwoBallFront9 !== undefined || input.autoPressThreeBallFront9 !== undefined)) {
+          return res.status(400).json({ message: "This press doesn't include the Front 9 leg" });
+        }
+        if (isOneTwoThreeBall && startsOnBack9 && (input.autoPressOneBallFront9 !== undefined || input.autoPressTwoThirdBallFront9 !== undefined)) {
           return res.status(400).json({ message: "This press doesn't include the Front 9 leg" });
         }
       }

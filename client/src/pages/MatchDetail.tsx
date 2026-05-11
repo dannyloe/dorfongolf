@@ -15,7 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
-import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, calculateTwoThreeBallResults, physicalToPlayingPosition, type NetScoringContext, type HoleResult } from "@/lib/matchplay";
+import { calculateMatchPlayResults, getMatchStatus, calculateBetSettlements, calculateLedger, calculateCombinedMatchSettlements, calculateNassauResults, calculateNassauSettlements, calculateSkinsResults, calculateFiveMatchResults, calculateFiveSettlements, calculateDeathMatchResults, calculateTwoThreeBallResults, calculateOneTwoThreeBallResults, physicalToPlayingPosition, type NetScoringContext, type HoleResult, type OneTwoThreeBallResults } from "@/lib/matchplay";
 import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo, type CourseHandicapOverride } from "@/lib/handicap";
 import { MATCH_TYPES, ALL_MATCH_OPTIONS, MATCH_TYPE_LABELS, type MatchType } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -425,6 +425,16 @@ export default function MatchDetail() {
   const [autoPressThreeBallFront9, setAutoPressThreeBallFront9] = useState<boolean>(true);
   const [autoPressThreeBallBack9, setAutoPressThreeBallBack9] = useState<boolean>(true);
   const [autoPressThreeBallOverall, setAutoPressThreeBallOverall] = useState<boolean>(true);
+
+  // 1 Ball / 2nd3rd Ball state
+  const [otzOneBallBet, setOtzOneBallBet] = useState<number>(20);
+  const [otzTwoThirdBallBet, setOtzTwoThirdBallBet] = useState<number>(20);
+  const [autoPressOtzOneBallFront9, setAutoPressOtzOneBallFront9] = useState<boolean>(true);
+  const [autoPressOtzOneBallBack9, setAutoPressOtzOneBallBack9] = useState<boolean>(true);
+  const [autoPressOtzOneBallOverall, setAutoPressOtzOneBallOverall] = useState<boolean>(true);
+  const [autoPressOtzTwoThirdBallFront9, setAutoPressOtzTwoThirdBallFront9] = useState<boolean>(true);
+  const [autoPressOtzTwoThirdBallBack9, setAutoPressOtzTwoThirdBallBack9] = useState<boolean>(true);
+  const [autoPressOtzTwoThirdBallOverall, setAutoPressOtzTwoThirdBallOverall] = useState<boolean>(true);
   
   // Net scoring state (for handicapped events) - defaults to true when match is handicapped
   const [useNetScoring, setUseNetScoring] = useState(false);
@@ -1113,6 +1123,48 @@ export default function MatchDetail() {
         setTeamAPlayerIds([]);
         setTeamBPlayerIds([]);
         setDeathMatchBaseBet(50);
+        setUseNetScoring(match.isHandicapped ?? false);
+      }
+    });
+  };
+
+  const handleCreateOneTwoThreeBall = () => {
+    if (teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3) return;
+
+    const autoTeamAName = getTeamNameFromPlayerIds(teamAPlayerIds);
+    const autoTeamBName = getTeamNameFromPlayerIds(teamBPlayerIds);
+    const autoMatchName = `1 Ball / 2nd3rd Ball: ${autoTeamAName} vs ${autoTeamBName}`;
+
+    createEventMatch.mutate({
+      name: autoMatchName,
+      matchType: MATCH_TYPES.ONE_TWO_THREE_BALL,
+      unitAmount: otzOneBallBet * 100,
+      teamA: { name: autoTeamAName, playerIds: teamAPlayerIds },
+      teamB: { name: autoTeamBName, playerIds: teamBPlayerIds },
+      autoPressOriginal: false,
+      autoPressAllPresses: false,
+      autoPressNassauFront9: false,
+      autoPressNassauBack9: false,
+      autoPressNassauOverall: false,
+      useNetScoring: match.isHandicapped ? useNetScoring : false,
+      startOnBack9: dayStartOnBack9,
+      oneTwoThreeBallOneBallBet: otzOneBallBet * 100,
+      oneTwoThreeBallTwoThirdBallBet: otzTwoThirdBallBet * 100,
+      autoPressOneBallFront9: autoPressOtzOneBallFront9,
+      autoPressOneBallBack9: autoPressOtzOneBallBack9,
+      autoPressOneBallOverall: autoPressOtzOneBallOverall,
+      autoPressTwoThirdBallFront9: autoPressOtzTwoThirdBallFront9,
+      autoPressTwoThirdBallBack9: autoPressOtzTwoThirdBallBack9,
+      autoPressTwoThirdBallOverall: autoPressOtzTwoThirdBallOverall,
+      isRoundRobinGenerated: false,
+    }, {
+      onSuccess: (created) => {
+        applyStrokesToEventMatch(created);
+        setShowCreateMatch(false);
+        setSelectedMatchType((sortedMatchOptions[0]?.value as MatchType) || MATCH_TYPES.NASSAU);
+        setUnitAmount(20);
+        setTeamAPlayerIds([]);
+        setTeamBPlayerIds([]);
         setUseNetScoring(match.isHandicapped ?? false);
       }
     });
@@ -3117,6 +3169,151 @@ export default function MatchDetail() {
                     data-testid="button-submit-create-death-match"
                   >
                     {createEventMatch.isPending ? "Creating..." : "Create Death Match"}
+                  </Button>
+                </>
+              ) : selectedMatchType === MATCH_TYPES.ONE_TWO_THREE_BALL ? (
+                <>
+                  <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                    <p className="font-medium mb-1">1 Ball / 2nd3rd Ball — Two Nassaus running at once:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li><strong>1 Ball</strong> — Each hole's team score = the team's lowest (best) score (match play)</li>
+                      <li><strong>2nd3rd Ball</strong> — Each hole's team score = sum of the team's 2nd-best + 3rd-best scores (match play)</li>
+                    </ul>
+                    <p className="mt-1">Each Nassau has Front 9, Back 9, and Overall legs with optional auto-press = 6 settleable bets.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">1 Ball Bet ($)</label>
+                      <BetAmountInput
+                        min="0"
+                        step="1"
+                        value={otzOneBallBet}
+                        onChange={setOtzOneBallBet}
+                        className="mt-1 h-8 text-sm"
+                        data-testid="input-otz-one-ball-bet"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">2nd3rd Ball Bet ($)</label>
+                      <BetAmountInput
+                        min="0"
+                        step="1"
+                        value={otzTwoThirdBallBet}
+                        onChange={setOtzTwoThirdBallBet}
+                        className="mt-1 h-8 text-sm"
+                        data-testid="input-otz-two-third-ball-bet"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold">1 Ball Auto-Press</p>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressOtzOneBallFront9} onChange={(e) => setAutoPressOtzOneBallFront9(e.target.checked)} data-testid="checkbox-autopress-otz-1b-f9" />
+                        Front 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressOtzOneBallBack9} onChange={(e) => setAutoPressOtzOneBallBack9(e.target.checked)} data-testid="checkbox-autopress-otz-1b-b9" />
+                        Back 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressOtzOneBallOverall} onChange={(e) => setAutoPressOtzOneBallOverall(e.target.checked)} data-testid="checkbox-autopress-otz-1b-overall" />
+                        Overall
+                      </label>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold">2nd3rd Ball Auto-Press</p>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressOtzTwoThirdBallFront9} onChange={(e) => setAutoPressOtzTwoThirdBallFront9(e.target.checked)} data-testid="checkbox-autopress-otz-23b-f9" />
+                        Front 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressOtzTwoThirdBallBack9} onChange={(e) => setAutoPressOtzTwoThirdBallBack9(e.target.checked)} data-testid="checkbox-autopress-otz-23b-b9" />
+                        Back 9
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={autoPressOtzTwoThirdBallOverall} onChange={(e) => setAutoPressOtzTwoThirdBallOverall(e.target.checked)} data-testid="checkbox-autopress-otz-23b-overall" />
+                        Overall
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-primary/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-primary text-sm">
+                          {teamAPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamAPlayerIds) : "Team A (3+ players)"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {players.map((p) => {
+                          const isInA = teamAPlayerIds.includes(p.id);
+                          const isInB = teamBPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                if (isInA) setTeamAPlayerIds(teamAPlayerIds.filter(id => id !== p.id));
+                                else if (!isInB) setTeamAPlayerIds([...teamAPlayerIds, p.id]);
+                              }}
+                              disabled={isInB}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                isInA ? "bg-primary text-primary-foreground" : isInB ? "bg-muted/50 text-muted-foreground line-through" : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-otz-team-a-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-2 px-3 py-2 bg-accent/10 rounded-lg min-h-[40px] flex items-center">
+                        <span className="font-semibold text-accent text-sm">
+                          {teamBPlayerIds.length > 0 ? getTeamNameFromPlayerIds(teamBPlayerIds) : "Team B (3+ players)"}
+                        </span>
+                      </div>
+                      <div className="space-y-1 max-h-32 overflow-y-auto">
+                        {players.map((p) => {
+                          const isInA = teamAPlayerIds.includes(p.id);
+                          const isInB = teamBPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => {
+                                if (isInB) setTeamBPlayerIds(teamBPlayerIds.filter(id => id !== p.id));
+                                else if (!isInA) setTeamBPlayerIds([...teamBPlayerIds, p.id]);
+                              }}
+                              disabled={isInA}
+                              className={`w-full text-left px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                                isInB ? "bg-accent text-accent-foreground" : isInA ? "bg-muted/50 text-muted-foreground line-through" : "bg-muted hover:bg-muted/80"
+                              }`}
+                              data-testid={`button-otz-team-b-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(teamAPlayerIds.length > 0 || teamBPlayerIds.length > 0) && (teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3) && (
+                    <p className="text-xs text-destructive" data-testid="text-otz-min-players">
+                      Each team needs at least 3 players for the 2nd3rd Ball portion.
+                    </p>
+                  )}
+
+                  <Button
+                    onClick={handleCreateOneTwoThreeBall}
+                    disabled={teamAPlayerIds.length < 3 || teamBPlayerIds.length < 3 || createEventMatch.isPending}
+                    className="w-full"
+                    data-testid="button-submit-create-one-two-three-ball"
+                  >
+                    {createEventMatch.isPending ? "Creating..." : "Create 1 Ball / 2nd3rd Ball Match"}
                   </Button>
                 </>
               ) : selectedMatchType === MATCH_TYPES.TWO_THREE_BALL ? (

@@ -314,6 +314,16 @@ export const api = {
         autoPressThreeBallFront9: z.boolean().optional(),
         autoPressThreeBallBack9: z.boolean().optional(),
         autoPressThreeBallOverall: z.boolean().optional(),
+        // 1 Ball / 2nd3rd Ball specific bet amounts (in cents)
+        oneTwoThreeBallOneBallBet: z.number().min(0).optional(),
+        oneTwoThreeBallTwoThirdBallBet: z.number().min(0).optional(),
+        // 1 Ball / 2nd3rd Ball auto-press toggles
+        autoPressOneBallFront9: z.boolean().optional(),
+        autoPressOneBallBack9: z.boolean().optional(),
+        autoPressOneBallOverall: z.boolean().optional(),
+        autoPressTwoThirdBallFront9: z.boolean().optional(),
+        autoPressTwoThirdBallBack9: z.boolean().optional(),
+        autoPressTwoThirdBallOverall: z.boolean().optional(),
       }),
       responses: {
         201: z.custom<typeof eventMatches.$inferSelect>(),
@@ -386,6 +396,12 @@ export const api = {
         autoPressThreeBallFront9: z.boolean().optional(),
         autoPressThreeBallBack9: z.boolean().optional(),
         autoPressThreeBallOverall: z.boolean().optional(),
+        autoPressOneBallFront9: z.boolean().optional(),
+        autoPressOneBallBack9: z.boolean().optional(),
+        autoPressOneBallOverall: z.boolean().optional(),
+        autoPressTwoThirdBallFront9: z.boolean().optional(),
+        autoPressTwoThirdBallBack9: z.boolean().optional(),
+        autoPressTwoThirdBallOverall: z.boolean().optional(),
       }),
       responses: {
         200: z.custom<typeof eventMatches.$inferSelect>(),

@@ -146,6 +146,16 @@ export const eventMatches = pgTable("event_matches", {
   autoPressThreeBallFront9: boolean("auto_press_three_ball_front9").notNull().default(true),
   autoPressThreeBallBack9: boolean("auto_press_three_ball_back9").notNull().default(true),
   autoPressThreeBallOverall: boolean("auto_press_three_ball_overall").notNull().default(true),
+  // 1 Ball / 2nd3rd Ball specific bet amounts (in cents) - each is a Nassau unit amount
+  oneTwoThreeBallOneBallBet: integer("one_two_three_ball_one_ball_bet"),
+  oneTwoThreeBallTwoThirdBallBet: integer("one_two_three_ball_two_third_ball_bet"),
+  // 1 Ball / 2nd3rd Ball auto-press toggles - one per Nassau leg per bet (default true)
+  autoPressOneBallFront9: boolean("auto_press_one_ball_front9").notNull().default(true),
+  autoPressOneBallBack9: boolean("auto_press_one_ball_back9").notNull().default(true),
+  autoPressOneBallOverall: boolean("auto_press_one_ball_overall").notNull().default(true),
+  autoPressTwoThirdBallFront9: boolean("auto_press_two_third_ball_front9").notNull().default(true),
+  autoPressTwoThirdBallBack9: boolean("auto_press_two_third_ball_back9").notNull().default(true),
+  autoPressTwoThirdBallOverall: boolean("auto_press_two_third_ball_overall").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -642,6 +652,16 @@ export type CreateEventMatchRequest = {
   autoPressThreeBallFront9?: boolean;
   autoPressThreeBallBack9?: boolean;
   autoPressThreeBallOverall?: boolean;
+  // 1 Ball / 2nd3rd Ball specific bet amounts (in cents)
+  oneTwoThreeBallOneBallBet?: number;
+  oneTwoThreeBallTwoThirdBallBet?: number;
+  // 1 Ball / 2nd3rd Ball auto-press toggles
+  autoPressOneBallFront9?: boolean;
+  autoPressOneBallBack9?: boolean;
+  autoPressOneBallOverall?: boolean;
+  autoPressTwoThirdBallFront9?: boolean;
+  autoPressTwoThirdBallBack9?: boolean;
+  autoPressTwoThirdBallOverall?: boolean;
 };
 
 export type GroupWithDetails = Group & {
@@ -695,6 +715,7 @@ export const MATCH_TYPES = {
   FIVE_FIVE_FIVE_THREE: "five_five_five_three",
   DEATH_MATCH: "death_match",
   TWO_THREE_BALL: "two_three_ball",
+  ONE_TWO_THREE_BALL: "one_two_three_ball",
 } as const;
 
 export type MatchType = typeof MATCH_TYPES[keyof typeof MATCH_TYPES];
@@ -708,6 +729,7 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.FIVE_FIVE_FIVE_THREE]: "5-5-5-3",
   [MATCH_TYPES.DEATH_MATCH]: "Death Match",
   [MATCH_TYPES.TWO_THREE_BALL]: "2 Ball / 3rd Ball",
+  [MATCH_TYPES.ONE_TWO_THREE_BALL]: "1 Ball / 2nd3rd Ball",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({
@@ -1317,4 +1339,5 @@ export const ALL_MATCH_OPTIONS = [
   { value: MATCH_TYPES.FIVE_FIVE_FIVE_THREE as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.FIVE_FIVE_FIVE_THREE] },
   { value: MATCH_TYPES.DEATH_MATCH as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.DEATH_MATCH] },
   { value: MATCH_TYPES.TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.TWO_THREE_BALL] },
+  { value: MATCH_TYPES.ONE_TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.ONE_TWO_THREE_BALL] },
 ];

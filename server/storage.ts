@@ -602,6 +602,14 @@ export class DatabaseStorage implements IStorage {
       autoPressThreeBallFront9: data.autoPressThreeBallFront9 ?? true,
       autoPressThreeBallBack9: data.autoPressThreeBallBack9 ?? true,
       autoPressThreeBallOverall: data.autoPressThreeBallOverall ?? true,
+      oneTwoThreeBallOneBallBet: data.oneTwoThreeBallOneBallBet ?? null,
+      oneTwoThreeBallTwoThirdBallBet: data.oneTwoThreeBallTwoThirdBallBet ?? null,
+      autoPressOneBallFront9: data.autoPressOneBallFront9 ?? true,
+      autoPressOneBallBack9: data.autoPressOneBallBack9 ?? true,
+      autoPressOneBallOverall: data.autoPressOneBallOverall ?? true,
+      autoPressTwoThirdBallFront9: data.autoPressTwoThirdBallFront9 ?? true,
+      autoPressTwoThirdBallBack9: data.autoPressTwoThirdBallBack9 ?? true,
+      autoPressTwoThirdBallOverall: data.autoPressTwoThirdBallOverall ?? true,
     }).returning();
 
     // Check if using multiple teams (for 5-5-5-3)
@@ -663,6 +671,12 @@ export class DatabaseStorage implements IStorage {
     autoPressThreeBallFront9?: boolean;
     autoPressThreeBallBack9?: boolean;
     autoPressThreeBallOverall?: boolean;
+    autoPressOneBallFront9?: boolean;
+    autoPressOneBallBack9?: boolean;
+    autoPressOneBallOverall?: boolean;
+    autoPressTwoThirdBallFront9?: boolean;
+    autoPressTwoThirdBallBack9?: boolean;
+    autoPressTwoThirdBallOverall?: boolean;
   }): Promise<EventMatch> {
     const [updated] = await db.update(eventMatches)
       .set(data)
@@ -772,6 +786,15 @@ export class DatabaseStorage implements IStorage {
       autoPressThreeBallFront9: parentMatch.autoPressThreeBallFront9,
       autoPressThreeBallBack9: parentMatch.autoPressThreeBallBack9,
       autoPressThreeBallOverall: parentMatch.autoPressThreeBallOverall,
+      // 1 Ball / 2nd3rd Ball bet config + auto-press toggles
+      oneTwoThreeBallOneBallBet: parentMatch.oneTwoThreeBallOneBallBet,
+      oneTwoThreeBallTwoThirdBallBet: parentMatch.oneTwoThreeBallTwoThirdBallBet,
+      autoPressOneBallFront9: parentMatch.autoPressOneBallFront9,
+      autoPressOneBallBack9: parentMatch.autoPressOneBallBack9,
+      autoPressOneBallOverall: parentMatch.autoPressOneBallOverall,
+      autoPressTwoThirdBallFront9: parentMatch.autoPressTwoThirdBallFront9,
+      autoPressTwoThirdBallBack9: parentMatch.autoPressTwoThirdBallBack9,
+      autoPressTwoThirdBallOverall: parentMatch.autoPressTwoThirdBallOverall,
     }).returning();
 
     // Copy teams from parent match
