@@ -75,7 +75,8 @@ export async function initializeAuth(app: Express) {
         return res.status(409).json({ message: "Username already taken" });
       }
       const passwordHash = await bcrypt.hash(password, 12);
-      const id = String(Date.now());
+      const { randomUUID } = await import("crypto");
+      const id = randomUUID().replace(/-/g, "").slice(0, 18);
       const user = await authStorage.upsertUser({
         id,
         username: trimmedUsername,

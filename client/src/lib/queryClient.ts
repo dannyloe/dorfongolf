@@ -3,10 +3,12 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     if (res.status === 401) {
-      // Don't redirect if already on the login or register page
+      // Redirect to login page — but not if we're already there
       const p = window.location.pathname;
-      if (p === "/" || p === "/register") return;
-      window.location.href = "/";
+      if (p !== "/" && p !== "/register") {
+        window.location.href = "/";
+      }
+      // Always throw so callers (e.g. login form) receive the error
     }
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
