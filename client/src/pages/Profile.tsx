@@ -98,8 +98,10 @@ export default function Profile() {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showCurrentPwd, setShowCurrentPwd] = useState(false);
   const [showNewPwd, setShowNewPwd] = useState(false);
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
 
   // Phone verification state
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
@@ -156,10 +158,19 @@ export default function Profile() {
       setShowChangePassword(false);
       setCurrentPassword("");
       setNewPassword("");
-      toast({ title: "Password updated" });
+      setConfirmPassword("");
+      toast({ title: "Password updated", description: "Your password has been changed successfully." });
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      let description = error.message;
+      try {
+        const jsonStart = error.message.indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(error.message.slice(jsonStart));
+          if (parsed?.message) description = parsed.message;
+        }
+      } catch {}
+      toast({ title: "Error", description, variant: "destructive" });
     },
   });
 
@@ -747,7 +758,14 @@ export default function Profile() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowChangePassword(v => !v)}
+                onClick={() => {
+                  setShowChangePassword(v => !v);
+                  if (showChangePassword) {
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }
+                }}
                 data-testid="button-toggle-change-password"
               >
                 {showChangePassword ? "Cancel" : "Change Password"}
@@ -800,9 +818,40 @@ export default function Profile() {
                   </button>
                 </div>
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="confirm-password">Confirm New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirm-password"
+                    data-testid="input-confirm-password"
+                    type={showConfirmPwd ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowConfirmPwd(v => !v)}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && newPassword && confirmPassword !== newPassword && (
+                  <p className="text-xs text-destructive">Passwords do not match</p>
+                )}
+              </div>
               <Button
                 data-testid="button-save-password"
-                disabled={!newPassword || newPassword.length < 6 || changePasswordMutation.isPending}
+                disabled={
+                  !currentPassword ||
+                  !newPassword ||
+                  newPassword.length < 6 ||
+                  confirmPassword !== newPassword ||
+                  changePasswordMutation.isPending
+                }
                 onClick={() => changePasswordMutation.mutate({ currentPassword, newPassword })}
               >
                 {changePasswordMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
