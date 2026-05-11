@@ -52,4 +52,3 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.production]
-RESET_DLOE_PASSWORD = "dloe"

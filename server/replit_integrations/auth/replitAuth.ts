@@ -33,20 +33,6 @@ export function getSession() {
 }
 
 export async function initializeAuth(app: Express) {
-  // One-time production password reset — remove after first deploy
-  if (process.env.RESET_DLOE_PASSWORD) {
-    try {
-      const hash = await bcrypt.hash(process.env.RESET_DLOE_PASSWORD, 12);
-      const user = await authStorage.getUserByUsername("dloe");
-      if (user) {
-        await authStorage.setUserPassword(user.id, hash);
-        console.log("[startup] dloe password reset successfully");
-      }
-    } catch (err) {
-      console.error("[startup] dloe password reset failed:", err);
-    }
-  }
-
   app.set("trust proxy", 1);
   app.use(getSession());
 
