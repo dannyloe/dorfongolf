@@ -3961,6 +3961,7 @@ Transcript to parse: "${transcript}"`;
       
       res.json({
         id: currentUser.id,
+        username: currentUser.username,
         email: currentUser.email,
         firstName: currentUser.firstName,
         lastName: currentUser.lastName,
@@ -4668,6 +4669,38 @@ Transcript to parse: "${transcript}"`;
       const passwordHash = await bcrypt.hash(newPassword, 12);
       await authStorage.setUserPassword(userId, passwordHash);
       res.json({ ok: true });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Self: change own username
+  app.patch("/api/auth/username", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const { username } = req.body;
+      if (!username || typeof username !== "string") {
+        return res.status(400).json({ message: "Username is required" });
+      }
+      const trimmed = username.trim().toLowerCase();
+      if (trimmed.length < 3) {
+        return res.status(400).json({ message: "Username must be at least 3 characters" });
+      }
+      if (trimmed.length > 30) {
+        return res.status(400).json({ message: "Username must be 30 characters or fewer" });
+      }
+      if (!/^[a-z0-9_]+$/.test(trimmed)) {
+        return res.status(400).json({ message: "Username may only contain letters, numbers, and underscores" });
+      }
+      const { authStorage } = await import("./replit_integrations/auth/storage");
+      const existing = await authStorage.getUserByUsername(trimmed);
+      if (existing && existing.id !== userId) {
+        return res.status(409).json({ message: "That username is already taken" });
+      }
+      await authStorage.setUserUsername(userId, trimmed);
+      res.json({ ok: true, username: trimmed });
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });

@@ -20,6 +20,7 @@ import {
 
 interface ProfileData {
   id: string;
+  username: string | null;
   email: string | null;
   firstName: string | null;
   lastName: string | null;
@@ -89,6 +90,10 @@ export default function Profile() {
   const [handicapIndex, setHandicapIndex] = useState("");
   const [newAlias, setNewAlias] = useState("");
   
+  // Change username state
+  const [showChangeUsername, setShowChangeUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+
   // Change password state
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -117,6 +122,30 @@ export default function Profile() {
       setPhoneEdited(false);
     }
   }, [profile]);
+
+  // Change username mutation
+  const changeUsernameMutation = useMutation({
+    mutationFn: async (username: string) => {
+      return apiRequest("PATCH", "/api/auth/username", { username });
+    },
+    onSuccess: () => {
+      setShowChangeUsername(false);
+      setNewUsername("");
+      queryClient.invalidateQueries({ queryKey: ['/api/profile'] });
+      toast({ title: "Username updated" });
+    },
+    onError: (error: Error) => {
+      let description = error.message;
+      try {
+        const jsonStart = error.message.indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse(error.message.slice(jsonStart));
+          if (parsed?.message) description = parsed.message;
+        }
+      } catch {}
+      toast({ title: "Error", description, variant: "destructive" });
+    },
+  });
 
   // Change password mutation
   const changePasswordMutation = useMutation({
@@ -645,6 +674,63 @@ export default function Profile() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Change Username */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                <CardTitle className="text-base">Username</CardTitle>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowChangeUsername(v => !v);
+                  setNewUsername(profile?.username || "");
+                }}
+                data-testid="button-toggle-change-username"
+              >
+                {showChangeUsername ? "Cancel" : "Change Username"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {!showChangeUsername ? (
+              <p className="text-sm text-muted-foreground">
+                Current username: <span className="font-medium text-foreground">{profile?.username || "—"}</span>
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="new-username">New Username</Label>
+                  <Input
+                    id="new-username"
+                    data-testid="input-new-username"
+                    value={newUsername}
+                    onChange={e => {
+                      const val = e.target.value.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 30);
+                      setNewUsername(val);
+                    }}
+                    placeholder="letters, numbers, underscores"
+                    autoComplete="off"
+                    maxLength={30}
+                  />
+                  <p className="text-xs text-muted-foreground">3–30 characters; letters, numbers, and underscores only.</p>
+                </div>
+                <Button
+                  data-testid="button-save-username"
+                  disabled={newUsername.trim().length < 3 || changeUsernameMutation.isPending}
+                  onClick={() => changeUsernameMutation.mutate(newUsername.trim())}
+                >
+                  {changeUsernameMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Update Username
+                </Button>
               </div>
             )}
           </CardContent>
