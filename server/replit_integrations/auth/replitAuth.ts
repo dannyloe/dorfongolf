@@ -75,8 +75,8 @@ export async function initializeAuth(app: Express) {
         return res.status(409).json({ message: "Username already taken" });
       }
       const passwordHash = await bcrypt.hash(password, 12);
-      const { randomUUID } = await import("crypto");
-      const id = randomUUID().replace(/-/g, "").slice(0, 18);
+      // Generate a numeric-string ID matching the format of existing Replit Auth user IDs
+      const id = String(Date.now()) + String(Math.floor(Math.random() * 10000)).padStart(4, "0");
       const user = await authStorage.upsertUser({
         id,
         username: trimmedUsername,
