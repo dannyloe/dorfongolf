@@ -3,7 +3,10 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     if (res.status === 401) {
-      window.location.href = "/api/login";
+      // Don't redirect if already on the login or register page
+      const p = window.location.pathname;
+      if (p === "/" || p === "/register") return;
+      window.location.href = "/";
     }
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);

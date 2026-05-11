@@ -4610,7 +4610,8 @@ Transcript to parse: "${transcript}"`;
       }
       const { authStorage } = await import("./replit_integrations/auth/storage");
       const allUsers = await authStorage.getAllUsers();
-      res.json(allUsers);
+      // Strip password hashes before returning to client
+      res.json(allUsers.map(({ passwordHash: _pw, ...safe }) => safe));
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
@@ -4649,18 +4650,21 @@ Transcript to parse: "${transcript}"`;
       const user = req.user as any;
       const userId = user.claims.sub;
       const { currentPassword, newPassword } = req.body;
+      if (!currentPassword) {
+        return res.status(400).json({ message: "Current password required" });
+      }
       if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ message: "New password must be at least 6 characters" });
       }
       const { authStorage } = await import("./replit_integrations/auth/storage");
       const existingUser = await authStorage.getUser(userId);
       if (!existingUser) return res.status(404).json({ message: "User not found" });
-      if (existingUser.passwordHash && currentPassword) {
-        const bcrypt = await import("bcryptjs");
-        const valid = await bcrypt.compare(currentPassword, existingUser.passwordHash);
-        if (!valid) return res.status(401).json({ message: "Current password incorrect" });
+      if (!existingUser.passwordHash) {
+        return res.status(400).json({ message: "No password set — ask an admin to set one" });
       }
       const bcrypt = await import("bcryptjs");
+      const valid = await bcrypt.compare(currentPassword, existingUser.passwordHash);
+      if (!valid) return res.status(401).json({ message: "Current password incorrect" });
       const passwordHash = await bcrypt.hash(newPassword, 12);
       await authStorage.setUserPassword(userId, passwordHash);
       res.json({ ok: true });
