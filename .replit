@@ -48,3 +48,8 @@ integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_gemini_ai_int
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.production]
+RESET_DLOE_PASSWORD = "dloe"
