@@ -115,7 +115,7 @@ app.use((req, res, next) => {
           }
           backfilled++;
         }
-        if (backfilled > 0) log(`Backfilled auth credentials for ${backfilled} existing users (temp password: Golf1234!)`);
+        if (backfilled > 0) log(`Backfilled auth credentials for ${backfilled} existing users`);
       }
     } catch (err) {
       console.error("User auth backfill error:", err);
