@@ -4914,13 +4914,13 @@ export default function MatchDetail() {
                                         showBack9: boolean,
                                         showOverall: boolean,
                                       ) => {
-                                        const f9Key = ballType === 'oneBall' ? 'autoPressOneBallFront9' : 'autoPressTwoThirdBallFront9';
-                                        const b9Key = ballType === 'oneBall' ? 'autoPressOneBallBack9' : 'autoPressTwoThirdBallBack9';
-                                        const ovKey = ballType === 'oneBall' ? 'autoPressOneBallOverall' : 'autoPressTwoThirdBallOverall';
-                                        const f9Checked = (targetMatch as any)[f9Key] ?? true;
-                                        const b9Checked = (targetMatch as any)[b9Key] ?? true;
-                                        const ovChecked = (targetMatch as any)[ovKey] ?? true;
+                                        const isOneBall = ballType === 'oneBall';
+                                        const f9Checked = isOneBall ? (targetMatch.autoPressOneBallFront9 ?? true) : (targetMatch.autoPressTwoThirdBallFront9 ?? true);
+                                        const b9Checked = isOneBall ? (targetMatch.autoPressOneBallBack9 ?? true) : (targetMatch.autoPressTwoThirdBallBack9 ?? true);
+                                        const ovChecked = isOneBall ? (targetMatch.autoPressOneBallOverall ?? true) : (targetMatch.autoPressTwoThirdBallOverall ?? true);
                                         const tid = `${ballType}-${targetMatch.id}`;
+                                        const buildPayload = (field: 'autoPressOneBallFront9' | 'autoPressOneBallBack9' | 'autoPressOneBallOverall' | 'autoPressTwoThirdBallFront9' | 'autoPressTwoThirdBallBack9' | 'autoPressTwoThirdBallOverall', val: boolean) =>
+                                          ({ eventMatchId: targetMatch.id, [field]: val });
                                         return (
                                           <div className="flex flex-col items-center gap-0.5">
                                             {showFront9 && (
@@ -4929,10 +4929,7 @@ export default function MatchDetail() {
                                                   id={`autopress-otzb-${tid}-f9`}
                                                   checked={f9Checked}
                                                   onCheckedChange={(c) => {
-                                                    updateAutoPress.mutate({
-                                                      eventMatchId: targetMatch.id,
-                                                      [f9Key]: c === true,
-                                                    } as any);
+                                                    updateAutoPress.mutate(buildPayload(isOneBall ? 'autoPressOneBallFront9' : 'autoPressTwoThirdBallFront9', c === true));
                                                   }}
                                                   disabled={updateAutoPress.isPending}
                                                   data-testid={`checkbox-autopress-otzb-${tid}-f9`}
@@ -4946,10 +4943,7 @@ export default function MatchDetail() {
                                                   id={`autopress-otzb-${tid}-b9`}
                                                   checked={b9Checked}
                                                   onCheckedChange={(c) => {
-                                                    updateAutoPress.mutate({
-                                                      eventMatchId: targetMatch.id,
-                                                      [b9Key]: c === true,
-                                                    } as any);
+                                                    updateAutoPress.mutate(buildPayload(isOneBall ? 'autoPressOneBallBack9' : 'autoPressTwoThirdBallBack9', c === true));
                                                   }}
                                                   disabled={updateAutoPress.isPending}
                                                   data-testid={`checkbox-autopress-otzb-${tid}-b9`}
@@ -4963,10 +4957,7 @@ export default function MatchDetail() {
                                                   id={`autopress-otzb-${tid}-ov`}
                                                   checked={ovChecked}
                                                   onCheckedChange={(c) => {
-                                                    updateAutoPress.mutate({
-                                                      eventMatchId: targetMatch.id,
-                                                      [ovKey]: c === true,
-                                                    } as any);
+                                                    updateAutoPress.mutate(buildPayload(isOneBall ? 'autoPressOneBallOverall' : 'autoPressTwoThirdBallOverall', c === true));
                                                   }}
                                                   disabled={updateAutoPress.isPending}
                                                   data-testid={`checkbox-autopress-otzb-${tid}-ov`}
@@ -5106,27 +5097,30 @@ export default function MatchDetail() {
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center align-middle">
-                                              {(() => {
-                                                const f9Key = 'autoPressOneBallFront9';
-                                                const b9Key = 'autoPressOneBallBack9';
-                                                const tid = `oneBall-${pm.id}`;
-                                                return (
-                                                  <div className="flex flex-col items-center gap-0.5">
-                                                    {pressStartHole <= 9 && (
-                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                        <Checkbox checked={(pm as any)[f9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [f9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-f9`} />
-                                                        <span>F9</span>
-                                                      </label>
-                                                    )}
-                                                    {pressStartHole > 9 && (
-                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                        <Checkbox checked={(pm as any)[b9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [b9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-b9`} />
-                                                        <span>B9</span>
-                                                      </label>
-                                                    )}
-                                                  </div>
-                                                );
-                                              })()}
+                                              <div className="flex flex-col items-center gap-0.5">
+                                                {pressStartHole <= 9 && (
+                                                  <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                    <Checkbox
+                                                      checked={pm.autoPressOneBallFront9 ?? true}
+                                                      onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, autoPressOneBallFront9: c === true })}
+                                                      disabled={updateAutoPress.isPending}
+                                                      data-testid={`checkbox-autopress-otzb-oneBall-${pm.id}-f9`}
+                                                    />
+                                                    <span>F9</span>
+                                                  </label>
+                                                )}
+                                                {pressStartHole > 9 && (
+                                                  <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                    <Checkbox
+                                                      checked={pm.autoPressOneBallBack9 ?? true}
+                                                      onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, autoPressOneBallBack9: c === true })}
+                                                      disabled={updateAutoPress.isPending}
+                                                      data-testid={`checkbox-autopress-otzb-oneBall-${pm.id}-b9`}
+                                                    />
+                                                    <span>B9</span>
+                                                  </label>
+                                                )}
+                                              </div>
                                             </td>
                                           </tr>
                                           <tr className="bg-purple-50/40 dark:bg-purple-950/20" data-testid={`row-press-23ball-${pm.id}`}>
@@ -5139,27 +5133,30 @@ export default function MatchDetail() {
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center bg-muted/30"></td>
                                             <td className="p-2 text-center align-middle">
-                                              {(() => {
-                                                const f9Key = 'autoPressTwoThirdBallFront9';
-                                                const b9Key = 'autoPressTwoThirdBallBack9';
-                                                const tid = `twoThirdBall-${pm.id}`;
-                                                return (
-                                                  <div className="flex flex-col items-center gap-0.5">
-                                                    {pressStartHole <= 9 && (
-                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                        <Checkbox checked={(pm as any)[f9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [f9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-f9`} />
-                                                        <span>F9</span>
-                                                      </label>
-                                                    )}
-                                                    {pressStartHole > 9 && (
-                                                      <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                        <Checkbox checked={(pm as any)[b9Key] ?? true} onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, [b9Key]: c === true } as any)} disabled={updateAutoPress.isPending} data-testid={`checkbox-autopress-otzb-${tid}-b9`} />
-                                                        <span>B9</span>
-                                                      </label>
-                                                    )}
-                                                  </div>
-                                                );
-                                              })()}
+                                              <div className="flex flex-col items-center gap-0.5">
+                                                {pressStartHole <= 9 && (
+                                                  <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                    <Checkbox
+                                                      checked={pm.autoPressTwoThirdBallFront9 ?? true}
+                                                      onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, autoPressTwoThirdBallFront9: c === true })}
+                                                      disabled={updateAutoPress.isPending}
+                                                      data-testid={`checkbox-autopress-otzb-twoThirdBall-${pm.id}-f9`}
+                                                    />
+                                                    <span>F9</span>
+                                                  </label>
+                                                )}
+                                                {pressStartHole > 9 && (
+                                                  <label className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                                    <Checkbox
+                                                      checked={pm.autoPressTwoThirdBallBack9 ?? true}
+                                                      onCheckedChange={(c) => updateAutoPress.mutate({ eventMatchId: pm.id, autoPressTwoThirdBallBack9: c === true })}
+                                                      disabled={updateAutoPress.isPending}
+                                                      data-testid={`checkbox-autopress-otzb-twoThirdBall-${pm.id}-b9`}
+                                                    />
+                                                    <span>B9</span>
+                                                  </label>
+                                                )}
+                                              </div>
                                             </td>
                                           </tr>
                                         </Fragment>
@@ -5335,13 +5332,13 @@ export default function MatchDetail() {
                                         showBack9: boolean,
                                         showOverall: boolean,
                                       ) => {
-                                        const f9Key = ballType === 'twoBall' ? 'autoPressTwoBallFront9' : 'autoPressThreeBallFront9';
-                                        const b9Key = ballType === 'twoBall' ? 'autoPressTwoBallBack9' : 'autoPressThreeBallBack9';
-                                        const ovKey = ballType === 'twoBall' ? 'autoPressTwoBallOverall' : 'autoPressThreeBallOverall';
-                                        const f9Checked = (targetMatch as any)[f9Key] ?? true;
-                                        const b9Checked = (targetMatch as any)[b9Key] ?? true;
-                                        const ovChecked = (targetMatch as any)[ovKey] ?? true;
+                                        const isTwoBall = ballType === 'twoBall';
+                                        const f9Checked = isTwoBall ? (targetMatch.autoPressTwoBallFront9 ?? true) : (targetMatch.autoPressThreeBallFront9 ?? true);
+                                        const b9Checked = isTwoBall ? (targetMatch.autoPressTwoBallBack9 ?? true) : (targetMatch.autoPressThreeBallBack9 ?? true);
+                                        const ovChecked = isTwoBall ? (targetMatch.autoPressTwoBallOverall ?? true) : (targetMatch.autoPressThreeBallOverall ?? true);
                                         const tid = `${ballType}-${targetMatch.id}`;
+                                        const buildPayload = (field: 'autoPressTwoBallFront9' | 'autoPressTwoBallBack9' | 'autoPressTwoBallOverall' | 'autoPressThreeBallFront9' | 'autoPressThreeBallBack9' | 'autoPressThreeBallOverall', val: boolean) =>
+                                          ({ eventMatchId: targetMatch.id, [field]: val });
                                         return (
                                           <div className="flex flex-col items-center gap-0.5">
                                             {showFront9 && (
@@ -5350,10 +5347,7 @@ export default function MatchDetail() {
                                                   id={`autopress-${tid}-f9`}
                                                   checked={f9Checked}
                                                   onCheckedChange={(c) => {
-                                                    updateAutoPress.mutate({
-                                                      eventMatchId: targetMatch.id,
-                                                      [f9Key]: c === true,
-                                                    } as any);
+                                                    updateAutoPress.mutate(buildPayload(isTwoBall ? 'autoPressTwoBallFront9' : 'autoPressThreeBallFront9', c === true));
                                                   }}
                                                   disabled={updateAutoPress.isPending}
                                                   data-testid={`checkbox-autopress-${tid}-f9`}
@@ -5367,10 +5361,7 @@ export default function MatchDetail() {
                                                   id={`autopress-${tid}-b9`}
                                                   checked={b9Checked}
                                                   onCheckedChange={(c) => {
-                                                    updateAutoPress.mutate({
-                                                      eventMatchId: targetMatch.id,
-                                                      [b9Key]: c === true,
-                                                    } as any);
+                                                    updateAutoPress.mutate(buildPayload(isTwoBall ? 'autoPressTwoBallBack9' : 'autoPressThreeBallBack9', c === true));
                                                   }}
                                                   disabled={updateAutoPress.isPending}
                                                   data-testid={`checkbox-autopress-${tid}-b9`}
@@ -5384,10 +5375,7 @@ export default function MatchDetail() {
                                                   id={`autopress-${tid}-ov`}
                                                   checked={ovChecked}
                                                   onCheckedChange={(c) => {
-                                                    updateAutoPress.mutate({
-                                                      eventMatchId: targetMatch.id,
-                                                      [ovKey]: c === true,
-                                                    } as any);
+                                                    updateAutoPress.mutate(buildPayload(isTwoBall ? 'autoPressTwoBallOverall' : 'autoPressThreeBallOverall', c === true));
                                                   }}
                                                   disabled={updateAutoPress.isPending}
                                                   data-testid={`checkbox-autopress-${tid}-ov`}

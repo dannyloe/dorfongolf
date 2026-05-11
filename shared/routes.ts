@@ -437,7 +437,7 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/event-matches/:id/match-type',
       input: z.object({
-        matchType: z.enum(["match_play_1_ball", "match_play_2_ball", "stroke_play", "nassau", "skins", "five_five_five_three"]),
+        matchType: z.enum(["match_play_1_ball", "match_play_2_ball", "stroke_play", "nassau", "skins", "five_five_five_three", "death_match", "two_three_ball", "one_two_three_ball"]),
       }),
       responses: {
         200: z.custom<typeof eventMatches.$inferSelect>(),
