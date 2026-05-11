@@ -77,6 +77,50 @@ app.use((req, res, next) => {
       console.error("Match code backfill error:", err);
     }
 
+    // Backfill existing users with a default username and temp password if missing
+    try {
+      const { pool } = await import("./db");
+      const colCheck = await pool.query(
+        `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password_hash' LIMIT 1`
+      );
+      if (colCheck.rowCount && colCheck.rowCount > 0) {
+        const bcrypt = await import("bcryptjs");
+        const defaultHash = await bcrypt.hash("Golf1234!", 12);
+        const { authStorage } = await import("./replit_integrations/auth/storage");
+        const allUsers = await authStorage.getAllUsers();
+        let backfilled = 0;
+        for (const u of allUsers) {
+          const needsUsername = !u.username;
+          const needsPassword = !u.passwordHash;
+          if (!needsUsername && !needsPassword) continue;
+          if (needsUsername) {
+            // Derive username: presetPlayerName → email prefix → "user_" + id
+            let username = "";
+            if (u.presetPlayerName) {
+              username = u.presetPlayerName.toLowerCase().replace(/\s+/g, "");
+            } else if (u.email) {
+              username = u.email.split("@")[0].toLowerCase();
+            } else {
+              username = `user_${u.id}`;
+            }
+            // Ensure uniqueness by appending id if needed
+            const existing = await authStorage.getUserByUsername(username);
+            if (existing && existing.id !== u.id) {
+              username = `${username}_${u.id}`;
+            }
+            await authStorage.setUserUsername(u.id, username);
+          }
+          if (needsPassword) {
+            await authStorage.setUserPassword(u.id, defaultHash);
+          }
+          backfilled++;
+        }
+        if (backfilled > 0) log(`Backfilled auth credentials for ${backfilled} existing users (temp password: Golf1234!)`);
+      }
+    } catch (err) {
+      console.error("User auth backfill error:", err);
+    }
+
     app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
       const message = err.message || "Internal Server Error";

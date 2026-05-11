@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import type { User } from "@shared/models/auth";
 
 async function fetchUser(): Promise<User | null> {
@@ -17,10 +18,6 @@ async function fetchUser(): Promise<User | null> {
   return response.json();
 }
 
-async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
-}
-
 export function useAuth() {
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery<User | null>({
@@ -31,9 +28,22 @@ export function useAuth() {
   });
 
   const logoutMutation = useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/auth/logout");
+    },
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
+      queryClient.clear();
+      window.location.href = "/";
+    },
+  });
+
+  const loginMutation = useMutation({
+    mutationFn: async (credentials: { username: string; password: string }) => {
+      await apiRequest("POST", "/api/auth/login", credentials);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
@@ -43,5 +53,8 @@ export function useAuth() {
     isAuthenticated: !!user,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
+    login: loginMutation.mutateAsync,
+    isLoggingIn: loginMutation.isPending,
+    loginError: loginMutation.error,
   };
 }

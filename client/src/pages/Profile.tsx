@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { User, Save, X, Plus, Loader2, Phone, Check, Bell, Users, Shield, LogOut } from "lucide-react";
+import { User, Save, X, Plus, Loader2, Phone, Check, Bell, Users, Shield, LogOut, KeyRound, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -89,6 +89,13 @@ export default function Profile() {
   const [handicapIndex, setHandicapIndex] = useState("");
   const [newAlias, setNewAlias] = useState("");
   
+  // Change password state
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+  const [showNewPwd, setShowNewPwd] = useState(false);
+
   // Phone verification state
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
@@ -110,6 +117,22 @@ export default function Profile() {
       setPhoneEdited(false);
     }
   }, [profile]);
+
+  // Change password mutation
+  const changePasswordMutation = useMutation({
+    mutationFn: async ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) => {
+      return apiRequest("PATCH", "/api/auth/change-password", { currentPassword, newPassword });
+    },
+    onSuccess: () => {
+      setShowChangePassword(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      toast({ title: "Password updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
 
   // Send verification code mutation
   const sendVerificationMutation = useMutation({
@@ -625,6 +648,82 @@ export default function Profile() {
               </div>
             )}
           </CardContent>
+        </Card>
+
+        {/* Change Password */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5" />
+                <CardTitle className="text-base">Password</CardTitle>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowChangePassword(v => !v)}
+                data-testid="button-toggle-change-password"
+              >
+                {showChangePassword ? "Cancel" : "Change Password"}
+              </Button>
+            </div>
+          </CardHeader>
+          {showChangePassword && (
+            <CardContent className="space-y-4 pt-0">
+              <div className="space-y-1.5">
+                <Label htmlFor="current-password">Current Password</Label>
+                <div className="relative">
+                  <Input
+                    id="current-password"
+                    data-testid="input-current-password"
+                    type={showCurrentPwd ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={e => setCurrentPassword(e.target.value)}
+                    placeholder="Current password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowCurrentPwd(v => !v)}
+                    tabIndex={-1}
+                  >
+                    {showCurrentPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-password">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    data-testid="input-new-password"
+                    type={showNewPwd ? "text" : "password"}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Min. 6 characters"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowNewPwd(v => !v)}
+                    tabIndex={-1}
+                  >
+                    {showNewPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <Button
+                data-testid="button-save-password"
+                disabled={!newPassword || newPassword.length < 6 || changePasswordMutation.isPending}
+                onClick={() => changePasswordMutation.mutate({ currentPassword, newPassword })}
+              >
+                {changePasswordMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                Update Password
+              </Button>
+            </CardContent>
+          )}
         </Card>
 
         <div className="flex justify-end">

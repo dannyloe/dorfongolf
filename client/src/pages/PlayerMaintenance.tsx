@@ -7,11 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Users, Search, Hash, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Users, Search, Hash, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus, KeyRound, Eye, EyeOff } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useCourses } from "@/hooks/use-matches";
+import { useAuth } from "@/hooks/use-auth";
+import type { User } from "@shared/models/auth";
 
 interface PlayerData {
   name: string;
@@ -279,6 +282,7 @@ function EditableLinkedUserCell({
 
 export default function PlayerMaintenance() {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
   const [addingCourseForPlayer, setAddingCourseForPlayer] = useState<string | null>(null);
@@ -286,6 +290,11 @@ export default function PlayerMaintenance() {
   const [selectedTeeId, setSelectedTeeId] = useState<string>("");
   const [showAddPlayerDialog, setShowAddPlayerDialog] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState("");
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const { data, isLoading: isLoadingPlayers } = useQuery<PlayerDataResponse>({
     queryKey: ["/api/preset-players/full"],
@@ -390,6 +399,28 @@ export default function PlayerMaintenance() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/player-course-defaults"] });
       toast({ title: "Course default removed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const { data: allSystemUsers } = useQuery<User[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: !!(currentUser?.isAdmin),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ userId, password, username }: { userId: string; password: string; username?: string }) => {
+      return apiRequest("PATCH", `/api/admin/users/${userId}/password`, { password, username });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      setResetPasswordUserId(null);
+      setResetPasswordUser(null);
+      setNewPassword("");
+      setNewUsername("");
+      toast({ title: "Password updated" });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -757,6 +788,134 @@ export default function PlayerMaintenance() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Admin: User Accounts Management */}
+      {currentUser?.isAdmin && (
+        <Card className="mt-6">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5" />
+              <CardTitle>User Accounts</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!allSystemUsers ? (
+              <div className="text-center py-6 text-muted-foreground">Loading users…</div>
+            ) : (
+              <div className="border rounded-md">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Username</TableHead>
+                      <TableHead>Display Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead className="w-[80px]">Admin</TableHead>
+                      <TableHead className="w-[120px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allSystemUsers.map(u => (
+                      <TableRow key={u.id} data-testid={`row-user-${u.id}`}>
+                        <TableCell className="font-mono text-sm">{u.username ?? <span className="text-muted-foreground italic">not set</span>}</TableCell>
+                        <TableCell>
+                          {u.presetPlayerName || [u.firstName, u.lastName].filter(Boolean).join(" ") || <span className="text-muted-foreground italic">—</span>}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{u.email ?? "—"}</TableCell>
+                        <TableCell>
+                          {u.isAdmin ? <ShieldCheck className="h-4 w-4 text-emerald-600" /> : null}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-testid={`button-reset-password-${u.id}`}
+                            onClick={() => {
+                              setResetPasswordUserId(u.id);
+                              setResetPasswordUser(u);
+                              setNewUsername(u.username ?? "");
+                              setNewPassword("");
+                            }}
+                          >
+                            <KeyRound className="h-3 w-3 mr-1" />
+                            Reset
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {allSystemUsers.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-6 text-muted-foreground">No users found</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!resetPasswordUserId} onOpenChange={(open) => { if (!open) { setResetPasswordUserId(null); setResetPasswordUser(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Credentials</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Updating credentials for: <span className="font-medium text-foreground">{resetPasswordUser?.presetPlayerName || resetPasswordUser?.username || resetPasswordUser?.id}</span>
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="reset-username">Username</Label>
+              <Input
+                id="reset-username"
+                data-testid="input-reset-username"
+                value={newUsername}
+                onChange={e => setNewUsername(e.target.value)}
+                placeholder="username"
+                autoCapitalize="none"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reset-password">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="reset-password"
+                  data-testid="input-reset-password"
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="Min. 6 characters"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowNewPassword(v => !v)}
+                  tabIndex={-1}
+                >
+                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setResetPasswordUserId(null); setResetPasswordUser(null); }}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="button-confirm-reset-password"
+              disabled={!newPassword || newPassword.length < 6 || resetPasswordMutation.isPending}
+              onClick={() => {
+                if (!resetPasswordUserId) return;
+                resetPasswordMutation.mutate({ userId: resetPasswordUserId, password: newPassword, username: newUsername || undefined });
+              }}
+            >
+              {resetPasswordMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showAddPlayerDialog} onOpenChange={setShowAddPlayerDialog}>
         <DialogContent>

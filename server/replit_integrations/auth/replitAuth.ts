@@ -1,22 +1,14 @@
-import * as client from "openid-client";
-import { Strategy, type VerifyFunction } from "openid-client/passport";
-
-import passport from "passport";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
-import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
+import bcrypt from "bcryptjs";
 
-const getOidcConfig = memoize(
-  async () => {
-    return await client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
-    );
-  },
-  { maxAge: 3600 * 1000 }
-);
+declare module "express-session" {
+  interface SessionData {
+    userId?: string;
+  }
+}
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -34,127 +26,93 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       maxAge: sessionTtl,
     },
-  });
-}
-
-function updateUserSession(
-  user: any,
-  tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers
-) {
-  user.claims = tokens.claims();
-  user.access_token = tokens.access_token;
-  user.refresh_token = tokens.refresh_token;
-  user.expires_at = user.claims?.exp;
-}
-
-async function upsertUser(claims: any) {
-  await authStorage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
   });
 }
 
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
-  app.use(passport.initialize());
-  app.use(passport.session());
 
-  const config = await getOidcConfig();
-
-  const verify: VerifyFunction = async (
-    tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
-    verified: passport.AuthenticateCallback
-  ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
-  };
-
-  // Keep track of registered strategies
-  const registeredStrategies = new Set<string>();
-
-  // Helper function to ensure strategy exists for a domain
-  const ensureStrategy = (domain: string) => {
-    const strategyName = `replitauth:${domain}`;
-    if (!registeredStrategies.has(strategyName)) {
-      const strategy = new Strategy(
-        {
-          name: strategyName,
-          config,
-          scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
-        },
-        verify
-      );
-      passport.use(strategy);
-      registeredStrategies.add(strategyName);
+  // POST /api/auth/login
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password required" });
+      }
+      const user = await authStorage.getUserByUsername(username);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ message: "Invalid username or password" });
+      }
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        return res.status(401).json({ message: "Invalid username or password" });
+      }
+      req.session.userId = user.id;
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[login error]", err);
+      res.status(500).json({ message: "Login failed" });
     }
-  };
-
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
-
-  app.get("/api/login", (req, res, next) => {
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
   });
 
-  app.get("/api/callback", (req, res, next) => {
-    ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login",
-    })(req, res, next);
+  // POST /api/auth/register
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { username, password, email, firstName, lastName } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password required" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      const trimmedUsername = username.toLowerCase().trim();
+      const existing = await authStorage.getUserByUsername(trimmedUsername);
+      if (existing) {
+        return res.status(409).json({ message: "Username already taken" });
+      }
+      const passwordHash = await bcrypt.hash(password, 12);
+      const id = String(Date.now());
+      const user = await authStorage.upsertUser({
+        id,
+        username: trimmedUsername,
+        passwordHash,
+        email: email || null,
+        firstName: firstName || null,
+        lastName: lastName || null,
+      });
+      req.session.userId = user.id;
+      res.status(201).json({ ok: true });
+    } catch (err) {
+      console.error("[register error]", err);
+      res.status(500).json({ message: "Registration failed" });
+    }
   });
 
+  // POST /api/auth/logout
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => {
+      res.json({ ok: true });
+    });
+  });
+
+  // GET /api/logout — legacy redirect support
   app.get("/api/logout", (req, res) => {
-    req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-        }).href
-      );
+    req.session.destroy(() => {
+      res.redirect("/");
     });
   });
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  const user = req.user as any;
-
-  if (!req.isAuthenticated() || !user.expires_at) {
+  const userId = (req.session as any)?.userId;
+  if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
-  }
-
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
-    return next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
+  // Populate req.user with the same shape used throughout all existing routes
+  (req as any).user = { claims: { sub: userId } };
+  return next();
 };

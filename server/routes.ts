@@ -4600,6 +4600,76 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // Admin: list all users
+  app.get("/api/admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const { authStorage } = await import("./replit_integrations/auth/storage");
+      const allUsers = await authStorage.getAllUsers();
+      res.json(allUsers);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: reset a user's password
+  app.patch("/api/admin/users/:id/password", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const { password, username } = req.body;
+      if (!password || password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(password, 12);
+      const { authStorage } = await import("./replit_integrations/auth/storage");
+      await authStorage.setUserPassword(req.params.id, passwordHash);
+      if (username) {
+        await authStorage.setUserUsername(req.params.id, username);
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Self: change own password
+  app.patch("/api/auth/change-password", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const { currentPassword, newPassword } = req.body;
+      if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ message: "New password must be at least 6 characters" });
+      }
+      const { authStorage } = await import("./replit_integrations/auth/storage");
+      const existingUser = await authStorage.getUser(userId);
+      if (!existingUser) return res.status(404).json({ message: "User not found" });
+      if (existingUser.passwordHash && currentPassword) {
+        const bcrypt = await import("bcryptjs");
+        const valid = await bcrypt.compare(currentPassword, existingUser.passwordHash);
+        if (!valid) return res.status(401).json({ message: "Current password incorrect" });
+      }
+      const bcrypt = await import("bcryptjs");
+      const passwordHash = await bcrypt.hash(newPassword, 12);
+      await authStorage.setUserPassword(userId, passwordHash);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
 

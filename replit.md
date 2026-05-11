@@ -21,7 +21,7 @@ Preferred communication style: Simple, everyday language.
 - **Runtime**: Node.js with Express.js
 - **Language**: TypeScript
 - **API Design**: RESTful endpoints with Zod schemas for validation
-- **Authentication**: Replit Auth using OpenID Connect
+- **Authentication**: Local username + password auth (bcryptjs). Sessions stored in PostgreSQL via connect-pg-simple.
 - **Session Management**: Express sessions stored in PostgreSQL
 
 ### Data Storage

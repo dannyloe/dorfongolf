@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table.
-// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+// (IMPORTANT) This table is mandatory for session management, don't drop it.
 export const sessions = pgTable(
   "sessions",
   {
@@ -14,7 +14,6 @@ export const sessions = pgTable(
 );
 
 // User storage table.
-// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
@@ -25,6 +24,9 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   presetPlayerName: varchar("preset_player_name"),
   isAdmin: boolean("is_admin").default(false),
+  // Local auth fields
+  username: text("username").unique(),
+  passwordHash: text("password_hash"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 
 // Pages
 import Landing from "@/pages/Landing";
+import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
 import MatchDetail from "@/pages/MatchDetail";
 import QuickScoreEntry from "@/pages/QuickScoreEntry";
@@ -56,10 +57,23 @@ function PublicRoute() {
   return <Landing />;
 }
 
+function RegisterRoute() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) return null;
+
+  if (user) {
+    return <Redirect to="/dashboard" />;
+  }
+
+  return <Register />;
+}
+
 function Router() {
   return (
     <Switch>
       <Route path="/" component={PublicRoute} />
+      <Route path="/register" component={RegisterRoute} />
       <Route path="/dashboard">
         <PrivateRoute component={Dashboard} />
       </Route>
