@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { initializeAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { db } from "./db";
@@ -74,7 +74,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  await setupAuth(app);
+  await initializeAuth(app);
   registerAuthRoutes(app);
 
   const ADMIN_USER_ID = "52861828";

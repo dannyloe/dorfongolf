@@ -32,7 +32,7 @@ export function getSession() {
   });
 }
 
-export async function setupAuth(app: Express) {
+export async function initializeAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
 

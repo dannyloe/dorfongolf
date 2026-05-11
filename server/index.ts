@@ -94,12 +94,12 @@ app.use((req, res, next) => {
           const needsPassword = !u.passwordHash;
           if (!needsUsername && !needsPassword) continue;
           if (needsUsername) {
-            // Derive username: presetPlayerName → email prefix → "user_" + id
+            // Derive username: presetPlayerName → firstName → "user_" + id
             let username = "";
             if (u.presetPlayerName) {
               username = u.presetPlayerName.toLowerCase().replace(/\s+/g, "");
-            } else if (u.email) {
-              username = u.email.split("@")[0].toLowerCase();
+            } else if (u.firstName) {
+              username = u.firstName.toLowerCase().replace(/\s+/g, "");
             } else {
               username = `user_${u.id}`;
             }

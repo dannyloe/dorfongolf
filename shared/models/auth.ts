@@ -27,6 +27,7 @@ export const users = pgTable("users", {
   // Local auth fields
   username: text("username").unique(),
   passwordHash: text("password_hash"),
+  authProvider: text("auth_provider").default("local"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
