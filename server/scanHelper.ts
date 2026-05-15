@@ -11,8 +11,8 @@ import type { ParsedSmsBet } from "@shared/schema";
  * Format: "{betType}:{sortedPlayers.join('|')}:{amountCents}"
  */
 export function computeBetSignature(bet: ParsedSmsBet): string {
-  const sorted = [...bet.players].sort().join("|");
-  return `${bet.betType}:${sorted}:${bet.amountCents}`;
+  const sorted = [...bet.players].map(p => p.toLowerCase().trim()).sort().join("|");
+  return `${bet.betType.toLowerCase()}:${sorted}:${bet.amountCents}`;
 }
 
 /**
@@ -77,13 +77,21 @@ Return JSON array. Each element: { betType, amountCents, players, description }`
 }
 
 /**
- * Detect if a message body looks like a score row (≥9 golf-range numbers
- * separated by spaces or slashes). Returns scores as array[18] or null.
+ * Detect if a message body is a pure score row: exactly 9 or 18 golf-range
+ * integers (1–15) with no extra non-numeric tokens mixed in.
+ * "Pure" means the token list contains only numbers in range — if the body
+ * has non-numeric words intermixed it's likely a bet description, not scores.
  */
 export function detectScoreText(body: string): number[] | null {
-  const tokens = body.trim().split(/[\s/,]+/);
-  const nums = tokens.map(t => parseInt(t, 10)).filter(n => Number.isFinite(n) && n >= 1 && n <= 15);
-  if (nums.length >= 9) return nums;
+  const tokens = body.trim().split(/[\s/,]+/).filter(Boolean);
+  const nums: number[] = [];
+  for (const t of tokens) {
+    const n = parseInt(t, 10);
+    if (!Number.isFinite(n) || String(n) !== t) return null; // non-numeric token → not a score row
+    if (n < 1 || n > 15) return null; // out of golf score range
+    nums.push(n);
+  }
+  if (nums.length === 9 || nums.length === 18) return nums;
   return null;
 }
 

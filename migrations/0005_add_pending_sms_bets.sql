@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS "pending_sms_bets" (
   "id" serial PRIMARY KEY NOT NULL,
-  "match_id" integer NOT NULL,
+  "match_id" integer NOT NULL REFERENCES "matches"("id") ON DELETE CASCADE,
   "from_phone" text NOT NULL,
   "sender_name" text NOT NULL DEFAULT 'Unknown',
   "raw_text" text NOT NULL,

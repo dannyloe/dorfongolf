@@ -2267,13 +2267,18 @@ export async function registerRoutes(
             try {
               const parsedBets = await parseSmsBetText({ rawText: textBody, playerNames, matchName: match.name || match.courseName });
 
-              // Dedup check: compare signatures against pending and applied SMS bets
+              // Dedup check: compare signatures against both pending/applied SMS bets
+              // and existing applied eventMatches for this match
               let status = "pending";
               let duplicateOf: string | null = null;
               if (parsedBets && parsedBets.length > 0) {
-                const existing = await storage.listPendingSmsBets(match.id);
+                const [existingSmsBets, existingEventMatches] = await Promise.all([
+                  storage.listPendingSmsBets(match.id),
+                  storage.getEventMatches(match.id),
+                ]);
                 const existingSigs = new Set<string>();
-                for (const eb of existing) {
+                // Collect sigs from existing non-dismissed SMS bets
+                for (const eb of existingSmsBets) {
                   if (eb.status !== "dismissed") {
                     const ebParsed = eb.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }> | null;
                     if (Array.isArray(ebParsed)) {
@@ -2281,6 +2286,15 @@ export async function registerRoutes(
                         existingSigs.add(computeBetSignature(pb));
                       }
                     }
+                  }
+                }
+                // Collect sigs from existing applied eventMatches
+                for (const em of existingEventMatches) {
+                  // Build a normalized signature from the eventMatch name + unit amount
+                  // Matches the format that would have been created via apply
+                  if (em.name && em.unitAmount != null) {
+                    const emSig = `applied:${em.name.toLowerCase()}:${em.unitAmount}`;
+                    existingSigs.add(emSig);
                   }
                 }
                 const firstBetSig = computeBetSignature(parsedBets[0]);
@@ -4906,12 +4920,23 @@ Transcript to parse: "${transcript}"`;
       if (!isOrganizerOrCreator) return res.status(403).json({ message: "Not authorized" });
       if (!bet || bet.matchId !== matchId) return res.status(404).json({ message: "Bet not found" });
 
-      const { status } = req.body;
-      if (!["pending", "dismissed"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status — use the apply endpoint to apply a bet" });
+      const { status, parsedBets } = req.body;
+      const updateData: Partial<{ status: string; parsedBets: import("@shared/schema").ParsedSmsBet[] | null }> = {};
+      if (status !== undefined) {
+        if (!["pending", "duplicate", "dismissed"].includes(status)) {
+          return res.status(400).json({ message: "Invalid status — use the apply endpoint to apply a bet" });
+        }
+        updateData.status = status;
+      }
+      if (parsedBets !== undefined) {
+        if (!Array.isArray(parsedBets)) return res.status(400).json({ message: "parsedBets must be an array" });
+        updateData.parsedBets = parsedBets;
+      }
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ message: "No valid fields to update" });
       }
 
-      const updated = await storage.updatePendingSmsBet(betId, { status });
+      const updated = await storage.updatePendingSmsBet(betId, updateData);
       res.json(updated);
     } catch (err) {
       console.error("[pending-sms-bets patch error]", err);
@@ -4954,6 +4979,7 @@ Transcript to parse: "${transcript}"`;
       };
 
       const createdEventMatches = [];
+      const failedBets: string[] = [];
       for (const pb of parsedBets) {
         const matchType = betTypeMap[pb.betType] ?? "nassau";
         const unitAmount = pb.amountCents > 0 ? pb.amountCents : 0;
@@ -4989,11 +5015,21 @@ Transcript to parse: "${transcript}"`;
           createdEventMatches.push(em);
         } catch (emErr) {
           console.warn("[apply-sms-bet] Could not create eventMatch for parsed bet:", emErr);
+          failedBets.push(pb.description);
         }
       }
 
+      // Only mark applied if at least one event match was successfully created
+      // (or if there were no parsedBets at all, treat as applied acknowledgement)
+      if (parsedBets.length > 0 && createdEventMatches.length === 0) {
+        return res.status(422).json({
+          message: "Failed to create any bet records — review parsed data and try again",
+          failedBets,
+        });
+      }
+
       const updated = await storage.updatePendingSmsBet(betId, { status: "applied" });
-      res.json({ ok: true, bet: updated, createdEventMatches });
+      res.json({ ok: true, bet: updated, createdEventMatches, failedBets });
     } catch (err) {
       console.error("[apply-sms-bet error]", err);
       res.status(500).json({ message: "Internal server error" });

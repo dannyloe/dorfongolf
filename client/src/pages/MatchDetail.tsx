@@ -1991,7 +1991,9 @@ export default function MatchDetail() {
                         <div className="flex items-center gap-1.5 mb-1">
                           <span className="text-xs font-semibold truncate">{bet.senderName}</span>
                           {bet.status === "duplicate" && (
-                            <span className="text-xs text-yellow-600 font-medium">(duplicate)</span>
+                            <span className="text-xs text-yellow-600 font-medium" title={bet.duplicateOf ? `Possible duplicate of: ${bet.duplicateOf}` : undefined}>
+                              ⚠ Possible duplicate
+                            </span>
                           )}
                           {bet.status === "applied" && (
                             <span className="text-xs text-emerald-600 font-medium flex items-center gap-0.5">
@@ -2016,10 +2018,10 @@ export default function MatchDetail() {
                         )}
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
-                        {bet.status === "pending" && (
+                        {(bet.status === "pending" || bet.status === "duplicate") && (
                           <Button
                             size="sm"
-                            variant="default"
+                            variant={bet.status === "duplicate" ? "outline" : "default"}
                             className="h-6 text-xs px-2"
                             disabled={applySmsBet.isPending}
                             onClick={() => applySmsBet.mutate(bet.id)}
@@ -2028,16 +2030,30 @@ export default function MatchDetail() {
                             Apply
                           </Button>
                         )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0"
-                          onClick={() => deleteSmsBet.mutate(bet.id)}
-                          disabled={deleteSmsBet.isPending}
-                          data-testid={`button-delete-sms-bet-${bet.id}`}
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
+                        {(bet.status === "pending" || bet.status === "duplicate") && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-xs px-2 text-muted-foreground"
+                            onClick={() => updateSmsBet.mutate({ betId: bet.id, status: "dismissed" })}
+                            disabled={updateSmsBet.isPending}
+                            data-testid={`button-dismiss-sms-bet-${bet.id}`}
+                          >
+                            Dismiss
+                          </Button>
+                        )}
+                        {bet.status === "applied" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0"
+                            onClick={() => deleteSmsBet.mutate(bet.id)}
+                            disabled={deleteSmsBet.isPending}
+                            data-testid={`button-delete-sms-bet-${bet.id}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
