@@ -4469,11 +4469,14 @@ Transcript to parse: "${transcript}"`;
 
       smsRateLimits.delete(phone);
 
-      // Atomically update profile + create opt-in record
+      // Atomically update profile + upsert opt-in record (delete-then-insert to avoid duplicate rows)
       await db.transaction(async (tx) => {
         await tx.update(usersTable)
           .set({ phone, phoneVerified: true })
           .where(eq(usersTable.id, userId));
+
+        // Remove any prior opt-in rows for this user to avoid duplicates
+        await tx.delete(smsOptIns).where(eq(smsOptIns.userId, userId));
 
         await tx.insert(smsOptIns).values({
           phoneNumber: phone,
