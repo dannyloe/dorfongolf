@@ -8,6 +8,7 @@ import {
   settlements, settlementPayments,
   pendingScorecardScans,
   pendingSmsBets,
+  smsOptIns,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -28,6 +29,7 @@ import {
   type Settlement, type SettlementPayment, type SettlementWithPayments,
   type PendingScorecardScan,
   type PendingSmsBet, type ParsedSmsBet,
+  type SmsOptIn,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
@@ -146,6 +148,9 @@ export interface IStorage {
   deletePendingSmsBet(id: number): Promise<boolean>;
   getUserByPhone(phone: string): Promise<typeof users.$inferSelect | undefined>;
   getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]>;
+
+  // SMS opt-in
+  createSmsOptIn(data: { phoneNumber: string; consentGiven: boolean; userId?: string | null }): Promise<SmsOptIn>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -311,6 +316,15 @@ export class DatabaseStorage implements IStorage {
       if (user) return user;
     }
     return undefined;
+  }
+
+  async createSmsOptIn(data: { phoneNumber: string; consentGiven: boolean; userId?: string | null }): Promise<SmsOptIn> {
+    const [row] = await db.insert(smsOptIns).values({
+      phoneNumber: data.phoneNumber,
+      consentGiven: data.consentGiven,
+      userId: data.userId ?? null,
+    }).returning();
+    return row;
   }
 
   async getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]> {

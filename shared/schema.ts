@@ -272,6 +272,15 @@ export const notificationPreferences = pgTable("notification_preferences", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// SMS web opt-in consent records
+export const smsOptIns = pgTable("sms_opt_ins", {
+  id: serial("id").primaryKey(),
+  phoneNumber: text("phone_number").notNull(),
+  consentGiven: boolean("consent_given").notNull().default(false),
+  optedInAt: timestamp("opted_in_at").defaultNow(),
+  userId: text("user_id"), // nullable — linked to user account if logged in
+});
+
 // In-app messages between users
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
@@ -550,6 +559,11 @@ export const insertPendingSmsBetSchema = createInsertSchema(pendingSmsBets).omit
   createdAt: true,
 });
 
+export const insertSmsOptInSchema = createInsertSchema(smsOptIns).omit({
+  id: true,
+  optedInAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -627,6 +641,9 @@ export type InsertPendingScorecardScan = z.infer<typeof insertPendingScorecardSc
 export type ParsedSmsBet = { betType: string; amountCents: number; players: string[]; description: string };
 export type PendingSmsBet = typeof pendingSmsBets.$inferSelect;
 export type InsertPendingSmsBet = z.infer<typeof insertPendingSmsBetSchema>;
+
+export type SmsOptIn = typeof smsOptIns.$inferSelect;
+export type InsertSmsOptIn = z.infer<typeof insertSmsOptInSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

@@ -73,6 +73,19 @@ export default function PrivacyPolicy() {
                 <p className="mt-3">We do not sell, rent, or share your personal information with third parties for marketing purposes.</p>
               </Section>
 
+              <Section title="SMS Communications">
+                <p>
+                  If you provide your phone number and opt in to SMS alerts, we may send you text messages related to
+                  your golf matches, including match invitations, score updates, bet results, and match reminders.
+                  We will not sell or share your phone number with third-party marketers. You can opt out at any time
+                  by replying <strong>STOP</strong> to any message. For help, reply <strong>HELP</strong>.
+                  Message and data rates may apply. Up to 4 messages per active match, per week.
+                </p>
+                <p className="mt-3">
+                  SMS opt-in records are retained to demonstrate compliance with applicable regulations.
+                </p>
+              </Section>
+
               <Section title="Data Storage & Security">
                 <p>
                   Your data is stored in a PostgreSQL database. We use industry-standard practices including encrypted
@@ -120,7 +133,7 @@ export default function PrivacyPolicy() {
       <footer className="border-t border-primary/5 py-8 bg-white/50 backdrop-blur-sm relative z-10">
         <div className="container mx-auto px-6 text-center text-muted-foreground text-sm">
           <p>© 2025 Golf Betting. &nbsp;
-            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
+            <Link href="/privacy-policy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
             {" · "}
             <Link href="/terms" className="hover:text-foreground transition-colors">Terms &amp; Conditions</Link>
           </p>

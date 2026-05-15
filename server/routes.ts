@@ -2152,6 +2152,29 @@ export async function registerRoutes(
     }
   }
 
+  // SMS opt-in endpoint — publicly accessible, no auth required
+  app.post("/api/sms/opt-in", async (req, res) => {
+    try {
+      const schema = z.object({
+        phoneNumber: z.string().min(7, "Phone number is required"),
+        consentGiven: z.literal(true, { errorMap: () => ({ message: "You must agree to receive messages" }) }),
+      });
+      const { phoneNumber, consentGiven } = schema.parse(req.body);
+
+      // Attach user account if logged in (session-based; req.user is not populated on public routes)
+      const userId = (req.session as any)?.userId ?? null;
+
+      const record = await storage.createSmsOptIn({ phoneNumber, consentGiven, userId });
+      res.status(201).json({ success: true, id: record.id });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[SMS opt-in]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Helper: validate Twilio webhook signature using the Twilio SDK (requires auth token).
   // Twilio signs requests with HMAC-SHA1 using the account auth token as the secret.
   function validateTwilioSignature(req: any, authToken: string | undefined): boolean {
