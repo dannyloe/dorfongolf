@@ -24,8 +24,6 @@ import RyderCupScorecard from "@/pages/RyderCupScorecard";
 import Profile from "@/pages/Profile";
 import Groups from "@/pages/Groups";
 import SmsOptIn from "@/pages/SmsOptIn";
-import TermsOfService from "@/pages/TermsOfService";
-import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -80,7 +78,9 @@ function Router() {
       <Route path="/" component={PublicRoute} />
       <Route path="/register" component={RegisterRoute} />
       <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms" component={Terms} />
+      <Route path="/sms-opt-in" component={SmsOptIn} />
       <Route path="/dashboard">
         <PrivateRoute component={Dashboard} />
       </Route>
@@ -117,9 +117,6 @@ function Router() {
       <Route path="/groups">
         <PrivateRoute component={Groups} />
       </Route>
-      <Route path="/sms-opt-in" component={SmsOptIn} />
-      <Route path="/terms" component={TermsOfService} />
-      <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route component={NotFound} />
     </Switch>
   );
