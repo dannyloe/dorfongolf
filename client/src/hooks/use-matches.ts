@@ -1314,6 +1314,19 @@ export function useDeletePendingSmsBet(matchId: number) {
   });
 }
 
+export function useNotifyEligibleCount(matchId: number, groupId: number | null | undefined) {
+  return useQuery({
+    queryKey: ["/api/matches", matchId, "notify-eligible-count"],
+    queryFn: async () => {
+      const res = await fetch(`/api/matches/${matchId}/notify-eligible-count`, { credentials: "include" });
+      if (!res.ok) return { count: 0 };
+      return res.json() as Promise<{ count: number }>;
+    },
+    enabled: !!groupId,
+    staleTime: 60_000,
+  });
+}
+
 export function useNotifyMatchPlayers(matchId: number) {
   return useMutation({
     mutationFn: async () => {

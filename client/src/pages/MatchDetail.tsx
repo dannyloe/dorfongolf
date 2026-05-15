@@ -1,5 +1,5 @@
 import { useQuery, useMutationState, useQueryClient } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useApplyPendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useApplyPendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, useNotifyEligibleCount, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -457,6 +457,8 @@ export default function MatchDetail() {
   const applySmsBet = useApplyPendingSmsBet(matchId);
   const deleteSmsBet = useDeletePendingSmsBet(matchId);
   const notifyPlayers = useNotifyMatchPlayers(matchId);
+  const { data: eligibleCountData } = useNotifyEligibleCount(matchId, match?.groupId);
+  const noEligibleRecipients = match?.groupId ? (eligibleCountData?.count ?? null) === 0 : true;
   
   const { data: groupPlayerNames } = useQuery<string[]>({
     queryKey: ['/api/groups', match?.groupId, 'player-names'],
@@ -2169,7 +2171,7 @@ export default function MatchDetail() {
                         <button
                           className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           data-testid="button-notify-group-players"
-                          disabled={notifyPlayers.isPending}
+                          disabled={notifyPlayers.isPending || noEligibleRecipients}
                           onClick={async () => {
                             try {
                               const result = await notifyPlayers.mutateAsync();
@@ -2189,7 +2191,9 @@ export default function MatchDetail() {
                         </button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="text-xs max-w-48">
-                        Texts all group members who have verified their phone number
+                        {noEligibleRecipients
+                          ? "No group members have verified their phone number yet"
+                          : "Texts all group members who have verified their phone number"}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

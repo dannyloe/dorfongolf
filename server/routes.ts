@@ -2240,13 +2240,10 @@ export async function registerRoutes(
             confidence: "high" as const,
           }));
           const scanResult = JSON.stringify({ success: true, scores: [{ playerName, holes }] });
-          await storage.createPendingScan({ matchId: match.id, fromPhone: from, mediaUrl: "" });
-          // Update status to ready immediately since we have parsed scores
-          const scans = await storage.listPendingScans(match.id);
-          const newest = scans[0];
-          if (newest && !newest.scanResult) {
-            await storage.updatePendingScan(newest.id, { status: "ready", scanResult });
-          }
+          const maskedPhoneScore = `***-***-${from.slice(-4)}`;
+          const newScan = await storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhoneScore, mediaUrl: "" });
+          // Update the exact newly inserted record by ID (avoids race with concurrent inbound traffic)
+          await storage.updatePendingScan(newScan.id, { status: "ready", scanResult });
           const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got your scores for "${match.name || match.courseName}"! The organizer will review and apply them shortly.</Message></Response>`;
           res.type("text/xml").send(twimlReply);
           return;
@@ -2290,11 +2287,24 @@ export async function registerRoutes(
           let status = "pending";
           let duplicateOf: string | null = null;
           if (parsedBets && parsedBets.length > 0) {
-            const [existingSmsBets, existingEventMatches] = await Promise.all([
+            const [existingSmsBets, existingEmsWithTeams] = await Promise.all([
               storage.listPendingSmsBets(match.id),
-              storage.getEventMatches(match.id),
+              storage.getEventMatchesWithTeamsBulk(match.id),
             ]);
-            // Build map of sig → human-readable description from existing SMS bets
+
+            // Map matchType → betType for signature computation
+            const matchTypeToBetType: Record<string, string> = {
+              nassau: "nassau",
+              match_play_1_ball: "match_play",
+              match_play_2_ball: "match_play",
+              skins: "skins",
+              stroke_play: "stroke_play",
+              death_match: "other",
+              five_five_five_three: "other",
+              two_three_ball: "other",
+            };
+
+            // Build sig → human-readable description from existing non-dismissed SMS bets
             const existingSigToDesc = new Map<string, string>();
             for (const eb of existingSmsBets) {
               if (eb.status !== "dismissed") {
@@ -2306,26 +2316,33 @@ export async function registerRoutes(
                 }
               }
             }
-            // Also add normalized eventMatch names as potential duplicate keys
-            // (covers bets created via UI or previous SMS apply)
-            for (const em of existingEventMatches) {
-              if (em.name) {
-                existingSigToDesc.set(`em:${em.name.toLowerCase().trim()}`, em.name);
+
+            // Also compute signatures from applied eventMatches (betType + sorted player names + unitAmount)
+            for (const em of existingEmsWithTeams) {
+              const betType = matchTypeToBetType[em.matchType] ?? "other";
+              const unitAmount = em.unitAmount ?? 0;
+              // Collect all player names across all teams
+              const playerNames: string[] = [];
+              for (const t of em.teams) {
+                for (const m of t.members) {
+                  if (m.player?.name) playerNames.push(m.player.name);
+                }
               }
+              const fakeBet: import("@shared/schema").ParsedSmsBet = {
+                betType,
+                amountCents: unitAmount,
+                players: playerNames,
+                description: em.name || "",
+              };
+              existingSigToDesc.set(computeBetSignature(fakeBet), em.name || "");
             }
-            // Check each parsed bet for duplicates
+
+            // Check each parsed bet against the combined signature set
             for (const pb of parsedBets) {
               const sig = computeBetSignature(pb);
               if (existingSigToDesc.has(sig)) {
                 status = "duplicate";
                 duplicateOf = existingSigToDesc.get(sig) ?? sig;
-                break;
-              }
-              // Also check description against event match names
-              const descKey = `em:${pb.description.toLowerCase().trim()}`;
-              if (existingSigToDesc.has(descKey)) {
-                status = "duplicate";
-                duplicateOf = existingSigToDesc.get(descKey) ?? pb.description;
                 break;
               }
             }
@@ -4865,6 +4882,22 @@ Transcript to parse: "${transcript}"`;
       res.json({ ok: true, username: trimmed });
     } catch (err) {
       console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ─── Count eligible SMS recipients for a match (verified-phone group members) ─
+  app.get("/api/matches/:id/notify-eligible-count", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      if (isNaN(matchId)) return res.status(400).json({ message: "Invalid match ID" });
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      if (!match.groupId) return res.json({ count: 0 });
+      const members = await storage.getGroupMembersWithPhone(match.groupId);
+      return res.json({ count: members.length });
+    } catch (err) {
+      console.error("[notify-eligible-count error]", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
