@@ -2267,16 +2267,19 @@ export async function registerRoutes(
             try {
               const parsedBets = await parseSmsBetText({ rawText: textBody, playerNames, matchName: match.name || match.courseName });
 
-              // Dedup check: compare signatures against existing pending/applied bets
+              // Dedup check: compare signatures against pending and applied SMS bets
               let status = "pending";
               let duplicateOf: string | null = null;
               if (parsedBets && parsedBets.length > 0) {
                 const existing = await storage.listPendingSmsBets(match.id);
                 const existingSigs = new Set<string>();
                 for (const eb of existing) {
-                  if (eb.status !== "dismissed" && Array.isArray(eb.parsedBets)) {
-                    for (const pb of eb.parsedBets as any[]) {
-                      existingSigs.add(computeBetSignature(pb));
+                  if (eb.status !== "dismissed") {
+                    const ebParsed = eb.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }> | null;
+                    if (Array.isArray(ebParsed)) {
+                      for (const pb of ebParsed) {
+                        existingSigs.add(computeBetSignature(pb));
+                      }
                     }
                   }
                 }
@@ -2287,9 +2290,11 @@ export async function registerRoutes(
                 }
               }
 
+              // Mask the phone before storing for privacy
+              const maskedPhone = `***-***-${from.slice(-4)}`;
               await storage.createPendingSmsBet({
                 matchId: match.id,
-                fromPhone: from,
+                fromPhone: maskedPhone,
                 senderName,
                 rawText: textBody,
                 parsedBets,
@@ -4842,10 +4847,17 @@ Transcript to parse: "${transcript}"`;
         members.map(m => sendSMS(m.phone, msgBody))
       );
 
-      const sent = results.filter(r => r.status === "fulfilled" && (r.value as any).success).length;
-      const failed = results.length - sent;
+      const recipients = members.map((m, i) => {
+        const r = results[i];
+        const name = m.presetPlayerName || m.firstName || `…${m.phone.slice(-4)}`;
+        const success = r.status === "fulfilled" && (r as PromiseFulfilledResult<{ success: boolean }>).value.success;
+        return { name, success };
+      });
 
-      res.json({ sent, failed, total: results.length });
+      const sent = recipients.filter(r => r.success).length;
+      const failed = recipients.length - sent;
+
+      res.json({ sent, failed, total: recipients.length, recipients: recipients.map(r => ({ name: r.name })) });
     } catch (err) {
       console.error("[notify-players error]", err);
       res.status(500).json({ message: "Failed to send notifications" });
@@ -4884,23 +4896,106 @@ Transcript to parse: "${transcript}"`;
 
       const user = req.user as any;
       const userId: string = user.claims.sub;
-      const [match, roleRecord] = await Promise.all([
+      const [match, roleRecord, bet] = await Promise.all([
         storage.getMatch(matchId),
         storage.getMatchRole(matchId, userId),
+        storage.getPendingSmsBet(betId),
       ]);
       if (!match) return res.status(404).json({ message: "Match not found" });
       const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
       if (!isOrganizerOrCreator) return res.status(403).json({ message: "Not authorized" });
+      if (!bet || bet.matchId !== matchId) return res.status(404).json({ message: "Bet not found" });
 
       const { status } = req.body;
-      if (!["pending", "applied", "dismissed"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
+      if (!["pending", "dismissed"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status — use the apply endpoint to apply a bet" });
       }
 
       const updated = await storage.updatePendingSmsBet(betId, { status });
       res.json(updated);
     } catch (err) {
       console.error("[pending-sms-bets patch error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Apply a pending SMS bet — marks it applied and creates an eventMatch for organizer review
+  app.post("/api/matches/:id/pending-sms-bets/:betId/apply", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      const betId = parseInt(req.params.betId, 10);
+      if (isNaN(matchId) || isNaN(betId)) return res.status(400).json({ message: "Invalid ID" });
+
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const [match, roleRecord, bet] = await Promise.all([
+        storage.getMatch(matchId),
+        storage.getMatchRole(matchId, userId),
+        storage.getPendingSmsBet(betId),
+      ]);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
+      if (!isOrganizerOrCreator) return res.status(403).json({ message: "Not authorized" });
+      if (!bet || bet.matchId !== matchId) return res.status(404).json({ message: "Bet not found" });
+      if (bet.status === "applied") return res.status(409).json({ message: "Bet is already applied" });
+      if (bet.status === "dismissed") return res.status(409).json({ message: "Bet has been dismissed" });
+
+      const parsedBets = (bet.parsedBets ?? []) as Array<{ betType: string; amountCents: number; players: string[]; description: string }>;
+      const matchPlayers = await storage.getMatchPlayers(matchId);
+
+      // Map AI bet type labels to internal MATCH_TYPES keys
+      const betTypeMap: Record<string, string> = {
+        nassau: "nassau",
+        match_play: "match_play_1_ball",
+        skins: "skins",
+        stroke_play: "stroke_play",
+        side: "nassau",
+        other: "nassau",
+      };
+
+      const createdEventMatches = [];
+      for (const pb of parsedBets) {
+        const matchType = betTypeMap[pb.betType] ?? "nassau";
+        const unitAmount = pb.amountCents > 0 ? pb.amountCents : 0;
+
+        // Match player names to actual match player IDs (split evenly across two teams)
+        const teamAIds: number[] = [];
+        const teamBIds: number[] = [];
+        for (let i = 0; i < pb.players.length; i++) {
+          const lc = pb.players[i].toLowerCase();
+          const found = matchPlayers.find(p =>
+            p.name.toLowerCase() === lc || p.name.toLowerCase().includes(lc)
+          );
+          if (found) {
+            (i % 2 === 0 ? teamAIds : teamBIds).push(found.id);
+          }
+        }
+
+        try {
+          const em = await storage.createEventMatch(matchId, {
+            name: pb.description,
+            matchType,
+            unitAmount,
+            teamA: { name: "Team A", playerIds: teamAIds },
+            teamB: { name: "Team B", playerIds: teamBIds },
+            autoPressOriginal: true,
+            autoPressAllPresses: false,
+            autoPressNassauFront9: true,
+            autoPressNassauBack9: true,
+            autoPressNassauOverall: true,
+            useNetScoring: false,
+            startOnBack9: false,
+          });
+          createdEventMatches.push(em);
+        } catch (emErr) {
+          console.warn("[apply-sms-bet] Could not create eventMatch for parsed bet:", emErr);
+        }
+      }
+
+      const updated = await storage.updatePendingSmsBet(betId, { status: "applied" });
+      res.json({ ok: true, bet: updated, createdEventMatches });
+    } catch (err) {
+      console.error("[apply-sms-bet error]", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -4913,13 +5008,15 @@ Transcript to parse: "${transcript}"`;
 
       const user = req.user as any;
       const userId: string = user.claims.sub;
-      const [match, roleRecord] = await Promise.all([
+      const [match, roleRecord, bet] = await Promise.all([
         storage.getMatch(matchId),
         storage.getMatchRole(matchId, userId),
+        storage.getPendingSmsBet(betId),
       ]);
       if (!match) return res.status(404).json({ message: "Match not found" });
       const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
       if (!isOrganizerOrCreator) return res.status(403).json({ message: "Not authorized" });
+      if (!bet || bet.matchId !== matchId) return res.status(404).json({ message: "Bet not found" });
 
       await storage.deletePendingSmsBet(betId);
       res.json({ ok: true });

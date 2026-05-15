@@ -1,5 +1,5 @@
 import { useQuery, useMutationState, useQueryClient } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useApplyPendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -243,6 +243,7 @@ export default function MatchDetail() {
   const dismissPendingScan = useDismissPendingScan(matchId);
   const { data: pendingSmsBets = [] } = usePendingSmsBets(matchId);
   const updateSmsBet = useUpdatePendingSmsBet(matchId);
+  const applySmsBet = useApplyPendingSmsBet(matchId);
   const deleteSmsBet = useDeletePendingSmsBet(matchId);
   const notifyPlayers = useNotifyMatchPlayers(matchId);
   
@@ -2020,8 +2021,8 @@ export default function MatchDetail() {
                             size="sm"
                             variant="default"
                             className="h-6 text-xs px-2"
-                            disabled={updateSmsBet.isPending}
-                            onClick={() => updateSmsBet.mutate({ betId: bet.id, status: "applied" })}
+                            disabled={applySmsBet.isPending}
+                            onClick={() => applySmsBet.mutate(bet.id)}
                             data-testid={`button-apply-sms-bet-${bet.id}`}
                           >
                             Apply

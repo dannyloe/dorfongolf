@@ -140,6 +140,7 @@ export interface IStorage {
 
   // Pending SMS bets (text-based bet descriptions)
   createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null }): Promise<PendingSmsBet>;
+  getPendingSmsBet(id: number): Promise<PendingSmsBet | undefined>;
   listPendingSmsBets(matchId: number): Promise<PendingSmsBet[]>;
   updatePendingSmsBet(id: number, data: Partial<{ status: string; parsedBets: ParsedSmsBet[] | null; duplicateOf: string | null }>): Promise<PendingSmsBet>;
   deletePendingSmsBet(id: number): Promise<boolean>;
@@ -266,10 +267,15 @@ export class DatabaseStorage implements IStorage {
       fromPhone: data.fromPhone,
       senderName: data.senderName,
       rawText: data.rawText,
-      parsedBets: data.parsedBets as any,
+      parsedBets: data.parsedBets,
       status: data.status ?? 'pending',
       duplicateOf: data.duplicateOf ?? null,
     }).returning();
+    return row;
+  }
+
+  async getPendingSmsBet(id: number): Promise<PendingSmsBet | undefined> {
+    const [row] = await db.select().from(pendingSmsBets).where(eq(pendingSmsBets.id, id));
     return row;
   }
 
@@ -280,8 +286,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePendingSmsBet(id: number, data: Partial<{ status: string; parsedBets: ParsedSmsBet[] | null; duplicateOf: string | null }>): Promise<PendingSmsBet> {
+    const setData: Record<string, unknown> = {};
+    if (data.status !== undefined) setData.status = data.status;
+    if (data.parsedBets !== undefined) setData.parsedBets = data.parsedBets;
+    if (data.duplicateOf !== undefined) setData.duplicateOf = data.duplicateOf;
     const [updated] = await db.update(pendingSmsBets)
-      .set(data as any)
+      .set(setData)
       .where(eq(pendingSmsBets.id, id))
       .returning();
     return updated;
@@ -293,11 +303,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByPhone(phone: string): Promise<typeof users.$inferSelect | undefined> {
-    const normalized = phone.replace(/\D/g, '');
-    const [user] = await db.select().from(users).where(
-      or(eq(users.phone, phone), eq(users.phone, normalized))
-    );
-    return user;
+    const digits = phone.replace(/\D/g, '');
+    // Try exact match, +1-prefixed, or digits-only
+    const candidates = [phone, `+1${digits}`, digits].filter(Boolean);
+    for (const candidate of candidates) {
+      const [user] = await db.select().from(users).where(eq(users.phone, candidate));
+      if (user) return user;
+    }
+    return undefined;
   }
 
   async getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]> {
@@ -310,12 +323,22 @@ export class DatabaseStorage implements IStorage {
     const userIds = memberships.map(m => m.userId);
     const userRows = await db.select({
       phone: users.phone,
+      phoneVerified: users.phoneVerified,
       firstName: users.firstName,
       lastName: users.lastName,
       presetPlayerName: users.presetPlayerName,
     }).from(users).where(inArray(users.id, userIds));
 
-    return userRows.filter(u => !!u.phone) as { phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[];
+    // Only include users with verified phones; dedupe by phone number
+    const seen = new Set<string>();
+    const result: { phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[] = [];
+    for (const u of userRows) {
+      if (!u.phone || !u.phoneVerified) continue;
+      if (seen.has(u.phone)) continue;
+      seen.add(u.phone);
+      result.push({ phone: u.phone, firstName: u.firstName, lastName: u.lastName, presetPlayerName: u.presetPlayerName });
+    }
+    return result;
   }
 
   async getMatches(): Promise<Match[]> {

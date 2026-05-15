@@ -1252,7 +1252,7 @@ export function usePendingSmsBets(matchId: number) {
 export function useUpdatePendingSmsBet(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ betId, status }: { betId: number; status: string }) => {
+    mutationFn: async ({ betId, status }: { betId: number; status: "pending" | "dismissed" }) => {
       const res = await fetch(`/api/matches/${matchId}/pending-sms-bets/${betId}`, {
         method: "PATCH",
         credentials: "include",
@@ -1267,6 +1267,27 @@ export function useUpdatePendingSmsBet(matchId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-sms-bets"] });
+    },
+  });
+}
+
+export function useApplyPendingSmsBet(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (betId: number) => {
+      const res = await fetch(`/api/matches/${matchId}/pending-sms-bets/${betId}/apply`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to apply bet");
+      }
+      return res.json() as Promise<{ ok: boolean; bet: PendingSmsBet; createdEventMatches: unknown[] }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-sms-bets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId] });
     },
   });
 }
