@@ -4374,7 +4374,7 @@ Transcript to parse: "${transcript}"`;
       });
       const { phone, token } = schema.parse(req.body);
 
-      // Validate: must have a valid token OR be authenticated
+      // Validate: must have a valid token OR an authenticated session
       if (token) {
         const { verifyPhoneSetupToken } = await import("./phoneSetupToken");
         const userId = verifyPhoneSetupToken(token);
@@ -4382,8 +4382,8 @@ Transcript to parse: "${transcript}"`;
           return res.status(401).json({ message: "Invalid or expired setup link. Please request a new one." });
         }
       } else {
-        const sessionUser = (req as any).user;
-        if (!sessionUser) {
+        const sessionUserId = (req.session as any)?.userId;
+        if (!sessionUserId) {
           return res.status(401).json({ message: "Authentication required" });
         }
       }
@@ -4430,7 +4430,7 @@ Transcript to parse: "${transcript}"`;
       });
       const { phone, code, consentGiven, token } = schema.parse(req.body);
 
-      // Resolve userId from token or session
+      // Resolve userId from token or session — one of the two is required
       let userId: string | null = null;
       if (token) {
         const { verifyPhoneSetupToken } = await import("./phoneSetupToken");
@@ -4439,10 +4439,11 @@ Transcript to parse: "${transcript}"`;
           return res.status(401).json({ message: "Invalid or expired setup link. Please request a new one." });
         }
       } else {
-        const sessionUser = (req as any).user as any;
-        if (sessionUser?.claims?.sub) {
-          userId = sessionUser.claims.sub;
-        }
+        userId = (req.session as any)?.userId ?? null;
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required. Please use a setup link or log in." });
       }
 
       // Rate limit check

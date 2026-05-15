@@ -3,7 +3,9 @@ import { createHmac } from "crypto";
 const EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 function getSecret(): string {
-  return process.env.SESSION_SECRET || "golf-betting-secret";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET environment variable is not set");
+  return secret;
 }
 
 export function generatePhoneSetupToken(userId: string): string {
