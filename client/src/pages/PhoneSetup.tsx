@@ -58,12 +58,17 @@ export default function PhoneSetup() {
     }
     setIsVerifying(true);
     try {
-      await apiRequest("POST", "/api/sms/phone-setup-verify", {
+      const res = await apiRequest("POST", "/api/sms/phone-setup-verify", {
         phone: phoneNumber.trim(),
         code: code.trim(),
         consentGiven: true,
         ...(token ? { token } : {}),
       });
+      const data = await res.json();
+      if (!data.verified) {
+        toast({ title: "Invalid code", description: "The verification code is incorrect or expired. Please try again.", variant: "destructive" });
+        return;
+      }
       setStep("done");
     } catch (err: any) {
       toast({ title: "Verification failed", description: err?.message || "The code may be incorrect or expired.", variant: "destructive" });

@@ -5,8 +5,8 @@ import { initializeAuth, registerAuthRoutes, isAuthenticated } from "./replit_in
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { db } from "./db";
-import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable } from "@shared/schema";
-import { eq, sql, count } from "drizzle-orm";
+import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable, users as usersTable, smsOptIns } from "@shared/schema";
+import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
@@ -4464,15 +4464,18 @@ Transcript to parse: "${transcript}"`;
 
       smsRateLimits.delete(phone);
 
-      // Update user's phone and phoneVerified if we have a userId
-      if (userId) {
-        await storage.updateUserProfile(userId, { phone, phoneVerified: true });
-      }
+      // Atomically update profile + create opt-in record
+      await db.transaction(async (tx) => {
+        await tx.update(usersTable)
+          .set({ phone, phoneVerified: true })
+          .where(eq(usersTable.id, userId));
 
-      // Upsert sms_opt_ins row
-      if (consentGiven) {
-        await storage.createSmsOptIn({ phoneNumber: phone, consentGiven: true, userId });
-      }
+        await tx.insert(smsOptIns).values({
+          phoneNumber: phone,
+          consentGiven: consentGiven,
+          userId,
+        });
+      });
 
       res.json({ success: true, verified: true });
     } catch (err) {
