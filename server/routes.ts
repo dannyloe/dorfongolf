@@ -2270,13 +2270,31 @@ export async function registerRoutes(
             console.error("[SMS Inbound] Bet parse error:", parseErr);
           }
 
+          // Deterministic post-LLM sender injection:
+          // Always ensure sender is listed as a player in every parsed bet.
+          if (parsedBets && parsedBets.length > 0 && senderName) {
+            const { resolvePlayerAlias } = await import("@shared/models/auth");
+            const canonicalSender = resolvePlayerAlias(senderName);
+            parsedBets = parsedBets.map(pb => {
+              const existing = pb.players.map(p => resolvePlayerAlias(p).toLowerCase());
+              if (!existing.includes(canonicalSender.toLowerCase())) {
+                return { ...pb, players: [...pb.players, canonicalSender] };
+              }
+              return pb;
+            });
+          }
+
           // Dedup check: compare signatures against ALL non-dismissed pending SMS bets
-          // (including applied ones) — checking every parsed bet, not just the first
+          // (including applied ones) AND existing eventMatches by name
+          // — checking every parsed bet, not just the first
           let status = "pending";
           let duplicateOf: string | null = null;
           if (parsedBets && parsedBets.length > 0) {
-            const existingSmsBets = await storage.listPendingSmsBets(match.id);
-            // Build map of sig → human-readable description from existing bets
+            const [existingSmsBets, existingEventMatches] = await Promise.all([
+              storage.listPendingSmsBets(match.id),
+              storage.getEventMatches(match.id),
+            ]);
+            // Build map of sig → human-readable description from existing SMS bets
             const existingSigToDesc = new Map<string, string>();
             for (const eb of existingSmsBets) {
               if (eb.status !== "dismissed") {
@@ -2288,12 +2306,26 @@ export async function registerRoutes(
                 }
               }
             }
+            // Also add normalized eventMatch names as potential duplicate keys
+            // (covers bets created via UI or previous SMS apply)
+            for (const em of existingEventMatches) {
+              if (em.name) {
+                existingSigToDesc.set(`em:${em.name.toLowerCase().trim()}`, em.name);
+              }
+            }
             // Check each parsed bet for duplicates
             for (const pb of parsedBets) {
               const sig = computeBetSignature(pb);
               if (existingSigToDesc.has(sig)) {
                 status = "duplicate";
-                duplicateOf = existingSigToDesc.get(sig) ?? sig; // human-readable description
+                duplicateOf = existingSigToDesc.get(sig) ?? sig;
+                break;
+              }
+              // Also check description against event match names
+              const descKey = `em:${pb.description.toLowerCase().trim()}`;
+              if (existingSigToDesc.has(descKey)) {
+                status = "duplicate";
+                duplicateOf = existingSigToDesc.get(descKey) ?? pb.description;
                 break;
               }
             }

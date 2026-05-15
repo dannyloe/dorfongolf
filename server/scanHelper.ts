@@ -81,9 +81,10 @@ Return JSON array. Each element: { betType, amountCents, players, description }`
 
 /**
  * Detect if a message body is a pure score row: exactly 9 or 18 golf-range
- * integers (1–15) with no extra non-numeric tokens mixed in.
- * "Pure" means the token list contains only numbers in range — if the body
- * has non-numeric words intermixed it's likely a bet description, not scores.
+ * integers (1–9) with no extra non-numeric tokens mixed in.
+ * "Pure" means the token list contains only single-digit integers — if the
+ * body has non-numeric words or double-digit numbers mixed in it's likely a
+ * bet description, not scores.
  */
 export function detectScoreText(body: string): number[] | null {
   const tokens = body.trim().split(/[\s/,]+/).filter(Boolean);
@@ -91,7 +92,7 @@ export function detectScoreText(body: string): number[] | null {
   for (const t of tokens) {
     const n = parseInt(t, 10);
     if (!Number.isFinite(n) || String(n) !== t) return null; // non-numeric token → not a score row
-    if (n < 1 || n > 15) return null; // out of golf score range
+    if (n < 1 || n > 9) return null; // single-digit golf score range only
     nums.push(n);
   }
   if (nums.length === 9 || nums.length === 18) return nums;

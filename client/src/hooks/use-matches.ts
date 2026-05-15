@@ -1325,7 +1325,7 @@ export function useNotifyMatchPlayers(matchId: number) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.message || "Failed to send notifications");
       }
-      return res.json() as Promise<{ sent: number; failed: number; total: number; message?: string }>;
+      return res.json() as Promise<{ sent: number; failed: number; total: number; message?: string; recipients?: { name: string }[] }>;
     },
   });
 }

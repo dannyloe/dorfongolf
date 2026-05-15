@@ -8,6 +8,7 @@ import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { useState, useRef, useEffect, useCallback, Fragment } from "react";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -221,6 +222,7 @@ function SmsBetsPanel({
   updateSmsBet: ReturnType<typeof useUpdatePendingSmsBet>;
   deleteSmsBet: ReturnType<typeof useDeletePendingSmsBet>;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<ParsedBetDraft[]>([]);
 
@@ -251,8 +253,15 @@ function SmsBetsPanel({
 
   return (
     <div className="mt-3 space-y-2">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pending SMS Bets</p>
-      {bets.map((bet: PendingSmsBet) => {
+      <button
+        className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide w-full text-left"
+        onClick={() => setCollapsed(c => !c)}
+        data-testid="button-toggle-sms-bets-panel"
+      >
+        {collapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+        Pending SMS Bets ({bets.length})
+      </button>
+      {!collapsed && bets.map((bet: PendingSmsBet) => {
         const isEditing = editingId === bet.id;
         return (
           <div
@@ -2154,26 +2163,36 @@ export default function MatchDetail() {
                 </button>
 
                 {match.groupId && (
-                  <button
-                    className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50"
-                    data-testid="button-notify-group-players"
-                    disabled={notifyPlayers.isPending}
-                    onClick={async () => {
-                      try {
-                        const result = await notifyPlayers.mutateAsync();
-                        if (result.sent > 0) {
-                          toast({ title: `Notified ${result.sent} player${result.sent !== 1 ? "s" : ""}`, description: result.failed > 0 ? `${result.failed} failed` : undefined });
-                        } else {
-                          toast({ title: result.message || "No players with phone numbers found", variant: "destructive" });
-                        }
-                      } catch (err: any) {
-                        toast({ title: "Failed to send notifications", description: err?.message, variant: "destructive" });
-                      }
-                    }}
-                  >
-                    {notifyPlayers.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3" />}
-                    Notify group players
-                  </button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          data-testid="button-notify-group-players"
+                          disabled={notifyPlayers.isPending}
+                          onClick={async () => {
+                            try {
+                              const result = await notifyPlayers.mutateAsync();
+                              if (result.sent > 0) {
+                                const names = result.recipients?.map((r: { name: string }) => r.name).join(", ");
+                                toast({ title: `Notified ${result.sent} player${result.sent !== 1 ? "s" : ""}`, description: names || (result.failed > 0 ? `${result.failed} failed` : undefined) });
+                              } else {
+                                toast({ title: "No group members with verified phone numbers found", variant: "destructive" });
+                              }
+                            } catch (err: any) {
+                              toast({ title: "Failed to send notifications", description: err?.message, variant: "destructive" });
+                            }
+                          }}
+                        >
+                          {notifyPlayers.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3" />}
+                          Notify group players
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs max-w-48">
+                        Texts all group members who have verified their phone number
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             )}
