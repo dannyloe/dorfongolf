@@ -4446,6 +4446,11 @@ Transcript to parse: "${transcript}"`;
         return res.status(401).json({ message: "Authentication required. Please use a setup link or log in." });
       }
 
+      // Consent is required to complete phone setup
+      if (!consentGiven) {
+        return res.status(400).json({ message: "You must agree to receive SMS alerts to complete phone setup." });
+      }
+
       // Rate limit check
       let rateLimit = smsRateLimits.get(phone);
       if (!rateLimit) {

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 
 type Step = "phone" | "code" | "done";
@@ -69,6 +69,7 @@ export default function PhoneSetup() {
         toast({ title: "Invalid code", description: "The verification code is incorrect or expired. Please try again.", variant: "destructive" });
         return;
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
       setStep("done");
     } catch (err: any) {
       toast({ title: "Verification failed", description: err?.message || "The code may be incorrect or expired.", variant: "destructive" });
