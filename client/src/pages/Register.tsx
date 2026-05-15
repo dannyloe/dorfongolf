@@ -165,6 +165,13 @@ export default function Register() {
               Back to sign in
             </a>
           </div>
+
+          <p className="text-xs text-muted-foreground text-center mt-4">
+            By creating an account you agree to our{" "}
+            <a href="/terms" className="hover:text-foreground underline underline-offset-2 transition-colors">Terms &amp; Conditions</a>
+            {" "}and{" "}
+            <a href="/privacy" className="hover:text-foreground underline underline-offset-2 transition-colors">Privacy Policy</a>.
+          </p>
         </div>
       </motion.div>
     </div>

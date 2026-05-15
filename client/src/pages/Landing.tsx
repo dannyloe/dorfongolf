@@ -161,8 +161,13 @@ export default function Landing() {
       </div>
 
       <footer className="border-t border-primary/5 py-12 bg-white/50 backdrop-blur-sm">
-        <div className="container mx-auto px-6 text-center text-muted-foreground">
-          <p>© 2024 Golf Betting.</p>
+        <div className="container mx-auto px-6 text-center text-muted-foreground text-sm space-y-2">
+          <p>© 2025 Golf Betting.</p>
+          <p>
+            <a href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</a>
+            {" · "}
+            <a href="/terms" className="hover:text-foreground transition-colors">Terms &amp; Conditions</a>
+          </p>
         </div>
       </footer>
     </div>

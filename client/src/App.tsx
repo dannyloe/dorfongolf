@@ -9,6 +9,8 @@ import { Loader2 } from "lucide-react";
 // Pages
 import Landing from "@/pages/Landing";
 import Register from "@/pages/Register";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import Terms from "@/pages/Terms";
 import Dashboard from "@/pages/Dashboard";
 import MatchDetail from "@/pages/MatchDetail";
 import QuickScoreEntry from "@/pages/QuickScoreEntry";
@@ -74,6 +76,8 @@ function Router() {
     <Switch>
       <Route path="/" component={PublicRoute} />
       <Route path="/register" component={RegisterRoute} />
+      <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/terms" component={Terms} />
       <Route path="/dashboard">
         <PrivateRoute component={Dashboard} />
       </Route>
