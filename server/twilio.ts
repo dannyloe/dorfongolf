@@ -37,8 +37,15 @@ async function getCredentials() {
   if (!connectionSettings || (!connectionSettings.settings.account_sid || !connectionSettings.settings.api_key || !connectionSettings.settings.api_key_secret)) {
     throw new Error('Twilio not connected');
   }
+  const accountSidValue: string = connectionSettings.settings.account_sid;
+  if (!accountSidValue.startsWith('AC')) {
+    throw new Error(
+      `Twilio configuration error: the "Account SID" field contains "${accountSidValue.slice(0, 6)}..." which looks like an API Key, not an Account SID. ` +
+      'Please update the Twilio integration settings: go to console.twilio.com, copy the Account SID (starts with AC), and paste it into the "account_sid" field.'
+    );
+  }
   return {
-    accountSid: connectionSettings.settings.account_sid,
+    accountSid: accountSidValue,
     apiKey: connectionSettings.settings.api_key,
     apiKeySecret: connectionSettings.settings.api_key_secret,
     phoneNumber: connectionSettings.settings.phone_number
