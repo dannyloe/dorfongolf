@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search } from "lucide-react";
+import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,8 @@ interface GroupMember {
     lastName: string | null;
     email: string | null;
     profileImageUrl: string | null;
+    phone: string | null;
+    phoneVerified: boolean | null;
   } | null;
 }
 
@@ -497,6 +499,26 @@ export default function Groups() {
                           </p>
                           {member.user?.email && (
                             <p className="text-xs text-muted-foreground">{member.user.email}</p>
+                          )}
+                          {isAdmin && member.user && (
+                            <div className="flex items-center gap-1 mt-0.5" data-testid={`phone-status-${member.userId}`}>
+                              {member.user.phone && member.user.phoneVerified ? (
+                                <>
+                                  <Phone className="w-3 h-3 text-emerald-500" />
+                                  <span className="text-xs text-emerald-600 font-medium">{member.user.phone}</span>
+                                </>
+                              ) : member.user.phone && !member.user.phoneVerified ? (
+                                <>
+                                  <PhoneOff className="w-3 h-3 text-amber-500" />
+                                  <span className="text-xs text-amber-600">Unverified</span>
+                                </>
+                              ) : (
+                                <>
+                                  <PhoneOff className="w-3 h-3 text-muted-foreground/50" />
+                                  <span className="text-xs text-muted-foreground">No phone</span>
+                                </>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

@@ -1815,6 +1815,8 @@ export class DatabaseStorage implements IStorage {
         lastName: users.lastName,
         presetPlayerName: users.presetPlayerName,
         profileImageUrl: users.profileImageUrl,
+        phone: users.phone,
+        phoneVerified: users.phoneVerified,
       }).from(users).where(eq(users.id, member.userId));
       result.push({ ...member, user: user || undefined });
     }
