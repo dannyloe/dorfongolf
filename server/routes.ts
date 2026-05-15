@@ -10,7 +10,7 @@ import { eq, sql, count } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
-import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature } from "./scanHelper";
+import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate } from "./scanHelper";
 import express from "express";
 import twilioLib from "twilio";
 
@@ -2291,60 +2291,10 @@ export async function registerRoutes(
               storage.listPendingSmsBets(match.id),
               storage.getEventMatchesWithTeamsBulk(match.id),
             ]);
-
-            // Map matchType → betType for signature computation
-            const matchTypeToBetType: Record<string, string> = {
-              nassau: "nassau",
-              match_play_1_ball: "match_play",
-              match_play_2_ball: "match_play",
-              skins: "skins",
-              stroke_play: "stroke_play",
-              death_match: "other",
-              five_five_five_three: "other",
-              two_three_ball: "other",
-            };
-
-            // Build sig → human-readable description from existing non-dismissed SMS bets
-            const existingSigToDesc = new Map<string, string>();
-            for (const eb of existingSmsBets) {
-              if (eb.status !== "dismissed") {
-                const ebParsed = eb.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }> | null;
-                if (Array.isArray(ebParsed)) {
-                  for (const pb of ebParsed) {
-                    existingSigToDesc.set(computeBetSignature(pb), pb.description);
-                  }
-                }
-              }
-            }
-
-            // Also compute signatures from applied eventMatches (betType + sorted player names + unitAmount)
-            for (const em of existingEmsWithTeams) {
-              const betType = matchTypeToBetType[em.matchType] ?? "other";
-              const unitAmount = em.unitAmount ?? 0;
-              // Collect all player names across all teams
-              const playerNames: string[] = [];
-              for (const t of em.teams) {
-                for (const m of t.members) {
-                  if (m.player?.name) playerNames.push(m.player.name);
-                }
-              }
-              const fakeBet: import("@shared/schema").ParsedSmsBet = {
-                betType,
-                amountCents: unitAmount,
-                players: playerNames,
-                description: em.name || "",
-              };
-              existingSigToDesc.set(computeBetSignature(fakeBet), em.name || "");
-            }
-
-            // Check each parsed bet against the combined signature set
-            for (const pb of parsedBets) {
-              const sig = computeBetSignature(pb);
-              if (existingSigToDesc.has(sig)) {
-                status = "duplicate";
-                duplicateOf = existingSigToDesc.get(sig) ?? sig;
-                break;
-              }
+            const dupResult = checkBetDuplicate(parsedBets, existingSmsBets, existingEmsWithTeams);
+            if (dupResult.isDuplicate) {
+              status = "duplicate";
+              duplicateOf = dupResult.duplicateOf;
             }
           }
 
@@ -4891,8 +4841,15 @@ Transcript to parse: "${transcript}"`;
     try {
       const matchId = parseInt(req.params.id, 10);
       if (isNaN(matchId)) return res.status(400).json({ message: "Invalid match ID" });
-      const match = await storage.getMatch(matchId);
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const [match, roleRecord] = await Promise.all([
+        storage.getMatch(matchId),
+        storage.getMatchRole(matchId, userId),
+      ]);
       if (!match) return res.status(404).json({ message: "Match not found" });
+      const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer";
+      if (!isOrganizerOrCreator) return res.status(403).json({ message: "Not authorized" });
       if (!match.groupId) return res.json({ count: 0 });
       const members = await storage.getGroupMembersWithPhone(match.groupId);
       return res.json({ count: members.length });
@@ -5037,6 +4994,9 @@ Transcript to parse: "${transcript}"`;
       if (bet.status === "dismissed") return res.status(409).json({ message: "Bet has been dismissed" });
 
       const parsedBets = (bet.parsedBets ?? []) as Array<{ betType: string; amountCents: number; players: string[]; description: string }>;
+      if (parsedBets.length === 0) {
+        return res.status(422).json({ message: "No parsed bets to apply — edit the bet first to add bet details before applying" });
+      }
       const matchPlayers = await storage.getMatchPlayers(matchId);
 
       // Map AI bet type labels to internal MATCH_TYPES keys

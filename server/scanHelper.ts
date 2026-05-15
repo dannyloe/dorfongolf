@@ -306,3 +306,73 @@ Rules:
     rawText: parsed.rawText ?? "",
   };
 }
+
+// ─── Duplicate-bet detection helper ─────────────────────────────────────────
+
+const MATCH_TYPE_TO_BET_TYPE: Record<string, string> = {
+  nassau: "nassau",
+  match_play_1_ball: "match_play",
+  match_play_2_ball: "match_play",
+  skins: "skins",
+  stroke_play: "stroke_play",
+  death_match: "other",
+  five_five_five_three: "other",
+  two_three_ball: "other",
+};
+
+/**
+ * Given incoming parsed bets, check whether any of them duplicate:
+ *  (a) a non-dismissed pending SMS bet (same betType + players + amount), or
+ *  (b) an existing applied eventMatch (signature computed from teams + matchType + unitAmount).
+ *
+ * Returns `{ isDuplicate: true, duplicateOf: "<description>" }` on first match,
+ * or `{ isDuplicate: false }` if no duplicates are found.
+ */
+export function checkBetDuplicate(
+  parsedBets: ParsedSmsBet[],
+  existingSmsBets: Array<{ status: string; parsedBets: unknown }>,
+  existingEmsWithTeams: Array<{
+    matchType: string;
+    unitAmount: number | null;
+    name: string | null;
+    teams: Array<{ members: Array<{ player: { name: string } | undefined }> }>;
+  }>
+): { isDuplicate: false } | { isDuplicate: true; duplicateOf: string } {
+  // Build sig → description map from non-dismissed pending SMS bets
+  const sigToDesc = new Map<string, string>();
+  for (const eb of existingSmsBets) {
+    if (eb.status === "dismissed") continue;
+    const ebParsed = eb.parsedBets as ParsedSmsBet[] | null;
+    if (!Array.isArray(ebParsed)) continue;
+    for (const pb of ebParsed) {
+      sigToDesc.set(computeBetSignature(pb), pb.description);
+    }
+  }
+
+  // Add signatures computed from existing applied eventMatches
+  for (const em of existingEmsWithTeams) {
+    const betType = MATCH_TYPE_TO_BET_TYPE[em.matchType] ?? "other";
+    const playerNames: string[] = [];
+    for (const t of em.teams) {
+      for (const m of t.members) {
+        if (m.player?.name) playerNames.push(m.player.name);
+      }
+    }
+    const fakeBet: ParsedSmsBet = {
+      betType,
+      amountCents: em.unitAmount ?? 0,
+      players: playerNames,
+      description: em.name ?? "",
+    };
+    sigToDesc.set(computeBetSignature(fakeBet), em.name ?? "");
+  }
+
+  // Check each incoming parsed bet
+  for (const pb of parsedBets) {
+    const sig = computeBetSignature(pb);
+    if (sigToDesc.has(sig)) {
+      return { isDuplicate: true, duplicateOf: sigToDesc.get(sig)! };
+    }
+  }
+  return { isDuplicate: false };
+}
