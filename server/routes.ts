@@ -4327,31 +4327,68 @@ Transcript to parse: "${transcript}"`;
       const targetUserId = req.params.userId;
 
       if (callerId !== targetUserId) {
-        // Check that caller is admin of at least one group where target is also a member
         const { db } = await import("./db");
-        const { groupMemberships } = await import("../shared/schema");
+        const { groupMemberships, matches: matchesSchema, matchRoles: matchRolesSchema, players: playersSchema } = await import("../shared/schema");
         const { and, eq, inArray } = await import("drizzle-orm");
 
+        let authorized = false;
+
+        // Check that caller is admin of at least one group where target is also a member
         const callerAdminGroups = await db
           .select({ groupId: groupMemberships.groupId })
           .from(groupMemberships)
           .where(and(eq(groupMemberships.userId, callerId), eq(groupMemberships.role, "admin")));
 
         const adminGroupIds = callerAdminGroups.map(r => r.groupId);
-        if (adminGroupIds.length === 0) {
-          return res.status(403).json({ message: "Not authorized" });
+        if (adminGroupIds.length > 0) {
+          const targetMembership = await db
+            .select({ id: groupMemberships.id })
+            .from(groupMemberships)
+            .where(and(
+              eq(groupMemberships.userId, targetUserId),
+              inArray(groupMemberships.groupId, adminGroupIds)
+            ))
+            .limit(1);
+
+          if (targetMembership.length > 0) {
+            authorized = true;
+          }
         }
 
-        const targetMembership = await db
-          .select({ id: groupMemberships.id })
-          .from(groupMemberships)
-          .where(and(
-            eq(groupMemberships.userId, targetUserId),
-            inArray(groupMemberships.groupId, adminGroupIds)
-          ))
-          .limit(1);
+        // Also check if caller is a match creator or organizer and target is a player in one of those matches
+        if (!authorized) {
+          const creatorMatches = await db
+            .select({ id: matchesSchema.id })
+            .from(matchesSchema)
+            .where(eq(matchesSchema.creatorId, callerId));
 
-        if (targetMembership.length === 0) {
+          const organizerMatchRoles = await db
+            .select({ matchId: matchRolesSchema.matchId })
+            .from(matchRolesSchema)
+            .where(and(eq(matchRolesSchema.userId, callerId), eq(matchRolesSchema.role, "organizer")));
+
+          const callerMatchIds = [
+            ...creatorMatches.map(m => m.id),
+            ...organizerMatchRoles.map(r => r.matchId),
+          ];
+
+          if (callerMatchIds.length > 0) {
+            const targetPlayerInMatch = await db
+              .select({ id: playersSchema.id })
+              .from(playersSchema)
+              .where(and(
+                eq(playersSchema.userId, targetUserId),
+                inArray(playersSchema.matchId, callerMatchIds)
+              ))
+              .limit(1);
+
+            if (targetPlayerInMatch.length > 0) {
+              authorized = true;
+            }
+          }
+        }
+
+        if (!authorized) {
           return res.status(403).json({ message: "Not authorized" });
         }
       }
@@ -4361,6 +4398,69 @@ Transcript to parse: "${transcript}"`;
       res.json({ token });
     } catch (err) {
       console.error("[phone-setup-token]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Get phone verification status for all players in a match
+  // Accessible by: match creator, organizers, viewers, and players in the match
+  app.get("/api/matches/:matchId/players/phone-status", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.matchId);
+      const caller = req.user as any;
+      const callerId: string = caller.claims.sub;
+
+      const { players: playersSchema, users: usersSchema, matchRoles: matchRolesSchema } = await import("../shared/schema");
+      const { eq, inArray, and } = await import("drizzle-orm");
+
+      // Verify the match exists and caller has access
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const isCreator = match.creatorId === callerId;
+      if (!isCreator) {
+        // Check for explicit role (organizer/viewer) or player in match
+        const [matchRole] = await db
+          .select({ role: matchRolesSchema.role })
+          .from(matchRolesSchema)
+          .where(and(eq(matchRolesSchema.matchId, matchId), eq(matchRolesSchema.userId, callerId)))
+          .limit(1);
+
+        const matchPlayers = await db
+          .select({ userId: playersSchema.userId })
+          .from(playersSchema)
+          .where(eq(playersSchema.matchId, matchId));
+
+        const isParticipant = matchPlayers.some(p => p.userId === callerId);
+        if (!matchRole && !isParticipant) {
+          return res.status(403).json({ message: "Not authorized" });
+        }
+
+        const userIds = matchPlayers.map(p => p.userId).filter((id): id is string => id !== null);
+        if (userIds.length === 0) return res.json([]);
+
+        const userRecords = await db
+          .select({ id: usersSchema.id, phoneVerified: usersSchema.phoneVerified })
+          .from(usersSchema)
+          .where(inArray(usersSchema.id, userIds));
+
+        return res.json(userRecords.map(u => ({ userId: u.id, phoneVerified: u.phoneVerified ?? false })));
+      }
+
+      // Creator path — fetch all players directly
+      const matchPlayers = await db.select({ userId: playersSchema.userId }).from(playersSchema).where(eq(playersSchema.matchId, matchId));
+      const userIds = matchPlayers.map(p => p.userId).filter((id): id is string => id !== null);
+
+      if (userIds.length === 0) return res.json([]);
+
+      const userRecords = await db
+        .select({ id: usersSchema.id, phoneVerified: usersSchema.phoneVerified })
+        .from(usersSchema)
+        .where(inArray(usersSchema.id, userIds));
+
+      res.json(userRecords.map(u => ({ userId: u.id, phoneVerified: u.phoneVerified ?? false })));
+    } catch (err) {
+      console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

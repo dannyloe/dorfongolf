@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2 } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2, Smartphone, PhoneOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -524,6 +524,17 @@ export default function MatchDetail() {
   const upsertMatchRole = useUpsertMatchRole(matchId);
   const deleteMatchRole = useDeleteMatchRole(matchId);
   
+  // Fetch phone verification status for players in this match (used by creator/organizer to share setup links)
+  const { data: playerPhoneStatus } = useQuery<{ userId: string; phoneVerified: boolean }[]>({
+    queryKey: ['/api/matches', matchId, 'players/phone-status'],
+    queryFn: async () => {
+      const res = await fetch(`/api/matches/${matchId}/players/phone-status`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!matchId,
+  });
+
   // Fetch user's match type frequency for sorting the selector
   const { data: matchTypeFrequency } = useQuery<Record<string, number>>({
     queryKey: ["/api/users/match-type-frequency"],
@@ -690,6 +701,9 @@ export default function MatchDetail() {
   const [scanPlayerMappings, setScanPlayerMappings] = useState<Record<string, number | null>>({});
   const [scanSuggestedPresets, setScanSuggestedPresets] = useState<Record<string, string | null>>({});
   const [scanApplying, setScanApplying] = useState(false);
+
+  // Phone setup sharing state
+  const [sharingSetupLinkFor, setSharingSetupLinkFor] = useState<string | null>(null);
 
   // Focus input when editing cell changes
   useEffect(() => {
@@ -885,7 +899,34 @@ export default function MatchDetail() {
   
   // Daily match containers (e.g., "Day 1 Side Match") should have limited editing - no add player, no manage access, read-only header
   const isDailyMatchContainer = !!(match?.ryderCupEventId && match?.name?.includes("Side Match"));
-  
+
+  const handleShareSetupLink = async (targetUserId: string, targetName: string) => {
+    setSharingSetupLinkFor(targetUserId);
+    try {
+      const res = await apiRequest("POST", `/api/users/${targetUserId}/phone-setup-token`, {});
+      const { token } = await res.json();
+      const url = `${window.location.origin}/phone-setup?t=${token}`;
+      const text = `${targetName}, set up your phone to get Golf Betting match alerts: ${url}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: "Golf Betting Phone Setup", text });
+        } catch {
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast({ title: "Copied", description: "Setup link copied to clipboard." });
+        } catch {
+          toast({ title: "Error", description: "Could not copy link.", variant: "destructive" });
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Failed to generate setup link.", variant: "destructive" });
+    } finally {
+      setSharingSetupLinkFor(null);
+    }
+  };
+
   // Find course par data for this match
   const matchCourse = coursesList?.find(c => c.name === match.courseName);
   const getHolePar = (hole: number) => matchCourse?.holes.find(h => h.holeNumber === hole)?.par ?? 4;
@@ -2481,6 +2522,10 @@ export default function MatchDetail() {
                 <div className="flex flex-wrap gap-1.5">
                   {players.map((p) => {
                     const playerHasScores = scores.some((s: Score) => s.playerId === p.id);
+                    const phoneStatus = p.userId ? playerPhoneStatus?.find(s => s.userId === p.userId) : null;
+                    const hasPhone = phoneStatus?.phoneVerified === true;
+                    const hasUserId = !!p.userId;
+                    const isSharingThis = sharingSetupLinkFor === p.userId;
                     return (
                       <div
                         key={p.id}
@@ -2488,6 +2533,36 @@ export default function MatchDetail() {
                         data-testid={`added-player-${p.id}`}
                       >
                         <span className="truncate max-w-[120px]">{p.name}</span>
+                        {/* Phone status icon — visible to creator/organizer for players with a linked account */}
+                        {canEditScoresAndBets && hasUserId && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                {hasPhone ? (
+                                  <span className="text-green-600 opacity-70" data-testid={`phone-status-verified-${p.id}`}>
+                                    <Smartphone className="w-3 h-3" />
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => !isSharingThis && handleShareSetupLink(p.userId!, p.name)}
+                                    disabled={isSharingThis}
+                                    className="text-amber-500 hover:text-amber-600 transition-colors cursor-pointer disabled:opacity-50"
+                                    data-testid={`button-share-phone-setup-${p.id}`}
+                                  >
+                                    {isSharingThis ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <PhoneOff className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                )}
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="text-xs">
+                                {hasPhone ? "Phone verified" : "No phone set up — click to share setup link"}
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                         {canEditScoresAndBets && (
                           <button
                             onClick={() => {
