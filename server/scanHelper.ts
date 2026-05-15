@@ -23,8 +23,9 @@ export async function parseSmsBetText(params: {
   rawText: string;
   playerNames: string[];
   matchName?: string;
+  senderName?: string;
 }): Promise<ParsedSmsBet[] | null> {
-  const { rawText, playerNames, matchName } = params;
+  const { rawText, playerNames, matchName, senderName } = params;
 
   if (!ai) return null;
 
@@ -32,6 +33,7 @@ export async function parseSmsBetText(params: {
 
 Known players in this match: ${playerNames.join(", ")}
 ${matchName ? `Match: ${matchName}` : ""}
+${senderName ? `Message sender (include them as a participant if not explicitly excluded): ${senderName}` : ""}
 Message: "${rawText}"
 
 Rules:
@@ -39,6 +41,7 @@ Rules:
 - "betType" should be one of: nassau, match_play, skins, stroke_play, side, other
 - "amountCents" is the dollar amount × 100 (e.g. "$20 nassau" → 2000). If unclear, use 0.
 - "players" should be canonical names from the known players list (fuzzy-match if needed). If a player name is not in the list, include it as-is.
+- Always include the sender as a participant unless the message makes it clear they are not involved.
 - "description" is a short human-readable summary of the bet (e.g. "Nassau $20 — DLoe vs Zimm").
 - If the message does not describe any bets (e.g. it's just a score or a greeting), return an empty array.
 - If the amount applies to each leg of a nassau (front/back/overall), report the per-leg amount.

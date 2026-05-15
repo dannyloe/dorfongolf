@@ -2258,67 +2258,73 @@ export async function registerRoutes(
           const playerNames = matchPlayers.map((p: { name: string }) => p.name);
           const senderUser = await storage.getUserByPhone(from);
           const senderName = senderUser?.presetPlayerName || senderUser?.firstName || `…${from.slice(-4)}`;
+          const matchName = match.name || match.courseName;
 
-          // Run AI bet parser in background — respond immediately
-          res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got your bet description for "${match.name || match.courseName}"! The organizer will review it shortly.</Message></Response>`);
+          // Parse synchronously (with 12s timeout) so TwiML reply can include bet summaries
+          let parsedBets: import("@shared/schema").ParsedSmsBet[] | null = null;
+          try {
+            const parsePromise = parseSmsBetText({ rawText: textBody, playerNames, matchName, senderName });
+            const timeoutPromise = new Promise<null>(r => setTimeout(() => r(null), 12000));
+            parsedBets = await Promise.race([parsePromise, timeoutPromise]);
+          } catch (parseErr) {
+            console.error("[SMS Inbound] Bet parse error:", parseErr);
+          }
 
-          // Background: parse and store
-          (async () => {
-            try {
-              const parsedBets = await parseSmsBetText({ rawText: textBody, playerNames, matchName: match.name || match.courseName });
-
-              // Dedup check: compare signatures against both pending/applied SMS bets
-              // and existing applied eventMatches for this match
-              let status = "pending";
-              let duplicateOf: string | null = null;
-              if (parsedBets && parsedBets.length > 0) {
-                const [existingSmsBets, existingEventMatches] = await Promise.all([
-                  storage.listPendingSmsBets(match.id),
-                  storage.getEventMatches(match.id),
-                ]);
-                const existingSigs = new Set<string>();
-                // Collect sigs from existing non-dismissed SMS bets
-                for (const eb of existingSmsBets) {
-                  if (eb.status !== "dismissed") {
-                    const ebParsed = eb.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }> | null;
-                    if (Array.isArray(ebParsed)) {
-                      for (const pb of ebParsed) {
-                        existingSigs.add(computeBetSignature(pb));
-                      }
-                    }
+          // Dedup check: compare signatures against ALL non-dismissed pending SMS bets
+          // (including applied ones) — checking every parsed bet, not just the first
+          let status = "pending";
+          let duplicateOf: string | null = null;
+          if (parsedBets && parsedBets.length > 0) {
+            const existingSmsBets = await storage.listPendingSmsBets(match.id);
+            // Build map of sig → human-readable description from existing bets
+            const existingSigToDesc = new Map<string, string>();
+            for (const eb of existingSmsBets) {
+              if (eb.status !== "dismissed") {
+                const ebParsed = eb.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }> | null;
+                if (Array.isArray(ebParsed)) {
+                  for (const pb of ebParsed) {
+                    existingSigToDesc.set(computeBetSignature(pb), pb.description);
                   }
-                }
-                // Collect sigs from existing applied eventMatches
-                for (const em of existingEventMatches) {
-                  // Build a normalized signature from the eventMatch name + unit amount
-                  // Matches the format that would have been created via apply
-                  if (em.name && em.unitAmount != null) {
-                    const emSig = `applied:${em.name.toLowerCase()}:${em.unitAmount}`;
-                    existingSigs.add(emSig);
-                  }
-                }
-                const firstBetSig = computeBetSignature(parsedBets[0]);
-                if (existingSigs.has(firstBetSig)) {
-                  status = "duplicate";
-                  duplicateOf = firstBetSig;
                 }
               }
-
-              // Mask the phone before storing for privacy
-              const maskedPhone = `***-***-${from.slice(-4)}`;
-              await storage.createPendingSmsBet({
-                matchId: match.id,
-                fromPhone: maskedPhone,
-                senderName,
-                rawText: textBody,
-                parsedBets,
-                status,
-                duplicateOf,
-              });
-            } catch (err) {
-              console.error("[SMS Inbound] Bet parse error:", err);
             }
-          })();
+            // Check each parsed bet for duplicates
+            for (const pb of parsedBets) {
+              const sig = computeBetSignature(pb);
+              if (existingSigToDesc.has(sig)) {
+                status = "duplicate";
+                duplicateOf = existingSigToDesc.get(sig) ?? sig; // human-readable description
+                break;
+              }
+            }
+          }
+
+          // Build reply message including parsed bet summaries
+          let replyMsg: string;
+          if (parsedBets && parsedBets.length > 0) {
+            const betSummaries = parsedBets.map(pb => pb.description).join("; ");
+            if (status === "duplicate") {
+              replyMsg = `Got it (flagged as possible duplicate of: "${duplicateOf}"). Bets: ${betSummaries}. The organizer will review.`;
+            } else {
+              replyMsg = `Got your bet for "${matchName}": ${betSummaries}. The organizer will review shortly.`;
+            }
+          } else {
+            replyMsg = `Got your message for "${matchName}"! Couldn't parse specific bets — the organizer will review your text.`;
+          }
+
+          // Mask the phone before storing for privacy
+          const maskedPhone = `***-***-${from.slice(-4)}`;
+          await storage.createPendingSmsBet({
+            matchId: match.id,
+            fromPhone: maskedPhone,
+            senderName,
+            rawText: textBody,
+            parsedBets,
+            status,
+            duplicateOf,
+          });
+
+          res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${replyMsg}</Message></Response>`);
           return;
         }
 

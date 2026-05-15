@@ -1252,12 +1252,15 @@ export function usePendingSmsBets(matchId: number) {
 export function useUpdatePendingSmsBet(matchId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ betId, status }: { betId: number; status: "pending" | "dismissed" }) => {
+    mutationFn: async ({ betId, status, parsedBets }: { betId: number; status?: "pending" | "duplicate" | "dismissed"; parsedBets?: PendingSmsBet["parsedBets"] }) => {
+      const body: Record<string, unknown> = {};
+      if (status !== undefined) body.status = status;
+      if (parsedBets !== undefined) body.parsedBets = parsedBets;
       const res = await fetch(`/api/matches/${matchId}/pending-sms-bets/${betId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));

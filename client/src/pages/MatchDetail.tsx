@@ -206,6 +206,208 @@ function ScoreCell({ score, par, testId, strokesReceived = 0 }: { score: number 
   );
 }
 
+// ─── SMS Bets Panel with inline edit ─────────────────────────────────────────
+
+type ParsedBetDraft = { betType: string; amountCents: number; players: string; description: string };
+
+function SmsBetsPanel({
+  bets,
+  applySmsBet,
+  updateSmsBet,
+  deleteSmsBet,
+}: {
+  bets: PendingSmsBet[];
+  applySmsBet: ReturnType<typeof useApplyPendingSmsBet>;
+  updateSmsBet: ReturnType<typeof useUpdatePendingSmsBet>;
+  deleteSmsBet: ReturnType<typeof useDeletePendingSmsBet>;
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [drafts, setDrafts] = useState<ParsedBetDraft[]>([]);
+
+  function startEdit(bet: PendingSmsBet) {
+    setEditingId(bet.id);
+    const pb = (bet.parsedBets ?? []) as Array<{ betType: string; amountCents: number; players: string[]; description: string }>;
+    setDrafts(pb.map(b => ({ ...b, players: b.players.join(", ") })));
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setDrafts([]);
+  }
+
+  function saveEdit() {
+    if (editingId === null) return;
+    const parsedBets: PendingSmsBet["parsedBets"] = drafts.map(d => ({
+      betType: d.betType.trim(),
+      amountCents: d.amountCents,
+      players: d.players.split(",").map(p => p.trim()).filter(Boolean),
+      description: d.description.trim(),
+    }));
+    updateSmsBet.mutate(
+      { betId: editingId, parsedBets },
+      { onSuccess: () => { setEditingId(null); setDrafts([]); } }
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pending SMS Bets</p>
+      {bets.map((bet: PendingSmsBet) => {
+        const isEditing = editingId === bet.id;
+        return (
+          <div
+            key={bet.id}
+            className={`p-3 rounded-lg border ${bet.status === "duplicate" ? "border-yellow-300/60 bg-yellow-50/60 dark:bg-yellow-900/10" : bet.status === "applied" ? "border-emerald-300/60 bg-emerald-50/60 dark:bg-emerald-900/10" : "border-border/50 bg-muted/30"}`}
+            data-testid={`pending-sms-bet-${bet.id}`}
+          >
+            {/* Header row */}
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-xs font-semibold truncate">{bet.senderName}</span>
+              {bet.status === "duplicate" && (
+                <span className="text-xs text-yellow-600 font-medium" title={bet.duplicateOf ? `Possible duplicate of: "${bet.duplicateOf}"` : undefined}>
+                  ⚠ Possible duplicate{bet.duplicateOf ? ` of "${bet.duplicateOf}"` : ""}
+                </span>
+              )}
+              {bet.status === "applied" && (
+                <span className="text-xs text-emerald-600 font-medium flex items-center gap-0.5">
+                  <CheckCircle2 className="w-3 h-3" />applied
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground italic mb-1.5">"{bet.rawText}"</p>
+
+            {/* Parsed bets — view or edit mode */}
+            {isEditing ? (
+              <div className="space-y-2 mb-2">
+                {drafts.map((d, i) => (
+                  <div key={i} className="space-y-1 bg-background/80 rounded p-2 border border-border/40">
+                    <Input
+                      className="h-6 text-xs"
+                      value={d.description}
+                      placeholder="Description"
+                      onChange={e => {
+                        const next = [...drafts];
+                        next[i] = { ...next[i], description: e.target.value };
+                        setDrafts(next);
+                      }}
+                      data-testid={`sms-bet-edit-description-${bet.id}-${i}`}
+                    />
+                    <div className="flex gap-1">
+                      <Input
+                        className="h-6 text-xs w-20"
+                        type="number"
+                        min={0}
+                        value={d.amountCents / 100}
+                        placeholder="$"
+                        onChange={e => {
+                          const next = [...drafts];
+                          next[i] = { ...next[i], amountCents: Math.round(parseFloat(e.target.value || "0") * 100) };
+                          setDrafts(next);
+                        }}
+                        data-testid={`sms-bet-edit-amount-${bet.id}-${i}`}
+                      />
+                      <Input
+                        className="h-6 text-xs flex-1"
+                        value={d.players}
+                        placeholder="Players (comma-separated)"
+                        onChange={e => {
+                          const next = [...drafts];
+                          next[i] = { ...next[i], players: e.target.value };
+                          setDrafts(next);
+                        }}
+                        data-testid={`sms-bet-edit-players-${bet.id}-${i}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+                <div className="flex gap-1">
+                  <Button size="sm" className="h-6 text-xs px-2" onClick={saveEdit} disabled={updateSmsBet.isPending} data-testid={`button-save-sms-bet-edit-${bet.id}`}>
+                    {updateSmsBet.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={cancelEdit} data-testid={`button-cancel-sms-bet-edit-${bet.id}`}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {bet.parsedBets && bet.parsedBets.length > 0 ? (
+                  <div className="space-y-1 mb-1.5">
+                    {(bet.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }>).map((pb, i) => (
+                      <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">
+                        <span className="font-medium">{pb.description}</span>
+                        {pb.amountCents > 0 && (
+                          <span className="ml-1 text-muted-foreground">(${(pb.amountCents / 100).toFixed(0)})</span>
+                        )}
+                        {pb.players.length > 0 && (
+                          <span className="ml-1 text-muted-foreground text-[10px]">— {pb.players.join(", ")}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground mb-1.5">No bets parsed from this message</p>
+                )}
+              </>
+            )}
+
+            {/* Action buttons */}
+            {!isEditing && (
+              <div className="flex gap-1 flex-wrap">
+                {(bet.status === "pending" || bet.status === "duplicate") && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant={bet.status === "duplicate" ? "outline" : "default"}
+                      className="h-6 text-xs px-2"
+                      disabled={applySmsBet.isPending}
+                      onClick={() => applySmsBet.mutate(bet.id)}
+                      data-testid={`button-apply-sms-bet-${bet.id}`}
+                    >
+                      Apply
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-xs px-2"
+                      onClick={() => startEdit(bet)}
+                      data-testid={`button-edit-sms-bet-${bet.id}`}
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-xs px-2 text-muted-foreground"
+                      onClick={() => updateSmsBet.mutate({ betId: bet.id, status: "dismissed" })}
+                      disabled={updateSmsBet.isPending}
+                      data-testid={`button-dismiss-sms-bet-${bet.id}`}
+                    >
+                      Dismiss
+                    </Button>
+                  </>
+                )}
+                {bet.status === "applied" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0"
+                    onClick={() => deleteSmsBet.mutate(bet.id)}
+                    disabled={deleteSmsBet.isPending}
+                    data-testid={`button-delete-sms-bet-${bet.id}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MatchDetail() {
   const [, params] = useRoute("/match/:id");
   const [, navigate] = useLocation();
@@ -1978,87 +2180,12 @@ export default function MatchDetail() {
 
             {/* Pending SMS Bets */}
             {pendingSmsBets.filter(b => b.status !== "dismissed").length > 0 && (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pending SMS Bets</p>
-                {pendingSmsBets.filter(b => b.status !== "dismissed").map((bet: PendingSmsBet) => (
-                  <div
-                    key={bet.id}
-                    className={`p-3 rounded-lg border ${bet.status === "duplicate" ? "border-yellow-300/60 bg-yellow-50/60 dark:bg-yellow-900/10" : bet.status === "applied" ? "border-emerald-300/60 bg-emerald-50/60 dark:bg-emerald-900/10" : "border-border/50 bg-muted/30"}`}
-                    data-testid={`pending-sms-bet-${bet.id}`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="text-xs font-semibold truncate">{bet.senderName}</span>
-                          {bet.status === "duplicate" && (
-                            <span className="text-xs text-yellow-600 font-medium" title={bet.duplicateOf ? `Possible duplicate of: ${bet.duplicateOf}` : undefined}>
-                              ⚠ Possible duplicate
-                            </span>
-                          )}
-                          {bet.status === "applied" && (
-                            <span className="text-xs text-emerald-600 font-medium flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" />applied
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground italic mb-1.5">"{bet.rawText}"</p>
-                        {bet.parsedBets && bet.parsedBets.length > 0 ? (
-                          <div className="space-y-1">
-                            {bet.parsedBets.map((pb, i) => (
-                              <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">
-                                <span className="font-medium">{pb.description}</span>
-                                {pb.amountCents > 0 && (
-                                  <span className="ml-1 text-muted-foreground">(${(pb.amountCents / 100).toFixed(0)})</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">No bets parsed from this message</p>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1 shrink-0">
-                        {(bet.status === "pending" || bet.status === "duplicate") && (
-                          <Button
-                            size="sm"
-                            variant={bet.status === "duplicate" ? "outline" : "default"}
-                            className="h-6 text-xs px-2"
-                            disabled={applySmsBet.isPending}
-                            onClick={() => applySmsBet.mutate(bet.id)}
-                            data-testid={`button-apply-sms-bet-${bet.id}`}
-                          >
-                            Apply
-                          </Button>
-                        )}
-                        {(bet.status === "pending" || bet.status === "duplicate") && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-xs px-2 text-muted-foreground"
-                            onClick={() => updateSmsBet.mutate({ betId: bet.id, status: "dismissed" })}
-                            disabled={updateSmsBet.isPending}
-                            data-testid={`button-dismiss-sms-bet-${bet.id}`}
-                          >
-                            Dismiss
-                          </Button>
-                        )}
-                        {bet.status === "applied" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => deleteSmsBet.mutate(bet.id)}
-                            disabled={deleteSmsBet.isPending}
-                            data-testid={`button-delete-sms-bet-${bet.id}`}
-                          >
-                            <X className="w-3 h-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <SmsBetsPanel
+                bets={pendingSmsBets.filter(b => b.status !== "dismissed")}
+                applySmsBet={applySmsBet}
+                updateSmsBet={updateSmsBet}
+                deleteSmsBet={deleteSmsBet}
+              />
             )}
 
             {/* Pending scans list */}
