@@ -260,6 +260,64 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
+  async createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null }): Promise<PendingSmsBet> {
+    const [row] = await db.insert(pendingSmsBets).values({
+      matchId: data.matchId,
+      fromPhone: data.fromPhone,
+      senderName: data.senderName,
+      rawText: data.rawText,
+      parsedBets: data.parsedBets as any,
+      status: data.status ?? 'pending',
+      duplicateOf: data.duplicateOf ?? null,
+    }).returning();
+    return row;
+  }
+
+  async listPendingSmsBets(matchId: number): Promise<PendingSmsBet[]> {
+    return db.select().from(pendingSmsBets)
+      .where(eq(pendingSmsBets.matchId, matchId))
+      .orderBy(desc(pendingSmsBets.createdAt));
+  }
+
+  async updatePendingSmsBet(id: number, data: Partial<{ status: string; parsedBets: ParsedSmsBet[] | null; duplicateOf: string | null }>): Promise<PendingSmsBet> {
+    const [updated] = await db.update(pendingSmsBets)
+      .set(data as any)
+      .where(eq(pendingSmsBets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePendingSmsBet(id: number): Promise<boolean> {
+    const result = await db.delete(pendingSmsBets).where(eq(pendingSmsBets.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getUserByPhone(phone: string): Promise<typeof users.$inferSelect | undefined> {
+    const normalized = phone.replace(/\D/g, '');
+    const [user] = await db.select().from(users).where(
+      or(eq(users.phone, phone), eq(users.phone, normalized))
+    );
+    return user;
+  }
+
+  async getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]> {
+    const memberships = await db.select({
+      userId: groupMemberships.userId,
+    }).from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
+
+    if (memberships.length === 0) return [];
+
+    const userIds = memberships.map(m => m.userId);
+    const userRows = await db.select({
+      phone: users.phone,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      presetPlayerName: users.presetPlayerName,
+    }).from(users).where(inArray(users.id, userIds));
+
+    return userRows.filter(u => !!u.phone) as { phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[];
+  }
+
   async getMatches(): Promise<Match[]> {
     // Auto-complete events older than 7 days
     await this.autoCompleteOldMatches();

@@ -1,5 +1,5 @@
 import { useQuery, useMutationState, useQueryClient } from "@tanstack/react-query";
-import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan } from "@/hooks/use-matches";
+import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
 import { useAuth } from "@/hooks/use-auth";
@@ -241,6 +241,10 @@ export default function MatchDetail() {
   const submitScoresBulk = useSubmitScoresBulk(matchId);
   const { data: pendingScans = [] } = usePendingScans(matchId);
   const dismissPendingScan = useDismissPendingScan(matchId);
+  const { data: pendingSmsBets = [] } = usePendingSmsBets(matchId);
+  const updateSmsBet = useUpdatePendingSmsBet(matchId);
+  const deleteSmsBet = useDeletePendingSmsBet(matchId);
+  const notifyPlayers = useNotifyMatchPlayers(matchId);
   
   const { data: groupPlayerNames } = useQuery<string[]>({
     queryKey: ['/api/groups', match?.groupId, 'player-names'],
@@ -1926,24 +1930,118 @@ export default function MatchDetail() {
               in the message body. The scan will appear below for your review.
             </p>
             {match.matchCode && (
-              <button
-                className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                data-testid="button-share-scorecard-instructions"
-                onClick={() => {
-                  const phone = import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number";
-                  const text = `Text a photo of your scorecard to ${phone} with the code ${match.matchCode} in the message body to submit your scores.`;
-                  if (navigator.share) {
-                    navigator.share({ text }).catch(() => {});
-                  } else {
-                    navigator.clipboard.writeText(text).then(() => {
-                      toast({ title: "Instructions copied!", description: "Share this with your playing partners." });
-                    });
-                  }
-                }}
-              >
-                <Share2 className="w-3 h-3" />
-                Share instructions via text
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                  data-testid="button-share-scorecard-instructions"
+                  onClick={() => {
+                    const phone = import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number";
+                    const text = `Text a photo of your scorecard or your bets to ${phone} with the code ${match.matchCode} in the message body to submit your scores or bets.`;
+                    if (navigator.share) {
+                      navigator.share({ text }).catch(() => {});
+                    } else {
+                      navigator.clipboard.writeText(text).then(() => {
+                        toast({ title: "Instructions copied!", description: "Share this with your playing partners." });
+                      });
+                    }
+                  }}
+                >
+                  <Share2 className="w-3 h-3" />
+                  Share instructions via text
+                </button>
+
+                {match.groupId && (
+                  <button
+                    className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 hover:text-emerald-700 transition-colors disabled:opacity-50"
+                    data-testid="button-notify-group-players"
+                    disabled={notifyPlayers.isPending}
+                    onClick={async () => {
+                      try {
+                        const result = await notifyPlayers.mutateAsync();
+                        if (result.sent > 0) {
+                          toast({ title: `Notified ${result.sent} player${result.sent !== 1 ? "s" : ""}`, description: result.failed > 0 ? `${result.failed} failed` : undefined });
+                        } else {
+                          toast({ title: result.message || "No players with phone numbers found", variant: "destructive" });
+                        }
+                      } catch (err: any) {
+                        toast({ title: "Failed to send notifications", description: err?.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    {notifyPlayers.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MessageSquare className="w-3 h-3" />}
+                    Notify group players
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Pending SMS Bets */}
+            {pendingSmsBets.filter(b => b.status !== "dismissed").length > 0 && (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pending SMS Bets</p>
+                {pendingSmsBets.filter(b => b.status !== "dismissed").map((bet: PendingSmsBet) => (
+                  <div
+                    key={bet.id}
+                    className={`p-3 rounded-lg border ${bet.status === "duplicate" ? "border-yellow-300/60 bg-yellow-50/60 dark:bg-yellow-900/10" : bet.status === "applied" ? "border-emerald-300/60 bg-emerald-50/60 dark:bg-emerald-900/10" : "border-border/50 bg-muted/30"}`}
+                    data-testid={`pending-sms-bet-${bet.id}`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-xs font-semibold truncate">{bet.senderName}</span>
+                          {bet.status === "duplicate" && (
+                            <span className="text-xs text-yellow-600 font-medium">(duplicate)</span>
+                          )}
+                          {bet.status === "applied" && (
+                            <span className="text-xs text-emerald-600 font-medium flex items-center gap-0.5">
+                              <CheckCircle2 className="w-3 h-3" />applied
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground italic mb-1.5">"{bet.rawText}"</p>
+                        {bet.parsedBets && bet.parsedBets.length > 0 ? (
+                          <div className="space-y-1">
+                            {bet.parsedBets.map((pb, i) => (
+                              <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">
+                                <span className="font-medium">{pb.description}</span>
+                                {pb.amountCents > 0 && (
+                                  <span className="ml-1 text-muted-foreground">(${(pb.amountCents / 100).toFixed(0)})</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No bets parsed from this message</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        {bet.status === "pending" && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-6 text-xs px-2"
+                            disabled={updateSmsBet.isPending}
+                            onClick={() => updateSmsBet.mutate({ betId: bet.id, status: "applied" })}
+                            data-testid={`button-apply-sms-bet-${bet.id}`}
+                          >
+                            Apply
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0"
+                          onClick={() => deleteSmsBet.mutate(bet.id)}
+                          disabled={deleteSmsBet.isPending}
+                          data-testid={`button-delete-sms-bet-${bet.id}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
 
             {/* Pending scans list */}

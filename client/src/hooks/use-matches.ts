@@ -1185,6 +1185,25 @@ export interface PendingScorecardScan {
   createdAt: string | null;
 }
 
+export interface ParsedSmsBet {
+  betType: string;
+  amountCents: number;
+  players: string[];
+  description: string;
+}
+
+export interface PendingSmsBet {
+  id: number;
+  matchId: number;
+  fromPhone: string;
+  senderName: string;
+  rawText: string;
+  parsedBets: ParsedSmsBet[] | null;
+  status: string;
+  duplicateOf: string | null;
+  createdAt: string | null;
+}
+
 export function usePendingScans(matchId: number) {
   return useQuery<PendingScorecardScan[]>({
     queryKey: ["/api/matches", matchId, "pending-scans"],
@@ -1213,6 +1232,76 @@ export function useDismissPendingScan(matchId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-scans"] });
+    },
+  });
+}
+
+export function usePendingSmsBets(matchId: number) {
+  return useQuery<PendingSmsBet[]>({
+    queryKey: ["/api/matches", matchId, "pending-sms-bets"],
+    queryFn: async () => {
+      const res = await fetch(`/api/matches/${matchId}/pending-sms-bets`, { credentials: "include" });
+      if (res.status === 403) return [];
+      if (!res.ok) throw new Error("Failed to fetch pending SMS bets");
+      return res.json();
+    },
+    refetchInterval: 8000,
+  });
+}
+
+export function useUpdatePendingSmsBet(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ betId, status }: { betId: number; status: string }) => {
+      const res = await fetch(`/api/matches/${matchId}/pending-sms-bets/${betId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to update bet");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-sms-bets"] });
+    },
+  });
+}
+
+export function useDeletePendingSmsBet(matchId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (betId: number) => {
+      const res = await fetch(`/api/matches/${matchId}/pending-sms-bets/${betId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to delete bet");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-sms-bets"] });
+    },
+  });
+}
+
+export function useNotifyMatchPlayers(matchId: number) {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/matches/${matchId}/notify-players`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || "Failed to send notifications");
+      }
+      return res.json() as Promise<{ sent: number; failed: number; total: number; message?: string }>;
     },
   });
 }

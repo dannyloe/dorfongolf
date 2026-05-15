@@ -1,6 +1,91 @@
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { z } from "zod";
+import type { ParsedSmsBet } from "@shared/schema";
+
+// ─── Bet text parser ────────────────────────────────────────────────────────
+
+/**
+ * Compute a dedup signature for a parsed bet so we can detect duplicate reports
+ * of the same bet (first-report-wins).
+ * Format: "{betType}:{sortedPlayers.join('|')}:{amountCents}"
+ */
+export function computeBetSignature(bet: ParsedSmsBet): string {
+  const sorted = [...bet.players].sort().join("|");
+  return `${bet.betType}:${sorted}:${bet.amountCents}`;
+}
+
+/**
+ * Use Gemini to parse a free-text SMS bet description into structured bets.
+ * Returns null if the text doesn't look like a bet description.
+ */
+export async function parseSmsBetText(params: {
+  rawText: string;
+  playerNames: string[];
+  matchName?: string;
+}): Promise<ParsedSmsBet[] | null> {
+  const { rawText, playerNames, matchName } = params;
+
+  if (!ai) return null;
+
+  const prompt = `You are parsing a golf betting description sent by SMS. Extract all bets described.
+
+Known players in this match: ${playerNames.join(", ")}
+${matchName ? `Match: ${matchName}` : ""}
+Message: "${rawText}"
+
+Rules:
+- A bet involves two or more players.
+- "betType" should be one of: nassau, match_play, skins, stroke_play, side, other
+- "amountCents" is the dollar amount × 100 (e.g. "$20 nassau" → 2000). If unclear, use 0.
+- "players" should be canonical names from the known players list (fuzzy-match if needed). If a player name is not in the list, include it as-is.
+- "description" is a short human-readable summary of the bet (e.g. "Nassau $20 — DLoe vs Zimm").
+- If the message does not describe any bets (e.g. it's just a score or a greeting), return an empty array.
+- If the amount applies to each leg of a nassau (front/back/overall), report the per-leg amount.
+
+Return JSON array. Each element: { betType, amountCents, players, description }`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: GenAIType.ARRAY,
+        items: {
+          type: GenAIType.OBJECT,
+          properties: {
+            betType: { type: GenAIType.STRING },
+            amountCents: { type: GenAIType.INTEGER },
+            players: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
+            description: { type: GenAIType.STRING },
+          },
+          required: ["betType", "amountCents", "players", "description"],
+        },
+      },
+    },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+  });
+
+  const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed as ParsedSmsBet[];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Detect if a message body looks like a score row (≥9 golf-range numbers
+ * separated by spaces or slashes). Returns scores as array[18] or null.
+ */
+export function detectScoreText(body: string): number[] | null {
+  const tokens = body.trim().split(/[\s/,]+/);
+  const nums = tokens.map(t => parseInt(t, 10)).filter(n => Number.isFinite(n) && n >= 1 && n <= 15);
+  if (nums.length >= 9) return nums;
+  return null;
+}
 
 export interface NormalizedHole {
   holeNumber: number;
