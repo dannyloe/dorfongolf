@@ -7,6 +7,7 @@ import {
   manualBets, manualBetEntries,
   settlements, settlementPayments,
   pendingScorecardScans,
+  pendingSmsBets,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -26,6 +27,7 @@ import {
   type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
   type Settlement, type SettlementPayment, type SettlementWithPayments,
   type PendingScorecardScan,
+  type PendingSmsBet, type ParsedSmsBet,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
@@ -135,6 +137,14 @@ export interface IStorage {
   listPendingScans(matchId: number): Promise<PendingScorecardScan[]>;
   getPendingScan(id: number): Promise<PendingScorecardScan | undefined>;
   deletePendingScan(id: number): Promise<boolean>;
+
+  // Pending SMS bets (text-based bet descriptions)
+  createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null }): Promise<PendingSmsBet>;
+  listPendingSmsBets(matchId: number): Promise<PendingSmsBet[]>;
+  updatePendingSmsBet(id: number, data: Partial<{ status: string; parsedBets: ParsedSmsBet[] | null; duplicateOf: string | null }>): Promise<PendingSmsBet>;
+  deletePendingSmsBet(id: number): Promise<boolean>;
+  getUserByPhone(phone: string): Promise<typeof users.$inferSelect | undefined>;
+  getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]>;
 }
 
 export class DatabaseStorage implements IStorage {

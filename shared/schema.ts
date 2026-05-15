@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -79,6 +79,19 @@ export const matches = pgTable("matches", {
   completed: boolean("completed").default(false),
   isHandicapped: boolean("is_handicapped").default(false),
   matchCode: text("match_code").unique(), // 4-char code for texting in scorecard photos
+});
+
+// Pending SMS bet descriptions submitted via text message — awaiting organizer review
+export const pendingSmsBets = pgTable("pending_sms_bets", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id").notNull(),
+  fromPhone: text("from_phone").notNull(),
+  senderName: text("sender_name").notNull().default("Unknown"),
+  rawText: text("raw_text").notNull(),
+  parsedBets: jsonb("parsed_bets").$type<Array<{ betType: string; amountCents: number; players: string[]; description: string }>>(),
+  status: text("status").notNull().default("pending"), // pending | applied | dismissed | duplicate
+  duplicateOf: text("duplicate_of"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Pending scorecard scans submitted via MMS (text message)
@@ -532,6 +545,11 @@ export const insertPendingScorecardScanSchema = createInsertSchema(pendingScorec
   createdAt: true,
 });
 
+export const insertPendingSmsBetSchema = createInsertSchema(pendingSmsBets).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -605,6 +623,10 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type PendingScorecardScan = typeof pendingScorecardScans.$inferSelect;
 export type InsertPendingScorecardScan = z.infer<typeof insertPendingScorecardScanSchema>;
+
+export type ParsedSmsBet = { betType: string; amountCents: number; players: string[]; description: string };
+export type PendingSmsBet = typeof pendingSmsBets.$inferSelect;
+export type InsertPendingSmsBet = z.infer<typeof insertPendingSmsBetSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
