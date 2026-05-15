@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users, Tag } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users, Tag, X, Phone } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,14 @@ export default function Dashboard() {
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [hasShownModal, setHasShownModal] = useState(false);
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<number | null>>(new Set());
+  const [phoneBannerDismissed, setPhoneBannerDismissed] = useState(() => {
+    return sessionStorage.getItem("phone-banner-dismissed") === "1";
+  });
+
+  const { data: profile } = useQuery<{ phone?: string; phoneVerified?: boolean }>({
+    queryKey: ["/api/profile"],
+    enabled: !!user,
+  });
 
   const { data: myGroups = [] } = useQuery<{id: number; name: string; memberCount: number; playerCount: number; role: string}[]>({
     queryKey: ["/api/groups/my"],
@@ -103,8 +111,39 @@ export default function Dashboard() {
     );
   }
 
+  const showPhoneBanner = user && !phoneBannerDismissed && profile !== undefined && !profile?.phoneVerified;
+
+  function dismissPhoneBanner() {
+    sessionStorage.setItem("phone-banner-dismissed", "1");
+    setPhoneBannerDismissed(true);
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-12">
+      {showPhoneBanner && (
+        <div
+          className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 px-4 py-3 text-sm"
+          data-testid="banner-phone-nudge"
+        >
+          <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+            <Phone className="w-4 h-4 shrink-0" />
+            <span>
+              <strong>Add your phone</strong> to receive match alerts and bet results via text.{" "}
+              <Link href="/phone-setup" className="underline underline-offset-2 font-medium">
+                Set up now
+              </Link>
+            </span>
+          </div>
+          <button
+            onClick={dismissPhoneBanner}
+            className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 shrink-0"
+            aria-label="Dismiss"
+            data-testid="button-dismiss-phone-banner"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

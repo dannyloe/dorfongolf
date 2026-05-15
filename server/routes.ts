@@ -4316,6 +4316,173 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // === PHONE SETUP TOKEN ROUTES ===
+
+  // Generate a short-lived signed token for a user's phone setup link
+  // Accessible by: the user themselves, OR an admin of any group the target user belongs to
+  app.post("/api/users/:userId/phone-setup-token", isAuthenticated, async (req, res) => {
+    try {
+      const caller = req.user as any;
+      const callerId: string = caller.claims.sub;
+      const targetUserId = req.params.userId;
+
+      if (callerId !== targetUserId) {
+        // Check that caller is admin of at least one group where target is also a member
+        const { db } = await import("./db");
+        const { groupMemberships } = await import("../shared/schema");
+        const { and, eq, inArray } = await import("drizzle-orm");
+
+        const callerAdminGroups = await db
+          .select({ groupId: groupMemberships.groupId })
+          .from(groupMemberships)
+          .where(and(eq(groupMemberships.userId, callerId), eq(groupMemberships.role, "admin")));
+
+        const adminGroupIds = callerAdminGroups.map(r => r.groupId);
+        if (adminGroupIds.length === 0) {
+          return res.status(403).json({ message: "Not authorized" });
+        }
+
+        const targetMembership = await db
+          .select({ id: groupMemberships.id })
+          .from(groupMemberships)
+          .where(and(
+            eq(groupMemberships.userId, targetUserId),
+            inArray(groupMemberships.groupId, adminGroupIds)
+          ))
+          .limit(1);
+
+        if (targetMembership.length === 0) {
+          return res.status(403).json({ message: "Not authorized" });
+        }
+      }
+
+      const { generatePhoneSetupToken } = await import("./phoneSetupToken");
+      const token = generatePhoneSetupToken(targetUserId);
+      res.json({ token });
+    } catch (err) {
+      console.error("[phone-setup-token]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Send verification code for phone setup — public endpoint, accepts token or session auth
+  app.post("/api/sms/send-setup-code", async (req, res) => {
+    try {
+      const schema = z.object({
+        phone: z.string().min(10),
+        token: z.string().optional(),
+      });
+      const { phone, token } = schema.parse(req.body);
+
+      // Validate: must have a valid token OR be authenticated
+      if (token) {
+        const { verifyPhoneSetupToken } = await import("./phoneSetupToken");
+        const userId = verifyPhoneSetupToken(token);
+        if (!userId) {
+          return res.status(401).json({ message: "Invalid or expired setup link. Please request a new one." });
+        }
+      } else {
+        const sessionUser = (req as any).user;
+        if (!sessionUser) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+      }
+
+      // Rate limit check (reuse the smsRateLimits map already declared above)
+      const rateLimit = smsRateLimits.get(phone);
+      const now = Date.now();
+      if (rateLimit) {
+        const timeSinceLastSend = now - rateLimit.lastSent;
+        if (timeSinceLastSend < SMS_RATE_LIMIT_WINDOW) {
+          const waitTime = Math.ceil((SMS_RATE_LIMIT_WINDOW - timeSinceLastSend) / 1000);
+          return res.status(429).json({ message: `Please wait ${waitTime} seconds before requesting another code` });
+        }
+      }
+
+      const { generateVerificationCode, sendVerificationCode } = await import("./twilio");
+      const code = generateVerificationCode();
+      await storage.createVerificationCode(phone, code);
+
+      const result = await sendVerificationCode(phone, code);
+      if (result.success) {
+        smsRateLimits.set(phone, { lastSent: now, attempts: 0 });
+        res.json({ success: true, message: "Verification code sent" });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send verification code" });
+      }
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[send-setup-code]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Verify code for phone setup — public, validates token/session, sets phone + creates opt-in
+  app.post("/api/sms/phone-setup-verify", async (req, res) => {
+    try {
+      const schema = z.object({
+        phone: z.string().min(10),
+        code: z.string().length(6),
+        consentGiven: z.boolean().optional().default(false),
+        token: z.string().optional(),
+      });
+      const { phone, code, consentGiven, token } = schema.parse(req.body);
+
+      // Resolve userId from token or session
+      let userId: string | null = null;
+      if (token) {
+        const { verifyPhoneSetupToken } = await import("./phoneSetupToken");
+        userId = verifyPhoneSetupToken(token);
+        if (!userId) {
+          return res.status(401).json({ message: "Invalid or expired setup link. Please request a new one." });
+        }
+      } else {
+        const sessionUser = (req as any).user as any;
+        if (sessionUser?.claims?.sub) {
+          userId = sessionUser.claims.sub;
+        }
+      }
+
+      // Rate limit check
+      let rateLimit = smsRateLimits.get(phone);
+      if (!rateLimit) {
+        rateLimit = { lastSent: 0, attempts: 0 };
+        smsRateLimits.set(phone, rateLimit);
+      }
+      if (rateLimit.attempts >= SMS_MAX_ATTEMPTS) {
+        return res.status(429).json({ message: "Too many verification attempts. Please request a new code." });
+      }
+      rateLimit.attempts++;
+
+      const verified = await storage.verifyCode(phone, code);
+      if (!verified) {
+        return res.json({ success: true, verified: false });
+      }
+
+      smsRateLimits.delete(phone);
+
+      // Update user's phone and phoneVerified if we have a userId
+      if (userId) {
+        await storage.updateUserProfile(userId, { phone, phoneVerified: true });
+      }
+
+      // Upsert sms_opt_ins row
+      if (consentGiven) {
+        await storage.createSmsOptIn({ phoneNumber: phone, consentGiven: true, userId });
+      }
+
+      res.json({ success: true, verified: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[phone-setup-verify]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // === NOTIFICATION PREFERENCES ROUTES ===
 
   app.get(api.notifications.getPreferences.path, isAuthenticated, async (req, res) => {

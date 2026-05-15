@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff } from "lucide-react";
+import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff, Link2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -319,6 +319,36 @@ export default function Groups() {
     }
   };
 
+  const [sharingSetupLinkFor, setSharingSetupLinkFor] = useState<string | null>(null);
+
+  const handleShareSetupLink = async (targetUserId: string, targetName: string) => {
+    if (!selectedGroupId) return;
+    setSharingSetupLinkFor(targetUserId);
+    try {
+      const res = await apiRequest("POST", `/api/users/${targetUserId}/phone-setup-token`, {});
+      const { token } = await res.json();
+      const url = `${window.location.origin}/phone-setup?t=${token}`;
+      const text = `${targetName}, set up your phone to get Golf Betting match alerts: ${url}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: "Golf Betting Phone Setup", text });
+        } catch {
+        }
+      } else {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast({ title: "Copied", description: "Setup link copied to clipboard." });
+        } catch {
+          toast({ title: "Error", description: "Could not copy link.", variant: "destructive" });
+        }
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Failed to generate setup link.", variant: "destructive" });
+    } finally {
+      setSharingSetupLinkFor(null);
+    }
+  };
+
   const getInitials = (firstName: string | null, lastName: string | null, email: string | null) => {
     if (firstName && lastName) return `${firstName[0]}${lastName[0]}`.toUpperCase();
     if (firstName) return firstName[0].toUpperCase();
@@ -532,6 +562,26 @@ export default function Groups() {
                         </Badge>
                         {member.userId === groupDetail?.createdBy && (
                           <Badge variant="outline" className="text-xs">Creator</Badge>
+                        )}
+                        {isAdmin && member.user && !member.user.phoneVerified && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs"
+                            disabled={sharingSetupLinkFor === member.userId}
+                            onClick={() => {
+                              const name = member.user?.firstName
+                                ? `${member.user.firstName} ${member.user.lastName ?? ""}`.trim()
+                                : member.user?.email ?? "them";
+                              handleShareSetupLink(member.userId, name);
+                            }}
+                            data-testid={`button-share-setup-${member.userId}`}
+                          >
+                            {sharingSetupLinkFor === member.userId
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Link2 className="w-3 h-3" />}
+                            Share setup link
+                          </Button>
                         )}
                         {isAdmin && member.userId !== user?.id && member.userId !== groupDetail?.createdBy && (
                           <>

@@ -7,14 +7,22 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function SmsOptIn() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [consentGiven, setConsentGiven] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Inline verification state (for logged-in users)
+  const [verifyStep, setVerifyStep] = useState(false);
+  const [verifyCode, setVerifyCode] = useState("");
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,6 +33,21 @@ export default function SmsOptIn() {
     }
     if (!consentGiven) {
       toast({ title: "Consent required", description: "Please check the consent box to continue.", variant: "destructive" });
+      return;
+    }
+
+    if (user) {
+      // Logged-in flow: send verification code first
+      setIsSendingCode(true);
+      try {
+        await apiRequest("POST", "/api/sms/send-setup-code", { phone: phoneNumber.trim() });
+        toast({ title: "Code sent", description: "Check your phone for a 6-digit code." });
+        setVerifyStep(true);
+      } catch (err: any) {
+        toast({ title: "Failed to send code", description: err?.message || "Please try again.", variant: "destructive" });
+      } finally {
+        setIsSendingCode(false);
+      }
       return;
     }
 
@@ -40,6 +63,28 @@ export default function SmsOptIn() {
       });
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!verifyCode.trim() || verifyCode.length !== 6) {
+      toast({ title: "Invalid code", description: "Please enter the 6-digit code.", variant: "destructive" });
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      await apiRequest("POST", "/api/sms/phone-setup-verify", {
+        phone: phoneNumber.trim(),
+        code: verifyCode.trim(),
+        consentGiven: true,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      setSubmitted(true);
+    } catch (err: any) {
+      toast({ title: "Verification failed", description: err?.message || "The code may be incorrect or expired.", variant: "destructive" });
+    } finally {
+      setIsVerifying(false);
     }
   }
 
@@ -77,10 +122,47 @@ export default function SmsOptIn() {
               <p className="text-muted-foreground mb-6">
                 You'll receive SMS alerts for your Golf Betting matches. Reply <strong>STOP</strong> at any time to cancel.
               </p>
-              <Link href="/">
-                <Button variant="outline" data-testid="button-return-home">Return to Golf Betting</Button>
+              <Link href={user ? "/dashboard" : "/"}>
+                <Button variant="outline" data-testid="button-return-home">
+                  {user ? "Go to Dashboard" : "Return to Golf Betting"}
+                </Button>
               </Link>
             </motion.div>
+          ) : verifyStep ? (
+            <>
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare className="w-5 h-5 text-primary" />
+                <h2 className="font-display font-bold text-2xl">Verify Your Phone</h2>
+              </div>
+              <p className="text-muted-foreground text-sm mb-6">
+                Enter the 6-digit code sent to <strong>{phoneNumber}</strong>.
+              </p>
+              <form onSubmit={handleVerifyCode} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="verifyCode">Verification Code <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="verifyCode"
+                    data-testid="input-sms-optin-verify-code"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={verifyCode}
+                    onChange={e => setVerifyCode(e.target.value.replace(/\D/g, ""))}
+                    required
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" className="flex-1" onClick={() => setVerifyStep(false)}>
+                    Back
+                  </Button>
+                  <Button type="submit" className="flex-1" disabled={isVerifying} data-testid="button-sms-optin-verify">
+                    {isVerifying ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                    Confirm &amp; Sign Up
+                  </Button>
+                </div>
+              </form>
+            </>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-2">
@@ -144,10 +226,10 @@ export default function SmsOptIn() {
                   type="submit"
                   data-testid="button-sms-optin-submit"
                   className="w-full"
-                  disabled={isLoading}
+                  disabled={isLoading || isSendingCode}
                 >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  Yes, sign me up!
+                  {(isLoading || isSendingCode) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  {user ? "Send Verification Code" : "Yes, sign me up!"}
                 </Button>
               </form>
             </>
