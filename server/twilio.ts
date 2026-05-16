@@ -1,54 +1,69 @@
 // Twilio Integration for SMS messaging
-// Uses Replit Connectors for credential management
+// Uses environment secrets (TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_KEY_SECRET, TWILIO_PHONE_NUMBER)
+// with fallback to Replit Connectors if secrets are not set.
 
 import twilio from 'twilio';
 
-let connectionSettings: any;
-
 async function getCredentials() {
+  // Primary: environment secrets
+  const envAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const envApiKey = process.env.TWILIO_API_KEY;
+  const envApiKeySecret = process.env.TWILIO_API_KEY_SECRET;
+  const envPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+
+  if (envAccountSid && envApiKey && envApiKeySecret && envPhoneNumber) {
+    console.log('[Twilio] Using credentials from environment secrets');
+    if (!envAccountSid.startsWith('AC')) {
+      throw new Error(
+        `Twilio configuration error: TWILIO_ACCOUNT_SID starts with "${envAccountSid.slice(0, 4)}..." — it must start with "AC". ` +
+        'Find your Account SID at console.twilio.com.'
+      );
+    }
+    return {
+      accountSid: envAccountSid,
+      apiKey: envApiKey,
+      apiKeySecret: envApiKeySecret,
+      phoneNumber: envPhoneNumber,
+    };
+  }
+
+  // Fallback: Replit Connector
+  console.log('[Twilio] Environment secrets not set, trying Replit connector...');
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
+  const xReplitToken = process.env.REPL_IDENTITY
+    ? 'repl ' + process.env.REPL_IDENTITY
+    : process.env.WEB_REPL_RENEWAL
+    ? 'depl ' + process.env.WEB_REPL_RENEWAL
     : null;
 
-  console.log(`[Twilio Debug] hostname: ${hostname}, hasToken: ${!!xReplitToken}`);
-
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+  if (!xReplitToken || !hostname) {
+    throw new Error('Twilio not connected: set TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_KEY_SECRET, and TWILIO_PHONE_NUMBER in Secrets.');
   }
 
   const url = 'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=twilio';
-  console.log(`[Twilio Debug] Fetching credentials from: ${url}`);
-  
   const response = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-      'X_REPLIT_TOKEN': xReplitToken
-    }
+    headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken }
   });
-  
   const data = await response.json();
-  connectionSettings = data.items?.[0];
-  
-  console.log(`[Twilio Debug] Connection response:`, JSON.stringify({ hasSettings: !!connectionSettings, hasAccountSid: !!connectionSettings?.settings?.account_sid, hasPhoneNumber: !!connectionSettings?.settings?.phone_number }));
+  const connectionSettings = data.items?.[0];
 
-  if (!connectionSettings || (!connectionSettings.settings.account_sid || !connectionSettings.settings.api_key || !connectionSettings.settings.api_key_secret)) {
-    throw new Error('Twilio not connected');
+  if (!connectionSettings?.settings?.account_sid || !connectionSettings?.settings?.api_key || !connectionSettings?.settings?.api_key_secret) {
+    throw new Error('Twilio not connected: set TWILIO_ACCOUNT_SID, TWILIO_API_KEY, TWILIO_API_KEY_SECRET, and TWILIO_PHONE_NUMBER in Secrets.');
   }
+
   const accountSidValue: string = connectionSettings.settings.account_sid;
   if (!accountSidValue.startsWith('AC')) {
     throw new Error(
-      `Twilio configuration error: the "Account SID" field contains "${accountSidValue.slice(0, 6)}..." which looks like an API Key, not an Account SID. ` +
-      'Please update the Twilio integration settings: go to console.twilio.com, copy the Account SID (starts with AC), and paste it into the "account_sid" field.'
+      `Twilio configuration error: the connector "account_sid" starts with "${accountSidValue.slice(0, 6)}..." — it must start with "AC". ` +
+      'Go to console.twilio.com and copy the Account SID (starts with AC).'
     );
   }
+
   return {
     accountSid: accountSidValue,
     apiKey: connectionSettings.settings.api_key,
     apiKeySecret: connectionSettings.settings.api_key_secret,
-    phoneNumber: connectionSettings.settings.phone_number
+    phoneNumber: connectionSettings.settings.phone_number,
   };
 }
 
