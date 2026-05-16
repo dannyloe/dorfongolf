@@ -23,13 +23,14 @@ export default function TermsOfService() {
         <div className="bg-card border border-border rounded-2xl p-8 shadow-xl space-y-6 text-sm text-muted-foreground leading-relaxed">
           <div>
             <h1 className="text-2xl font-bold text-foreground mb-1">Terms of Service</h1>
-            <p className="text-xs">Last updated: May 2025</p>
+            <p className="text-sm font-medium text-foreground mb-1">ETG Inc. d/b/a Golf Betting</p>
+            <p className="text-xs text-muted-foreground">Last updated: May 2025</p>
           </div>
 
           <section className="space-y-2">
             <h2 className="text-base font-semibold text-foreground">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using Golf Betting ("the App"), you agree to be bound by these Terms of Service. If you do not agree, please do not use the App.
+              By accessing or using Golf Betting, operated by ETG Inc. d/b/a Golf Betting ("the App"), you agree to be bound by these Terms of Service. If you do not agree, please do not use the App.
             </p>
           </section>
 

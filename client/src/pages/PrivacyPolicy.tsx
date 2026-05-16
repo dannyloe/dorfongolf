@@ -28,13 +28,14 @@ export default function PrivacyPolicy() {
           transition={{ duration: 0.5 }}
         >
           <div className="glass-card rounded-2xl p-8 md:p-12 shadow-xl">
-            <h1 className="font-display font-bold text-3xl md:text-4xl mb-2">Privacy Policy</h1>
+            <h1 className="font-display font-bold text-3xl md:text-4xl mb-1">Privacy Policy</h1>
+            <p className="text-sm font-medium text-foreground mb-1">ETG Inc. d/b/a Golf Betting</p>
             <p className="text-muted-foreground text-sm mb-8">Last updated: May 2025</p>
 
             <div className="space-y-8 text-foreground">
               <Section title="Introduction">
                 <p>
-                  Golf Betting ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains
+                  ETG Inc. d/b/a Golf Betting ("we", "us", or "our") is committed to protecting your privacy. This Privacy Policy explains
                   how we collect, use, and store information when you use our application. By using Golf Betting, you agree
                   to the practices described in this policy.
                 </p>

@@ -193,7 +193,8 @@ export default function SmsOptIn() {
                 </div>
 
                 <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-3 text-sm text-muted-foreground">
-                  <p>By signing up, you agree to receive SMS text alerts from <strong className="text-foreground">Golf Betting</strong>, including:</p>
+                  <p className="font-medium text-foreground">ETG Inc. d/b/a Golf Betting</p>
+                  <p>By signing up, you agree to receive SMS text alerts from <strong className="text-foreground">ETG Inc. d/b/a Golf Betting</strong>, including:</p>
                   <ul className="list-disc list-inside space-y-1 ml-1">
                     <li>Match invitations</li>
                     <li>Score updates</li>
@@ -223,7 +224,7 @@ export default function SmsOptIn() {
                     onCheckedChange={checked => setConsentGiven(checked === true)}
                   />
                   <Label htmlFor="consent" className="leading-snug cursor-pointer text-sm">
-                    I agree to receive SMS text alerts from Golf Betting at the number above. I understand I can reply STOP to cancel at any time.
+                    I agree to receive SMS text alerts from ETG Inc. d/b/a Golf Betting at the number above. I understand I can reply STOP to cancel at any time.
                   </Label>
                 </div>
 
