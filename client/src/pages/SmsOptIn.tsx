@@ -194,23 +194,24 @@ export default function SmsOptIn() {
 
                 <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-3 text-sm text-muted-foreground">
                   <p className="font-medium text-foreground">ETG Inc. d/b/a Golf Betting</p>
-                  <p>By signing up, you agree to receive SMS text alerts from <strong className="text-foreground">ETG Inc. d/b/a Golf Betting</strong>, including:</p>
+                  <p className="text-foreground font-medium text-xs uppercase tracking-wide">SMS is completely optional — not required to create an account or use the app.</p>
+                  <p>By signing up, you consent to receive SMS notifications from <strong className="text-foreground">ETG Inc. d/b/a Golf Betting</strong> for match updates and score confirmations, including:</p>
                   <ul className="list-disc list-inside space-y-1 ml-1">
                     <li>Match invitations</li>
                     <li>Score updates</li>
                     <li>Bet results</li>
                     <li>Match reminders</li>
                   </ul>
-                  <p><strong className="text-foreground">Message frequency:</strong> You will receive up to 4 messages per active match, per week.</p>
+                  <p><strong className="text-foreground">Message frequency:</strong> Up to 4 messages per active match, per week.</p>
                   <p>Message and data rates may apply.</p>
-                  <p>Reply <strong className="text-foreground">HELP</strong> for help or <strong className="text-foreground">STOP</strong> to cancel any time.</p>
+                  <p>Reply <strong className="text-foreground">HELP</strong> for help or <strong className="text-foreground">STOP</strong> to opt out at any time.</p>
                   <p>
                     See our{" "}
                     <Link href="/terms" className="text-primary underline underline-offset-2">
                       Terms of Service
                     </Link>
                     {" "}and{" "}
-                    <Link href="/privacy-policy" className="text-primary underline underline-offset-2">
+                    <Link href="/privacy" className="text-primary underline underline-offset-2">
                       Privacy Policy
                     </Link>.
                   </p>
@@ -224,7 +225,7 @@ export default function SmsOptIn() {
                     onCheckedChange={checked => setConsentGiven(checked === true)}
                   />
                   <Label htmlFor="consent" className="leading-snug cursor-pointer text-sm">
-                    I agree to receive SMS text alerts from ETG Inc. d/b/a Golf Betting at the number above. I understand I can reply STOP to cancel at any time.
+                    I consent to receive SMS notifications from ETG Inc. d/b/a Golf Betting for match updates and score confirmations (optional, not required to use the service). I understand I can reply STOP to opt out at any time.
                   </Label>
                 </div>
 

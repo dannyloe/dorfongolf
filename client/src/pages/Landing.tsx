@@ -157,16 +157,48 @@ export default function Landing() {
               delay={0.4}
             />
           </div>
+
+          {/* About Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.5 }}
+            className="mt-20 glass-card rounded-2xl p-8 md:p-10"
+          >
+            <h2 className="font-display font-bold text-2xl md:text-3xl mb-4 text-foreground">About Golf Betting</h2>
+            <p className="text-muted-foreground leading-relaxed mb-4">
+              Golf Betting by ETG Inc. is a mobile-friendly web app that helps golfers track scores, create friendly
+              matches (Nassau, Skins, and more), and settle bets with friends in real time. Whether you're playing
+              a casual round or running a multi-day trip, Golf Betting keeps everyone on the same page.
+            </p>
+            <p className="text-muted-foreground leading-relaxed mb-6">
+              We offer optional SMS notifications for match updates, score confirmations, and results.
+              SMS is completely optional — you never need to provide a phone number to use the app.
+            </p>
+            <div className="border-t border-border pt-5 text-sm text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">ETG Inc. d/b/a Golf Betting</p>
+              <p>Fort Smith, AR 72903</p>
+              <p>
+                Support:{" "}
+                <a href="mailto:support@dorfongolf.com" className="text-primary hover:underline">
+                  support@dorfongolf.com
+                </a>
+              </p>
+            </div>
+          </motion.div>
         </div>
       </div>
 
       <footer className="border-t border-primary/5 py-12 bg-white/50 backdrop-blur-sm">
         <div className="container mx-auto px-6 text-center text-muted-foreground text-sm space-y-2">
-          <p>© 2025 Golf Betting.</p>
+          <p className="font-medium text-foreground">ETG Inc. d/b/a Golf Betting &mdash; Fort Smith, AR 72903</p>
+          <p>© 2025 Golf Betting. All rights reserved.</p>
           <p>
             <a href="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</a>
             {" · "}
             <a href="/terms" className="hover:text-foreground transition-colors">Terms &amp; Conditions</a>
+            {" · "}
+            <a href="/sms-opt-in" className="hover:text-foreground transition-colors">SMS Alerts</a>
           </p>
         </div>
       </footer>
