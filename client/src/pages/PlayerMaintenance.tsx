@@ -886,6 +886,7 @@ export default function PlayerMaintenance() {
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   placeholder="Min. 6 characters"
+                  autoComplete="new-password"
                   className="pr-10"
                 />
                 <button
