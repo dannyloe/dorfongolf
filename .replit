@@ -53,3 +53,6 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.production]
+
+[userenv.shared]
+VITE_TWILIO_PHONE_NUMBER = "+14799292399"
