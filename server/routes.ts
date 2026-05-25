@@ -2657,8 +2657,10 @@ export async function registerRoutes(
       // Update or create the correction log after scores are persisted
       const matchPlayers = await storage.getMatchPlayers(matchId);
       if (scan.correctionLogId) {
-        // Log row was created at scan time — update it with the applied scores
-        await storage.updateScanCorrectionLog(scan.correctionLogId, {
+        // Log row was created at scan time — update it with the applied scores.
+        // matchId is passed to the storage layer so only the log that belongs
+        // to this match can be updated (prevents cross-match IDOR).
+        await storage.updateScanCorrectionLog(scan.correctionLogId, matchId, {
           appliedOutput,
           playerNames: matchPlayers.map(p => p.name),
         });
@@ -2723,8 +2725,10 @@ export async function registerRoutes(
 
       const matchPlayers = await storage.getMatchPlayers(matchId);
       if (body.correctionLogId) {
-        // Log row was created at scan time — update it with the applied scores
-        await storage.updateScanCorrectionLog(body.correctionLogId, {
+        // Log row was created at scan time — update it with the applied scores.
+        // matchId is passed so the DB WHERE clause enforces ownership:
+        // a log that belongs to a different match will simply not be updated.
+        await storage.updateScanCorrectionLog(body.correctionLogId, matchId, {
           appliedOutput: body.appliedOutput,
           playerNames: matchPlayers.map(p => p.name),
           imageUrl: body.imageUrl ?? undefined,

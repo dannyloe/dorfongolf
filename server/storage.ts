@@ -167,7 +167,7 @@ export interface IStorage {
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
   }): Promise<ScanCorrectionLog>;
-  updateScanCorrectionLog(id: number, data: {
+  updateScanCorrectionLog(id: number, matchId: number, data: {
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
     imageUrl?: string | null;
@@ -383,7 +383,7 @@ export class DatabaseStorage implements IStorage {
     return row;
   }
 
-  async updateScanCorrectionLog(id: number, data: {
+  async updateScanCorrectionLog(id: number, matchId: number, data: {
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
     imageUrl?: string | null;
@@ -395,7 +395,7 @@ export class DatabaseStorage implements IStorage {
     if (data.imageUrl !== undefined) setData.imageUrl = data.imageUrl;
     const [row] = await db.update(scanCorrectionLogs)
       .set(setData)
-      .where(eq(scanCorrectionLogs.id, id))
+      .where(and(eq(scanCorrectionLogs.id, id), eq(scanCorrectionLogs.matchId, matchId)))
       .returning();
     return row;
   }
