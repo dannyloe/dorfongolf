@@ -7771,20 +7771,34 @@ export default function MatchDetail() {
                         {[1,2,3,4,5,6,7,8,9].map((hole) => {
                           const holeData = scannedPlayer.holes.find((h) => h.holeNumber === hole);
                           const value = scanEditableScores[scannedPlayer.playerName]?.[hole] || "";
+                          const scoreNum = value !== "" ? parseInt(value, 10) : null;
+                          const par = getHolePar(hole);
+                          const diff = scoreNum !== null && !isNaN(scoreNum) ? scoreNum - par : null;
+                          const textColor = diff === null || diff === 0 ? "" : diff < 0 ? "text-red-500" : "text-blue-500";
                           return (
                             <div key={hole} className="text-center">
                               <div className="text-xs text-muted-foreground mb-1">{hole}</div>
                               <div className="relative">
+                                {diff !== null && diff < 0 && Array.from({ length: Math.abs(diff) }, (_, i) => (
+                                  <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                    <span className="w-6 h-6 rounded-full border-2 border-red-500" />
+                                  </span>
+                                ))}
+                                {diff !== null && diff > 0 && Array.from({ length: Math.min(diff, 3) }, (_, i) => (
+                                  <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                    <span className="w-6 h-6 border-2 border-blue-500" />
+                                  </span>
+                                ))}
                                 <input
                                   type="text" inputMode="numeric" value={value}
                                   onChange={(e) => {
                                     const v = e.target.value.replace(/\D/g, "");
                                     setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
                                   }}
-                                  className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 bg-transparent ${textColor}`}
                                   data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
                                 />
-                                <div className="absolute -top-1 -right-1">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
+                                <div className="absolute -top-1 -right-1 z-20">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
                               </div>
                             </div>
                           );
@@ -7799,20 +7813,34 @@ export default function MatchDetail() {
                         {[10,11,12,13,14,15,16,17,18].map((hole) => {
                           const holeData = scannedPlayer.holes.find((h) => h.holeNumber === hole);
                           const value = scanEditableScores[scannedPlayer.playerName]?.[hole] || "";
+                          const scoreNum = value !== "" ? parseInt(value, 10) : null;
+                          const par = getHolePar(hole);
+                          const diff = scoreNum !== null && !isNaN(scoreNum) ? scoreNum - par : null;
+                          const textColor = diff === null || diff === 0 ? "" : diff < 0 ? "text-red-500" : "text-blue-500";
                           return (
                             <div key={hole} className="text-center">
                               <div className="text-xs text-muted-foreground mb-1">{hole}</div>
                               <div className="relative">
+                                {diff !== null && diff < 0 && Array.from({ length: Math.abs(diff) }, (_, i) => (
+                                  <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                    <span className="w-6 h-6 rounded-full border-2 border-red-500" />
+                                  </span>
+                                ))}
+                                {diff !== null && diff > 0 && Array.from({ length: Math.min(diff, 3) }, (_, i) => (
+                                  <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                    <span className="w-6 h-6 border-2 border-blue-500" />
+                                  </span>
+                                ))}
                                 <input
                                   type="text" inputMode="numeric" value={value}
                                   onChange={(e) => {
                                     const v = e.target.value.replace(/\D/g, "");
                                     setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
                                   }}
-                                  className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 bg-transparent ${textColor}`}
                                   data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
                                 />
-                                <div className="absolute -top-1 -right-1">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
+                                <div className="absolute -top-1 -right-1 z-20">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
                               </div>
                             </div>
                           );
