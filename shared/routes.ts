@@ -949,6 +949,8 @@ export const api = {
             })),
           })),
           rawText: z.string().optional(),
+          imageUrl: z.string().nullable().optional(),
+          correctionLogId: z.number().int().nullable().optional(),
         }),
         400: errorSchemas.validation,
         500: errorSchemas.internal,

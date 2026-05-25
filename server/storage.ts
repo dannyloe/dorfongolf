@@ -275,7 +275,7 @@ export class DatabaseStorage implements IStorage {
     return scan;
   }
 
-  async updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null }>): Promise<PendingScorecardScan> {
+  async updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null; correctionLogId: number | null }>): Promise<PendingScorecardScan> {
     const [updated] = await db.update(pendingScorecardScans)
       .set(data)
       .where(eq(pendingScorecardScans.id, id))

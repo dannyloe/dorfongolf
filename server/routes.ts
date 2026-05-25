@@ -2108,13 +2108,15 @@ export async function registerRoutes(
       });
 
       // Create correction log at scan time when matchId is provided, so the record
-      // exists even for scans the user dismisses without applying.
+      // exists even for scans the user dismisses without applying. Log ALL attempts
+      // including failed or empty extractions — these are the most useful for model
+      // quality analysis.
       let correctionLogId: number | null = null;
-      if (input.matchId && result.success && result.scores.length > 0) {
+      if (input.matchId) {
         try {
           const match = await storage.getMatch(input.matchId);
           if (match) {
-            const geminiOutput = result.scores.map(p => ({
+            const geminiOutput = (result.scores ?? []).map(p => ({
               playerName: p.playerName,
               holes: (p.holes ?? [])
                 .filter(h => h.holeNumber >= 1 && h.holeNumber <= 18)
@@ -2465,33 +2467,33 @@ export async function registerRoutes(
           const extraRules = await storage.getActiveScanPatternRules();
           const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules });
 
-          // Create correction log at scan time — captures dismissed scans too
+          // Create correction log at scan time — captures dismissed and failed scans too.
+          // Log ALL attempts regardless of success so every scan attempt is permanently
+          // recorded: image → Gemini output → user-applied scores.
           let correctionLogId: number | null = null;
-          if (result.success && result.scores.length > 0) {
-            try {
-              const geminiOutput = result.scores.map((p: any) => ({
-                playerName: p.playerName,
-                holes: (p.holes ?? [])
-                  .filter((h: any) => h.holeNumber >= 1 && h.holeNumber <= 18)
-                  .map((h: any) => ({
-                    holeNumber: h.holeNumber,
-                    strokes: h.strokes != null ? Math.round(h.strokes) : null,
-                  })),
-              }));
-              const log = await storage.createScanCorrectionLog({
-                matchId: match.id,
-                pendingScanId: scan.id,
-                source: "mms",
-                courseName: match.courseName,
-                imageUrl,
-                geminiOutput,
-                appliedOutput: [], // filled in at apply time
-                playerNames: [],   // filled in at apply time
-              });
-              correctionLogId = log.id;
-            } catch (logErr) {
-              console.error(`[processScan] Failed to create correction log (non-fatal):`, logErr);
-            }
+          try {
+            const geminiOutput = (result.scores ?? []).map((p: any) => ({
+              playerName: p.playerName,
+              holes: (p.holes ?? [])
+                .filter((h: any) => h.holeNumber >= 1 && h.holeNumber <= 18)
+                .map((h: any) => ({
+                  holeNumber: h.holeNumber,
+                  strokes: h.strokes != null ? Math.round(h.strokes) : null,
+                })),
+            }));
+            const log = await storage.createScanCorrectionLog({
+              matchId: match.id,
+              pendingScanId: scan.id,
+              source: "mms",
+              courseName: match.courseName,
+              imageUrl,
+              geminiOutput,
+              appliedOutput: [], // filled in at apply time
+              playerNames: [],   // filled in at apply time
+            });
+            correctionLogId = log.id;
+          } catch (logErr) {
+            console.error(`[processScan] Failed to create correction log (non-fatal):`, logErr);
           }
 
           await storage.updatePendingScan(scan.id, {
