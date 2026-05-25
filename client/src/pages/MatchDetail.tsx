@@ -690,6 +690,12 @@ export default function MatchDetail() {
   const betSlipFileInputRef = useRef<HTMLInputElement | null>(null);
   const betSlipFileInputFormRef = useRef<HTMLInputElement | null>(null);
   const [pendingBetScanResult, setPendingBetScanResult] = useState<any>(null);
+  // Editable fields for the bet scan review dialog
+  const [betScanEditMatchType, setBetScanEditMatchType] = useState<string>('nassau');
+  const [betScanEditTeamA, setBetScanEditTeamA] = useState<number[]>([]);
+  const [betScanEditTeamB, setBetScanEditTeamB] = useState<number[]>([]);
+  const [betScanEditAmount, setBetScanEditAmount] = useState<string>('');
+  const [betScanEditUseNet, setBetScanEditUseNet] = useState<boolean>(false);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -911,6 +917,12 @@ export default function MatchDetail() {
       const data = await res.json();
       if (data.success) {
         setPendingBetScanResult(data);
+        setBetScanEditMatchType(data.matchType || 'nassau');
+        setBetScanEditTeamA(data.teamAPlayerIds || data.skinsPlayerIds || []);
+        setBetScanEditTeamB(data.teamBPlayerIds || []);
+        const rawAmt = data.unitAmount ?? data.deathMatchBaseBet ?? null;
+        setBetScanEditAmount(rawAmt != null ? String(rawAmt) : '');
+        setBetScanEditUseNet(!!data.useNet);
       } else {
         setBetSlipScanError(data.message || "Could not read the bet slip. Try a clearer photo.");
       }
@@ -7792,85 +7804,151 @@ export default function MatchDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Bet slip scan review dialog */}
+      {/* Bet slip scan review dialog — fully editable before applying */}
       {pendingBetScanResult && (
         <Dialog open={true} onOpenChange={(open) => { if (!open) setPendingBetScanResult(null); }}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Review Scanned Bet Slip</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {pendingBetScanResult.parsedSummary && (
                 <div className="px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary">
                   {pendingBetScanResult.parsedSummary}
                 </div>
               )}
               {pendingBetScanResult.unmatchedNames && pendingBetScanResult.unmatchedNames.length > 0 && (
-                <div className="px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                <div className="px-3 py-2 bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-800 dark:text-yellow-300">
                   <span className="font-medium">Unrecognized names: </span>
                   {pendingBetScanResult.unmatchedNames.join(", ")}
                 </div>
               )}
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Match type</span>
-                  <span className="font-medium">{MATCH_TYPE_LABELS[pendingBetScanResult.matchType as MatchType] ?? pendingBetScanResult.matchType ?? "—"}</span>
-                </div>
-                {pendingBetScanResult.unitAmount != null && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Amount</span>
-                    <span className="font-medium">${pendingBetScanResult.unitAmount}</span>
-                  </div>
-                )}
-                {pendingBetScanResult.deathMatchBaseBet != null && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Base bet</span>
-                    <span className="font-medium">${pendingBetScanResult.deathMatchBaseBet}</span>
-                  </div>
-                )}
-                {pendingBetScanResult.useNet && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Scoring</span>
-                    <span className="font-medium">Net (handicap)</span>
-                  </div>
-                )}
-                {((pendingBetScanResult.teamAPlayerIds?.length ?? 0) > 0 || (pendingBetScanResult.teamBPlayerIds?.length ?? 0) > 0) && (
-                  <>
-                    {(pendingBetScanResult.teamAPlayerIds?.length ?? 0) > 0 && (
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground shrink-0">Team A</span>
-                        <span className="font-medium text-right">
-                          {(pendingBetScanResult.teamAPlayerIds as number[]).map((id: number) => players.find(p => p.id === id)?.name ?? `#${id}`).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                    {(pendingBetScanResult.teamBPlayerIds?.length ?? 0) > 0 && (
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground shrink-0">Team B</span>
-                        <span className="font-medium text-right">
-                          {(pendingBetScanResult.teamBPlayerIds as number[]).map((id: number) => players.find(p => p.id === id)?.name ?? `#${id}`).join(", ")}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {(pendingBetScanResult.skinsPlayerIds?.length ?? 0) > 0 && (
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground shrink-0">Players</span>
-                    <span className="font-medium text-right">
-                      {(pendingBetScanResult.skinsPlayerIds as number[]).map((id: number) => players.find(p => p.id === id)?.name ?? `#${id}`).join(", ")}
-                    </span>
-                  </div>
-                )}
+
+              {/* Match type */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Match type</label>
+                <Select value={betScanEditMatchType} onValueChange={setBetScanEditMatchType}>
+                  <SelectTrigger data-testid="select-bet-scan-match-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ALL_MATCH_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              {/* Amount */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  {betScanEditMatchType === 'death_match' ? 'Base bet ($)' : 'Amount ($)'}
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={betScanEditAmount}
+                  onChange={e => setBetScanEditAmount(e.target.value)}
+                  placeholder="e.g. 5"
+                  data-testid="input-bet-scan-amount"
+                />
+              </div>
+
+              {/* Net scoring */}
+              {match?.isHandicapped && (
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Net scoring (handicap)</label>
+                  <Checkbox
+                    checked={betScanEditUseNet}
+                    onCheckedChange={v => setBetScanEditUseNet(!!v)}
+                    data-testid="checkbox-bet-scan-use-net"
+                  />
+                </div>
+              )}
+
+              {/* Player assignment */}
+              {betScanEditMatchType === 'skins' ? (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Players</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {players.map(p => (
+                      <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={betScanEditTeamA.includes(p.id)}
+                          onCheckedChange={v => {
+                            setBetScanEditTeamA(prev =>
+                              v ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                            );
+                          }}
+                        />
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : betScanEditMatchType !== 'five_five_five_three' ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Team A</label>
+                    <div className="space-y-1">
+                      {players.map(p => (
+                        <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox
+                            checked={betScanEditTeamA.includes(p.id)}
+                            onCheckedChange={v => {
+                              setBetScanEditTeamA(prev =>
+                                v ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                              );
+                              if (v) setBetScanEditTeamB(prev => prev.filter(id => id !== p.id));
+                            }}
+                          />
+                          {p.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Team B</label>
+                    <div className="space-y-1">
+                      {players.map(p => (
+                        <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <Checkbox
+                            checked={betScanEditTeamB.includes(p.id)}
+                            onCheckedChange={v => {
+                              setBetScanEditTeamB(prev =>
+                                v ? [...prev, p.id] : prev.filter(id => id !== p.id)
+                              );
+                              if (v) setBetScanEditTeamA(prev => prev.filter(id => id !== p.id));
+                            }}
+                          />
+                          {p.name}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
-            <DialogFooter className="flex gap-2 sm:gap-2">
+
+            <DialogFooter className="flex gap-2 sm:gap-2 pt-4">
               <Button variant="ghost" onClick={() => setPendingBetScanResult(null)} data-testid="button-cancel-bet-scan">
                 Cancel
               </Button>
               <Button
                 onClick={() => {
-                  applyVoiceMatchResult(pendingBetScanResult);
+                  const amt = betScanEditAmount !== '' ? Number(betScanEditAmount) : undefined;
+                  const editedResult = {
+                    ...pendingBetScanResult,
+                    matchType: betScanEditMatchType,
+                    teamAPlayerIds: betScanEditMatchType === 'skins' ? [] : betScanEditTeamA,
+                    teamBPlayerIds: betScanEditTeamB,
+                    skinsPlayerIds: betScanEditMatchType === 'skins' ? betScanEditTeamA : [],
+                    unitAmount: betScanEditMatchType === 'death_match' ? undefined : amt,
+                    deathMatchBaseBet: betScanEditMatchType === 'death_match' ? amt : undefined,
+                    useNet: betScanEditUseNet,
+                  };
+                  applyVoiceMatchResult(editedResult);
                   setPendingBetScanResult(null);
                 }}
                 data-testid="button-apply-bet-scan"
