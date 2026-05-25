@@ -540,6 +540,12 @@ export default function MatchDetail() {
     queryKey: ["/api/users/match-type-frequency"],
   });
 
+  const { data: appConfig } = useQuery<{ twilioPhoneNumber: string | null }>({
+    queryKey: ["/api/config"],
+    staleTime: 1000 * 60 * 60,
+  });
+  const twilioPhoneNumber = appConfig?.twilioPhoneNumber ?? null;
+
   const sortedMatchOptions = (() => {
     if (!matchTypeFrequency) return ALL_MATCH_OPTIONS;
     const indexed = ALL_MATCH_OPTIONS.map((opt, i) => ({ ...opt, originalIndex: i }));
@@ -2174,7 +2180,7 @@ export default function MatchDetail() {
             <p className="text-xs text-muted-foreground leading-relaxed">
               Anyone can text a photo of their scorecard to{" "}
               <span className="font-medium text-foreground">
-                {import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number"}
+                {twilioPhoneNumber || import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number"}
               </span>{" "}
               with the code{" "}
               {match.matchCode ? (
@@ -2190,7 +2196,7 @@ export default function MatchDetail() {
                   className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
                   data-testid="button-share-scorecard-instructions"
                   onClick={() => {
-                    const phone = import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number";
+                    const phone = twilioPhoneNumber || import.meta.env.VITE_TWILIO_PHONE_NUMBER || "your Twilio number";
                     const text = `Text a photo of your scorecard or your bets to ${phone} with the code ${match.matchCode} in the message body to submit your scores or bets.`;
                     if (navigator.share) {
                       navigator.share({ text }).catch(() => {});

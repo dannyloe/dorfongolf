@@ -2152,6 +2152,22 @@ export async function registerRoutes(
     }
   }
 
+  // Public config endpoint — returns non-sensitive frontend config
+  app.get("/api/config", async (req, res) => {
+    try {
+      const { getTwilioFromPhoneNumber } = await import("./twilio");
+      let twilioPhoneNumber: string | null = null;
+      try {
+        twilioPhoneNumber = await getTwilioFromPhoneNumber();
+      } catch {
+        twilioPhoneNumber = null;
+      }
+      res.json({ twilioPhoneNumber });
+    } catch (err) {
+      res.json({ twilioPhoneNumber: null });
+    }
+  });
+
   // SMS opt-in endpoint — publicly accessible, no auth required
   app.post("/api/sms/opt-in", async (req, res) => {
     try {
