@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2 } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ type ScanCorrectionLog = {
   id: number;
   matchId: number;
   pendingScanId: number | null;
+  source: "camera" | "mms" | null;
   courseName: string;
   geminiOutput: GeminiPlayer[];
   appliedOutput: AppliedPlayer[];
@@ -163,6 +164,15 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
             <span className="font-medium text-sm truncate">{log.matchName || `Match #${log.matchId}`}</span>
             <span className="text-xs text-muted-foreground">·</span>
             <span className="text-xs text-muted-foreground truncate">{log.courseName}</span>
+            {log.source === "camera" ? (
+              <Badge variant="secondary" className="text-xs flex items-center gap-1" data-testid={`badge-source-${log.id}`}>
+                <Camera className="w-3 h-3" />Camera
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-300 text-blue-600 dark:text-blue-400" data-testid={`badge-source-${log.id}`}>
+                <MessageSquare className="w-3 h-3" />MMS
+              </Badge>
+            )}
             {hasShift && (
               <Badge className="text-xs bg-red-100 text-red-700 border-red-300 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />Shift

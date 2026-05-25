@@ -2574,6 +2574,7 @@ export async function registerRoutes(
       await storage.createScanCorrectionLog({
         matchId,
         pendingScanId: scanId,
+        source: "mms",
         courseName: match.courseName,
         geminiOutput,
         appliedOutput,
@@ -2627,6 +2628,7 @@ export async function registerRoutes(
       await storage.createScanCorrectionLog({
         matchId,
         pendingScanId: null,
+        source: "camera",
         courseName: match.courseName,
         geminiOutput: body.geminiOutput,
         appliedOutput: body.appliedOutput,

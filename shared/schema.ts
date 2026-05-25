@@ -286,6 +286,7 @@ export const scanCorrectionLogs = pgTable("scan_correction_logs", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
   pendingScanId: integer("pending_scan_id"), // nullable — only set for MMS scans
+  source: text("source").$type<"camera" | "mms">().notNull().default("mms"),
   courseName: text("course_name").notNull(),
   geminiOutput: jsonb("gemini_output").$type<Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>>().notNull(),
   appliedOutput: jsonb("applied_output").$type<Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>>().notNull(),

@@ -343,6 +343,7 @@ export class DatabaseStorage implements IStorage {
   async createScanCorrectionLog(data: {
     matchId: number;
     pendingScanId?: number | null;
+    source: "camera" | "mms";
     courseName: string;
     geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
@@ -351,6 +352,7 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.insert(scanCorrectionLogs).values({
       matchId: data.matchId,
       pendingScanId: data.pendingScanId ?? null,
+      source: data.source,
       courseName: data.courseName,
       geminiOutput: data.geminiOutput,
       appliedOutput: data.appliedOutput,
@@ -365,6 +367,7 @@ export class DatabaseStorage implements IStorage {
         id: scanCorrectionLogs.id,
         matchId: scanCorrectionLogs.matchId,
         pendingScanId: scanCorrectionLogs.pendingScanId,
+        source: scanCorrectionLogs.source,
         courseName: scanCorrectionLogs.courseName,
         geminiOutput: scanCorrectionLogs.geminiOutput,
         appliedOutput: scanCorrectionLogs.appliedOutput,
