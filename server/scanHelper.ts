@@ -224,8 +224,25 @@ Rules:
   - If a specific hole score is blank or unreadable, return "" (empty string).
 - Set "confidence" to "high", "medium", or "low" based on legibility of that hole.
 - Try to match visible names to the known players list; otherwise use the name as written.
-- Do NOT include Front 9, Back 9, or Total subtotals — only the 18 hole rows.
-- "rawText" is optional free-form notes about the card.${extraRulesText}`;
+- "rawText" is optional free-form notes about the card.
+
+CRITICAL — hole number anchoring:
+- The scorecard has a header row that prints the hole numbers (1–9 on the front row, 10–18 on the back row).
+- For every score you read, first identify the hole number printed in the HEADER ROW directly above that score cell.
+- Assign each score to that header hole number — NEVER by counting column positions from left to right.
+
+CRITICAL — subtotal columns must be completely ignored:
+- Golf scorecards contain summary columns labelled "Out", "In", "Back", "Tot", "Total", "Front", or "Hdcp"/"HCP"/"Net". These labels may appear in the hole-number header row or in a separate label row.
+- NONE of these columns have a hole number (1–18) above them. If there is no hole number (1–18) in the header directly above a cell, that cell is a subtotal — skip it entirely.
+- Do NOT treat the value in an "Out" / "In" / "Back" / "Tot" column as the score for hole 10, hole 11, or any hole. It is a running total and must be discarded.
+- Even if a subtotal value looks like a plausible single-hole score (e.g. "37" or "4"), it must still be skipped.
+
+CRITICAL — count sanity check:
+- After reading all scores, verify you have exactly 9 scores for holes 1–9 and exactly 9 scores for holes 10–18 (scores that are "" or "X" still count toward the 9).
+- If either half has more than 9 entries, you accidentally included a subtotal column. Remove the extra entry before returning results.
+
+CRITICAL — large values in score rows:
+- Any value of 30 or higher appearing anywhere in a player's score row is almost certainly a subtotal (e.g. front-9 total = 37), not a hole score. Treat such values with low confidence and skip them unless a hole number (1–18) is unambiguously printed directly above that cell in the header row.${extraRulesText}`;
 
   const mimeMatch = imageBase64.match(/^data:(image\/[^;]+);base64,/);
   const mimeType = mimeMatch?.[1] || "image/jpeg";
