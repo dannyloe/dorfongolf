@@ -100,6 +100,7 @@ export const pendingScorecardScans = pgTable("pending_scorecard_scans", {
   matchId: integer("match_id").notNull(),
   fromPhone: text("from_phone").notNull(), // masked sender phone
   mediaUrl: text("media_url").notNull(), // Twilio media URL
+  imageUrl: text("image_url"), // Permanent Object Storage URL (null until uploaded)
   status: text("status").notNull().default("pending"), // pending, processing, done, error
   scanResult: text("scan_result"), // JSON string of scan result
   errorMessage: text("error_message"),
@@ -288,6 +289,7 @@ export const scanCorrectionLogs = pgTable("scan_correction_logs", {
   pendingScanId: integer("pending_scan_id"), // nullable — only set for MMS scans
   source: text("source").$type<"camera" | "mms">().notNull().default("mms"),
   courseName: text("course_name").notNull(),
+  imageUrl: text("image_url"), // Permanent Object Storage URL of the scanned image
   geminiOutput: jsonb("gemini_output").$type<Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>>().notNull(),
   appliedOutput: jsonb("applied_output").$type<Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>>().notNull(),
   playerNames: text("player_names").array().notNull(),

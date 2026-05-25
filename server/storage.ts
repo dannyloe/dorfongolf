@@ -139,7 +139,7 @@ export interface IStorage {
 
   // Pending scorecard scans
   createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string }): Promise<PendingScorecardScan>;
-  updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null }>): Promise<PendingScorecardScan>;
+  updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null }>): Promise<PendingScorecardScan>;
   listPendingScans(matchId: number): Promise<PendingScorecardScan[]>;
   getPendingScan(id: number): Promise<PendingScorecardScan | undefined>;
   deletePendingScan(id: number): Promise<boolean>;
@@ -161,6 +161,7 @@ export interface IStorage {
     matchId: number;
     pendingScanId?: number | null;
     courseName: string;
+    imageUrl?: string | null;
     geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
@@ -268,7 +269,7 @@ export class DatabaseStorage implements IStorage {
     return scan;
   }
 
-  async updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null }>): Promise<PendingScorecardScan> {
+  async updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null }>): Promise<PendingScorecardScan> {
     const [updated] = await db.update(pendingScorecardScans)
       .set(data)
       .where(eq(pendingScorecardScans.id, id))
@@ -358,6 +359,7 @@ export class DatabaseStorage implements IStorage {
     pendingScanId?: number | null;
     source: "camera" | "mms";
     courseName: string;
+    imageUrl?: string | null;
     geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
@@ -367,6 +369,7 @@ export class DatabaseStorage implements IStorage {
       pendingScanId: data.pendingScanId ?? null,
       source: data.source,
       courseName: data.courseName,
+      imageUrl: data.imageUrl ?? null,
       geminiOutput: data.geminiOutput,
       appliedOutput: data.appliedOutput,
       playerNames: data.playerNames,
@@ -382,6 +385,7 @@ export class DatabaseStorage implements IStorage {
         pendingScanId: scanCorrectionLogs.pendingScanId,
         source: scanCorrectionLogs.source,
         courseName: scanCorrectionLogs.courseName,
+        imageUrl: scanCorrectionLogs.imageUrl,
         geminiOutput: scanCorrectionLogs.geminiOutput,
         appliedOutput: scanCorrectionLogs.appliedOutput,
         playerNames: scanCorrectionLogs.playerNames,

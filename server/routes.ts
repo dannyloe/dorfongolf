@@ -12,6 +12,8 @@ import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
 import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs } from "./scanAnalysis";
+import { uploadScorecardImage } from "./imageStorage";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import express from "express";
 import twilioLib from "twilio";
 
@@ -77,6 +79,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await initializeAuth(app);
   registerAuthRoutes(app);
+  registerObjectStorageRoutes(app);
 
   const ADMIN_USER_ID = "52861828";
 
@@ -2098,7 +2101,11 @@ export async function registerRoutes(
         courseName: input.courseName,
         extraRules,
       });
-      res.json(result);
+
+      // Upload the image to Object Storage for durable cross-reference (best-effort)
+      const imageUrl = await uploadScorecardImage(input.imageBase64).catch(() => null);
+
+      res.json({ ...result, imageUrl: imageUrl ?? null });
     } catch (err) {
       console.error("Scorecard scan error:", err);
       if (err instanceof z.ZodError) {
@@ -2414,13 +2421,20 @@ export async function registerRoutes(
           const contentType = imgRes.headers.get("content-type") || "image/jpeg";
           const imageBase64 = `data:${contentType};base64,${imageBuffer.toString("base64")}`;
 
+          // Upload to Object Storage for durable cross-reference (best-effort)
+          const imageUrl = await uploadScorecardImage(imageBuffer, contentType).catch(() => null);
+
           const matchPlayers = await storage.getMatchPlayers(match.id);
           const playerNames = matchPlayers.map((p: { name: string }) => p.name);
 
           const extraRules = await storage.getActiveScanPatternRules();
           const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules });
 
-          await storage.updatePendingScan(scan.id, { status: "ready", scanResult: JSON.stringify(result) });
+          await storage.updatePendingScan(scan.id, {
+            status: "ready",
+            scanResult: JSON.stringify(result),
+            imageUrl: imageUrl ?? null,
+          });
         } catch (err) {
           console.error(`Background MMS scan error (scan ${scan.id}):`, err);
           await storage.updatePendingScan(scan.id, {
@@ -2580,6 +2594,7 @@ export async function registerRoutes(
         pendingScanId: scanId,
         source: "mms",
         courseName: match.courseName,
+        imageUrl: scan.imageUrl ?? null,
         geminiOutput,
         appliedOutput,
         playerNames: matchPlayers.map(p => p.name),
@@ -2625,6 +2640,7 @@ export async function registerRoutes(
             strokes: z.number().int().min(1),
           })).max(18),
         })).max(20),
+        imageUrl: z.string().nullable().optional(),
       });
       const body = schema.parse(req.body);
 
@@ -2634,6 +2650,7 @@ export async function registerRoutes(
         pendingScanId: null,
         source: "camera",
         courseName: match.courseName,
+        imageUrl: body.imageUrl ?? null,
         geminiOutput: body.geminiOutput,
         appliedOutput: body.appliedOutput,
         playerNames: matchPlayers.map(p => p.name),
