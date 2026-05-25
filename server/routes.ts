@@ -2641,8 +2641,11 @@ export async function registerRoutes(
 
       res.json({ ok: true });
     } catch (err) {
-      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
-      console.error("Scan correction log error:", err);
+      if (err instanceof z.ZodError) {
+        console.error("[scan-correction-log] Zod validation failed:", JSON.stringify(err.errors, null, 2));
+        return res.status(400).json({ message: err.errors[0].message, details: err.errors });
+      }
+      console.error("[scan-correction-log] Unexpected error:", err);
       res.status(500).json({ message: "Failed to log scan correction" });
     }
   });

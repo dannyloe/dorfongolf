@@ -574,18 +574,36 @@ export default function QuickScoreEntry() {
         }
 
         // Log the Gemini output vs what was actually applied — fire-and-forget
-        apiRequest("POST", `/api/matches/${matchId}/scan-correction-log`, {
-          geminiOutput: snapshot.scannedScores.map(p => ({
+        // Wrapped in its own try/catch so a synchronous body-building error is
+        // visible in the console rather than being swallowed by the outer catch.
+        try {
+          const geminiOutput = snapshot.scannedScores.map(p => ({
             playerName: p.playerName,
-            holes: p.holes
+            holes: (p.holes ?? [])
               .filter(h => h.holeNumber >= 1 && h.holeNumber <= 18)
-              .map(h => ({ holeNumber: h.holeNumber, strokes: h.strokes ?? null })),
-          })),
-          appliedOutput: Array.from(appliedByPlayer.values()),
-        }).catch((err) => {
-          // Non-fatal: correction log failure must not surface as an error to the user
-          console.warn("[scan-correction-log] Failed to log scan correction:", err);
-        });
+              .map(h => ({
+                holeNumber: h.holeNumber,
+                // Round to nearest int — Gemini sometimes returns floats
+                strokes: h.strokes != null ? Math.round(h.strokes) : null,
+              })),
+          }));
+          const appliedOutput = Array.from(appliedByPlayer.values()).map(p => ({
+            ...p,
+            holes: p.holes.map(h => ({
+              holeNumber: h.holeNumber,
+              strokes: Math.round(h.strokes),
+            })),
+          }));
+          console.log("[scan-correction-log] Sending correction log", { geminiOutput, appliedOutput });
+          apiRequest("POST", `/api/matches/${matchId}/scan-correction-log`, {
+            geminiOutput,
+            appliedOutput,
+          }).catch((err) => {
+            console.error("[scan-correction-log] Request failed:", err);
+          });
+        } catch (err) {
+          console.error("[scan-correction-log] Failed to build correction log body:", err);
+        }
       } catch {
         errorCount += bulkEntries.length;
       }
