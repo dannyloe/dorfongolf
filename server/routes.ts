@@ -2588,6 +2588,59 @@ export async function registerRoutes(
     }
   });
 
+  // Log corrections from in-app camera scans (QuickScoreEntry) — no pendingScanId required
+  app.post("/api/matches/:id/scan-correction-log", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      if (isNaN(matchId)) return res.status(400).json({ message: "Invalid match ID" });
+
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      // Allow anyone who can write scores to also log the correction (participants included)
+      const allowed = await canWriteScores(matchId, userId, match);
+      if (!allowed) return res.status(403).json({ message: "Not authorized" });
+
+      const holeSchema = z.object({
+        holeNumber: z.number().int().min(1).max(18),
+        strokes: z.number().int().nullable(),
+      });
+      const schema = z.object({
+        geminiOutput: z.array(z.object({
+          playerName: z.string(),
+          holes: z.array(holeSchema).max(18),
+        })).max(20),
+        appliedOutput: z.array(z.object({
+          playerName: z.string(),
+          playerId: z.number().int(),
+          holes: z.array(z.object({
+            holeNumber: z.number().int().min(1).max(18),
+            strokes: z.number().int().min(1),
+          })).max(18),
+        })).max(20),
+      });
+      const body = schema.parse(req.body);
+
+      const matchPlayers = await storage.getMatchPlayers(matchId);
+      await storage.createScanCorrectionLog({
+        matchId,
+        pendingScanId: null,
+        courseName: match.courseName,
+        geminiOutput: body.geminiOutput,
+        appliedOutput: body.appliedOutput,
+        playerNames: matchPlayers.map(p => p.name),
+      });
+
+      res.json({ ok: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Scan correction log error:", err);
+      res.status(500).json({ message: "Failed to log scan correction" });
+    }
+  });
+
   // Proxy Twilio-hosted image through the server (avoids exposing Twilio credentials to frontend)
   app.get("/api/matches/:id/pending-scans/:scanId/image", isAuthenticated, async (req, res) => {
     try {

@@ -1,4 +1,5 @@
 import { useMatch, useSubmitScore, useSubmitScoresBulk, useCourses, useScanScorecard, ScannedPlayer, ScannedHole, useAddPlayer } from "@/hooks/use-matches";
+import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useVoiceInput, VoiceCommand } from "@/hooks/use-voice-input";
 import { resolvePlayerAlias, PRESET_PLAYERS } from "@shared/models/auth";
@@ -494,6 +495,7 @@ export default function QuickScoreEntry() {
     playerMappings: Record<string, number | null>;
     suggestedPresets: Record<string, string | null>;
     editableScores: Record<string, Record<number, string>>;
+    scannedScores: ScannedPlayer[];
   }) => {
     let successCount = 0;
     let errorCount = 0;
@@ -551,6 +553,39 @@ export default function QuickScoreEntry() {
       try {
         const result = await submitScoresBulk.mutateAsync(bulkEntries);
         successCount += result.count;
+
+        // Build a reverse map from playerId -> scannedName for appliedOutput
+        const playerIdToScannedName = new Map<number, string>();
+        for (const [scannedName, playerId] of Object.entries(updatedMappings)) {
+          if (playerId !== null) playerIdToScannedName.set(playerId, scannedName);
+        }
+
+        // Group bulk entries by playerId to form appliedOutput
+        const appliedByPlayer = new Map<number, { playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>();
+        for (const entry of bulkEntries) {
+          if (!appliedByPlayer.has(entry.playerId)) {
+            appliedByPlayer.set(entry.playerId, {
+              playerName: playerIdToScannedName.get(entry.playerId) ?? String(entry.playerId),
+              playerId: entry.playerId,
+              holes: [],
+            });
+          }
+          appliedByPlayer.get(entry.playerId)!.holes.push({ holeNumber: entry.holeNumber, strokes: entry.strokes });
+        }
+
+        // Log the Gemini output vs what was actually applied — fire-and-forget
+        apiRequest("POST", `/api/matches/${matchId}/scan-correction-log`, {
+          geminiOutput: snapshot.scannedScores.map(p => ({
+            playerName: p.playerName,
+            holes: p.holes
+              .filter(h => h.holeNumber >= 1 && h.holeNumber <= 18)
+              .map(h => ({ holeNumber: h.holeNumber, strokes: h.strokes ?? null })),
+          })),
+          appliedOutput: Array.from(appliedByPlayer.values()),
+        }).catch((err) => {
+          // Non-fatal: correction log failure must not surface as an error to the user
+          console.warn("[scan-correction-log] Failed to log scan correction:", err);
+        });
       } catch {
         errorCount += bulkEntries.length;
       }
@@ -585,6 +620,7 @@ export default function QuickScoreEntry() {
       playerMappings: { ...playerMappings },
       suggestedPresets: { ...suggestedPresets },
       editableScores: JSON.parse(JSON.stringify(editableScores)) as Record<string, Record<number, string>>,
+      scannedScores: [...scannedScores],
     };
 
     setShowScanModal(false);
