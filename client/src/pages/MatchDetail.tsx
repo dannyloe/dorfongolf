@@ -688,6 +688,8 @@ export default function MatchDetail() {
   const [betSlipScanInProgress, setBetSlipScanInProgress] = useState(false);
   const [betSlipScanError, setBetSlipScanError] = useState<string | null>(null);
   const betSlipFileInputRef = useRef<HTMLInputElement | null>(null);
+  const betSlipFileInputFormRef = useRef<HTMLInputElement | null>(null);
+  const [pendingBetScanResult, setPendingBetScanResult] = useState<any>(null);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -868,10 +870,7 @@ export default function MatchDetail() {
     },
   });
 
-  const handleBetSlipFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
+  const runBetSlipScan = useCallback(async (file: File) => {
     setBetSlipScanError(null);
     setBetSlipScanInProgress(true);
     setVoiceError(null);
@@ -911,7 +910,7 @@ export default function MatchDetail() {
       });
       const data = await res.json();
       if (data.success) {
-        applyVoiceMatchResult(data);
+        setPendingBetScanResult(data);
       } else {
         setBetSlipScanError(data.message || "Could not read the bet slip. Try a clearer photo.");
       }
@@ -920,7 +919,14 @@ export default function MatchDetail() {
     } finally {
       setBetSlipScanInProgress(false);
     }
-  }, [match?.players, matchId, applyVoiceMatchResult]);
+  }, [match?.players, matchId]);
+
+  const handleBetSlipFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    await runBetSlipScan(file);
+  }, [runBetSlipScan]);
 
   const applyStrokesToEventMatch = useCallback((createdEventMatch: any) => {
     const overrides = voiceStrokeOverridesRef.current;
@@ -2672,43 +2678,42 @@ export default function MatchDetail() {
               </h3>
               {matchesCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
             </button>
-            {isCreator && players.length >= 2 && !matchesCollapsed && (
+            {canEditScoresAndBets && players.length >= 2 && !matchesCollapsed && (
               <div className="flex gap-2">
+                {isCreator && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowCopyBetsDialog(true)}
+                    data-testid="button-copy-bets"
+                  >
+                    <Copy className="w-4 h-4 mr-2" />
+                    Copy From Event
+                  </Button>
+                )}
+                <input
+                  ref={betSlipFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleBetSlipFileSelect}
+                  data-testid="input-bet-slip-file"
+                />
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => setShowCopyBetsDialog(true)}
-                  data-testid="button-copy-bets"
+                  onClick={() => betSlipFileInputRef.current?.click()}
+                  disabled={betSlipScanInProgress}
+                  title="Scan a bet slip photo to auto-fill bet details"
+                  data-testid="button-scan-bet-slip"
                 >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy From Event
+                  {betSlipScanInProgress ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Camera className="w-4 h-4" />
+                  )}
                 </Button>
-                {canEditScoresAndBets && (
-                  <>
-                    <input
-                      ref={betSlipFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleBetSlipFileSelect}
-                      data-testid="input-bet-slip-file"
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => betSlipFileInputRef.current?.click()}
-                      disabled={betSlipScanInProgress}
-                      title="Scan a bet slip photo to auto-fill bet details"
-                      data-testid="button-scan-bet-slip"
-                    >
-                      {betSlipScanInProgress ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Camera className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </>
-                )}
                 {voiceSupported && (
                   <Button
                     size="sm"
@@ -2849,6 +2854,29 @@ export default function MatchDetail() {
                   : 'Create Match Play'}
               </h4>
               <div className="flex items-center gap-2">
+                <input
+                  ref={betSlipFileInputFormRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleBetSlipFileSelect}
+                  data-testid="input-bet-slip-file-form"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => betSlipFileInputFormRef.current?.click()}
+                  disabled={betSlipScanInProgress}
+                  title="Scan a bet slip to auto-fill"
+                  data-testid="button-scan-bet-slip-form"
+                >
+                  {betSlipScanInProgress ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Camera className="w-4 h-4" />
+                  )}
+                </Button>
                 {voiceSupported && (
                   <Button
                     size="icon"
@@ -7763,6 +7791,96 @@ export default function MatchDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bet slip scan review dialog */}
+      {pendingBetScanResult && (
+        <Dialog open={true} onOpenChange={(open) => { if (!open) setPendingBetScanResult(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Review Scanned Bet Slip</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {pendingBetScanResult.parsedSummary && (
+                <div className="px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary">
+                  {pendingBetScanResult.parsedSummary}
+                </div>
+              )}
+              {pendingBetScanResult.unmatchedNames && pendingBetScanResult.unmatchedNames.length > 0 && (
+                <div className="px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                  <span className="font-medium">Unrecognized names: </span>
+                  {pendingBetScanResult.unmatchedNames.join(", ")}
+                </div>
+              )}
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Match type</span>
+                  <span className="font-medium">{MATCH_TYPE_LABELS[pendingBetScanResult.matchType as MatchType] ?? pendingBetScanResult.matchType ?? "—"}</span>
+                </div>
+                {pendingBetScanResult.unitAmount != null && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Amount</span>
+                    <span className="font-medium">${pendingBetScanResult.unitAmount}</span>
+                  </div>
+                )}
+                {pendingBetScanResult.deathMatchBaseBet != null && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Base bet</span>
+                    <span className="font-medium">${pendingBetScanResult.deathMatchBaseBet}</span>
+                  </div>
+                )}
+                {pendingBetScanResult.useNet && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Scoring</span>
+                    <span className="font-medium">Net (handicap)</span>
+                  </div>
+                )}
+                {((pendingBetScanResult.teamAPlayerIds?.length ?? 0) > 0 || (pendingBetScanResult.teamBPlayerIds?.length ?? 0) > 0) && (
+                  <>
+                    {(pendingBetScanResult.teamAPlayerIds?.length ?? 0) > 0 && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground shrink-0">Team A</span>
+                        <span className="font-medium text-right">
+                          {(pendingBetScanResult.teamAPlayerIds as number[]).map((id: number) => players.find(p => p.id === id)?.name ?? `#${id}`).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                    {(pendingBetScanResult.teamBPlayerIds?.length ?? 0) > 0 && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground shrink-0">Team B</span>
+                        <span className="font-medium text-right">
+                          {(pendingBetScanResult.teamBPlayerIds as number[]).map((id: number) => players.find(p => p.id === id)?.name ?? `#${id}`).join(", ")}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {(pendingBetScanResult.skinsPlayerIds?.length ?? 0) > 0 && (
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted-foreground shrink-0">Players</span>
+                    <span className="font-medium text-right">
+                      {(pendingBetScanResult.skinsPlayerIds as number[]).map((id: number) => players.find(p => p.id === id)?.name ?? `#${id}`).join(", ")}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter className="flex gap-2 sm:gap-2">
+              <Button variant="ghost" onClick={() => setPendingBetScanResult(null)} data-testid="button-cancel-bet-scan">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  applyVoiceMatchResult(pendingBetScanResult);
+                  setPendingBetScanResult(null);
+                }}
+                data-testid="button-apply-bet-scan"
+              >
+                Apply to Form
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Pending scan review modal */}
       {reviewingScan && (() => {
