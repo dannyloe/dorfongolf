@@ -50,6 +50,13 @@
       "when": 1747612800000,
       "tag": "0006_add_sms_opt_ins",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1748131200000,
+      "tag": "0007_add_scan_correction_logs",
+      "breakpoints": true
     }
   ]
 }

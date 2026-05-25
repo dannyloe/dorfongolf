@@ -9,6 +9,7 @@ import {
   pendingScorecardScans,
   pendingSmsBets,
   smsOptIns,
+  scanCorrectionLogs,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -30,6 +31,7 @@ import {
   type PendingScorecardScan,
   type PendingSmsBet, type ParsedSmsBet,
   type SmsOptIn,
+  type ScanCorrectionLog,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
@@ -151,6 +153,17 @@ export interface IStorage {
 
   // SMS opt-in
   createSmsOptIn(data: { phoneNumber: string; consentGiven: boolean; userId?: string | null }): Promise<SmsOptIn>;
+
+  // Scan correction logs
+  createScanCorrectionLog(data: {
+    matchId: number;
+    pendingScanId?: number | null;
+    courseName: string;
+    geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
+    appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
+    playerNames: string[];
+  }): Promise<ScanCorrectionLog>;
+  listScanCorrectionLogs(): Promise<(ScanCorrectionLog & { matchName: string | null })[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -325,6 +338,44 @@ export class DatabaseStorage implements IStorage {
       userId: data.userId ?? null,
     }).returning();
     return row;
+  }
+
+  async createScanCorrectionLog(data: {
+    matchId: number;
+    pendingScanId?: number | null;
+    courseName: string;
+    geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
+    appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
+    playerNames: string[];
+  }): Promise<ScanCorrectionLog> {
+    const [row] = await db.insert(scanCorrectionLogs).values({
+      matchId: data.matchId,
+      pendingScanId: data.pendingScanId ?? null,
+      courseName: data.courseName,
+      geminiOutput: data.geminiOutput,
+      appliedOutput: data.appliedOutput,
+      playerNames: data.playerNames,
+    }).returning();
+    return row;
+  }
+
+  async listScanCorrectionLogs(): Promise<(ScanCorrectionLog & { matchName: string | null })[]> {
+    const rows = await db
+      .select({
+        id: scanCorrectionLogs.id,
+        matchId: scanCorrectionLogs.matchId,
+        pendingScanId: scanCorrectionLogs.pendingScanId,
+        courseName: scanCorrectionLogs.courseName,
+        geminiOutput: scanCorrectionLogs.geminiOutput,
+        appliedOutput: scanCorrectionLogs.appliedOutput,
+        playerNames: scanCorrectionLogs.playerNames,
+        createdAt: scanCorrectionLogs.createdAt,
+        matchName: matches.name,
+      })
+      .from(scanCorrectionLogs)
+      .leftJoin(matches, eq(scanCorrectionLogs.matchId, matches.id))
+      .orderBy(desc(scanCorrectionLogs.createdAt));
+    return rows;
   }
 
   async getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]> {

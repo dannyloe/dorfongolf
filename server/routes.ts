@@ -2500,6 +2500,94 @@ export async function registerRoutes(
     }
   });
 
+  // Apply a pending scan: bulk-write scores and record a correction log
+  app.post("/api/matches/:id/pending-scans/:scanId/apply", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      const scanId = parseInt(req.params.scanId, 10);
+      if (isNaN(matchId) || isNaN(scanId)) return res.status(400).json({ message: "Invalid ID" });
+
+      const user = req.user as any;
+      const userId: string = user.claims.sub;
+      const [match, roleRecord] = await Promise.all([
+        storage.getMatch(matchId),
+        storage.getMatchRole(matchId, userId),
+      ]);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      const isOrganizerOrCreator = match.creatorId === userId || roleRecord?.role === "organizer" || userId === ADMIN_USER_ID;
+      if (!isOrganizerOrCreator) return res.status(403).json({ message: "Not authorized" });
+
+      const schema = z.object({
+        scores: z.array(z.object({
+          playerId: z.number().int(),
+          playerName: z.string(),
+          holeNumber: z.number().int().min(1).max(18),
+          strokes: z.number().int().min(1),
+        })).min(1).max(500),
+      });
+      const body = schema.parse(req.body);
+
+      // Verify the scan belongs to this match and fetch it to get the authoritative Gemini output
+      const scan = await storage.getPendingScan(scanId);
+      if (!scan || scan.matchId !== matchId) return res.status(404).json({ message: "Scan not found" });
+
+      // Parse the authoritative Gemini output from the persisted scan result (server-side only)
+      type GeminiHoleEntry = { holeNumber: number; strokes: number | null };
+      type GeminiPlayerEntry = { playerName: string; holes: GeminiHoleEntry[] };
+      let geminiOutput: GeminiPlayerEntry[] = [];
+      if (scan.scanResult) {
+        try {
+          const parsed = JSON.parse(scan.scanResult);
+          if (Array.isArray(parsed?.scores)) {
+            geminiOutput = parsed.scores.map((p: any) => ({
+              playerName: String(p.playerName ?? ""),
+              holes: (p.holes ?? []).map((h: any) => ({
+                holeNumber: Number(h.holeNumber),
+                strokes: h.strokes !== null && h.strokes !== undefined && h.strokes !== "" ? Number(h.strokes) : null,
+              })).filter((h: GeminiHoleEntry) => h.holeNumber >= 1 && h.holeNumber <= 18),
+            }));
+          }
+        } catch {
+          // scanResult couldn't be parsed — log with empty geminiOutput
+        }
+      }
+
+      // Build applied output grouped by player for the correction log
+      const byPlayer = new Map<number, { playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>();
+      for (const s of body.scores) {
+        if (!byPlayer.has(s.playerId)) {
+          byPlayer.set(s.playerId, { playerName: s.playerName, playerId: s.playerId, holes: [] });
+        }
+        byPlayer.get(s.playerId)!.holes.push({ holeNumber: s.holeNumber, strokes: s.strokes });
+      }
+      const appliedOutput = Array.from(byPlayer.values());
+
+      // Bulk write scores first — log only what was actually saved
+      const entries = body.scores.map(s => ({ playerId: s.playerId, holeNumber: s.holeNumber, strokes: s.strokes }));
+      await storage.submitScoresBulk(matchId, entries);
+
+      // Delete the pending scan
+      await storage.deletePendingScan(scanId);
+
+      // Record the correction log after scores are persisted — required on every apply
+      const matchPlayers = await storage.getMatchPlayers(matchId);
+      await storage.createScanCorrectionLog({
+        matchId,
+        pendingScanId: scanId,
+        courseName: match.courseName,
+        geminiOutput,
+        appliedOutput,
+        playerNames: matchPlayers.map(p => p.name),
+      });
+
+      res.json({ count: entries.length });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("Apply pending scan error:", err);
+      res.status(500).json({ message: "Failed to apply scan" });
+    }
+  });
+
   // Proxy Twilio-hosted image through the server (avoids exposing Twilio credentials to frontend)
   app.get("/api/matches/:id/pending-scans/:scanId/image", isAuthenticated, async (req, res) => {
     try {
@@ -5042,6 +5130,22 @@ Transcript to parse: "${transcript}"`;
       }
       
       res.json({ success: true });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: list scan correction logs
+  app.get("/api/admin/scan-correction-logs", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const logs = await storage.listScanCorrectionLogs();
+      res.json(logs);
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });

@@ -281,6 +281,18 @@ export const smsOptIns = pgTable("sms_opt_ins", {
   userId: text("user_id"), // nullable — linked to user account if logged in
 });
 
+// Scan correction logs — records Gemini output vs what the user actually saved
+export const scanCorrectionLogs = pgTable("scan_correction_logs", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id").notNull(),
+  pendingScanId: integer("pending_scan_id"), // nullable — only set for MMS scans
+  courseName: text("course_name").notNull(),
+  geminiOutput: jsonb("gemini_output").$type<Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>>().notNull(),
+  appliedOutput: jsonb("applied_output").$type<Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>>().notNull(),
+  playerNames: text("player_names").array().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // In-app messages between users
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
@@ -564,6 +576,11 @@ export const insertSmsOptInSchema = createInsertSchema(smsOptIns).omit({
   optedInAt: true,
 });
 
+export const insertScanCorrectionLogSchema = createInsertSchema(scanCorrectionLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -644,6 +661,9 @@ export type InsertPendingSmsBet = z.infer<typeof insertPendingSmsBetSchema>;
 
 export type SmsOptIn = typeof smsOptIns.$inferSelect;
 export type InsertSmsOptIn = z.infer<typeof insertSmsOptInSchema>;
+
+export type ScanCorrectionLog = typeof scanCorrectionLogs.$inferSelect;
+export type InsertScanCorrectionLog = z.infer<typeof insertScanCorrectionLogSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };

@@ -25,6 +25,7 @@ import Profile from "@/pages/Profile";
 import Groups from "@/pages/Groups";
 import SmsOptIn from "@/pages/SmsOptIn";
 import PhoneSetup from "@/pages/PhoneSetup";
+import AdminScanLogs from "@/pages/AdminScanLogs";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -118,6 +119,9 @@ function Router() {
       </Route>
       <Route path="/groups">
         <PrivateRoute component={Groups} />
+      </Route>
+      <Route path="/admin/scan-logs">
+        <PrivateRoute component={AdminScanLogs} />
       </Route>
       <Route component={NotFound} />
     </Switch>

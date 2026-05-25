@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { format } from "date-fns";
 import { useState, useRef, useEffect, useCallback, Fragment } from "react";
 import { useVoiceInput } from "@/hooks/use-voice-input";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareButton } from "@/components/ShareButton";
@@ -7682,22 +7682,29 @@ export default function MatchDetail() {
         const handleApplyScores = async () => {
           setScanApplying(true);
           try {
+            const allScores: Array<{ playerId: number; playerName: string; holeNumber: number; strokes: number }> = [];
             for (const scannedPlayer of scannedPlayers) {
               const mappedPlayerId = scanPlayerMappings[scannedPlayer.playerName];
               if (!mappedPlayerId) continue;
               const holeScores = scanEditableScores[scannedPlayer.playerName] || {};
-              const entries: Array<{ playerId: number; holeNumber: number; strokes: number }> = [];
               for (let h = 1; h <= 18; h++) {
                 const v = parseInt(holeScores[h] || "", 10);
                 if (!isNaN(v) && v > 0) {
-                  entries.push({ playerId: mappedPlayerId, holeNumber: h, strokes: v });
+                  allScores.push({ playerId: mappedPlayerId, playerName: scannedPlayer.playerName, holeNumber: h, strokes: v });
                 }
               }
-              if (entries.length > 0) {
-                await submitScoresBulk.mutateAsync(entries);
-              }
             }
-            await dismissPendingScan.mutateAsync(reviewingScan.id);
+            if (allScores.length === 0) {
+              toast({ title: "No scores to apply", variant: "destructive" });
+              return;
+            }
+
+            await apiRequest("POST", `/api/matches/${matchId}/pending-scans/${reviewingScan.id}/apply`, {
+              scores: allScores,
+            });
+
+            queryClient.invalidateQueries({ queryKey: ['/api/matches/:id', matchId] });
+            queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-scans"] });
             toast({ title: "Scores applied successfully!" });
             setReviewingScan(null);
           } catch (err) {
