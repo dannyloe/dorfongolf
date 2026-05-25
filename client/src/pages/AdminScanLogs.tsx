@@ -1,9 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 type HoleEntry = { holeNumber: number; strokes: number | null };
 type GeminiPlayer = { playerName: string; holes: HoleEntry[] };
@@ -65,6 +69,19 @@ function buildDiffs(geminiPlayer: GeminiPlayer, appliedPlayer: AppliedPlayer): H
     }
   }
   return diffs;
+}
+
+function getLogStats(log: ScanCorrectionLog) {
+  let totalChanges = 0;
+  let hasShift = false;
+  for (const ap of log.appliedOutput) {
+    const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
+    if (!gp) continue;
+    const diffs = buildDiffs(gp, ap);
+    totalChanges += diffs.filter(d => d.changed).length;
+    if (detectShift(diffs)) hasShift = true;
+  }
+  return { totalChanges, hasShift };
 }
 
 function PlayerDiffTable({ geminiPlayer, appliedPlayer }: { geminiPlayer: GeminiPlayer; appliedPlayer: AppliedPlayer }) {
@@ -132,19 +149,7 @@ function PlayerDiffTable({ geminiPlayer, appliedPlayer }: { geminiPlayer: Gemini
 
 function LogRow({ log }: { log: ScanCorrectionLog }) {
   const [expanded, setExpanded] = useState(false);
-
-  const totalChanges = log.appliedOutput.reduce((acc, ap) => {
-    const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
-    if (!gp) return acc;
-    const diffs = buildDiffs(gp, ap);
-    return acc + diffs.filter(d => d.changed).length;
-  }, 0);
-
-  const hasShift = log.appliedOutput.some(ap => {
-    const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
-    if (!gp) return false;
-    return detectShift(buildDiffs(gp, ap));
-  });
+  const { totalChanges, hasShift } = getLogStats(log);
 
   return (
     <div className="border border-border/50 rounded-lg overflow-hidden" data-testid={`scan-log-row-${log.id}`}>
@@ -201,6 +206,74 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
   );
 }
 
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="bg-card border border-border/50 rounded-lg px-4 py-3 flex-1 min-w-[120px]" data-testid={`stat-card-${label.toLowerCase().replace(/\s+/g, "-")}`}>
+      <div className={`text-2xl font-bold ${color ?? "text-foreground"}`}>{value}</div>
+      <div className="text-xs font-medium text-muted-foreground mt-0.5">{label}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function HoleHeatMap({ logs }: { logs: ScanCorrectionLog[] }) {
+  const data = useMemo(() => {
+    const counts = Array.from({ length: 18 }, (_, i) => ({ hole: i + 1, edits: 0 }));
+    for (const log of logs) {
+      for (const ap of log.appliedOutput) {
+        const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
+        if (!gp) continue;
+        const diffs = buildDiffs(gp, ap);
+        for (const d of diffs) {
+          if (d.changed) counts[d.hole - 1].edits++;
+        }
+      }
+    }
+    return counts;
+  }, [logs]);
+
+  const maxEdits = Math.max(...data.map(d => d.edits), 1);
+
+  return (
+    <div className="bg-card border border-border/50 rounded-lg p-4" data-testid="hole-heatmap">
+      <div className="flex items-center gap-2 mb-3">
+        <BarChart2 className="w-4 h-4 text-muted-foreground" />
+        <span className="text-sm font-semibold">Edit frequency by hole</span>
+        <span className="text-xs text-muted-foreground ml-1">— how often each hole was corrected</span>
+      </div>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <XAxis dataKey="hole" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+          <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+          <Tooltip
+            formatter={(v: number) => [v, "edits"]}
+            labelFormatter={(l: number) => `Hole ${l}`}
+            cursor={{ fill: "hsl(var(--muted))" }}
+          />
+          <Bar dataKey="edits" radius={[3, 3, 0, 0]}>
+            {data.map(d => {
+              const intensity = maxEdits > 0 ? d.edits / maxEdits : 0;
+              const color = d.edits === 0
+                ? "hsl(var(--muted))"
+                : intensity > 0.66
+                  ? "#ef4444"
+                  : intensity > 0.33
+                    ? "#f97316"
+                    : "#eab308";
+              return <Cell key={d.hole} fill={color} data-testid={`heatmap-bar-hole-${d.hole}`} />;
+            })}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#eab308" }} />low</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#f97316" }} />medium</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm inline-block" style={{ background: "#ef4444" }} />high</span>
+      </div>
+    </div>
+  );
+}
+
 const ADMIN_USER_ID = "52861828";
 
 export default function AdminScanLogs() {
@@ -210,7 +283,41 @@ export default function AdminScanLogs() {
     enabled: !!user,
   });
 
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [courseFilter, setCourseFilter] = useState("all");
+
   const isAdmin = user && (user as any).claims?.sub === ADMIN_USER_ID;
+
+  const courseNames = useMemo(() => {
+    if (!logs) return [];
+    return Array.from(new Set(logs.map(l => l.courseName).filter(Boolean))).sort();
+  }, [logs]);
+
+  const filteredLogs = useMemo(() => {
+    if (!logs) return [];
+    return logs.filter(log => {
+      if (courseFilter !== "all" && log.courseName !== courseFilter) return false;
+      if (dateFrom && log.createdAt && new Date(log.createdAt) < new Date(dateFrom)) return false;
+      if (dateTo && log.createdAt && new Date(log.createdAt) > new Date(dateTo + "T23:59:59")) return false;
+      return true;
+    });
+  }, [logs, courseFilter, dateFrom, dateTo]);
+
+  const stats = useMemo(() => {
+    const total = filteredLogs.length;
+    let accepted = 0;
+    let edited = 0;
+    let shifted = 0;
+    for (const log of filteredLogs) {
+      const { totalChanges, hasShift } = getLogStats(log);
+      if (hasShift) shifted++;
+      else if (totalChanges > 0) edited++;
+      else accepted++;
+    }
+    const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) + "%" : "—";
+    return { total, accepted, edited, shifted, pct };
+  }, [filteredLogs]);
 
   if (!user || !isAdmin) {
     return (
@@ -239,38 +346,108 @@ export default function AdminScanLogs() {
     );
   }
 
-  const totalShifts = (logs ?? []).filter(log =>
-    log.appliedOutput.some(ap => {
-      const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
-      if (!gp) return false;
-      return detectShift(buildDiffs(gp, ap));
-    })
-  ).length;
+  const hasActiveFilters = courseFilter !== "all" || dateFrom || dateTo;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-2xl font-bold">Scan Correction Logs</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Gemini scorecard scan output vs. what users actually saved — {logs?.length ?? 0} records
-          </p>
+    <div className="p-6 max-w-5xl mx-auto space-y-5">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold">Scan Correction Logs</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Gemini scorecard scan output vs. what users actually saved — {logs?.length ?? 0} total records
+        </p>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-muted/40 border border-border/50 rounded-lg p-4 flex flex-wrap gap-4 items-end" data-testid="filters-bar">
+        <div className="flex flex-col gap-1 min-w-[140px]">
+          <Label htmlFor="filter-from" className="text-xs">From date</Label>
+          <Input
+            id="filter-from"
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            className="h-8 text-sm"
+            data-testid="input-filter-from"
+          />
         </div>
-        {totalShifts > 0 && (
-          <Badge className="bg-red-100 text-red-700 border-red-300 flex items-center gap-1">
-            <AlertTriangle className="w-3 h-3" />
-            {totalShifts} shift pattern{totalShifts !== 1 ? "s" : ""} detected
-          </Badge>
+        <div className="flex flex-col gap-1 min-w-[140px]">
+          <Label htmlFor="filter-to" className="text-xs">To date</Label>
+          <Input
+            id="filter-to"
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            className="h-8 text-sm"
+            data-testid="input-filter-to"
+          />
+        </div>
+        <div className="flex flex-col gap-1 min-w-[180px]">
+          <Label className="text-xs">Course</Label>
+          <Select value={courseFilter} onValueChange={setCourseFilter}>
+            <SelectTrigger className="h-8 text-sm" data-testid="select-course-filter">
+              <SelectValue placeholder="All courses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All courses</SelectItem>
+              {courseNames.map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {hasActiveFilters && (
+          <button
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors self-end pb-1"
+            onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); }}
+            data-testid="button-clear-filters"
+          >
+            Clear filters
+          </button>
+        )}
+        {hasActiveFilters && (
+          <span className="text-xs text-muted-foreground self-end pb-1" data-testid="text-filtered-count">
+            Showing {filteredLogs.length} of {logs?.length ?? 0}
+          </span>
         )}
       </div>
 
-      {(logs ?? []).length === 0 ? (
+      {/* Summary stats */}
+      <div className="flex flex-wrap gap-3" data-testid="stats-bar">
+        <StatCard label="Total scans" value={String(stats.total)} />
+        <StatCard
+          label="Accepted as-is"
+          value={stats.pct(stats.accepted)}
+          sub={`${stats.accepted} scan${stats.accepted !== 1 ? "s" : ""}`}
+          color="text-green-600 dark:text-green-400"
+        />
+        <StatCard
+          label="Edited"
+          value={stats.pct(stats.edited)}
+          sub={`${stats.edited} scan${stats.edited !== 1 ? "s" : ""}`}
+          color="text-orange-500"
+        />
+        <StatCard
+          label="Shift detected"
+          value={stats.pct(stats.shifted)}
+          sub={`${stats.shifted} scan${stats.shifted !== 1 ? "s" : ""}`}
+          color={stats.shifted > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}
+        />
+      </div>
+
+      {/* Per-hole heat map */}
+      {filteredLogs.length > 0 && <HoleHeatMap logs={filteredLogs} />}
+
+      {/* Log list */}
+      {filteredLogs.length === 0 ? (
         <div className="border border-border/50 rounded-lg p-8 text-center">
-          <p className="text-muted-foreground">No scan correction logs yet. Logs are created when users apply scores from a pending scan.</p>
+          <p className="text-muted-foreground">
+            {hasActiveFilters ? "No logs match the current filters." : "No scan correction logs yet. Logs are created when users apply scores from a pending scan."}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
-          {logs!.map(log => <LogRow key={log.id} log={log} />)}
+          {filteredLogs.map(log => <LogRow key={log.id} log={log} />)}
         </div>
       )}
     </div>
