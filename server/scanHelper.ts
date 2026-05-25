@@ -313,6 +313,124 @@ Rules:
   };
 }
 
+// ─── Bet slip photo parser ───────────────────────────────────────────────────
+
+export interface ScannedBetResult {
+  success: boolean;
+  matchType?: string;
+  isRoundRobin?: boolean;
+  roundRobinSubtype?: string;
+  teamAPlayerIds?: number[];
+  teamBPlayerIds?: number[];
+  keyedPlayerIds?: number[];
+  skinsPlayerIds?: number[];
+  unitAmount?: number | null;
+  deathMatchBaseBet?: number | null;
+  twoBallBet?: number | null;
+  threeBallBet?: number | null;
+  useNet?: boolean;
+  parsedSummary?: string;
+  unmatchedNames?: string[];
+}
+
+/**
+ * Use Gemini Vision AI to parse a photo of a handwritten bet slip and extract
+ * the bet configuration (match type, teams, amounts, handicap settings).
+ * Returns a structure compatible with the voice-match parser output.
+ */
+export async function scanBetSlip(params: {
+  imageBase64: string;
+  players: Array<{ id: number; name: string }>;
+}): Promise<ScannedBetResult> {
+  const { imageBase64, players } = params;
+
+  if (!ai) {
+    throw new Error("AI features are currently unavailable");
+  }
+
+  const mimeMatch = imageBase64.match(/^data:(image\/[^;]+);base64,/);
+  const mimeType = mimeMatch?.[1] || "image/jpeg";
+  const base64Data = imageBase64.replace(/^data:image\/[^;]+;base64,/, "");
+
+  if (!base64Data) {
+    throw new Error("Invalid image data");
+  }
+
+  const playerList = players.map(p => `  - ID ${p.id}: "${p.name}"`).join("\n");
+
+  const prompt = `You are reading a handwritten golf betting slip photo. Extract the bet configuration.
+
+Available players (use exact IDs — fuzzy-match on nicknames, first names, last names, initials):
+${playerList}
+
+Match types recognized:
+- "nassau" / "nass" → matchType: "nassau"
+- "match play" / "1 ball" → matchType: "match_play_1_ball"
+- "2 ball match play" → matchType: "match_play_2_ball"
+- "stroke play" → matchType: "stroke_play"
+- "skins" / "skin" → matchType: "skins"
+- "5-5-5-3" → matchType: "five_five_five_three"
+- "death match" → matchType: "death_match"
+- "2 ball 3 ball" / "2/3 ball" → matchType: "two_three_ball"
+- "round robin" → isRoundRobin: true
+
+Player assignment rules:
+- teamAPlayerIds = players on the first team / left side / Team A
+- teamBPlayerIds = players on the second team / right side / Team B
+- For skins: put all players in skinsPlayerIds, leave teamA/B empty
+- If a player is listed as "vs everyone" or similar, put them in keyedPlayerIds
+
+Amount rules:
+- "$20" or "20" → unitAmount: 20
+- For nassau, the dollar amount is usually the per-leg amount (front/back/overall)
+- For death match: look for a "base" or "BB" amount → deathMatchBaseBet
+- For 2 ball / 3 ball: if two amounts are listed → twoBallBet and threeBallBet
+
+Net/gross:
+- "net", "hdcp", "handicap", "strokes" → useNet: true
+- "gross", no mention → useNet: false
+
+Return ONLY valid JSON with NO markdown, no code blocks, no explanation:
+{
+  "matchType": "nassau",
+  "isRoundRobin": false,
+  "roundRobinSubtype": null,
+  "teamAPlayerIds": [],
+  "teamBPlayerIds": [],
+  "keyedPlayerIds": [],
+  "skinsPlayerIds": [],
+  "unitAmount": null,
+  "deathMatchBaseBet": null,
+  "twoBallBet": null,
+  "threeBallBet": null,
+  "useNet": false,
+  "parsedSummary": "Brief human-readable description of what was extracted",
+  "unmatchedNames": []
+}`;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inlineData: { mimeType, data: base64Data } },
+        ],
+      },
+    ],
+  });
+
+  const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("Could not read the bet slip. Please try a clearer photo.");
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+  return { success: true, ...parsed };
+}
+
 // ─── Duplicate-bet detection helper ─────────────────────────────────────────
 
 const MATCH_TYPE_TO_BET_TYPE: Record<string, string> = {

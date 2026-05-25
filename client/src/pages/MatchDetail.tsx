@@ -683,6 +683,11 @@ export default function MatchDetail() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceStrokeOverrides, setVoiceStrokeOverrides] = useState<Record<number, number>>({});
   const voiceStrokeOverridesRef = useRef<Record<number, number>>({});
+
+  // Bet slip scan state
+  const [betSlipScanInProgress, setBetSlipScanInProgress] = useState(false);
+  const [betSlipScanError, setBetSlipScanError] = useState<string | null>(null);
+  const betSlipFileInputRef = useRef<HTMLInputElement | null>(null);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -862,6 +867,60 @@ export default function MatchDetail() {
       }
     },
   });
+
+  const handleBetSlipFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setBetSlipScanError(null);
+    setBetSlipScanInProgress(true);
+    setVoiceError(null);
+    setVoiceParsedSummary(null);
+    try {
+      const compressBetImage = async (f: File): Promise<string> => {
+        const dataUrl: string = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onerror = () => reject(new Error('Failed to read image'));
+          r.onloadend = () => resolve(r.result as string);
+          r.readAsDataURL(f);
+        });
+        const img: HTMLImageElement = await new Promise((resolve, reject) => {
+          const i = new Image();
+          i.onload = () => resolve(i);
+          i.onerror = () => reject(new Error("Couldn't decode that image. Try a different photo."));
+          i.src = dataUrl;
+        });
+        const longEdge = Math.max(img.width, img.height);
+        const scale = longEdge > 1600 ? 1600 / longEdge : 1;
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error("Your browser couldn't prepare the image for upload.");
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL('image/jpeg', 0.82);
+        if (!out || !out.startsWith('data:image/jpeg')) throw new Error("Your browser couldn't prepare the image for upload.");
+        return out;
+      };
+      const base64 = await compressBetImage(file);
+      const playerList = (match?.players || []).map((p: Player) => ({ id: p.id, name: p.name }));
+      const res = await apiRequest("POST", `/api/matches/${matchId}/scan-bet-slip`, {
+        imageBase64: base64,
+        players: playerList,
+      });
+      const data = await res.json();
+      if (data.success) {
+        applyVoiceMatchResult(data);
+      } else {
+        setBetSlipScanError(data.message || "Could not read the bet slip. Try a clearer photo.");
+      }
+    } catch (err: any) {
+      setBetSlipScanError(err.message || "Failed to process bet slip");
+    } finally {
+      setBetSlipScanInProgress(false);
+    }
+  }, [match?.players, matchId, applyVoiceMatchResult]);
 
   const applyStrokesToEventMatch = useCallback((createdEventMatch: any) => {
     const overrides = voiceStrokeOverridesRef.current;
@@ -2624,6 +2683,32 @@ export default function MatchDetail() {
                   <Copy className="w-4 h-4 mr-2" />
                   Copy From Event
                 </Button>
+                {canEditScoresAndBets && (
+                  <>
+                    <input
+                      ref={betSlipFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleBetSlipFileSelect}
+                      data-testid="input-bet-slip-file"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => betSlipFileInputRef.current?.click()}
+                      disabled={betSlipScanInProgress}
+                      title="Scan a bet slip photo to auto-fill bet details"
+                      data-testid="button-scan-bet-slip"
+                    >
+                      {betSlipScanInProgress ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Camera className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </>
+                )}
                 {voiceSupported && (
                   <Button
                     size="sm"
@@ -2723,6 +2808,26 @@ export default function MatchDetail() {
               <div className="flex items-center justify-between gap-2 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
                 <span className="text-destructive">{voiceError}</span>
                 <button onClick={() => setVoiceError(null)} className="text-muted-foreground hover:text-foreground shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bet slip scan status banner */}
+        {(betSlipScanInProgress || betSlipScanError) && (
+          <div className="mb-4 space-y-2">
+            {betSlipScanInProgress && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg text-sm text-primary">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Reading bet slip with AI…</span>
+              </div>
+            )}
+            {betSlipScanError && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-destructive/10 border border-destructive/20 rounded-lg text-sm">
+                <span className="text-destructive">{betSlipScanError}</span>
+                <button onClick={() => setBetSlipScanError(null)} className="text-muted-foreground hover:text-foreground shrink-0">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>

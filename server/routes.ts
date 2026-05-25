@@ -10,7 +10,7 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
-import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate } from "./scanHelper";
+import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs } from "./scanAnalysis";
 import express from "express";
 import twilioLib from "twilio";
@@ -2814,6 +2814,40 @@ Transcript to parse: "${transcript}"`;
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: "Failed to parse match description" });
+    }
+  });
+
+  // Bet slip photo scan endpoint
+  app.post("/api/matches/:id/scan-bet-slip", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id);
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const isOrganizer = matchRole?.role === "organizer";
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can scan bet slips" });
+      }
+
+      const bodySchema = z.object({
+        imageBase64: z.string().min(1),
+        players: z.array(z.object({ id: z.number(), name: z.string() })),
+      });
+      const { imageBase64, players } = bodySchema.parse(req.body);
+
+      const result = await scanBetSlip({ imageBase64, players });
+      res.json(result);
+    } catch (err) {
+      console.error("Bet slip scan error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: err instanceof Error ? err.message : "Failed to scan bet slip" });
     }
   });
 
