@@ -935,6 +935,7 @@ export const api = {
         imageBase64: z.string(),
         playerNames: z.array(z.string()),
         courseName: z.string().optional(),
+        matchId: z.number().int().optional(), // when provided, a correction log row is created at scan time
       }),
       responses: {
         200: z.object({

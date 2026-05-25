@@ -178,6 +178,8 @@ export default function QuickScoreEntry() {
   const lastScanFileRef = useRef<File | null>(null);
   // Stores the Object Storage URL returned by the scan endpoint (null until a scan completes)
   const lastScanImageUrlRef = useRef<string | null>(null);
+  // Stores the correction log ID created at scan time (null until a scan completes with matchId)
+  const lastScanCorrectionLogIdRef = useRef<number | null>(null);
   // Monotonically increasing token; in-flight scans only apply their result
   // if they're still the most recent scan when they resolve. Closing the
   // modal or starting a new scan invalidates older requests.
@@ -425,6 +427,7 @@ export default function QuickScoreEntry() {
     setPlayerMappings({});
     setSuggestedPresets({});
     lastScanImageUrlRef.current = null;
+    lastScanCorrectionLogIdRef.current = null;
 
     try {
       const base64 = await compressImage(file);
@@ -432,13 +435,15 @@ export default function QuickScoreEntry() {
         imageBase64: base64,
         playerNames: players.map(p => p.name),
         courseName: match.courseName,
+        matchId,
       });
 
       // A newer scan started (or the modal was closed) — drop this result.
       if (myToken !== scanTokenRef.current) return;
 
-      // Capture the durable image URL returned by the server (may be null if Object Storage unavailable)
+      // Capture the durable image URL and correction log ID returned by the server
       lastScanImageUrlRef.current = (result as any).imageUrl ?? null;
+      lastScanCorrectionLogIdRef.current = (result as any).correctionLogId ?? null;
 
       if (result.success && result.scores.length > 0) {
         setScannedScores(result.scores);
@@ -503,6 +508,7 @@ export default function QuickScoreEntry() {
     editableScores: Record<string, Record<number, string>>;
     scannedScores: ScannedPlayer[];
     imageUrl: string | null;
+    correctionLogId: number | null;
   }) => {
     let successCount = 0;
     let errorCount = 0;
@@ -601,11 +607,12 @@ export default function QuickScoreEntry() {
               strokes: Math.round(h.strokes),
             })),
           }));
-          console.log("[scan-correction-log] Sending correction log", { geminiOutput, appliedOutput, imageUrl: snapshot.imageUrl });
+          console.log("[scan-correction-log] Sending correction log", { geminiOutput, appliedOutput, imageUrl: snapshot.imageUrl, correctionLogId: snapshot.correctionLogId });
           apiRequest("POST", `/api/matches/${matchId}/scan-correction-log`, {
             geminiOutput,
             appliedOutput,
             imageUrl: snapshot.imageUrl ?? null,
+            correctionLogId: snapshot.correctionLogId ?? undefined,
           }).catch((err) => {
             console.error("[scan-correction-log] Request failed:", err);
           });
@@ -648,6 +655,7 @@ export default function QuickScoreEntry() {
       editableScores: JSON.parse(JSON.stringify(editableScores)) as Record<string, Record<number, string>>,
       scannedScores: [...scannedScores],
       imageUrl: lastScanImageUrlRef.current,
+      correctionLogId: lastScanCorrectionLogIdRef.current,
     };
 
     setShowScanModal(false);

@@ -139,7 +139,7 @@ export interface IStorage {
 
   // Pending scorecard scans
   createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string }): Promise<PendingScorecardScan>;
-  updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null }>): Promise<PendingScorecardScan>;
+  updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null; correctionLogId: number | null }>): Promise<PendingScorecardScan>;
   listPendingScans(matchId: number): Promise<PendingScorecardScan[]>;
   getPendingScan(id: number): Promise<PendingScorecardScan | undefined>;
   deletePendingScan(id: number): Promise<boolean>;
@@ -160,12 +160,18 @@ export interface IStorage {
   createScanCorrectionLog(data: {
     matchId: number;
     pendingScanId?: number | null;
+    source: "camera" | "mms";
     courseName: string;
     imageUrl?: string | null;
     geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
   }): Promise<ScanCorrectionLog>;
+  updateScanCorrectionLog(id: number, data: {
+    appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
+    playerNames: string[];
+    imageUrl?: string | null;
+  }): Promise<ScanCorrectionLog | undefined>;
   listScanCorrectionLogs(): Promise<(ScanCorrectionLog & { matchName: string | null })[]>;
   listScanPatterns(): Promise<ScanPattern[]>;
   upsertScanPatterns(patterns: Array<{
@@ -374,6 +380,23 @@ export class DatabaseStorage implements IStorage {
       appliedOutput: data.appliedOutput,
       playerNames: data.playerNames,
     }).returning();
+    return row;
+  }
+
+  async updateScanCorrectionLog(id: number, data: {
+    appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
+    playerNames: string[];
+    imageUrl?: string | null;
+  }): Promise<ScanCorrectionLog | undefined> {
+    const setData: Record<string, unknown> = {
+      appliedOutput: data.appliedOutput,
+      playerNames: data.playerNames,
+    };
+    if (data.imageUrl !== undefined) setData.imageUrl = data.imageUrl;
+    const [row] = await db.update(scanCorrectionLogs)
+      .set(setData)
+      .where(eq(scanCorrectionLogs.id, id))
+      .returning();
     return row;
   }
 

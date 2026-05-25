@@ -2094,6 +2094,11 @@ export async function registerRoutes(
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.scorecard.scan.input.parse(req.body);
+
+      // Upload image to Object Storage BEFORE calling Gemini so every attempted
+      // scan (including those dismissed without applying) has a durable image record.
+      const imageUrl = await uploadScorecardImage(input.imageBase64).catch(() => null);
+
       const extraRules = await storage.getActiveScanPatternRules();
       const result = await scanScorecardImage({
         imageBase64: input.imageBase64,
@@ -2102,10 +2107,40 @@ export async function registerRoutes(
         extraRules,
       });
 
-      // Upload the image to Object Storage for durable cross-reference (best-effort)
-      const imageUrl = await uploadScorecardImage(input.imageBase64).catch(() => null);
+      // Create correction log at scan time when matchId is provided, so the record
+      // exists even for scans the user dismisses without applying.
+      let correctionLogId: number | null = null;
+      if (input.matchId && result.success && result.scores.length > 0) {
+        try {
+          const match = await storage.getMatch(input.matchId);
+          if (match) {
+            const geminiOutput = result.scores.map(p => ({
+              playerName: p.playerName,
+              holes: (p.holes ?? [])
+                .filter(h => h.holeNumber >= 1 && h.holeNumber <= 18)
+                .map(h => ({
+                  holeNumber: h.holeNumber,
+                  strokes: h.strokes != null ? Math.round(h.strokes) : null,
+                })),
+            }));
+            const log = await storage.createScanCorrectionLog({
+              matchId: input.matchId,
+              pendingScanId: null,
+              source: "camera",
+              courseName: match.courseName,
+              imageUrl,
+              geminiOutput,
+              appliedOutput: [], // filled in at apply time
+              playerNames: [],   // filled in at apply time
+            });
+            correctionLogId = log.id;
+          }
+        } catch (logErr) {
+          console.error("[scan] Failed to create correction log at scan time (non-fatal):", logErr);
+        }
+      }
 
-      res.json({ ...result, imageUrl: imageUrl ?? null });
+      res.json({ ...result, imageUrl: imageUrl ?? null, correctionLogId });
     } catch (err) {
       console.error("Scorecard scan error:", err);
       if (err instanceof z.ZodError) {
@@ -2421,7 +2456,7 @@ export async function registerRoutes(
           const contentType = imgRes.headers.get("content-type") || "image/jpeg";
           const imageBase64 = `data:${contentType};base64,${imageBuffer.toString("base64")}`;
 
-          // Upload to Object Storage for durable cross-reference (best-effort)
+          // Upload to Object Storage BEFORE Gemini so every attempted scan is durably stored
           const imageUrl = await uploadScorecardImage(imageBuffer, contentType).catch(() => null);
 
           const matchPlayers = await storage.getMatchPlayers(match.id);
@@ -2430,10 +2465,40 @@ export async function registerRoutes(
           const extraRules = await storage.getActiveScanPatternRules();
           const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules });
 
+          // Create correction log at scan time — captures dismissed scans too
+          let correctionLogId: number | null = null;
+          if (result.success && result.scores.length > 0) {
+            try {
+              const geminiOutput = result.scores.map((p: any) => ({
+                playerName: p.playerName,
+                holes: (p.holes ?? [])
+                  .filter((h: any) => h.holeNumber >= 1 && h.holeNumber <= 18)
+                  .map((h: any) => ({
+                    holeNumber: h.holeNumber,
+                    strokes: h.strokes != null ? Math.round(h.strokes) : null,
+                  })),
+              }));
+              const log = await storage.createScanCorrectionLog({
+                matchId: match.id,
+                pendingScanId: scan.id,
+                source: "mms",
+                courseName: match.courseName,
+                imageUrl,
+                geminiOutput,
+                appliedOutput: [], // filled in at apply time
+                playerNames: [],   // filled in at apply time
+              });
+              correctionLogId = log.id;
+            } catch (logErr) {
+              console.error(`[processScan] Failed to create correction log (non-fatal):`, logErr);
+            }
+          }
+
           await storage.updatePendingScan(scan.id, {
             status: "ready",
             scanResult: JSON.stringify(result),
             imageUrl: imageUrl ?? null,
+            correctionLogId,
           });
         } catch (err) {
           console.error(`Background MMS scan error (scan ${scan.id}):`, err);
@@ -2587,18 +2652,27 @@ export async function registerRoutes(
       // Delete the pending scan
       await storage.deletePendingScan(scanId);
 
-      // Record the correction log after scores are persisted — required on every apply
+      // Update or create the correction log after scores are persisted
       const matchPlayers = await storage.getMatchPlayers(matchId);
-      await storage.createScanCorrectionLog({
-        matchId,
-        pendingScanId: scanId,
-        source: "mms",
-        courseName: match.courseName,
-        imageUrl: scan.imageUrl ?? null,
-        geminiOutput,
-        appliedOutput,
-        playerNames: matchPlayers.map(p => p.name),
-      });
+      if (scan.correctionLogId) {
+        // Log row was created at scan time — update it with the applied scores
+        await storage.updateScanCorrectionLog(scan.correctionLogId, {
+          appliedOutput,
+          playerNames: matchPlayers.map(p => p.name),
+        });
+      } else {
+        // Fallback: create a new row (covers scans processed before this deployment)
+        await storage.createScanCorrectionLog({
+          matchId,
+          pendingScanId: scanId,
+          source: "mms",
+          courseName: match.courseName,
+          imageUrl: scan.imageUrl ?? null,
+          geminiOutput,
+          appliedOutput,
+          playerNames: matchPlayers.map(p => p.name),
+        });
+      }
 
       res.json({ count: entries.length });
     } catch (err) {
@@ -2641,20 +2715,31 @@ export async function registerRoutes(
           })).max(18),
         })).max(20),
         imageUrl: z.string().nullable().optional(),
+        correctionLogId: z.number().int().optional(), // if set, update existing row instead of creating new
       });
       const body = schema.parse(req.body);
 
       const matchPlayers = await storage.getMatchPlayers(matchId);
-      await storage.createScanCorrectionLog({
-        matchId,
-        pendingScanId: null,
-        source: "camera",
-        courseName: match.courseName,
-        imageUrl: body.imageUrl ?? null,
-        geminiOutput: body.geminiOutput,
-        appliedOutput: body.appliedOutput,
-        playerNames: matchPlayers.map(p => p.name),
-      });
+      if (body.correctionLogId) {
+        // Log row was created at scan time — update it with the applied scores
+        await storage.updateScanCorrectionLog(body.correctionLogId, {
+          appliedOutput: body.appliedOutput,
+          playerNames: matchPlayers.map(p => p.name),
+          imageUrl: body.imageUrl ?? undefined,
+        });
+      } else {
+        // Fallback: create a new row (covers scans before this deployment, or failed log creation)
+        await storage.createScanCorrectionLog({
+          matchId,
+          pendingScanId: null,
+          source: "camera",
+          courseName: match.courseName,
+          imageUrl: body.imageUrl ?? null,
+          geminiOutput: body.geminiOutput,
+          appliedOutput: body.appliedOutput,
+          playerNames: matchPlayers.map(p => p.name),
+        });
+      }
 
       res.json({ ok: true });
     } catch (err) {
