@@ -1,12 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 type HoleEntry = { holeNumber: number; strokes: number | null };
@@ -24,6 +27,20 @@ type ScanCorrectionLog = {
   playerNames: string[];
   createdAt: string | null;
   matchName: string | null;
+};
+
+type ScanPattern = {
+  id: number;
+  patternType: string;
+  patternKey: string;
+  description: string;
+  promptRule: string;
+  occurrences: number;
+  exampleLogIds: number[];
+  addressed: boolean;
+  addressedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 type HoleDiff = {
@@ -72,7 +89,7 @@ function buildDiffs(geminiPlayer: GeminiPlayer, appliedPlayer: AppliedPlayer): H
   return diffs;
 }
 
-function getLogStats(log: ScanCorrectionLog) {
+function getLogStats(log: ScanCorrectionLog): { totalChanges: number; hasShift: boolean } {
   let totalChanges = 0;
   let hasShift = false;
   for (const ap of log.appliedOutput) {
@@ -284,18 +301,141 @@ function HoleHeatMap({ logs }: { logs: ScanCorrectionLog[] }) {
   );
 }
 
+function PatternRow({ pattern, onToggleAddressed }: { pattern: ScanPattern; onToggleAddressed: (id: number, addressed: boolean) => void }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div
+      className={`border rounded-lg overflow-hidden ${pattern.addressed ? "border-border/30 opacity-60" : "border-border/50"}`}
+      data-testid={`scan-pattern-row-${pattern.id}`}
+    >
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+        onClick={() => setExpanded(e => !e)}
+        data-testid={`button-expand-pattern-${pattern.id}`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge
+              variant="outline"
+              className={`text-xs ${pattern.patternType === "hole_shift" ? "text-red-600 border-red-300" : "text-orange-600 border-orange-300"}`}
+            >
+              {pattern.patternType === "hole_shift" ? "Hole shift" : "Digit misread"}
+            </Badge>
+            <span className="text-sm font-medium truncate">{pattern.description}</span>
+            {pattern.addressed && (
+              <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />Addressed
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-0.5">
+            <span className="text-xs text-muted-foreground">
+              {pattern.occurrences} occurrence{pattern.occurrences !== 1 ? "s" : ""}
+            </span>
+            {pattern.addressedAt && (
+              <span className="text-xs text-muted-foreground">
+                Addressed {format(new Date(pattern.addressedAt), "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-border/30 pt-3 space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Prompt rule injected into Gemini</p>
+            <div className="bg-muted/50 rounded p-3 text-sm font-mono leading-relaxed border border-border/30">
+              {pattern.promptRule}
+            </div>
+          </div>
+          {pattern.exampleLogIds.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Example log IDs: {pattern.exampleLogIds.join(", ")}
+            </p>
+          )}
+          <div className="flex items-center gap-2 pt-1">
+            {!pattern.addressed ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs gap-1"
+                onClick={() => onToggleAddressed(pattern.id, true)}
+                data-testid={`button-address-pattern-${pattern.id}`}
+              >
+                <CheckCircle className="w-3 h-3" />Mark as addressed
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs gap-1"
+                onClick={() => onToggleAddressed(pattern.id, false)}
+                data-testid={`button-reactivate-pattern-${pattern.id}`}
+              >
+                <RotateCcw className="w-3 h-3" />Reactivate
+              </Button>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {pattern.addressed
+                ? "This rule is no longer injected into the Gemini prompt."
+                : "This rule is currently injected into every scorecard scan."}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ADMIN_USER_ID = "52861828";
 
 export default function AdminScanLogs() {
   const { user } = useAuth();
-  const { data: logs, isLoading, error } = useQuery<ScanCorrectionLog[]>({
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"logs" | "patterns">("logs");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [courseFilter, setCourseFilter] = useState("all");
+
+  const { data: logs, isLoading: logsLoading, error: logsError } = useQuery<ScanCorrectionLog[]>({
     queryKey: ["/api/admin/scan-correction-logs"],
     enabled: !!user,
   });
 
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [courseFilter, setCourseFilter] = useState("all");
+  const { data: patterns, isLoading: patternsLoading } = useQuery<ScanPattern[]>({
+    queryKey: ["/api/admin/scan-patterns"],
+    enabled: !!user,
+  });
+
+  const analyzeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/scan-patterns/analyze", { minOccurrences: 2 }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/scan-patterns"] });
+      toast({
+        title: "Analysis complete",
+        description: `Analyzed ${data.analyzed} logs, found ${data.detected} pattern${data.detected !== 1 ? "s" : ""}.`,
+      });
+    },
+    onError: () => {
+      toast({ title: "Analysis failed", description: "Could not analyze logs.", variant: "destructive" });
+    },
+  });
+
+  const addressMutation = useMutation({
+    mutationFn: ({ id, addressed }: { id: number; addressed: boolean }) =>
+      apiRequest("PATCH", `/api/admin/scan-patterns/${id}/addressed`, { addressed }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/scan-patterns"] });
+    },
+    onError: () => {
+      toast({ title: "Update failed", description: "Could not update pattern.", variant: "destructive" });
+    },
+  });
 
   const isAdmin = user && (user as any).claims?.sub === ADMIN_USER_ID;
 
@@ -338,7 +478,7 @@ export default function AdminScanLogs() {
     );
   }
 
-  if (isLoading) {
+  if (logsLoading) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold mb-4">Scan Correction Logs</h1>
@@ -347,7 +487,7 @@ export default function AdminScanLogs() {
     );
   }
 
-  if (error) {
+  if (logsError) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
         <h1 className="text-2xl font-bold mb-4">Scan Correction Logs</h1>
@@ -357,107 +497,226 @@ export default function AdminScanLogs() {
   }
 
   const hasActiveFilters = courseFilter !== "all" || dateFrom || dateTo;
+  const activePatterns = (patterns ?? []).filter(p => !p.addressed);
+  const addressedPatterns = (patterns ?? []).filter(p => p.addressed);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Scan Correction Logs</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Gemini scorecard scan output vs. what users actually saved — {logs?.length ?? 0} total records
-        </p>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-muted/40 border border-border/50 rounded-lg p-4 flex flex-wrap gap-4 items-end" data-testid="filters-bar">
-        <div className="flex flex-col gap-1 min-w-[140px]">
-          <Label htmlFor="filter-from" className="text-xs">From date</Label>
-          <Input
-            id="filter-from"
-            type="date"
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-            className="h-8 text-sm"
-            data-testid="input-filter-from"
-          />
-        </div>
-        <div className="flex flex-col gap-1 min-w-[140px]">
-          <Label htmlFor="filter-to" className="text-xs">To date</Label>
-          <Input
-            id="filter-to"
-            type="date"
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-            className="h-8 text-sm"
-            data-testid="input-filter-to"
-          />
-        </div>
-        <div className="flex flex-col gap-1 min-w-[180px]">
-          <Label className="text-xs">Course</Label>
-          <Select value={courseFilter} onValueChange={setCourseFilter}>
-            <SelectTrigger className="h-8 text-sm" data-testid="select-course-filter">
-              <SelectValue placeholder="All courses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All courses</SelectItem>
-              {courseNames.map(c => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {hasActiveFilters && (
-          <button
-            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors self-end pb-1"
-            onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); }}
-            data-testid="button-clear-filters"
-          >
-            Clear filters
-          </button>
-        )}
-        {hasActiveFilters && (
-          <span className="text-xs text-muted-foreground self-end pb-1" data-testid="text-filtered-count">
-            Showing {filteredLogs.length} of {logs?.length ?? 0}
-          </span>
-        )}
-      </div>
-
-      {/* Summary stats */}
-      <div className="flex flex-wrap gap-3" data-testid="stats-bar">
-        <StatCard label="Total scans" value={String(stats.total)} />
-        <StatCard
-          label="Accepted as-is"
-          value={stats.pct(stats.accepted)}
-          sub={`${stats.accepted} scan${stats.accepted !== 1 ? "s" : ""}`}
-          color="text-green-600 dark:text-green-400"
-        />
-        <StatCard
-          label="Edited"
-          value={stats.pct(stats.edited)}
-          sub={`${stats.edited} scan${stats.edited !== 1 ? "s" : ""}`}
-          color="text-orange-500"
-        />
-        <StatCard
-          label="Shift detected"
-          value={stats.pct(stats.shifted)}
-          sub={`${stats.shifted} scan${stats.shifted !== 1 ? "s" : ""}`}
-          color={stats.shifted > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}
-        />
-      </div>
-
-      {/* Per-hole heat map */}
-      {filteredLogs.length > 0 && <HoleHeatMap logs={filteredLogs} />}
-
-      {/* Log list */}
-      {filteredLogs.length === 0 ? (
-        <div className="border border-border/50 rounded-lg p-8 text-center">
-          <p className="text-muted-foreground">
-            {hasActiveFilters ? "No logs match the current filters." : "No scan correction logs yet. Logs are created when users apply scores from a pending scan."}
+    <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-2xl font-bold">Scan Correction Logs</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Gemini scorecard scan output vs. what users actually saved — {logs?.length ?? 0} total records
           </p>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredLogs.map(log => <LogRow key={log.id} log={log} />)}
+        <div className="flex items-center gap-2 flex-wrap">
+          {stats.shifted > 0 && (
+            <Badge className="bg-red-100 text-red-700 border-red-300 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              {stats.shifted} shift pattern{stats.shifted !== 1 ? "s" : ""} detected
+            </Badge>
+          )}
+          {activePatterns.length > 0 && (
+            <Badge className="bg-blue-100 text-blue-700 border-blue-300 flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              {activePatterns.length} rule{activePatterns.length !== 1 ? "s" : ""} active in prompt
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-1 border-b border-border/50">
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === "logs" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("logs")}
+          data-testid="tab-logs"
+        >
+          <BookOpen className="w-4 h-4" />
+          Correction Logs
+          <span className="ml-1 text-xs bg-muted rounded-full px-1.5 py-0.5">{logs?.length ?? 0}</span>
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === "patterns" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("patterns")}
+          data-testid="tab-patterns"
+        >
+          <Zap className="w-4 h-4" />
+          Detected Patterns
+          {(patterns ?? []).length > 0 && (
+            <span className="ml-1 text-xs bg-muted rounded-full px-1.5 py-0.5">{(patterns ?? []).length}</span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === "logs" && (
+        <div className="space-y-5">
+          {/* Filters */}
+          <div className="bg-muted/40 border border-border/50 rounded-lg p-4 flex flex-wrap gap-4 items-end" data-testid="filters-bar">
+            <div className="flex flex-col gap-1 min-w-[140px]">
+              <Label htmlFor="filter-from" className="text-xs">From date</Label>
+              <Input
+                id="filter-from"
+                type="date"
+                value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="h-8 text-sm"
+                data-testid="input-filter-from"
+              />
+            </div>
+            <div className="flex flex-col gap-1 min-w-[140px]">
+              <Label htmlFor="filter-to" className="text-xs">To date</Label>
+              <Input
+                id="filter-to"
+                type="date"
+                value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="h-8 text-sm"
+                data-testid="input-filter-to"
+              />
+            </div>
+            <div className="flex flex-col gap-1 min-w-[180px]">
+              <Label className="text-xs">Course</Label>
+              <Select value={courseFilter} onValueChange={setCourseFilter}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-course-filter">
+                  <SelectValue placeholder="All courses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All courses</SelectItem>
+                  {courseNames.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {hasActiveFilters && (
+              <button
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors self-end pb-1"
+                onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); }}
+                data-testid="button-clear-filters"
+              >
+                Clear filters
+              </button>
+            )}
+            {hasActiveFilters && (
+              <span className="text-xs text-muted-foreground self-end pb-1" data-testid="text-filtered-count">
+                Showing {filteredLogs.length} of {logs?.length ?? 0}
+              </span>
+            )}
+          </div>
+
+          {/* Summary stats */}
+          <div className="flex flex-wrap gap-3" data-testid="stats-bar">
+            <StatCard label="Total scans" value={String(stats.total)} />
+            <StatCard
+              label="Accepted as-is"
+              value={stats.pct(stats.accepted)}
+              sub={`${stats.accepted} scan${stats.accepted !== 1 ? "s" : ""}`}
+              color="text-green-600 dark:text-green-400"
+            />
+            <StatCard
+              label="Edited"
+              value={stats.pct(stats.edited)}
+              sub={`${stats.edited} scan${stats.edited !== 1 ? "s" : ""}`}
+              color="text-orange-500"
+            />
+            <StatCard
+              label="Shift detected"
+              value={stats.pct(stats.shifted)}
+              sub={`${stats.shifted} scan${stats.shifted !== 1 ? "s" : ""}`}
+              color={stats.shifted > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}
+            />
+          </div>
+
+          {/* Per-hole heat map */}
+          {filteredLogs.length > 0 && <HoleHeatMap logs={filteredLogs} />}
+
+          {/* Log list */}
+          {filteredLogs.length === 0 ? (
+            <div className="border border-border/50 rounded-lg p-8 text-center">
+              <p className="text-muted-foreground">
+                {hasActiveFilters ? "No logs match the current filters." : "No scan correction logs yet. Logs are created when users apply scores from a pending scan."}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredLogs.map(log => <LogRow key={log.id} log={log} />)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "patterns" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Patterns are detected from correction logs. Active rules are automatically injected into every Gemini scan prompt.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => analyzeMutation.mutate()}
+              disabled={analyzeMutation.isPending}
+              data-testid="button-analyze-patterns"
+            >
+              <RefreshCw className={`w-4 h-4 ${analyzeMutation.isPending ? "animate-spin" : ""}`} />
+              {analyzeMutation.isPending ? "Analyzing…" : "Re-analyze logs"}
+            </Button>
+          </div>
+
+          {patternsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading patterns…</p>
+          ) : (patterns ?? []).length === 0 ? (
+            <div className="border border-border/50 rounded-lg p-8 text-center space-y-3">
+              <p className="text-muted-foreground">No patterns detected yet.</p>
+              <p className="text-xs text-muted-foreground">Click "Re-analyze logs" to scan correction logs for recurring errors (requires at least 2 occurrences of the same mistake).</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => analyzeMutation.mutate()}
+                disabled={analyzeMutation.isPending}
+                data-testid="button-analyze-patterns-empty"
+              >
+                <RefreshCw className={`w-4 h-4 ${analyzeMutation.isPending ? "animate-spin" : ""}`} />
+                {analyzeMutation.isPending ? "Analyzing…" : "Re-analyze logs"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activePatterns.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-blue-500" />Active rules ({activePatterns.length})
+                  </p>
+                  {activePatterns.map(p => (
+                    <PatternRow
+                      key={p.id}
+                      pattern={p}
+                      onToggleAddressed={(id, addressed) => addressMutation.mutate({ id, addressed })}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {addressedPatterns.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-green-500" />Addressed ({addressedPatterns.length})
+                  </p>
+                  {addressedPatterns.map(p => (
+                    <PatternRow
+                      key={p.id}
+                      pattern={p}
+                      onToggleAddressed={(id, addressed) => addressMutation.mutate({ id, addressed })}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

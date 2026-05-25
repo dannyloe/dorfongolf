@@ -10,6 +10,7 @@ import {
   pendingSmsBets,
   smsOptIns,
   scanCorrectionLogs,
+  scanPatterns,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -32,6 +33,7 @@ import {
   type PendingSmsBet, type ParsedSmsBet,
   type SmsOptIn,
   type ScanCorrectionLog,
+  type ScanPattern,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
@@ -164,6 +166,17 @@ export interface IStorage {
     playerNames: string[];
   }): Promise<ScanCorrectionLog>;
   listScanCorrectionLogs(): Promise<(ScanCorrectionLog & { matchName: string | null })[]>;
+  listScanPatterns(): Promise<ScanPattern[]>;
+  upsertScanPatterns(patterns: Array<{
+    patternType: string;
+    patternKey: string;
+    description: string;
+    promptRule: string;
+    occurrences: number;
+    exampleLogIds: number[];
+  }>): Promise<ScanPattern[]>;
+  markPatternAddressed(id: number, addressed: boolean): Promise<ScanPattern | undefined>;
+  getActiveScanPatternRules(): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -379,6 +392,76 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(matches, eq(scanCorrectionLogs.matchId, matches.id))
       .orderBy(desc(scanCorrectionLogs.createdAt));
     return rows;
+  }
+
+  async listScanPatterns(): Promise<ScanPattern[]> {
+    return db.select().from(scanPatterns).orderBy(desc(scanPatterns.occurrences));
+  }
+
+  async upsertScanPatterns(patterns: Array<{
+    patternType: string;
+    patternKey: string;
+    description: string;
+    promptRule: string;
+    occurrences: number;
+    exampleLogIds: number[];
+  }>): Promise<ScanPattern[]> {
+    const results: ScanPattern[] = [];
+    for (const p of patterns) {
+      const existing = await db
+        .select()
+        .from(scanPatterns)
+        .where(eq(scanPatterns.patternKey, p.patternKey))
+        .limit(1);
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(scanPatterns)
+          .set({
+            description: p.description,
+            occurrences: p.occurrences,
+            exampleLogIds: p.exampleLogIds,
+            updatedAt: new Date(),
+          })
+          .where(eq(scanPatterns.patternKey, p.patternKey))
+          .returning();
+        results.push(updated);
+      } else {
+        const [created] = await db
+          .insert(scanPatterns)
+          .values({
+            patternType: p.patternType,
+            patternKey: p.patternKey,
+            description: p.description,
+            promptRule: p.promptRule,
+            occurrences: p.occurrences,
+            exampleLogIds: p.exampleLogIds,
+          })
+          .returning();
+        results.push(created);
+      }
+    }
+    return results;
+  }
+
+  async markPatternAddressed(id: number, addressed: boolean): Promise<ScanPattern | undefined> {
+    const [updated] = await db
+      .update(scanPatterns)
+      .set({
+        addressed,
+        addressedAt: addressed ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(scanPatterns.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getActiveScanPatternRules(): Promise<string[]> {
+    const rows = await db
+      .select({ promptRule: scanPatterns.promptRule })
+      .from(scanPatterns)
+      .where(eq(scanPatterns.addressed, false));
+    return rows.map(r => r.promptRule);
   }
 
   async getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]> {

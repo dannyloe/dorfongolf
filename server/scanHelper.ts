@@ -202,8 +202,14 @@ export async function scanScorecardImage(params: {
   imageBase64: string;
   playerNames: string[];
   courseName?: string;
+  extraRules?: string[];
 }): Promise<ScanScorecardResult> {
-  const { imageBase64, playerNames, courseName } = params;
+  const { imageBase64, playerNames, courseName, extraRules } = params;
+
+  const extraRulesText =
+    extraRules && extraRules.length > 0
+      ? `\n\nAdditional rules based on past scan corrections:\n${extraRules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
+      : "";
 
   const prompt = `You are reading a golf scorecard photo. Extract per-hole scores.
 
@@ -219,7 +225,7 @@ Rules:
 - Set "confidence" to "high", "medium", or "low" based on legibility of that hole.
 - Try to match visible names to the known players list; otherwise use the name as written.
 - Do NOT include Front 9, Back 9, or Total subtotals — only the 18 hole rows.
-- "rawText" is optional free-form notes about the card.`;
+- "rawText" is optional free-form notes about the card.${extraRulesText}`;
 
   const mimeMatch = imageBase64.match(/^data:(image\/[^;]+);base64,/);
   const mimeType = mimeMatch?.[1] || "image/jpeg";

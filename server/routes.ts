@@ -11,6 +11,7 @@ import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
 import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate } from "./scanHelper";
+import { analyzeCorrectionLogs } from "./scanAnalysis";
 import express from "express";
 import twilioLib from "twilio";
 
@@ -2090,10 +2091,12 @@ export async function registerRoutes(
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.scorecard.scan.input.parse(req.body);
+      const extraRules = await storage.getActiveScanPatternRules();
       const result = await scanScorecardImage({
         imageBase64: input.imageBase64,
         playerNames: input.playerNames,
         courseName: input.courseName,
+        extraRules,
       });
       res.json(result);
     } catch (err) {
@@ -2414,7 +2417,8 @@ export async function registerRoutes(
           const matchPlayers = await storage.getMatchPlayers(match.id);
           const playerNames = matchPlayers.map((p: { name: string }) => p.name);
 
-          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName });
+          const extraRules = await storage.getActiveScanPatternRules();
+          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules });
 
           await storage.updatePendingScan(scan.id, { status: "ready", scanResult: JSON.stringify(result) });
         } catch (err) {
@@ -5201,6 +5205,64 @@ Transcript to parse: "${transcript}"`;
       }
       const logs = await storage.listScanCorrectionLogs();
       res.json(logs);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: list scan patterns
+  app.get("/api/admin/scan-patterns", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const patterns = await storage.listScanPatterns();
+      res.json(patterns);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: analyze correction logs to detect and upsert patterns
+  app.post("/api/admin/scan-patterns/analyze", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const minOccurrences = Number(req.body?.minOccurrences ?? 2);
+      const logs = await storage.listScanCorrectionLogs();
+      const detected = analyzeCorrectionLogs(logs, minOccurrences);
+      const patterns = await storage.upsertScanPatterns(detected);
+      res.json({ analyzed: logs.length, detected: detected.length, patterns });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: mark a scan pattern as addressed (or reactivate it)
+  app.patch("/api/admin/scan-patterns/:id/addressed", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid pattern id" });
+      const { addressed } = req.body;
+      if (typeof addressed !== "boolean") {
+        return res.status(400).json({ message: "addressed must be a boolean" });
+      }
+      const pattern = await storage.markPatternAddressed(id, addressed);
+      if (!pattern) return res.status(404).json({ message: "Pattern not found" });
+      res.json(pattern);
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });

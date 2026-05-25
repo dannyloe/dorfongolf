@@ -294,6 +294,21 @@ export const scanCorrectionLogs = pgTable("scan_correction_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Scan patterns — recurring errors detected from correction logs, used to improve the Gemini prompt
+export const scanPatterns = pgTable("scan_patterns", {
+  id: serial("id").primaryKey(),
+  patternType: text("pattern_type").notNull(), // 'hole_shift' | 'digit_swap'
+  patternKey: text("pattern_key").notNull().unique(), // stable dedup key
+  description: text("description").notNull(),
+  promptRule: text("prompt_rule").notNull(), // injected into the Gemini prompt when not addressed
+  occurrences: integer("occurrences").notNull().default(0),
+  exampleLogIds: integer("example_log_ids").array().notNull().default([]),
+  addressed: boolean("addressed").notNull().default(false),
+  addressedAt: timestamp("addressed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // In-app messages between users
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
@@ -665,6 +680,14 @@ export type InsertSmsOptIn = z.infer<typeof insertSmsOptInSchema>;
 
 export type ScanCorrectionLog = typeof scanCorrectionLogs.$inferSelect;
 export type InsertScanCorrectionLog = z.infer<typeof insertScanCorrectionLogSchema>;
+
+export const insertScanPatternSchema = createInsertSchema(scanPatterns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type ScanPattern = typeof scanPatterns.$inferSelect;
+export type InsertScanPattern = z.infer<typeof insertScanPatternSchema>;
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
