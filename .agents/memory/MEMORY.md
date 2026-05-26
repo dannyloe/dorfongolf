@@ -1,0 +1,1 @@
+- [Gemini scan prompt findings](gemini-scan-prompt.md) — hole-anchoring instruction hurts accuracy; match play annotations need explicit ignore rule
