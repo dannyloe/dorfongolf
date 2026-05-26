@@ -242,10 +242,10 @@ CRITICAL — match play annotations:
 - Some scorecards have running match play totals written next to or near hole scores (e.g. "+2", "-1", "AS", "1UP"). These are NOT hole scores.
 - Only read the integer stroke count for each hole. Ignore any +/- notation, "UP", "DN", or "AS" written adjacent to a score.
 
-CRITICAL — circles and boxes around scores:
-- Players often draw a circle around a score to indicate a birdie, or a square/box around a score to indicate a bogey or worse. These are scoring annotations only — they do NOT form part of the digit.
-- A circled "3" is still 3. A boxed "5" is still 5.
-- Never interpret the lines of a circle or box border as digits (e.g. a boxed "4" must never be read as "14" or "41").${extraRulesText}`;
+CRITICAL — visual decorations around scores:
+- Scorers sometimes circle, box, or underline individual hole scores as personal notation. These marks are purely decorative — ignore them entirely.
+- Read only the numeral(s) inside the mark. Never let a surrounding border, circle outline, or underline bleed into the digit itself.
+- Specifically: a boxed "4" is 4, not "14" or "41". A circled "3" is 3, not "03" or "30".${extraRulesText}`;
 
   const mimeMatch = imageBase64.match(/^data:(image\/[^;]+);base64,/);
   const mimeType = mimeMatch?.[1] || "image/jpeg";
