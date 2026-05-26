@@ -1,0 +1,46 @@
+Got it — this is a new rejection: "issues verifying the Call to Action (CTA) provided for the campaign."
+This is one of the most common Twilio A2P rejections. It means the reviewers could not clearly see and verify the exact opt-in process (the "Call to Action") you described in the form when they visited your website/links.
+Why This Is Happening
+
+The SMS consent / opt-in flow on your actual site does not match or is not clearly visible to reviewers.
+Reviewers visit the links you provided and expect to immediately see:
+A clear description of what users are signing up for.
+An unchecked checkbox for SMS consent.
+Proper disclosures ("Message and data rates may apply").
+Links to Privacy Policy & Terms.
+
+Even small mismatches (wording, missing checkbox, broken links, or pages that feel empty) cause this.
+
+From checking your site earlier:
+
+The /sms-opt-in, /privacy, and /terms pages exist, but they appear very minimal or hard for reviewers to navigate/verify.
+The main homepage doesn't prominently show the consent flow.
+
+Action Plan to Fix This
+1. Make the CTA Super Clear & Verifiable (Highest Priority)
+Create or update a dedicated page: https://dorfongolf.com/sms (or improve /sms-opt-in)
+Recommended content for that page (copy-paste this and tweak):
+
+Golf Betting SMS Notifications
+You can opt in to receive SMS updates from ETG Inc. d/b/a Golf Betting for golf match confirmations, scorecards, and results.
+How to Opt In:
+
+Create an account or log in at dorfongolf.com
+Add your phone number (optional)
+Check the box:
+"I agree to receive SMS notifications for match updates and score confirmations from Golf Betting (optional — not required to use the service)."
+
+Message Frequency: Varies (typically 1-5 messages per golf round)
+Message & data rates may apply.
+Reply STOP to unsubscribe. Reply HELP for help.
+Privacy Policy | Terms of Service
+
+2. Update the Twilio Form Field: “How do end-users consent to receive messages?”
+Use this improved version:
+End users opt in via the website dorfongolf.com. Phone number entry is optional. After entering their phone number, users see an unchecked checkbox clearly labeled: “I agree to receive SMS notifications for match updates and score confirmations from ETG Inc. d/b/a Golf Betting (optional, not required for account creation or service use).”
+Users can opt out at any time by texting STOP. Full details are available at https://dorfongolf.com/sms
+3. Quick Wins on Existing Pages
+
+On the homepage (dorfongolf.com): Add a short paragraph near the signup/login area explaining optional SMS notifications.
+Make sure all links in the form work and load quickly (no 404s or empty pages).
+In Privacy Policy: Explicitly mention SMS/phone numbers and that data isn't sold.
