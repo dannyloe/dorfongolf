@@ -76,14 +76,29 @@ export default function PrivacyPolicy() {
 
               <Section title="SMS Communications">
                 <p>
-                  If you provide your phone number and opt in to SMS alerts, we may send you text messages related to
-                  your golf matches, including match invitations, score updates, bet results, and match reminders.
-                  We will not sell or share your phone number with third-party marketers. You can opt out at any time
-                  by replying <strong>STOP</strong> to any message. For help, reply <strong>HELP</strong>.
-                  Message and data rates may apply. Up to 4 messages per active match, per week.
+                  SMS notifications are <strong>completely optional</strong> and are not required to create an account
+                  or use Golf Betting. If you provide your phone number and opt in to SMS alerts, we may send you text
+                  messages related to your golf matches, including match confirmations, scorecard results, bet result
+                  summaries, and match invitations. Message frequency varies (typically 1–5 messages per golf round).
+                  Message &amp; data rates may apply.
                 </p>
                 <p className="mt-3">
-                  SMS opt-in records are retained to demonstrate compliance with applicable regulations.
+                  <strong>Your phone number is never sold or shared with third parties for marketing purposes.</strong>{" "}
+                  Phone numbers are used solely to deliver Golf Betting match notifications via Twilio. Data processed
+                  through Twilio is subject to{" "}
+                  <a href="https://www.twilio.com/en-us/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                    Twilio's Privacy Policy
+                  </a>.
+                </p>
+                <p className="mt-3">
+                  You can opt out of SMS at any time by replying <strong>STOP</strong> to any message, or by removing
+                  your phone number from your profile in the app. Reply <strong>HELP</strong> for assistance.
+                  SMS consent is not a condition of using the service.
+                </p>
+                <p className="mt-3">
+                  SMS opt-in records are retained to demonstrate compliance with applicable regulations. For full
+                  details on the SMS opt-in process, see our{" "}
+                  <a href="/sms" className="text-primary underline underline-offset-2">SMS Notifications page</a>.
                 </p>
               </Section>
 

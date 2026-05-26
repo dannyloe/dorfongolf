@@ -132,6 +132,12 @@ export default function Landing() {
                     Create account
                   </a>
                 </p>
+                <p className="text-xs text-muted-foreground text-center mt-3 border-t border-border pt-3">
+                  Optional SMS match notifications available after sign-up.{" "}
+                  <a href="/sms" className="text-primary hover:underline">
+                    Learn more
+                  </a>
+                </p>
               </div>
             </motion.div>
           </div>
@@ -198,7 +204,7 @@ export default function Landing() {
             {" · "}
             <a href="/terms" className="hover:text-foreground transition-colors">Terms &amp; Conditions</a>
             {" · "}
-            <a href="/sms-opt-in" className="hover:text-foreground transition-colors">SMS Alerts</a>
+            <a href="/sms" className="hover:text-foreground transition-colors">SMS Alerts</a>
           </p>
         </div>
       </footer>

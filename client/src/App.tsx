@@ -24,6 +24,7 @@ import RyderCupScorecard from "@/pages/RyderCupScorecard";
 import Profile from "@/pages/Profile";
 import Groups from "@/pages/Groups";
 import SmsOptIn from "@/pages/SmsOptIn";
+import SmsConsent from "@/pages/SmsConsent";
 import PhoneSetup from "@/pages/PhoneSetup";
 import AdminScanLogs from "@/pages/AdminScanLogs";
 import NotFound from "@/pages/not-found";
@@ -82,7 +83,10 @@ function Router() {
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/privacy-policy" component={PrivacyPolicy} />
       <Route path="/terms" component={Terms} />
-      <Route path="/sms-opt-in" component={SmsOptIn} />
+      <Route path="/sms" component={SmsConsent} />
+      <Route path="/sms-opt-in">
+        <Redirect to="/sms" />
+      </Route>
       <Route path="/phone-setup" component={PhoneSetup} />
       <Route path="/dashboard">
         <PrivateRoute component={Dashboard} />
