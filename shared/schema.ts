@@ -286,9 +286,9 @@ export const smsOptIns = pgTable("sms_opt_ins", {
 // Scan correction logs — records Gemini output vs what the user actually saved
 export const scanCorrectionLogs = pgTable("scan_correction_logs", {
   id: serial("id").primaryKey(),
-  matchId: integer("match_id").notNull(),
+  matchId: integer("match_id"), // nullable — bet slip scans logged before a sub-match exists
   pendingScanId: integer("pending_scan_id"), // nullable — only set for MMS scans
-  source: text("source").$type<"camera" | "mms">().notNull().default("mms"),
+  source: text("source").$type<"camera" | "mms" | "bet_slip">().notNull().default("mms"),
   courseName: text("course_name").notNull(),
   imageUrl: text("image_url"), // Permanent Object Storage URL of the scanned image
   geminiOutput: jsonb("gemini_output").$type<Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>>().notNull(),

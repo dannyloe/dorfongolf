@@ -2928,7 +2928,7 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
-  // Bet slip photo scan endpoint
+  // Bet slip photo scan endpoint (match-specific — kept for backward compat)
   app.post("/api/matches/:id/scan-bet-slip", isAuthenticated, async (req, res) => {
     try {
       const matchId = parseInt(req.params.id);
@@ -2951,7 +2951,9 @@ Transcript to parse: "${transcript}"`;
       });
       const { imageBase64, players } = bodySchema.parse(req.body);
 
-      const result = await scanBetSlip({ imageBase64, players });
+      const activeRules = await storage.getActiveScanPatternRules();
+      const extraRulesText = activeRules.length > 0 ? activeRules.join("\n") : undefined;
+      const result = await scanBetSlip({ imageBase64, players, extraRulesText });
       res.json(result);
     } catch (err) {
       console.error("Bet slip scan error:", err);
@@ -2959,6 +2961,58 @@ Transcript to parse: "${transcript}"`;
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: err instanceof Error ? err.message : "Failed to scan bet slip" });
+    }
+  });
+
+  // Bet slip photo scan endpoint (match-independent — no existing match required)
+  app.post("/api/scan-bet-slip", isAuthenticated, async (req, res) => {
+    try {
+      const bodySchema = z.object({
+        imageBase64: z.string().min(1),
+        players: z.array(z.object({ id: z.number(), name: z.string() })),
+      });
+      const { imageBase64, players } = bodySchema.parse(req.body);
+
+      const activeRules = await storage.getActiveScanPatternRules();
+      const extraRulesText = activeRules.length > 0 ? activeRules.join("\n") : undefined;
+      const result = await scanBetSlip({ imageBase64, players, extraRulesText });
+      res.json(result);
+    } catch (err) {
+      console.error("Bet slip scan error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: err instanceof Error ? err.message : "Failed to scan bet slip" });
+    }
+  });
+
+  // Log a bet slip scan correction (diff between what Gemini returned vs what user applied)
+  app.post("/api/bet-slip-scan-correction-log", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        matchId: z.number().int().nullable().optional(),
+        geminiOutput: z.record(z.any()),
+        appliedOutput: z.record(z.any()),
+        playerNames: z.array(z.string()),
+        courseName: z.string().optional(),
+      });
+      const body = schema.parse(req.body);
+
+      const log = await storage.createScanCorrectionLog({
+        matchId: body.matchId ?? null,
+        source: "bet_slip",
+        courseName: body.courseName || "bet_slip",
+        geminiOutput: [body.geminiOutput],
+        appliedOutput: [body.appliedOutput],
+        playerNames: body.playerNames,
+      });
+      res.json({ id: log.id });
+    } catch (err) {
+      console.error("Bet slip correction log error:", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to log correction" });
     }
   });
 

@@ -158,13 +158,13 @@ export interface IStorage {
 
   // Scan correction logs
   createScanCorrectionLog(data: {
-    matchId: number;
+    matchId?: number | null;
     pendingScanId?: number | null;
-    source: "camera" | "mms";
+    source: "camera" | "mms" | "bet_slip";
     courseName: string;
     imageUrl?: string | null;
-    geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
-    appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
+    geminiOutput: Array<any>;
+    appliedOutput: Array<any>;
     playerNames: string[];
   }): Promise<ScanCorrectionLog>;
   updateScanCorrectionLog(id: number, matchId: number, data: {
@@ -361,17 +361,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createScanCorrectionLog(data: {
-    matchId: number;
+    matchId?: number | null;
     pendingScanId?: number | null;
-    source: "camera" | "mms";
+    source: "camera" | "mms" | "bet_slip";
     courseName: string;
     imageUrl?: string | null;
-    geminiOutput: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
-    appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
+    geminiOutput: Array<any>;
+    appliedOutput: Array<any>;
     playerNames: string[];
   }): Promise<ScanCorrectionLog> {
     const [row] = await db.insert(scanCorrectionLogs).values({
-      matchId: data.matchId,
+      matchId: data.matchId ?? null,
       pendingScanId: data.pendingScanId ?? null,
       source: data.source,
       courseName: data.courseName,

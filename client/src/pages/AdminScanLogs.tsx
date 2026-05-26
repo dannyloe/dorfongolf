@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,12 +18,12 @@ type AppliedPlayer = { playerName: string; playerId: number; holes: Array<{ hole
 
 type ScanCorrectionLog = {
   id: number;
-  matchId: number;
+  matchId: number | null;
   pendingScanId: number | null;
-  source: "camera" | "mms" | null;
+  source: "camera" | "mms" | "bet_slip" | null;
   courseName: string;
-  geminiOutput: GeminiPlayer[];
-  appliedOutput: AppliedPlayer[];
+  geminiOutput: GeminiPlayer[] | any[];
+  appliedOutput: AppliedPlayer[] | any[];
   playerNames: string[];
   createdAt: string | null;
   matchName: string | null;
@@ -185,6 +185,10 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
               <Badge variant="secondary" className="text-xs flex items-center gap-1" data-testid={`badge-source-${log.id}`}>
                 <Camera className="w-3 h-3" />Camera
               </Badge>
+            ) : log.source === "bet_slip" ? (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 border-green-300 text-green-700 dark:text-green-400" data-testid={`badge-source-${log.id}`}>
+                <Receipt className="w-3 h-3" />Bet Slip
+              </Badge>
             ) : (
               <Badge variant="outline" className="text-xs flex items-center gap-1 border-blue-300 text-blue-600 dark:text-blue-400" data-testid={`badge-source-${log.id}`}>
                 <MessageSquare className="w-3 h-3" />MMS
@@ -233,6 +237,86 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
   );
 }
 
+function BetSlipLogRow({ log }: { log: ScanCorrectionLog }) {
+  const [expanded, setExpanded] = useState(false);
+  const gemini = log.geminiOutput?.[0] as any;
+  const applied = log.appliedOutput?.[0] as any;
+
+  const diffFields: { label: string; gemini: any; applied: any }[] = [];
+  if (gemini && applied) {
+    const fields = ["matchType", "unitAmount", "deathMatchBaseBet", "useNet", "teamAPlayerIds", "teamBPlayerIds", "skinsPlayerIds"];
+    for (const f of fields) {
+      const g = gemini[f];
+      const a = applied[f];
+      const gStr = JSON.stringify(g);
+      const aStr = JSON.stringify(a);
+      if (gStr !== aStr) {
+        diffFields.push({ label: f, gemini: g, applied: a });
+      }
+    }
+  }
+
+  return (
+    <div className="border border-border/50 rounded-lg overflow-hidden" data-testid={`scan-log-row-${log.id}`}>
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+        onClick={() => setExpanded(e => !e)}
+        data-testid={`button-expand-log-${log.id}`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm truncate">{log.matchName || (log.matchId ? `Event #${log.matchId}` : "No match")}</span>
+            <Badge variant="outline" className="text-xs flex items-center gap-1 border-green-300 text-green-700 dark:text-green-400" data-testid={`badge-source-${log.id}`}>
+              <Receipt className="w-3 h-3" />Bet Slip
+            </Badge>
+            {diffFields.length === 0 ? (
+              <Badge variant="secondary" className="text-xs">No edits</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                {diffFields.length} field{diffFields.length !== 1 ? "s" : ""} changed
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-0.5">
+            <span className="text-xs text-muted-foreground">
+              {log.createdAt ? format(new Date(log.createdAt), "MMM d, yyyy h:mm a") : "Unknown date"}
+            </span>
+            <span className="text-xs text-muted-foreground">{log.playerNames.join(", ")}</span>
+          </div>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground shrink-0" /> : <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-border/30 pt-3">
+          {diffFields.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Gemini output accepted without changes.</p>
+          ) : (
+            <table className="text-xs border-collapse w-full">
+              <thead>
+                <tr className="bg-muted/50">
+                  <td className="px-3 py-1.5 font-medium text-muted-foreground">Field</td>
+                  <td className="px-3 py-1.5 font-medium text-muted-foreground">Gemini</td>
+                  <td className="px-3 py-1.5 font-medium text-muted-foreground">Applied</td>
+                </tr>
+              </thead>
+              <tbody>
+                {diffFields.map(d => (
+                  <tr key={d.label} className="border-t border-border/30">
+                    <td className="px-3 py-1.5 font-medium">{d.label}</td>
+                    <td className="px-3 py-1.5 text-red-600 dark:text-red-400">{JSON.stringify(d.gemini)}</td>
+                    <td className="px-3 py-1.5 text-green-700 dark:text-green-400">{JSON.stringify(d.applied)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
     <div className="bg-card border border-border/50 rounded-lg px-4 py-3 flex-1 min-w-[120px]" data-testid={`stat-card-${label.toLowerCase().replace(/\s+/g, "-")}`}>
@@ -247,8 +331,9 @@ function HoleHeatMap({ logs }: { logs: ScanCorrectionLog[] }) {
   const data = useMemo(() => {
     const counts = Array.from({ length: 18 }, (_, i) => ({ hole: i + 1, edits: 0 }));
     for (const log of logs) {
-      for (const ap of log.appliedOutput) {
-        const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
+      if (log.source === "bet_slip") continue;
+      for (const ap of (log.appliedOutput as AppliedPlayer[]) ) {
+        const gp = (log.geminiOutput as GeminiPlayer[]).find(g => g.playerName === ap.playerName);
         if (!gp) continue;
         const diffs = buildDiffs(gp, ap);
         for (const d of diffs) {
@@ -400,6 +485,7 @@ export default function AdminScanLogs() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "scorecard" | "bet_slip">("all");
 
   const { data: logs, isLoading: logsLoading, error: logsError } = useQuery<ScanCorrectionLog[]>({
     queryKey: ["/api/admin/scan-correction-logs"],
@@ -447,26 +533,31 @@ export default function AdminScanLogs() {
   const filteredLogs = useMemo(() => {
     if (!logs) return [];
     return logs.filter(log => {
+      if (sourceFilter === "scorecard" && log.source === "bet_slip") return false;
+      if (sourceFilter === "bet_slip" && log.source !== "bet_slip") return false;
       if (courseFilter !== "all" && log.courseName !== courseFilter) return false;
       if (dateFrom && log.createdAt && new Date(log.createdAt) < new Date(dateFrom)) return false;
       if (dateTo && log.createdAt && new Date(log.createdAt) > new Date(dateTo + "T23:59:59")) return false;
       return true;
     });
-  }, [logs, courseFilter, dateFrom, dateTo]);
+  }, [logs, courseFilter, dateFrom, dateTo, sourceFilter]);
 
   const stats = useMemo(() => {
+    const scorecardLogs = filteredLogs.filter(l => l.source !== "bet_slip");
     const total = filteredLogs.length;
+    const scorecardTotal = scorecardLogs.length;
+    const betSlipTotal = filteredLogs.length - scorecardTotal;
     let accepted = 0;
     let edited = 0;
     let shifted = 0;
-    for (const log of filteredLogs) {
+    for (const log of scorecardLogs) {
       const { totalChanges, hasShift } = getLogStats(log);
       if (hasShift) shifted++;
       else if (totalChanges > 0) edited++;
       else accepted++;
     }
-    const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) + "%" : "—";
-    return { total, accepted, edited, shifted, pct };
+    const pct = (n: number) => scorecardTotal > 0 ? Math.round((n / scorecardTotal) * 100) + "%" : "—";
+    return { total, scorecardTotal, betSlipTotal, accepted, edited, shifted, pct };
   }, [filteredLogs]);
 
   if (!user || !isAdmin) {
@@ -496,7 +587,7 @@ export default function AdminScanLogs() {
     );
   }
 
-  const hasActiveFilters = courseFilter !== "all" || dateFrom || dateTo;
+  const hasActiveFilters = courseFilter !== "all" || dateFrom || dateTo || sourceFilter !== "all";
   const activePatterns = (patterns ?? []).filter(p => !p.addressed);
   const addressedPatterns = (patterns ?? []).filter(p => p.addressed);
 
@@ -588,10 +679,23 @@ export default function AdminScanLogs() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex flex-col gap-1 min-w-[160px]">
+              <Label className="text-xs">Source</Label>
+              <Select value={sourceFilter} onValueChange={v => setSourceFilter(v as any)}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-source-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sources</SelectItem>
+                  <SelectItem value="scorecard">Scorecard only</SelectItem>
+                  <SelectItem value="bet_slip">Bet Slip only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {hasActiveFilters && (
               <button
                 className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors self-end pb-1"
-                onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); setSourceFilter("all"); }}
                 data-testid="button-clear-filters"
               >
                 Clear filters
@@ -639,7 +743,11 @@ export default function AdminScanLogs() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredLogs.map(log => <LogRow key={log.id} log={log} />)}
+              {filteredLogs.map(log =>
+                log.source === "bet_slip"
+                  ? <BetSlipLogRow key={log.id} log={log} />
+                  : <LogRow key={log.id} log={log} />
+              )}
             </div>
           )}
         </div>

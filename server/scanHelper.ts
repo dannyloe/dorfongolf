@@ -361,8 +361,9 @@ export interface ScannedBetResult {
 export async function scanBetSlip(params: {
   imageBase64: string;
   players: Array<{ id: number; name: string }>;
+  extraRulesText?: string;
 }): Promise<ScannedBetResult> {
-  const { imageBase64, players } = params;
+  const { imageBase64, players, extraRulesText } = params;
 
   if (!ai) {
     throw new Error("AI features are currently unavailable");
@@ -426,7 +427,7 @@ Return ONLY valid JSON with NO markdown, no code blocks, no explanation:
   "useNet": false,
   "parsedSummary": "Brief human-readable description of what was extracted",
   "unmatchedNames": []
-}`;
+}${extraRulesText ? `\n\nAdditional rules based on past scan corrections:\n${extraRulesText}` : ""}`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",

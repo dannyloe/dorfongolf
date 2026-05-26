@@ -687,6 +687,7 @@ export default function MatchDetail() {
   // Bet slip scan state
   const [betSlipScanInProgress, setBetSlipScanInProgress] = useState(false);
   const [betSlipScanError, setBetSlipScanError] = useState<string | null>(null);
+  const [betScanGeminiResult, setBetScanGeminiResult] = useState<any>(null);
   const betSlipFileInputRef = useRef<HTMLInputElement | null>(null);
   const betSlipFileInputFormRef = useRef<HTMLInputElement | null>(null);
   const [pendingBetScanResult, setPendingBetScanResult] = useState<any>(null);
@@ -910,13 +911,14 @@ export default function MatchDetail() {
       };
       const base64 = await compressBetImage(file);
       const playerList = (match?.players || []).map((p: Player) => ({ id: p.id, name: p.name }));
-      const res = await apiRequest("POST", `/api/matches/${matchId}/scan-bet-slip`, {
+      const res = await apiRequest("POST", `/api/scan-bet-slip`, {
         imageBase64: base64,
         players: playerList,
       });
       const data = await res.json();
       if (data.success) {
         setPendingBetScanResult(data);
+        setBetScanGeminiResult(data);
         setBetScanEditMatchType(data.matchType || 'nassau');
         setBetScanEditTeamA(data.teamAPlayerIds || data.skinsPlayerIds || []);
         setBetScanEditTeamB(data.teamBPlayerIds || []);
@@ -931,7 +933,7 @@ export default function MatchDetail() {
     } finally {
       setBetSlipScanInProgress(false);
     }
-  }, [match?.players, matchId]);
+  }, [match?.players]);
 
   const handleBetSlipFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -7936,7 +7938,7 @@ export default function MatchDetail() {
                 Cancel
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   const amt = betScanEditAmount !== '' ? Number(betScanEditAmount) : undefined;
                   const editedResult = {
                     ...pendingBetScanResult,
@@ -7950,6 +7952,22 @@ export default function MatchDetail() {
                   };
                   applyVoiceMatchResult(editedResult);
                   setPendingBetScanResult(null);
+                  // Log correction diff between Gemini output and user-applied result
+                  if (betScanGeminiResult) {
+                    try {
+                      const allPlayerNames = players.map((p: Player) => p.name);
+                      await apiRequest("POST", "/api/bet-slip-scan-correction-log", {
+                        matchId: matchId ?? null,
+                        geminiOutput: betScanGeminiResult,
+                        appliedOutput: editedResult,
+                        playerNames: allPlayerNames,
+                        courseName: match?.name || undefined,
+                      });
+                    } catch {
+                      // Non-critical — swallow silently
+                    }
+                    setBetScanGeminiResult(null);
+                  }
                 }}
                 data-testid="button-apply-bet-scan"
               >
