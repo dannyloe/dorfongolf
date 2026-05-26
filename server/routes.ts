@@ -2134,6 +2134,7 @@ export async function registerRoutes(
               geminiOutput,
               appliedOutput: [], // filled in at apply time
               playerNames: [],   // filled in at apply time
+              geminiRawText: result.rawText || null,
             });
             correctionLogId = log.id;
           }
@@ -2490,6 +2491,7 @@ export async function registerRoutes(
               geminiOutput,
               appliedOutput: [], // filled in at apply time
               playerNames: [],   // filled in at apply time
+              geminiRawText: result.rawText || null,
             });
             correctionLogId = log.id;
           } catch (logErr) {
@@ -2620,6 +2622,7 @@ export async function registerRoutes(
       type GeminiHoleEntry = { holeNumber: number; strokes: number | null };
       type GeminiPlayerEntry = { playerName: string; holes: GeminiHoleEntry[] };
       let geminiOutput: GeminiPlayerEntry[] = [];
+      let geminiRawText: string | null = null;
       if (scan.scanResult) {
         try {
           const parsed = JSON.parse(scan.scanResult);
@@ -2632,6 +2635,7 @@ export async function registerRoutes(
               })).filter((h: GeminiHoleEntry) => h.holeNumber >= 1 && h.holeNumber <= 18),
             }));
           }
+          if (parsed?.rawText) geminiRawText = String(parsed.rawText);
         } catch {
           // scanResult couldn't be parsed — log with empty geminiOutput
         }
@@ -2663,6 +2667,7 @@ export async function registerRoutes(
         await storage.updateScanCorrectionLog(scan.correctionLogId, matchId, {
           appliedOutput,
           playerNames: matchPlayers.map(p => p.name),
+          geminiRawText,
         });
       } else {
         // Fallback: create a new row (covers scans processed before this deployment)
@@ -2675,6 +2680,7 @@ export async function registerRoutes(
           geminiOutput,
           appliedOutput,
           playerNames: matchPlayers.map(p => p.name),
+          geminiRawText,
         });
       }
 
@@ -2720,6 +2726,7 @@ export async function registerRoutes(
         })).max(20),
         imageUrl: z.string().nullable().optional(),
         correctionLogId: z.number().int().optional(), // if set, update existing row instead of creating new
+        geminiRawText: z.string().nullable().optional(),
       });
       const body = schema.parse(req.body);
 
@@ -2732,6 +2739,7 @@ export async function registerRoutes(
           appliedOutput: body.appliedOutput,
           playerNames: matchPlayers.map(p => p.name),
           imageUrl: body.imageUrl ?? undefined,
+          geminiRawText: body.geminiRawText ?? undefined,
         });
       } else {
         // Fallback: create a new row (covers scans before this deployment, or failed log creation)
@@ -2744,6 +2752,7 @@ export async function registerRoutes(
           geminiOutput: body.geminiOutput,
           appliedOutput: body.appliedOutput,
           playerNames: matchPlayers.map(p => p.name),
+          geminiRawText: body.geminiRawText ?? null,
         });
       }
 

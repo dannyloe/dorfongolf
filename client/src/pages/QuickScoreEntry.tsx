@@ -180,6 +180,8 @@ export default function QuickScoreEntry() {
   const lastScanImageUrlRef = useRef<string | null>(null);
   // Stores the correction log ID created at scan time (null until a scan completes with matchId)
   const lastScanCorrectionLogIdRef = useRef<number | null>(null);
+  // Stores the rawText Gemini wrote about the card (null until a scan completes)
+  const lastScanRawTextRef = useRef<string | null>(null);
   // Monotonically increasing token; in-flight scans only apply their result
   // if they're still the most recent scan when they resolve. Closing the
   // modal or starting a new scan invalidates older requests.
@@ -428,6 +430,7 @@ export default function QuickScoreEntry() {
     setSuggestedPresets({});
     lastScanImageUrlRef.current = null;
     lastScanCorrectionLogIdRef.current = null;
+    lastScanRawTextRef.current = null;
 
     try {
       const base64 = await compressImage(file);
@@ -441,9 +444,10 @@ export default function QuickScoreEntry() {
       // A newer scan started (or the modal was closed) — drop this result.
       if (myToken !== scanTokenRef.current) return;
 
-      // Capture the durable image URL and correction log ID returned by the server
+      // Capture the durable image URL, correction log ID, and Gemini notes returned by the server
       lastScanImageUrlRef.current = (result as any).imageUrl ?? null;
       lastScanCorrectionLogIdRef.current = (result as any).correctionLogId ?? null;
+      lastScanRawTextRef.current = (result as any).rawText ?? null;
 
       if (result.success && result.scores.length > 0) {
         setScannedScores(result.scores);
@@ -509,6 +513,7 @@ export default function QuickScoreEntry() {
     scannedScores: ScannedPlayer[];
     imageUrl: string | null;
     correctionLogId: number | null;
+    rawText: string | null;
   }) => {
     let successCount = 0;
     let errorCount = 0;
@@ -613,6 +618,7 @@ export default function QuickScoreEntry() {
             appliedOutput,
             imageUrl: snapshot.imageUrl ?? null,
             correctionLogId: snapshot.correctionLogId ?? undefined,
+            geminiRawText: snapshot.rawText ?? null,
           }).catch((err) => {
             console.error("[scan-correction-log] Request failed:", err);
           });
@@ -656,6 +662,7 @@ export default function QuickScoreEntry() {
       scannedScores: [...scannedScores],
       imageUrl: lastScanImageUrlRef.current,
       correctionLogId: lastScanCorrectionLogIdRef.current,
+      rawText: lastScanRawTextRef.current,
     };
 
     setShowScanModal(false);

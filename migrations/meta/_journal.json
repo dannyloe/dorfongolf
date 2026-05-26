@@ -71,6 +71,13 @@
       "when": 1779753600000,
       "tag": "0009_add_scan_image_url_and_correction_log_id",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1748476800000,
+      "tag": "0010_add_scan_correction_log_gemini_raw_text",
+      "breakpoints": true
     }
   ]
 }

@@ -294,6 +294,7 @@ export const scanCorrectionLogs = pgTable("scan_correction_logs", {
   geminiOutput: jsonb("gemini_output").$type<Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>>().notNull(),
   appliedOutput: jsonb("applied_output").$type<Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>>().notNull(),
   playerNames: text("player_names").array().notNull(),
+  geminiRawText: text("gemini_raw_text"), // nullable — free-form notes Gemini wrote about the card
   createdAt: timestamp("created_at").defaultNow(),
 });
 

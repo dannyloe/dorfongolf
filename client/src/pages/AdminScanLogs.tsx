@@ -25,6 +25,7 @@ type ScanCorrectionLog = {
   geminiOutput: GeminiPlayer[] | any[];
   appliedOutput: AppliedPlayer[] | any[];
   playerNames: string[];
+  geminiRawText: string | null;
   createdAt: string | null;
   matchName: string | null;
 };
@@ -165,6 +166,28 @@ function PlayerDiffTable({ geminiPlayer, appliedPlayer }: { geminiPlayer: Gemini
   );
 }
 
+function GeminiNotesSection({ rawText, logId }: { rawText: string; logId: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border-t border-border/20 pt-3" data-testid={`gemini-notes-${logId}`}>
+      <button
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        onClick={() => setExpanded(e => !e)}
+        data-testid={`button-toggle-gemini-notes-${logId}`}
+      >
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+        Gemini notes
+      </button>
+      {expanded && (
+        <blockquote className="mt-2 text-xs italic text-muted-foreground border-l-2 border-border/50 pl-3 leading-relaxed whitespace-pre-wrap" data-testid={`gemini-notes-text-${logId}`}>
+          {rawText}
+        </blockquote>
+      )}
+    </div>
+  );
+}
+
 function LogRow({ log }: { log: ScanCorrectionLog }) {
   const [expanded, setExpanded] = useState(false);
   const { totalChanges, hasShift } = getLogStats(log);
@@ -231,6 +254,7 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
               );
             })
           )}
+          {log.geminiRawText && <GeminiNotesSection rawText={log.geminiRawText} logId={log.id} />}
         </div>
       )}
     </div>

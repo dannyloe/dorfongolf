@@ -166,11 +166,13 @@ export interface IStorage {
     geminiOutput: Array<any>;
     appliedOutput: Array<any>;
     playerNames: string[];
+    geminiRawText?: string | null;
   }): Promise<ScanCorrectionLog>;
   updateScanCorrectionLog(id: number, matchId: number, data: {
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
     imageUrl?: string | null;
+    geminiRawText?: string | null;
   }): Promise<ScanCorrectionLog | undefined>;
   listScanCorrectionLogs(): Promise<(ScanCorrectionLog & { matchName: string | null })[]>;
   listScanPatterns(): Promise<ScanPattern[]>;
@@ -369,6 +371,7 @@ export class DatabaseStorage implements IStorage {
     geminiOutput: Array<any>;
     appliedOutput: Array<any>;
     playerNames: string[];
+    geminiRawText?: string | null;
   }): Promise<ScanCorrectionLog> {
     const [row] = await db.insert(scanCorrectionLogs).values({
       matchId: data.matchId ?? null,
@@ -379,6 +382,7 @@ export class DatabaseStorage implements IStorage {
       geminiOutput: data.geminiOutput,
       appliedOutput: data.appliedOutput,
       playerNames: data.playerNames,
+      geminiRawText: data.geminiRawText ?? null,
     }).returning();
     return row;
   }
@@ -387,12 +391,14 @@ export class DatabaseStorage implements IStorage {
     appliedOutput: Array<{ playerName: string; playerId: number; holes: Array<{ holeNumber: number; strokes: number }> }>;
     playerNames: string[];
     imageUrl?: string | null;
+    geminiRawText?: string | null;
   }): Promise<ScanCorrectionLog | undefined> {
     const setData: Record<string, unknown> = {
       appliedOutput: data.appliedOutput,
       playerNames: data.playerNames,
     };
     if (data.imageUrl !== undefined) setData.imageUrl = data.imageUrl;
+    if (data.geminiRawText !== undefined) setData.geminiRawText = data.geminiRawText;
     const [row] = await db.update(scanCorrectionLogs)
       .set(setData)
       .where(and(eq(scanCorrectionLogs.id, id), eq(scanCorrectionLogs.matchId, matchId)))
@@ -412,13 +418,14 @@ export class DatabaseStorage implements IStorage {
         geminiOutput: scanCorrectionLogs.geminiOutput,
         appliedOutput: scanCorrectionLogs.appliedOutput,
         playerNames: scanCorrectionLogs.playerNames,
+        geminiRawText: scanCorrectionLogs.geminiRawText,
         createdAt: scanCorrectionLogs.createdAt,
         matchName: matches.name,
       })
       .from(scanCorrectionLogs)
       .leftJoin(matches, eq(scanCorrectionLogs.matchId, matches.id))
       .orderBy(desc(scanCorrectionLogs.createdAt));
-    return rows;
+    return rows as (ScanCorrectionLog & { matchName: string | null })[];
   }
 
   async listScanPatterns(): Promise<ScanPattern[]> {
