@@ -25,6 +25,10 @@ Tested against two Hardscrabble CC rounds (7W5R 17 players, 5KY5 25 players):
 - With anchoring instruction: **~46% perfect** (systemic H10 failure)
 - Cards with match play +/- annotations: 0/4 perfect without the annotation rule
 
+## Rule: Circle/box border misread as digit
+
+Players circle birdies and box bogeys. Gemini reads the left border of a box around "4" as "1", producing "14". Added rule: circle and box borders are scoring annotations only, never digits.
+
 ## Known remaining failure modes
 1. **Column collapse** — on crowded cards Gemini silently drops a player column (seen on 7W5R Card 2). Fix: pass exact player count + names so Gemini knows how many columns to expect.
 2. **High-scorer row confusion** — players with scores in the 80s/88s on dense cards get mangled.
