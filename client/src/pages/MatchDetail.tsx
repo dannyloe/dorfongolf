@@ -7990,6 +7990,12 @@ export default function MatchDetail() {
           return null;
         };
 
+        const isDisputedHole = (playerName: string, hole: number): boolean => {
+          const dh = scanData?.disputedHoles as Array<{ playerName: string; holeNumber: number }> | undefined;
+          if (!dh) return false;
+          return dh.some(d => d.playerName === playerName && d.holeNumber === hole);
+        };
+
         const calculateTotals = (playerName: string) => {
           const holes = scanEditableScores[playerName] || {};
           let front9 = 0; let back9 = 0; let hasAll = true;
@@ -8039,7 +8045,15 @@ export default function MatchDetail() {
           <Dialog open={true} onOpenChange={(open) => { if (!open) setReviewingScan(null); }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
               <DialogHeader>
-                <DialogTitle>Review Scanned Scorecard</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                  <span>Review Scanned Scorecard</span>
+                  <span
+                    className="text-xs font-normal bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+                    title="The image was scanned 3 times. Holes where runs disagreed are highlighted in yellow — please double-check those."
+                  >
+                    3-shot scan
+                  </span>
+                </DialogTitle>
               </DialogHeader>
               <div className="mb-2">
                 <img
@@ -8094,6 +8108,7 @@ export default function MatchDetail() {
                           const par = getHolePar(hole);
                           const diff = scoreNum !== null && !isNaN(scoreNum) ? scoreNum - par : null;
                           const textColor = diff === null || diff === 0 ? "" : diff < 0 ? "text-red-500" : "text-blue-500";
+                          const disputed = isDisputedHole(scannedPlayer.playerName, hole);
                           return (
                             <div key={hole} className="text-center">
                               <div className="text-xs text-muted-foreground mb-1">{hole}</div>
@@ -8114,7 +8129,7 @@ export default function MatchDetail() {
                                     const v = e.target.value.replace(/\D/g, "");
                                     setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
                                   }}
-                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 bg-transparent ${textColor}`}
+                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 ${disputed ? "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400" : "bg-transparent"} ${textColor}`}
                                   data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
                                 />
                                 <div className="absolute -top-1 -right-1 z-20">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
@@ -8136,6 +8151,7 @@ export default function MatchDetail() {
                           const par = getHolePar(hole);
                           const diff = scoreNum !== null && !isNaN(scoreNum) ? scoreNum - par : null;
                           const textColor = diff === null || diff === 0 ? "" : diff < 0 ? "text-red-500" : "text-blue-500";
+                          const disputed = isDisputedHole(scannedPlayer.playerName, hole);
                           return (
                             <div key={hole} className="text-center">
                               <div className="text-xs text-muted-foreground mb-1">{hole}</div>
@@ -8156,7 +8172,7 @@ export default function MatchDetail() {
                                     const v = e.target.value.replace(/\D/g, "");
                                     setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
                                   }}
-                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 bg-transparent ${textColor}`}
+                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 ${disputed ? "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400" : "bg-transparent"} ${textColor}`}
                                   data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
                                 />
                                 <div className="absolute -top-1 -right-1 z-20">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
@@ -8181,10 +8197,11 @@ export default function MatchDetail() {
                 })}
               </div>
 
-              <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-sm text-muted-foreground">
                 <CheckCircle2 className="w-4 h-4 text-green-500" /><span>High</span>
                 <AlertCircle className="w-4 h-4 text-yellow-500 ml-2" /><span>Medium</span>
                 <AlertCircle className="w-4 h-4 text-red-500 ml-2" /><span>Low confidence</span>
+                <span className="ml-2 flex items-center gap-1"><span className="inline-block w-4 h-4 rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30" /></span><span>Gemini disagreed — check manually</span>
               </div>
 
               <DialogFooter className="gap-2">

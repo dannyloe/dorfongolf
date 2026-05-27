@@ -719,6 +719,12 @@ export default function QuickScoreEntry() {
     }
   };
 
+  const isDisputedHole = (playerName: string, hole: number): boolean => {
+    const result = scanScorecard.data;
+    if (!result?.disputedHoles) return false;
+    return result.disputedHoles.some(d => d.playerName === playerName && d.holeNumber === hole);
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 max-w-lg mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -970,7 +976,15 @@ export default function QuickScoreEntry() {
                   <span>Scan failed</span>
                 </>
               ) : (
-                <span>Review Scanned Scores</span>
+                <>
+                  <span>Review Scanned Scores</span>
+                  <span
+                    className="ml-1 text-xs font-normal bg-primary/10 text-primary px-1.5 py-0.5 rounded"
+                    title="The image was scanned 3 times. Holes where runs disagreed are highlighted in yellow — please double-check those."
+                  >
+                    3-shot scan
+                  </span>
+                </>
               )}
             </DialogTitle>
           </DialogHeader>
@@ -1124,6 +1138,7 @@ export default function QuickScoreEntry() {
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(hole => {
                       const holeData = playerScore.holes.find(h => h.holeNumber === hole);
                       const value = editableScores[playerScore.playerName]?.[hole] || '';
+                      const disputed = isDisputedHole(playerScore.playerName, hole);
                       return (
                         <div key={hole} className="text-center">
                           <div className="text-xs text-muted-foreground mb-1">{hole}</div>
@@ -1142,7 +1157,7 @@ export default function QuickScoreEntry() {
                                   }
                                 }));
                               }}
-                              className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                              className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 ${disputed ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400' : ''}`}
                               data-testid={`input-scan-${playerScore.playerName}-${hole}`}
                             />
                             <div className="absolute -top-1 -right-1">
@@ -1164,6 +1179,7 @@ export default function QuickScoreEntry() {
                     {[10, 11, 12, 13, 14, 15, 16, 17, 18].map(hole => {
                       const holeData = playerScore.holes.find(h => h.holeNumber === hole);
                       const value = editableScores[playerScore.playerName]?.[hole] || '';
+                      const disputed = isDisputedHole(playerScore.playerName, hole);
                       return (
                         <div key={hole} className="text-center">
                           <div className="text-xs text-muted-foreground mb-1">{hole}</div>
@@ -1182,7 +1198,7 @@ export default function QuickScoreEntry() {
                                   }
                                 }));
                               }}
-                              className="w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50"
+                              className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 ${disputed ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400' : ''}`}
                               data-testid={`input-scan-${playerScore.playerName}-${hole}`}
                             />
                             <div className="absolute -top-1 -right-1">
@@ -1213,13 +1229,15 @@ export default function QuickScoreEntry() {
             })}
           </div>
           
-          <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 text-sm text-muted-foreground">
             <CheckCircle2 className="w-4 h-4 text-green-500" />
             <span>High confidence</span>
             <AlertCircle className="w-4 h-4 text-yellow-500 ml-2" />
             <span>Medium confidence</span>
             <AlertCircle className="w-4 h-4 text-red-500 ml-2" />
             <span>Low confidence</span>
+            <span className="ml-2 flex items-center gap-1"><span className="inline-block w-4 h-4 rounded border border-yellow-400 bg-yellow-50 dark:bg-yellow-900/30" /></span>
+            <span>Gemini disagreed — check manually</span>
           </div>
           
           <DialogFooter className="gap-2">

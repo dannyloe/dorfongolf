@@ -333,6 +333,151 @@ CRITICAL — visual decorations around scores:
   };
 }
 
+// ─── Multi-shot scan runner ──────────────────────────────────────────────────
+
+export interface MultiShotScanResult extends ScanScorecardResult {
+  disputedHoles: Array<{ playerName: string; holeNumber: number }>;
+}
+
+/**
+ * Given a run's score array and an expected canonical player name, find the
+ * best-matching player entry using case-insensitive prefix/contains matching.
+ * Falls back to exact name if no match is found.
+ */
+function findPlayerInRun(
+  scores: NormalizedPlayer[],
+  canonicalName: string
+): NormalizedPlayer | undefined {
+  const lower = canonicalName.toLowerCase().trim();
+
+  // 1. Exact match (case-insensitive)
+  const exact = scores.find(p => p.playerName.toLowerCase().trim() === lower);
+  if (exact) return exact;
+
+  // 2. One starts with the other (handles "Bob" ↔ "Bob Smith" or initials)
+  const prefix = scores.find(p => {
+    const pl = p.playerName.toLowerCase().trim();
+    return pl.startsWith(lower) || lower.startsWith(pl);
+  });
+  if (prefix) return prefix;
+
+  // 3. Substring containment
+  const contains = scores.find(p =>
+    p.playerName.toLowerCase().includes(lower) ||
+    lower.includes(p.playerName.toLowerCase().trim())
+  );
+  return contains;
+}
+
+/**
+ * Run scanScorecardImage N times in parallel using Promise.allSettled, then
+ * merge results using majority vote per expected player/hole.
+ *
+ * - Requires at least 2 successful runs; throws a retryable error otherwise.
+ * - Players are anchored to the caller-supplied `playerNames` list (with
+ *   case-insensitive fuzzy matching) so OCR name variants across runs don't
+ *   split the vote.
+ * - Holes where the successful runs all disagree are returned with
+ *   confidence "low" and strokes null so the UI can flag them.
+ */
+export async function scanScorecardImageMultiShot(params: {
+  imageBase64: string;
+  playerNames: string[];
+  courseName?: string;
+  extraRules?: string[];
+  shots?: number;
+}): Promise<MultiShotScanResult> {
+  const { shots = 3, ...rest } = params;
+  const minRequired = Math.ceil(shots / 2); // 2 for 3-shot
+
+  // Run all shots in parallel; don't let one failure kill the group.
+  const settled = await Promise.allSettled(
+    Array.from({ length: shots }, () => scanScorecardImage(rest))
+  );
+
+  const successfulResults = settled
+    .filter((r): r is PromiseFulfilledResult<ScanScorecardResult> => r.status === "fulfilled")
+    .map(r => r.value);
+
+  if (successfulResults.length < minRequired) {
+    // Surface a clear, retryable error message
+    const firstError = settled.find(r => r.status === "rejected") as PromiseRejectedResult | undefined;
+    const reason = firstError?.reason instanceof Error ? firstError.reason.message : "Gemini error";
+    throw new Error(`Scorecard scan failed (${successfulResults.length}/${shots} runs succeeded): ${reason}`);
+  }
+
+  const n = successfulResults.length; // actual successful run count
+  // Majority threshold is always based on the *requested* shot count, not how
+  // many succeeded.  For 3-shot this is always 2.  This ensures that two
+  // successful runs with a 1-1 split are correctly treated as disputed rather
+  // than declaring a spurious winner.
+  const majorityThreshold = Math.ceil(shots / 2); // 2 for shots=3
+
+  const mergedScores: NormalizedPlayer[] = [];
+  const disputedHoles: Array<{ playerName: string; holeNumber: number }> = [];
+
+  // Anchor to the expected player name list supplied by the caller.
+  // For each canonical name, find that player in each run with fuzzy matching.
+  const canonicalNames = rest.playerNames.length > 0
+    ? rest.playerNames
+    : Array.from(
+        new Set(successfulResults.flatMap(r => r.scores.map(p => p.playerName)))
+      );
+
+  for (const playerName of canonicalNames) {
+    const playerDataAcrossRuns = successfulResults.map(r =>
+      findPlayerInRun(r.scores, playerName)
+    );
+
+    const mergedHoles: NormalizedHole[] = [];
+
+    for (let hole = 1; hole <= 18; hole++) {
+      const strokeValues = playerDataAcrossRuns.map(
+        pd => pd?.holes.find(h => h.holeNumber === hole)?.strokes ?? null
+      );
+
+      // Count occurrences of each stroke value across successful runs
+      const counts = new Map<string, number>();
+      for (const v of strokeValues) {
+        const key = v === null ? "__null__" : String(v);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+
+      // Find the value that meets the majority threshold (≥2 for 3-shot).
+      // A 1-1 split when n=2 fails this test, correctly producing "disputed".
+      let bestKey: string | undefined;
+      let bestCount = 0;
+      for (const [key, count] of counts) {
+        if (count >= majorityThreshold && count > bestCount) {
+          bestKey = key;
+          bestCount = count;
+        }
+      }
+
+      if (bestKey === undefined) {
+        // No value reached the majority threshold — flag as disputed
+        mergedHoles.push({ holeNumber: hole, strokes: null, confidence: "low" });
+        disputedHoles.push({ playerName, holeNumber: hole });
+      } else {
+        const strokes = bestKey === "__null__" ? null : parseInt(bestKey, 10);
+        // "high" only if all originally requested shots agreed (n===shots AND bestCount===shots)
+        const confidence: "high" | "medium" =
+          n === shots && bestCount === shots ? "high" : "medium";
+        mergedHoles.push({ holeNumber: hole, strokes, confidence });
+      }
+    }
+
+    mergedScores.push({ playerName, holes: mergedHoles });
+  }
+
+  return {
+    success: true,
+    scores: mergedScores,
+    rawText: successfulResults[0]?.rawText ?? "",
+    disputedHoles,
+  };
+}
+
 // ─── Bet slip photo parser ───────────────────────────────────────────────────
 
 export interface ScannedBetResult {

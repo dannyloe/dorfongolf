@@ -630,6 +630,7 @@ export interface ScanResult {
   success: boolean;
   scores: ScannedPlayer[];
   rawText?: string;
+  disputedHoles?: Array<{ playerName: string; holeNumber: number }>;
 }
 
 type ScanScorecardInput = z.infer<typeof api.scorecard.scan.input>;
