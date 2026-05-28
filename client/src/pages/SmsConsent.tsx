@@ -5,25 +5,27 @@ import { Link } from "wouter";
 export default function SmsConsent() {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      <div style={{ padding: "40px", maxWidth: "800px", margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
+      <div style={{ padding: "40px", maxWidth: "900px", margin: "0 auto", fontFamily: "system-ui, Arial, sans-serif", lineHeight: "1.6" }}>
         <h1>Golf Betting SMS Notifications</h1>
-        <p><strong>ETG Inc. d/b/a Golf Betting</strong> sends optional transactional SMS messages for golf scorecards, match confirmations, and results.</p>
+        <p><strong>ETG Inc. d/b/a Golf Betting</strong> sends optional transactional SMS notifications regarding golf matches, scorecards, and results to users of dorfongolf.com.</p>
         <h2>How to Opt In</h2>
         <ol>
-          <li>Go to <a href="https://dorfongolf.com">dorfongolf.com</a> and log in or create an account.</li>
-          <li>Go to your phone number settings (optional step).</li>
+          <li>Create an account or log in at <a href="https://dorfongolf.com">dorfongolf.com</a></li>
+          <li>Go to your account settings and add your phone number (this step is optional)</li>
           <li>
-            Check the box with this exact wording:<br /><br />
+            Check the consent checkbox with the following exact text:<br /><br />
             <strong>"I consent to receive SMS notifications from ETG Inc. d/b/a Golf Betting for match updates and score confirmations. (Message &amp; data rates may apply. This is optional and not required to create an account or use the service.)"</strong>
           </li>
         </ol>
-        <p><strong>SMS is completely optional.</strong> You can use the full service without signing up for texts.</p>
+        <p><strong>SMS is completely optional.</strong> You can use all features of Golf Betting without opting in to SMS.</p>
         <p>
-          Message frequency: 1–5 messages per round.<br />
-          Reply <strong>STOP</strong> to unsubscribe • Reply <strong>HELP</strong> for help.
+          <strong>Message Frequency:</strong> 1–5 messages per golf round.<br />
+          Reply <strong>STOP</strong> to unsubscribe at any time.<br />
+          Reply <strong>HELP</strong> for help.
         </p>
         <p>
-          <a href="/privacy">Privacy Policy</a> | <a href="/terms">Terms of Service</a>
+          <a href="/privacy">Privacy Policy</a> |{" "}
+          <a href="/terms">Terms of Service</a>
         </p>
       </div>
 
