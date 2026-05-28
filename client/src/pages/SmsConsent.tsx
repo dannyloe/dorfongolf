@@ -5,6 +5,28 @@ import { Link } from "wouter";
 export default function SmsConsent() {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
+      <div style={{ padding: "40px", maxWidth: "800px", margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
+        <h1>Golf Betting SMS Notifications</h1>
+        <p><strong>ETG Inc. d/b/a Golf Betting</strong> sends optional transactional SMS messages for golf scorecards, match confirmations, and results.</p>
+        <h2>How to Opt In</h2>
+        <ol>
+          <li>Go to <a href="https://dorfongolf.com">dorfongolf.com</a> and log in or create an account.</li>
+          <li>Go to your phone number settings (optional step).</li>
+          <li>
+            Check the box with this exact wording:<br /><br />
+            <strong>"I consent to receive SMS notifications from ETG Inc. d/b/a Golf Betting for match updates and score confirmations. (Message &amp; data rates may apply. This is optional and not required to create an account or use the service.)"</strong>
+          </li>
+        </ol>
+        <p><strong>SMS is completely optional.</strong> You can use the full service without signing up for texts.</p>
+        <p>
+          Message frequency: 1–5 messages per round.<br />
+          Reply <strong>STOP</strong> to unsubscribe • Reply <strong>HELP</strong> for help.
+        </p>
+        <p>
+          <a href="/privacy">Privacy Policy</a> | <a href="/terms">Terms of Service</a>
+        </p>
+      </div>
+
       <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-accent/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
 
