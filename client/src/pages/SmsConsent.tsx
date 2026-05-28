@@ -35,67 +35,39 @@ export default function SmsConsent() {
               <h1 className="font-display font-bold text-3xl md:text-4xl">Golf Betting SMS Notifications</h1>
             </div>
             <p className="text-sm font-medium text-foreground mb-1">ETG Inc. d/b/a Golf Betting</p>
-            <p className="text-muted-foreground text-sm mb-8">SMS is completely optional — you are never required to provide a phone number to create an account or use the app.</p>
+            <p className="text-muted-foreground text-sm mb-8">
+              ETG Inc. d/b/a Golf Betting sends optional transactional SMS messages related to your golf matches,
+              including match confirmations, scorecard results, and bet summaries. You are never required to provide
+              a phone number to create an account or use the app.
+            </p>
 
             <div className="space-y-8 text-foreground">
-              <Section title="What You'll Receive">
-                <p>
-                  When you opt in, <strong>ETG Inc. d/b/a Golf Betting</strong> will send you SMS text messages related to your golf matches, including:
-                </p>
-                <ul className="list-disc pl-5 space-y-1 mt-3">
-                  <li>Match confirmations</li>
-                  <li>Scorecard results</li>
-                  <li>Match invitations and reminders</li>
-                  <li>Bet result summaries</li>
-                </ul>
-                <p className="mt-3">
-                  <strong>Message frequency:</strong> Varies (typically 1–5 messages per golf round).
-                </p>
-                <p className="mt-2">Message &amp; data rates may apply.</p>
-              </Section>
-
               <Section title="How to Opt In">
-                <p className="mb-3">SMS notifications are set up from within the app after you have an account:</p>
-                <ol className="list-decimal pl-5 space-y-2">
+                <p className="mb-4">SMS notifications are set up from within the app after you have an account:</p>
+                <ol className="list-decimal pl-5 space-y-4">
                   <li>Create an account or log in at <Link href="/" className="text-primary underline underline-offset-2">golfbetting.app</Link>.</li>
                   <li>Go to your <strong>Profile</strong> page (tap your name in the menu).</li>
-                  <li>Enter your phone number and check the consent box labeled:<br />
-                    <span className="block mt-1 ml-2 p-3 bg-muted rounded-lg text-sm text-muted-foreground italic">
-                      "I agree to receive SMS notifications for match updates and score confirmations from Golf Betting (optional — not required to use the service)."
+                  <li>
+                    Enter your phone number and check the consent box:
+                    <span className="block mt-2 p-3 bg-muted rounded-lg text-sm text-muted-foreground italic">
+                      "I agree to receive SMS notifications for match updates and score confirmations from Golf Betting
+                      (optional — not required to use the service)."
                     </span>
                   </li>
-                  <li>Verify your number with the code sent to your phone.</li>
                 </ol>
+                <p className="mt-4 text-sm">SMS consent is completely optional and is not required to use any feature of the app.</p>
               </Section>
 
-              <Section title="How to Opt Out">
-                <p>
-                  You can opt out at any time by replying <strong>STOP</strong> to any message from Golf Betting.
-                  You can also remove your phone number from your profile in the app at any time.
+              <div className="text-muted-foreground leading-relaxed space-y-2 text-sm">
+                <p><strong className="text-foreground">Message frequency:</strong> Typically 1–5 messages per golf round or match. Message &amp; data rates may apply.</p>
+                <p>Reply <strong className="text-foreground">STOP</strong> to any message to opt out at any time.</p>
+                <p>Reply <strong className="text-foreground">HELP</strong> to any message for assistance.</p>
+                <p className="pt-1">
+                  <Link href="/privacy" className="text-primary underline underline-offset-2">Privacy Policy</Link>
+                  {" · "}
+                  <Link href="/terms" className="text-primary underline underline-offset-2">Terms &amp; Conditions</Link>
                 </p>
-                <p className="mt-3">
-                  Reply <strong>HELP</strong> to any message for assistance.
-                </p>
-              </Section>
-
-              <Section title="Your Privacy">
-                <p>
-                  Your phone number is never sold or shared with third parties for marketing purposes.
-                  SMS messages are delivered via Twilio. See our{" "}
-                  <Link href="/privacy" className="text-primary underline underline-offset-2">Privacy Policy</Link>{" "}
-                  for full details on how your data is handled.
-                </p>
-              </Section>
-
-              <Section title="Legal">
-                <p>
-                  By opting in you agree to our{" "}
-                  <Link href="/terms" className="text-primary underline underline-offset-2">Terms of Service</Link>
-                  {" "}and{" "}
-                  <Link href="/privacy" className="text-primary underline underline-offset-2">Privacy Policy</Link>.
-                  SMS consent is not a condition of purchasing any goods or services.
-                </p>
-              </Section>
+              </div>
             </div>
           </div>
         </motion.div>
