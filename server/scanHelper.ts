@@ -49,8 +49,9 @@ Rules:
 Return JSON array. Each element: { betType, amountCents, players, description }`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     config: {
+      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: "application/json",
       responseSchema: {
         type: GenAIType.ARRAY,
@@ -260,8 +261,9 @@ CRITICAL — visual decorations around scores:
   }
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     config: {
+      thinkingConfig: { thinkingBudget: 0 },
       responseMimeType: "application/json",
       responseSchema: {
         type: GenAIType.OBJECT,
@@ -591,7 +593,7 @@ Each element of the array represents one distinct bet found on the slip. If ther
 ]${extraRulesText ? `\n\nAdditional rules based on past scan corrections:\n${extraRulesText}` : ""}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.5-flash",
     config: { thinkingConfig: { thinkingBudget: 0 } } as any,
     contents: [
       {
