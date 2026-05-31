@@ -698,6 +698,7 @@ export default function MatchDetail() {
   const [betScanEditTeamB, setBetScanEditTeamB] = useState<number[]>([]);
   const [betScanEditAmount, setBetScanEditAmount] = useState<string>('');
   const [betScanEditUseNet, setBetScanEditUseNet] = useState<boolean>(false);
+  const [betScanEditTeamSize, setBetScanEditTeamSize] = useState<number>(2);
   
   // Match filter state
   const [filterByPlayer, setFilterByPlayer] = useState<string>("all");
@@ -7858,6 +7859,7 @@ export default function MatchDetail() {
           const rawAmt = bet.unitAmount ?? bet.deathMatchBaseBet ?? null;
           setBetScanEditAmount(rawAmt != null ? String(rawAmt) : '');
           setBetScanEditUseNet(!!bet.useNet);
+          setBetScanEditTeamSize(bet.teamSize ?? 2);
         };
 
         const advanceOrClose = () => {
@@ -7970,9 +7972,25 @@ export default function MatchDetail() {
                 ) : betScanEditMatchType !== 'five_five_five_three' ? (
                   <div className="space-y-3">
                     {(currentBet.keyedPlayerIds?.length ?? 0) > 0 && (
-                      <div className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded px-2.5 py-1.5">
-                        <span className="mt-0.5">⭐</span>
-                        <span>Wheel/keyed player detected — applying will create individual 1v1 match-ups for each keyed player vs all opponents on the other team.</span>
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded px-2.5 py-1.5">
+                          <span className="mt-0.5">⭐</span>
+                          <span>Wheel/keyed player detected — each captain will pair with every combination of riders and play all matching combos on the other team.</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Team size</label>
+                          <Select value={String(betScanEditTeamSize)} onValueChange={v => setBetScanEditTeamSize(Number(v))}>
+                            <SelectTrigger className="h-7 w-28 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">1-man</SelectItem>
+                              <SelectItem value="2">2-man</SelectItem>
+                              <SelectItem value="3">3-man</SelectItem>
+                              <SelectItem value="4">4-man</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-4">
@@ -7980,7 +7998,7 @@ export default function MatchDetail() {
                       <label className="text-sm font-medium">Team A</label>
                       <div className="space-y-1">
                         {players.map(p => {
-                          const isKeyed = (currentBet.keyedPlayerIds || []).includes(p.id);
+                          const isKeyed = (currentBet.keyedPlayerIds || []).includes(p.id) && betScanEditTeamA.includes(p.id);
                           return (
                           <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
                             <Checkbox
@@ -8003,7 +8021,7 @@ export default function MatchDetail() {
                       <label className="text-sm font-medium">Team B</label>
                       <div className="space-y-1">
                         {players.map(p => {
-                          const isKeyed = (currentBet.keyedPlayerIds || []).includes(p.id);
+                          const isKeyed = (currentBet.keyedPlayerIds || []).includes(p.id) && betScanEditTeamB.includes(p.id);
                           return (
                           <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
                             <Checkbox
@@ -8058,9 +8076,8 @@ export default function MatchDetail() {
                   onClick={async () => {
                     const amt = betScanEditAmount !== '' ? Number(betScanEditAmount) : undefined;
                     const allKeyed: number[] = currentBet.keyedPlayerIds || [];
-                    // Only Team A captains go into keyedTeamAIds — filtering out Team B captains
-                    // prevents them from being expanded against their own team.
                     const keyedA = allKeyed.filter((id: number) => betScanEditTeamA.includes(id));
+                    const keyedB = allKeyed.filter((id: number) => betScanEditTeamB.includes(id));
 
                     // Shared: log correction diff between Gemini output and what the user applied
                     const logCorrection = async (appliedOutput: any) => {
@@ -8128,32 +8145,61 @@ export default function MatchDetail() {
                           });
                           toast({ title: 'Bet created', description: `Skins — ${playerNames}` });
                         }
-                      } else if (keyedA.length > 0) {
-                        // Wheel/keyed bet: expand each Team A captain vs each Team B player
+                      } else if (keyedA.length > 0 || keyedB.length > 0) {
+                        // Wheel/keyed bet: expand N-man team combinations.
+                        // captains stay fixed; riders rotate through non-captain players.
+                        const captainsA = keyedA.length > 0 ? keyedA : betScanEditTeamA;
+                        const captainsB = keyedB.length > 0 ? keyedB : betScanEditTeamB;
+                        const nonKeyedA = betScanEditTeamA.filter((id: number) => !captainsA.includes(id));
+                        const nonKeyedB = betScanEditTeamB.filter((id: number) => !captainsB.includes(id));
+                        const riderCount = betScanEditTeamSize - 1;
+
+                        // k-combinations helper
+                        const getCombos = (arr: number[], k: number): number[][] => {
+                          if (k <= 0) return [[]];
+                          if (arr.length < k) return arr.length > 0 ? [arr] : [[]];
+                          const result: number[][] = [];
+                          for (let i = 0; i <= arr.length - k; i++) {
+                            for (const rest of getCombos(arr.slice(i + 1), k - 1)) {
+                              result.push([arr[i], ...rest]);
+                            }
+                          }
+                          return result;
+                        };
+
+                        const riderCombosA = getCombos(nonKeyedA, riderCount);
+                        const riderCombosB = getCombos(nonKeyedB, riderCount);
+
                         let created = 0;
-                        for (const keyedPlayerId of keyedA) {
-                          for (const opponentId of betScanEditTeamB) {
-                            const keyedName = players.find((p: Player) => p.id === keyedPlayerId)?.name || '';
-                            const oppName = players.find((p: Player) => p.id === opponentId)?.name || '';
-                            await new Promise<void>((resolve, reject) => {
-                              createEventMatch.mutate({
-                                name: `${keyedName} vs ${oppName}`,
-                                matchType: betScanEditMatchType,
-                                unitAmount: amtCents,
-                                teamA: { name: keyedName, playerIds: [keyedPlayerId] },
-                                teamB: { name: oppName, playerIds: [opponentId] },
-                                autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
-                                autoPressAllPresses: false,
-                                autoPressNassauFront9: isNassau ? autoPressOriginal : true,
-                                autoPressNassauBack9: isNassau ? autoPressOriginal : true,
-                                autoPressNassauOverall: isNassau ? autoPressOriginal : true,
-                                useNetScoring: useNet,
-                                startOnBack9: dayStartOnBack9,
-                              } as any, { onSuccess: () => { created++; resolve(); }, onError: (e: any) => reject(e) });
-                            });
+                        for (const captainA of captainsA) {
+                          for (const riderComboA of riderCombosA) {
+                            const teamAIds = [captainA, ...riderComboA];
+                            const teamAName = teamAIds.map((id: number) => players.find((p: Player) => p.id === id)?.name || '').join(' / ');
+                            for (const captainB of captainsB) {
+                              for (const riderComboB of riderCombosB) {
+                                const teamBIds = [captainB, ...riderComboB];
+                                const teamBName = teamBIds.map((id: number) => players.find((p: Player) => p.id === id)?.name || '').join(' / ');
+                                await new Promise<void>((resolve, reject) => {
+                                  createEventMatch.mutate({
+                                    name: `${teamAName} vs ${teamBName}`,
+                                    matchType: betScanEditMatchType,
+                                    unitAmount: amtCents,
+                                    teamA: { name: teamAName, playerIds: teamAIds },
+                                    teamB: { name: teamBName, playerIds: teamBIds },
+                                    autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
+                                    autoPressAllPresses: false,
+                                    autoPressNassauFront9: isNassau ? autoPressOriginal : true,
+                                    autoPressNassauBack9: isNassau ? autoPressOriginal : true,
+                                    autoPressNassauOverall: isNassau ? autoPressOriginal : true,
+                                    useNetScoring: useNet,
+                                    startOnBack9: dayStartOnBack9,
+                                  } as any, { onSuccess: () => { created++; resolve(); }, onError: (e: any) => reject(e) });
+                                });
+                              }
+                            }
                           }
                         }
-                        toast({ title: 'Bets created', description: `${created} wheel match-up(s) created` });
+                        toast({ title: 'Bets created', description: `${created} ${betScanEditTeamSize}-man wheel match-up(s) created` });
                       } else {
                         // Normal team vs team bet
                         const teamAName = betScanEditTeamA.map((id: number) => players.find((p: Player) => p.id === id)?.name || '').join(' / ');
