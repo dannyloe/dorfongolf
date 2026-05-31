@@ -5429,6 +5429,121 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // === EVENT PLAYING GROUPS ===
+  // Helper to check if user can manage playing groups for an event
+  async function canManagePlayingGroups(eventId: number, userId: string): Promise<boolean> {
+    if (userId === ADMIN_USER_ID) return true;
+    const isAdmin = await storage.isUserAdmin(userId);
+    if (isAdmin) return true;
+    const event = await storage.getRyderCupEvent(eventId);
+    if (!event) return false;
+    return event.creatorId === userId;
+  }
+
+  // GET /api/events/:eventId/playing-groups — fetch saved groups
+  app.get("/api/events/:eventId/playing-groups", isAuthenticated, async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.eventId);
+      const groups = await storage.getEventPlayingGroups(eventId);
+      res.json(groups);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/events/:eventId/playing-groups/generate — run algorithm, return preview
+  app.post("/api/events/:eventId/playing-groups/generate", isAuthenticated, async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.eventId);
+      const user = req.user as any;
+      if (!(await canManagePlayingGroups(eventId, user.claims.sub))) {
+        return res.status(403).json({ message: "Only the event creator can generate playing groups" });
+      }
+
+      const schema = z.object({
+        players: z.array(z.string().min(1)).min(1),
+        lockedSets: z.array(z.array(z.string().min(1)).min(2).max(4)).default([]),
+      }).refine((data) => {
+        const playerSet = new Set(data.players);
+        const seenInLock = new Set<string>();
+        for (const set of data.lockedSets) {
+          for (const p of set) {
+            if (!playerSet.has(p)) return false;
+            if (seenInLock.has(p)) return false;
+            seenInLock.add(p);
+          }
+        }
+        return true;
+      }, { message: "Locked set players must be in the roster and not appear in multiple locked sets" });
+      const { players, lockedSets } = schema.parse(req.body);
+
+      const { generatePlayingGroups } = await import("../shared/playingGroups");
+      const generated = generatePlayingGroups(players, lockedSets);
+      const preview = generated.map((g) => ({
+        players: g.players,
+        lockedPlayerNames: Array.from(g.lockedPlayerNames),
+      }));
+      res.json(preview);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.name === "PlayingGroupsConstraintError") {
+        return res.status(400).json({ message: err.message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // PUT /api/events/:eventId/playing-groups — save arrangement
+  app.put("/api/events/:eventId/playing-groups", isAuthenticated, async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.eventId);
+      const user = req.user as any;
+      if (!(await canManagePlayingGroups(eventId, user.claims.sub))) {
+        return res.status(403).json({ message: "Only the event creator can save playing groups" });
+      }
+
+      const schema = z.object({
+        groups: z.array(z.object({
+          members: z.array(z.object({
+            playerName: z.string().min(1),
+            teamMemberId: z.number().int().positive().optional().nullable(),
+          })).min(1),
+          lockedPlayerNames: z.array(z.string()).default([]),
+        })).min(1),
+      });
+      const { groups } = schema.parse(req.body);
+
+      const saved = await storage.saveEventPlayingGroups(eventId, groups);
+      res.json(saved);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/events/:eventId/playing-groups — clear groups
+  app.delete("/api/events/:eventId/playing-groups", isAuthenticated, async (req, res) => {
+    try {
+      const eventId = parseInt(req.params.eventId);
+      const user = req.user as any;
+      if (!(await canManagePlayingGroups(eventId, user.claims.sub))) {
+        return res.status(403).json({ message: "Only the event creator can delete playing groups" });
+      }
+      await storage.deleteEventPlayingGroups(eventId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Admin: list scan correction logs
   app.get("/api/admin/scan-correction-logs", isAuthenticated, async (req, res) => {
     try {

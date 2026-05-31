@@ -12,6 +12,7 @@ import {
   smsOptIns,
   scanCorrectionLogs,
   scanPatterns,
+  eventPlayingGroups, eventPlayingGroupMembers,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -35,6 +36,7 @@ import {
   type SmsOptIn,
   type ScanCorrectionLog,
   type ScanPattern,
+  type EventPlayingGroup, type EventPlayingGroupMember, type EventPlayingGroupWithMembers,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
 import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
@@ -187,6 +189,11 @@ export interface IStorage {
   }>): Promise<ScanPattern[]>;
   markPatternAddressed(id: number, addressed: boolean): Promise<ScanPattern | undefined>;
   getActiveScanPatternRules(): Promise<string[]>;
+
+  // Event Playing Groups
+  getEventPlayingGroups(eventId: number): Promise<EventPlayingGroupWithMembers[]>;
+  saveEventPlayingGroups(eventId: number, groups: { members: { playerName: string; teamMemberId?: number | null }[]; lockedPlayerNames: string[] }[]): Promise<EventPlayingGroupWithMembers[]>;
+  deleteEventPlayingGroups(eventId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4069,6 +4076,90 @@ export class DatabaseStorage implements IStorage {
     // Delete the settlement
     const result = await db.delete(settlements).where(eq(settlements.id, settlementId)).returning();
     return result.length > 0;
+  }
+
+  async getEventPlayingGroups(eventId: number): Promise<EventPlayingGroupWithMembers[]> {
+    const groups = await db.select()
+      .from(eventPlayingGroups)
+      .where(eq(eventPlayingGroups.eventId, eventId))
+      .orderBy(eventPlayingGroups.groupNumber);
+
+    if (groups.length === 0) return [];
+
+    const groupIds = groups.map((g) => g.id);
+    const members = await db.select()
+      .from(eventPlayingGroupMembers)
+      .where(inArray(eventPlayingGroupMembers.groupId, groupIds))
+      .orderBy(eventPlayingGroupMembers.memberIndex);
+
+    const membersByGroup = new Map<number, EventPlayingGroupMember[]>();
+    for (const m of members) {
+      if (!membersByGroup.has(m.groupId)) membersByGroup.set(m.groupId, []);
+      membersByGroup.get(m.groupId)!.push(m);
+    }
+
+    return groups.map((g) => ({
+      ...g,
+      members: membersByGroup.get(g.id) || [],
+    }));
+  }
+
+  async saveEventPlayingGroups(
+    eventId: number,
+    groupsData: { members: { playerName: string; teamMemberId?: number | null }[]; lockedPlayerNames: string[] }[],
+  ): Promise<EventPlayingGroupWithMembers[]> {
+    return db.transaction(async (tx) => {
+      const existing = await tx.select({ id: eventPlayingGroups.id })
+        .from(eventPlayingGroups)
+        .where(eq(eventPlayingGroups.eventId, eventId));
+
+      if (existing.length > 0) {
+        const ids = existing.map((g) => g.id);
+        await tx.delete(eventPlayingGroupMembers).where(inArray(eventPlayingGroupMembers.groupId, ids));
+        await tx.delete(eventPlayingGroups).where(eq(eventPlayingGroups.eventId, eventId));
+      }
+
+      const result: EventPlayingGroupWithMembers[] = [];
+
+      for (let i = 0; i < groupsData.length; i++) {
+        const { members, lockedPlayerNames } = groupsData[i];
+        const lockedSet = new Set(lockedPlayerNames);
+
+        const [group] = await tx.insert(eventPlayingGroups)
+          .values({ eventId, groupNumber: i + 1 })
+          .returning();
+
+        const memberValues = members.map((m, idx) => ({
+          groupId: group.id,
+          playerName: m.playerName,
+          teamMemberId: m.teamMemberId ?? null,
+          memberIndex: idx,
+          isLocked: lockedSet.has(m.playerName),
+        }));
+
+        const savedMembers = memberValues.length > 0
+          ? await tx.insert(eventPlayingGroupMembers).values(memberValues).returning()
+          : [];
+
+        result.push({ ...group, members: savedMembers });
+      }
+
+      return result;
+    });
+  }
+
+  async deleteEventPlayingGroups(eventId: number): Promise<void> {
+    await db.transaction(async (tx) => {
+      const existing = await tx.select({ id: eventPlayingGroups.id })
+        .from(eventPlayingGroups)
+        .where(eq(eventPlayingGroups.eventId, eventId));
+
+      if (existing.length > 0) {
+        const ids = existing.map((g) => g.id);
+        await tx.delete(eventPlayingGroupMembers).where(inArray(eventPlayingGroupMembers.groupId, ids));
+        await tx.delete(eventPlayingGroups).where(eq(eventPlayingGroups.eventId, eventId));
+      }
+    });
   }
 }
 

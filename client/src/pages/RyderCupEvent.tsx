@@ -300,6 +300,12 @@ export default function RyderCupEvent() {
   const [daySideBetsBreakdown, setDaySideBetsBreakdown] = useState<{ player: string; day: number } | null>(null);
   const [activeTab, setActiveTab] = useState("schedule");
 
+  // Playing Groups state
+  const [lockedSets, setLockedSets] = useState<string[][]>([]);
+  const [lockingSelection, setLockingSelection] = useState<string[]>([]);
+  const [previewGroups, setPreviewGroups] = useState<{ players: string[]; lockedPlayerNames: string[] }[] | null>(null);
+  const [swapSource, setSwapSource] = useState<{ groupIdx: number; playerName: string } | null>(null);
+
   const [isRefreshingLedger, setIsRefreshingLedger] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const scoreInputRef = useRef<HTMLInputElement | null>(null);
@@ -340,6 +346,100 @@ export default function RyderCupEvent() {
     queryKey: ["/api/preset-players"],
   });
   
+  // Playing Groups query & mutations
+  type SavedPlayingGroup = {
+    id: number;
+    eventId: number;
+    groupNumber: number;
+    generatedAt: string | null;
+    members: { id: number; groupId: number; playerName: string; memberIndex: number; isLocked: boolean }[];
+  };
+
+  const { data: savedPlayingGroups = [], refetch: refetchPlayingGroups } = useQuery<SavedPlayingGroup[]>({
+    queryKey: ["/api/events", id, "playing-groups"],
+    queryFn: async () => {
+      const res = await fetch(`/api/events/${id}/playing-groups`);
+      if (!res.ok) throw new Error("Failed to fetch playing groups");
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  const generateGroupsMutation = useMutation({
+    mutationFn: async ({ players, lockedSets }: { players: string[]; lockedSets: string[][] }) => {
+      const res = await fetch(`/api/events/${id}/playing-groups/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ players, lockedSets }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Failed to generate groups");
+      }
+      return res.json() as Promise<{ players: string[]; lockedPlayerNames: string[] }[]>;
+    },
+    onSuccess: (data) => {
+      setPreviewGroups(data);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Cannot generate groups", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveGroupsMutation = useMutation({
+    mutationFn: async (groups: { players: string[]; lockedPlayerNames: string[] }[]) => {
+      const playerToMemberId = new Map<string, number>(
+        (event?.teams ?? []).flatMap((t: any) => t.members.map((m: any) => [m.playerName, m.id]))
+      );
+      const payload = groups.map((g) => ({
+        members: g.players.map((name) => ({
+          playerName: name,
+          teamMemberId: playerToMemberId.get(name) ?? null,
+        })),
+        lockedPlayerNames: g.lockedPlayerNames,
+      }));
+      const res = await fetch(`/api/events/${id}/playing-groups`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ groups: payload }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to save groups");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Playing groups saved!" });
+      setPreviewGroups(null);
+      setLockedSets([]);
+      setLockingSelection([]);
+      refetchPlayingGroups();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save groups", variant: "destructive" });
+    },
+  });
+
+  const deleteGroupsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/events/${id}/playing-groups`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete groups");
+    },
+    onSuccess: () => {
+      toast({ title: "Playing groups cleared" });
+      setPreviewGroups(null);
+      setLockedSets([]);
+      setLockingSelection([]);
+      refetchPlayingGroups();
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to clear groups", variant: "destructive" });
+    },
+  });
+
   // Query for manual bets for this event
   const { data: manualBets = [] } = useQuery<{
     id: number;
@@ -2106,7 +2206,7 @@ export default function RyderCupEvent() {
           }
         }}
       >
-        <TabsList className={`grid w-full ${isTeamEvent ? "grid-cols-6" : "grid-cols-5"}`}>
+        <TabsList className={`grid w-full ${isTeamEvent ? "grid-cols-7" : "grid-cols-6"}`}>
           <TabsTrigger value="schedule" data-testid="tab-schedule">{isTeamEvent ? "Schedule" : "Days"}</TabsTrigger>
           <TabsTrigger value="ledger" data-testid="tab-ledger">
             {isRefreshingLedger ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
@@ -2115,6 +2215,7 @@ export default function RyderCupEvent() {
           <TabsTrigger value="skins" data-testid="tab-skins">Skins</TabsTrigger>
           <TabsTrigger value="side_matches" data-testid="tab-side-matches">Side Bets</TabsTrigger>
           <TabsTrigger value="payouts" data-testid="tab-payouts">Payouts</TabsTrigger>
+          <TabsTrigger value="playing_groups" data-testid="tab-playing-groups">Groups</TabsTrigger>
           {isTeamEvent && <TabsTrigger value="teams" data-testid="tab-teams">Teams</TabsTrigger>}
         </TabsList>
 
@@ -4038,6 +4139,312 @@ export default function RyderCupEvent() {
               </div>
             </DialogContent>
           </Dialog>
+        </TabsContent>
+
+        <TabsContent value="playing_groups" className="space-y-4" data-testid="tab-content-playing-groups">
+          {(() => {
+            const allPlayers = (event.teams ?? []).flatMap((t) => t.members.map((m) => m.playerName));
+            const lockedPlayerSet = new Set(lockedSets.flat());
+            const freePlayers = allPlayers.filter((p) => !lockedPlayerSet.has(p));
+
+            const activeGroups = previewGroups ?? (savedPlayingGroups.length > 0
+              ? savedPlayingGroups.map((g) => ({
+                  players: g.members.sort((a, b) => a.memberIndex - b.memberIndex).map((m) => m.playerName),
+                  lockedPlayerNames: g.members.filter((m) => m.isLocked).map((m) => m.playerName),
+                }))
+              : null);
+
+            const handleSwap = (toGroupIdx: number, toPlayerName: string) => {
+              if (!swapSource || !previewGroups) return;
+              if (swapSource.groupIdx === toGroupIdx && swapSource.playerName === toPlayerName) {
+                setSwapSource(null);
+                return;
+              }
+              const newGroups = previewGroups.map((g) => ({ ...g, players: [...g.players] }));
+              const fromGroup = newGroups[swapSource.groupIdx];
+              const toGroup = newGroups[toGroupIdx];
+              const fromIdx = fromGroup.players.indexOf(swapSource.playerName);
+              const toIdx = toGroup.players.indexOf(toPlayerName);
+              if (fromIdx === -1 || toIdx === -1) return;
+              const temp = fromGroup.players[fromIdx];
+              fromGroup.players[fromIdx] = toGroup.players[toIdx];
+              toGroup.players[toIdx] = temp;
+              fromGroup.lockedPlayerNames = fromGroup.lockedPlayerNames.filter((n) => n !== swapSource.playerName && n !== toPlayerName);
+              toGroup.lockedPlayerNames = toGroup.lockedPlayerNames.filter((n) => n !== swapSource.playerName && n !== toPlayerName);
+              setPreviewGroups(newGroups);
+              setSwapSource(null);
+            };
+
+            const shareGroups = () => {
+              if (!activeGroups) return;
+              const text = activeGroups.map((g, i) => `Group ${i + 1}: ${g.players.join(", ")}`).join("\n");
+              const title = `${event.name} — Playing Groups`;
+              if (navigator.share) {
+                navigator.share({ title, text }).catch(() => {});
+              } else {
+                navigator.clipboard.writeText(text).then(() => {
+                  toast({ title: "Copied to clipboard!" });
+                }).catch(() => {
+                  toast({ title: "Error", description: "Could not copy to clipboard", variant: "destructive" });
+                });
+              }
+            };
+
+            return (
+              <div className="space-y-4">
+                {/* Header */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h3 className="font-semibold text-lg">Playing Groups</h3>
+                    <p className="text-sm text-muted-foreground">{allPlayers.length} players in roster</p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {activeGroups && (
+                      <>
+                        <Button variant="outline" size="sm" onClick={shareGroups} data-testid="button-share-groups">
+                          <Users className="w-4 h-4 mr-1" /> Share
+                        </Button>
+                        {isCreatorOrAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setPreviewGroups(null);
+                              setLockedSets([]);
+                              setLockingSelection([]);
+                              if (savedPlayingGroups.length > 0) {
+                                deleteGroupsMutation.mutate();
+                              }
+                            }}
+                            data-testid="button-clear-groups"
+                          >
+                            <X className="w-4 h-4 mr-1" /> Clear
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {allPlayers.length === 0 ? (
+                  <Card>
+                    <CardContent className="pt-6 text-center text-muted-foreground">
+                      No players in the roster yet. Add players to the event first.
+                    </CardContent>
+                  </Card>
+                ) : activeGroups ? (
+                  <>
+                    {/* Group cards */}
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {activeGroups.map((group, gIdx) => {
+                        const lockedSet = new Set(group.lockedPlayerNames);
+                        return (
+                          <Card key={gIdx} data-testid={`card-group-${gIdx + 1}`}>
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-base flex items-center gap-1">
+                                <Flag className="w-4 h-4 text-muted-foreground" />
+                                Group {gIdx + 1}
+                                <Badge variant="outline" className="ml-auto text-xs">{group.players.length} players</Badge>
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <ul className="space-y-1.5">
+                                {group.players.map((playerName, pIdx) => {
+                                  const isSwapSource = swapSource?.groupIdx === gIdx && swapSource.playerName === playerName;
+                                  const isSwapTarget = !!swapSource && !isSwapSource;
+                                  return (
+                                    <li
+                                      key={pIdx}
+                                      className={`flex items-center justify-between p-1.5 rounded text-sm transition-colors
+                                        ${isSwapSource ? "bg-primary/20 ring-1 ring-primary" : ""}
+                                        ${isSwapTarget && previewGroups ? "cursor-pointer hover:bg-muted" : ""}
+                                        ${!isSwapSource && lockedSet.has(playerName) ? "bg-amber-50 dark:bg-amber-950/20" : ""}
+                                      `}
+                                      onClick={() => {
+                                        if (!previewGroups) return;
+                                        if (swapSource) {
+                                          handleSwap(gIdx, playerName);
+                                        } else {
+                                          setSwapSource({ groupIdx: gIdx, playerName });
+                                        }
+                                      }}
+                                      data-testid={`player-${gIdx + 1}-${pIdx + 1}`}
+                                    >
+                                      <span className="flex items-center gap-1">
+                                        {lockedSet.has(playerName) && (
+                                          <span className="text-amber-500 text-xs">🔒</span>
+                                        )}
+                                        {playerName}
+                                      </span>
+                                      {previewGroups && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {isSwapSource ? "tap another to swap" : "tap to swap"}
+                                        </span>
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+
+                    {/* Save / Regenerate actions */}
+                    {isCreatorOrAdmin && previewGroups && (
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          onClick={() => saveGroupsMutation.mutate(previewGroups)}
+                          disabled={saveGroupsMutation.isPending}
+                          data-testid="button-save-groups"
+                        >
+                          {saveGroupsMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
+                          Save Groups
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => generateGroupsMutation.mutate({ players: allPlayers, lockedSets })}
+                          disabled={generateGroupsMutation.isPending}
+                          data-testid="button-regenerate-groups"
+                        >
+                          {generateGroupsMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                          Regenerate
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setSwapSource(null)} className="text-muted-foreground">
+                          Cancel swap
+                        </Button>
+                      </div>
+                    )}
+
+                    {isCreatorOrAdmin && !previewGroups && savedPlayingGroups.length > 0 && (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setPreviewGroups(
+                              savedPlayingGroups.map((g) => ({
+                                players: g.members.sort((a, b) => a.memberIndex - b.memberIndex).map((m) => m.playerName),
+                                lockedPlayerNames: g.members.filter((m) => m.isLocked).map((m) => m.playerName),
+                              }))
+                            );
+                          }}
+                          data-testid="button-edit-groups"
+                        >
+                          <Pencil className="w-4 h-4 mr-1" /> Edit Groups
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => generateGroupsMutation.mutate({ players: allPlayers, lockedSets })}
+                          disabled={generateGroupsMutation.isPending}
+                          data-testid="button-regenerate-saved-groups"
+                        >
+                          {generateGroupsMutation.isPending ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                          Regenerate
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                ) : isCreatorOrAdmin ? (
+                  /* Setup panel when no groups exist */
+                  <div className="space-y-4">
+                    {/* Locked sets panel */}
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-base">Lock Players Together (Optional)</CardTitle>
+                        <CardDescription>Select 2–4 players who must be in the same group</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {/* Existing locked sets */}
+                        {lockedSets.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {lockedSets.map((set, i) => (
+                              <Badge key={i} variant="secondary" className="flex items-center gap-1 px-2 py-1">
+                                🔒 {set.join(", ")}
+                                <button
+                                  onClick={() => setLockedSets((prev) => prev.filter((_, idx) => idx !== i))}
+                                  className="ml-1 text-muted-foreground hover:text-destructive"
+                                  data-testid={`button-remove-lock-${i}`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Player selection for locking */}
+                        <div className="flex flex-wrap gap-2">
+                          {allPlayers.filter((p) => !lockedSets.flat().includes(p)).map((playerName) => {
+                            const selected = lockingSelection.includes(playerName);
+                            const atMax = !selected && lockingSelection.length >= 4;
+                            return (
+                              <Button
+                                key={playerName}
+                                size="sm"
+                                variant={selected ? "default" : "outline"}
+                                disabled={atMax}
+                                onClick={() => {
+                                  setLockingSelection((prev) =>
+                                    selected ? prev.filter((n) => n !== playerName) : [...prev, playerName]
+                                  );
+                                }}
+                                data-testid={`button-select-player-${playerName.replace(/\s+/g, "-")}`}
+                              >
+                                {playerName}
+                              </Button>
+                            );
+                          })}
+                        </div>
+
+                        {lockingSelection.length >= 2 && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setLockedSets((prev) => [...prev, lockingSelection]);
+                                setLockingSelection([]);
+                              }}
+                              data-testid="button-lock-together"
+                            >
+                              <Check className="w-4 h-4 mr-1" /> Lock Together ({lockingSelection.length})
+                            </Button>
+                            {lockingSelection.length >= 4 && (
+                              <span className="text-xs text-muted-foreground">Max 4 per lock group</span>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Free players (not in any locked set) */}
+                    {freePlayers.length > 0 && (
+                      <div className="text-sm text-muted-foreground">
+                        <span className="font-medium">{freePlayers.length}</span> players will be randomly distributed.
+                      </div>
+                    )}
+
+                    <Button
+                      onClick={() => generateGroupsMutation.mutate({ players: allPlayers, lockedSets })}
+                      disabled={generateGroupsMutation.isPending || allPlayers.length === 0}
+                      data-testid="button-generate-groups"
+                    >
+                      {generateGroupsMutation.isPending
+                        ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        : <Users className="w-4 h-4 mr-1" />}
+                      Generate Groups
+                    </Button>
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="pt-6 text-center text-muted-foreground">
+                      No playing groups have been set up for this event yet.
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="skins">

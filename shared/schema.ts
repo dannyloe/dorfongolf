@@ -313,6 +313,23 @@ export const scanPatterns = pgTable("scan_patterns", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Playing groups for events - organizer-defined tee groups for any event type
+export const eventPlayingGroups = pgTable("event_playing_groups", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull(), // References ryderCupEvents.id
+  groupNumber: integer("group_number").notNull(), // 1-based index within the event
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+export const eventPlayingGroupMembers = pgTable("event_playing_group_members", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(), // References eventPlayingGroups.id
+  playerName: text("player_name").notNull(),
+  teamMemberId: integer("team_member_id"), // Optional FK to ryderCupTeamMembers.id for integrity
+  memberIndex: integer("member_index").notNull().default(0), // order within group
+  isLocked: boolean("is_locked").notNull().default(false), // true = part of a locked pair/group
+});
+
 // In-app messages between users
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
@@ -601,6 +618,15 @@ export const insertScanCorrectionLogSchema = createInsertSchema(scanCorrectionLo
   createdAt: true,
 });
 
+export const insertEventPlayingGroupSchema = createInsertSchema(eventPlayingGroups).omit({
+  id: true,
+  generatedAt: true,
+});
+
+export const insertEventPlayingGroupMemberSchema = createInsertSchema(eventPlayingGroupMembers).omit({
+  id: true,
+});
+
 // === EXPLICIT API CONTRACT TYPES ===
 
 export type Group = typeof groups.$inferSelect;
@@ -692,6 +718,16 @@ export const insertScanPatternSchema = createInsertSchema(scanPatterns).omit({
 });
 export type ScanPattern = typeof scanPatterns.$inferSelect;
 export type InsertScanPattern = z.infer<typeof insertScanPatternSchema>;
+
+export type EventPlayingGroup = typeof eventPlayingGroups.$inferSelect;
+export type InsertEventPlayingGroup = z.infer<typeof insertEventPlayingGroupSchema>;
+
+export type EventPlayingGroupMember = typeof eventPlayingGroupMembers.$inferSelect;
+export type InsertEventPlayingGroupMember = z.infer<typeof insertEventPlayingGroupMemberSchema>;
+
+export type EventPlayingGroupWithMembers = EventPlayingGroup & {
+  members: EventPlayingGroupMember[];
+};
 
 export type CreateMatchRequest = InsertMatch;
 export type UpdateMatchRequest = Partial<InsertMatch> & { completed?: boolean };
