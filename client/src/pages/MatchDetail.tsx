@@ -7841,9 +7841,20 @@ export default function MatchDetail() {
         const isLast = pendingBetScanIndex === total - 1;
 
         const seedEditState = (bet: any) => {
+          const teamA: number[] = [...(bet.teamAPlayerIds || bet.skinsPlayerIds || [])];
+          const teamB: number[] = [...(bet.teamBPlayerIds || [])];
+          const keyed: number[] = bet.keyedPlayerIds || [];
+          // Safety net: ensure keyed players appear in a team list (Gemini sometimes
+          // omits them from teamA/B even though the prompt says to include them in both)
+          for (const kid of keyed) {
+            if (!teamA.includes(kid) && !teamB.includes(kid)) {
+              if (teamA.length <= teamB.length) teamA.push(kid);
+              else teamB.push(kid);
+            }
+          }
           setBetScanEditMatchType(bet.matchType || 'nassau');
-          setBetScanEditTeamA(bet.teamAPlayerIds || bet.skinsPlayerIds || []);
-          setBetScanEditTeamB(bet.teamBPlayerIds || []);
+          setBetScanEditTeamA(teamA);
+          setBetScanEditTeamB(teamB);
           const rawAmt = bet.unitAmount ?? bet.deathMatchBaseBet ?? null;
           setBetScanEditAmount(rawAmt != null ? String(rawAmt) : '');
           setBetScanEditUseNet(!!bet.useNet);
@@ -7957,11 +7968,20 @@ export default function MatchDetail() {
                     </div>
                   </div>
                 ) : betScanEditMatchType !== 'five_five_five_three' ? (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    {(currentBet.keyedPlayerIds?.length ?? 0) > 0 && (
+                      <div className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded px-2.5 py-1.5">
+                        <span className="mt-0.5">⭐</span>
+                        <span>Wheel/keyed player detected — applying will create individual 1v1 match-ups for each keyed player vs all opponents on the other team.</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Team A</label>
                       <div className="space-y-1">
-                        {players.map(p => (
+                        {players.map(p => {
+                          const isKeyed = (currentBet.keyedPlayerIds || []).includes(p.id);
+                          return (
                           <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
                             <Checkbox
                               checked={betScanEditTeamA.includes(p.id)}
@@ -7973,14 +7993,18 @@ export default function MatchDetail() {
                               }}
                             />
                             {p.name}
+                            {isKeyed && <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">⭐ wheel</span>}
                           </label>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Team B</label>
                       <div className="space-y-1">
-                        {players.map(p => (
+                        {players.map(p => {
+                          const isKeyed = (currentBet.keyedPlayerIds || []).includes(p.id);
+                          return (
                           <label key={p.id} className="flex items-center gap-2 text-sm cursor-pointer">
                             <Checkbox
                               checked={betScanEditTeamB.includes(p.id)}
@@ -7992,10 +8016,13 @@ export default function MatchDetail() {
                               }}
                             />
                             {p.name}
+                            {isKeyed && <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">⭐ wheel</span>}
                           </label>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
+                  </div>
                   </div>
                 ) : null}
               </div>
@@ -8030,12 +8057,20 @@ export default function MatchDetail() {
                 <Button
                   onClick={async () => {
                     const amt = betScanEditAmount !== '' ? Number(betScanEditAmount) : undefined;
+                    // Split keyedPlayerIds into Team A captains only.
+                    // For a 2-man wheel both captains are in keyedPlayerIds, but the
+                    // wheel expansion logic (keyedTeamAIds) expects only Team A captains.
+                    // Passing a Team B captain in keyedTeamAIds would expand them vs
+                    // their own team, which is wrong.
+                    const allKeyed: number[] = currentBet.keyedPlayerIds || [];
+                    const keyedA = allKeyed.filter((id: number) => betScanEditTeamA.includes(id));
                     const editedResult = {
                       ...currentBet,
                       matchType: betScanEditMatchType,
                       teamAPlayerIds: betScanEditMatchType === 'skins' ? [] : betScanEditTeamA,
                       teamBPlayerIds: betScanEditTeamB,
                       skinsPlayerIds: betScanEditMatchType === 'skins' ? betScanEditTeamA : [],
+                      keyedPlayerIds: keyedA,
                       unitAmount: betScanEditMatchType === 'death_match' ? undefined : amt,
                       deathMatchBaseBet: betScanEditMatchType === 'death_match' ? amt : undefined,
                       useNet: betScanEditUseNet,

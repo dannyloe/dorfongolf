@@ -556,9 +556,14 @@ Player assignment rules:
 - If a player is listed as "vs everyone" or similar, put them in keyedPlayerIds
 
 Wheel / keyed-player rules:
-- A checkmark (✓ or ✓-like mark), asterisk (*), or the word "wheel" written next to or above a player's name means that player is "the wheel" (captain) for their side.
-- TEAM CONTEXT: If the checkmarked player has teammates listed under them (other players grouped with them as a team), keep that player in their team array (teamAPlayerIds or teamBPlayerIds) AND ALSO add them to keyedPlayerIds. They are both a team member and the designated captain/wheel. Example: "Ty A ✓" heading Team A → Ty A goes in teamAPlayerIds AND keyedPlayerIds.
-- SOLO CONTEXT: If a checkmarked player appears alone (no teammates grouped with them), put them ONLY in keyedPlayerIds.
+- A checkmark (✓ or ✓-like mark), asterisk (*), or the word "wheel" or "captain" written next to or above a player's name means that player is "the wheel" (captain) for their side.
+- TEAM CONTEXT (player has teammates): The captain MUST appear in BOTH their team array AND keyedPlayerIds. This is a hard constraint — a captain with teammates is NEVER placed only in keyedPlayerIds.
+  - Example: "Ty A ✓, DLoe, Spikey, Pat" heading Team A with "Chaney ✓, CP, Sam, Harmon" as Team B:
+    teamAPlayerIds: [TyA_id, DLoe_id, Spikey_id, Pat_id]   ← Ty A is HERE in teamA
+    teamBPlayerIds: [Chaney_id, CP_id, Sam_id, Harmon_id]   ← Chaney is HERE in teamB
+    keyedPlayerIds: [TyA_id, Chaney_id]                     ← both captains are also here
+- SOLO CONTEXT (player appears alone with no teammates): Put them ONLY in keyedPlayerIds.
+  - Example: "DLoe ✓ vs everyone": teamAPlayerIds: [], keyedPlayerIds: [DLoe_id]
 - When keyed players are present, assume matchType: "match_play_1_ball" if not explicitly stated.
 
 1-man vs-multiple expansion rule:
@@ -689,6 +694,28 @@ Each element of the array represents one distinct bet found on the slip. If ther
     }
     return null;
   };
+
+  // Guardrail: ensure every keyed player also appears in a team (or skins) array.
+  // Gemini sometimes places captains only in keyedPlayerIds instead of also in their team.
+  // If a keyed player is absent from all team arrays, add them to the team with fewer players.
+  betsArray = betsArray.map(b => {
+    const keyed: number[] = Array.isArray(b.keyedPlayerIds) ? [...b.keyedPlayerIds] : [];
+    if (keyed.length === 0) return b;
+    const teamA: number[] = Array.isArray(b.teamAPlayerIds) ? [...b.teamAPlayerIds] : [];
+    const teamB: number[] = Array.isArray(b.teamBPlayerIds) ? [...b.teamBPlayerIds] : [];
+    const skins: number[] = Array.isArray(b.skinsPlayerIds) ? [...b.skinsPlayerIds] : [];
+    let changed = false;
+    for (const kid of keyed) {
+      if (!teamA.includes(kid) && !teamB.includes(kid) && !skins.includes(kid)) {
+        // Add to the team with fewer players (balanced heuristic)
+        if (teamA.length <= teamB.length) teamA.push(kid);
+        else teamB.push(kid);
+        changed = true;
+      }
+    }
+    if (!changed) return b;
+    return { ...b, teamAPlayerIds: teamA, teamBPlayerIds: teamB };
+  });
 
   betsArray = betsArray.map(b => {
     const unmatched: string[] = Array.isArray(b.unmatchedNames) ? [...b.unmatchedNames] : [];
