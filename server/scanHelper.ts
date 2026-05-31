@@ -591,7 +591,7 @@ Each element of the array represents one distinct bet found on the slip. If ther
 ]${extraRulesText ? `\n\nAdditional rules based on past scan corrections:\n${extraRulesText}` : ""}`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.0-flash",
     contents: [
       {
         role: "user",
@@ -603,23 +603,122 @@ Each element of the array represents one distinct bet found on the slip. If ther
     ],
   });
 
-  const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  // Collect text from ALL parts (thinking models put the answer in a later part)
+  const allParts = response.candidates?.[0]?.content?.parts ?? [];
+  const allText = allParts.map((p: any) => p.text || "").join("\n");
 
-  // Accept either a bare array [...] or a wrapper { bets: [...] }
-  const arrayMatch = text.match(/\[[\s\S]*\]/);
-  const objectMatch = text.match(/\{[\s\S]*"bets"\s*:\s*(\[[\s\S]*\])[\s\S]*\}/);
+  console.log("[scanBetSlip] raw Gemini text (first 600 chars):", allText.substring(0, 600));
+
+  // Try to extract JSON: bare array [...] first, then { bets: [...] }, then single object {...}
   let betsArray: any[];
-  if (arrayMatch) {
-    betsArray = JSON.parse(arrayMatch[0]);
-  } else if (objectMatch) {
-    betsArray = JSON.parse(objectMatch[1]);
-  } else {
+  const extractJson = (src: string): any | null => {
+    try { return JSON.parse(src); } catch { return null; }
+  };
+
+  const arrayRe = /\[[\s\S]*\]/g;
+  const objectRe = /\{[\s\S]*\}/g;
+  let parsed: any = null;
+
+  // Prefer first valid JSON array found in text
+  let m: RegExpExecArray | null;
+  while ((m = arrayRe.exec(allText)) !== null) {
+    const candidate = extractJson(m[0]);
+    if (Array.isArray(candidate) && candidate.length > 0) { parsed = candidate; break; }
+  }
+
+  // Fall back to { bets: [...] } wrapper
+  if (!parsed) {
+    while ((m = objectRe.exec(allText)) !== null) {
+      const candidate = extractJson(m[0]);
+      if (candidate && Array.isArray(candidate.bets) && candidate.bets.length > 0) {
+        parsed = candidate.bets; break;
+      }
+    }
+  }
+
+  // Last resort: single object → wrap in array
+  if (!parsed) {
+    while ((m = objectRe.exec(allText)) !== null) {
+      const candidate = extractJson(m[0]);
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate) && candidate.matchType) {
+        parsed = [candidate]; break;
+      }
+    }
+  }
+
+  if (!parsed) {
     throw new Error("Could not read the bet slip. Please try a clearer photo.");
   }
 
-  if (!Array.isArray(betsArray) || betsArray.length === 0) {
-    throw new Error("Could not read the bet slip. Please try a clearer photo.");
-  }
+  betsArray = parsed as any[];
+
+  // ── Server-side fuzzy name matching ────────────────────────────────────────
+  // Build a fast lookup: normalised string → player id
+  const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  type PlayerEntry = { id: number; name: string; aliases?: string[] };
+  const fuzzyMatch = (written: string, playerList: PlayerEntry[]): number | null => {
+    const w = normalise(written);
+    if (w.length < 2) return null;
+    // Exact match first
+    for (const p of playerList) {
+      const tokens = [p.name, ...(p.aliases ?? [])];
+      for (const t of tokens) {
+        if (normalise(t) === w) return p.id;
+      }
+    }
+    // Prefix match (written is a prefix of a token, or token is a prefix of written)
+    for (const p of playerList) {
+      const tokens = [p.name, ...(p.aliases ?? [])];
+      for (const t of tokens) {
+        const nt = normalise(t);
+        if ((nt.startsWith(w) || w.startsWith(nt)) && w.length >= 3) return p.id;
+      }
+    }
+    // Substring match (written appears inside a token)
+    for (const p of playerList) {
+      const tokens = [p.name, ...(p.aliases ?? [])];
+      for (const t of tokens) {
+        const nt = normalise(t);
+        if (nt.includes(w) && w.length >= 3) return p.id;
+      }
+    }
+    return null;
+  };
+
+  betsArray = betsArray.map(b => {
+    const unmatched: string[] = Array.isArray(b.unmatchedNames) ? [...b.unmatchedNames] : [];
+    if (unmatched.length === 0) return b;
+
+    const teamA: number[] = Array.isArray(b.teamAPlayerIds) ? [...b.teamAPlayerIds] : [];
+    const teamB: number[] = Array.isArray(b.teamBPlayerIds) ? [...b.teamBPlayerIds] : [];
+    const skins: number[] = Array.isArray(b.skinsPlayerIds) ? [...b.skinsPlayerIds] : [];
+    const keyed: number[] = Array.isArray(b.keyedPlayerIds) ? [...b.keyedPlayerIds] : [];
+    const stillUnmatched: string[] = [];
+
+    for (const name of unmatched) {
+      const id = fuzzyMatch(name, players);
+      if (id === null) { stillUnmatched.push(name); continue; }
+      // Skip if already assigned
+      if ([...teamA, ...teamB, ...skins, ...keyed].includes(id)) continue;
+      // Place in the shorter team (or skins if that's what's being used)
+      if (skins.length > 0 || b.matchType === "skins") {
+        skins.push(id);
+      } else if (keyed.length > 0 || b.keyedPlayerIds?.length > 0) {
+        keyed.push(id);
+      } else {
+        teamA.length <= teamB.length ? teamA.push(id) : teamB.push(id);
+      }
+    }
+
+    return {
+      ...b,
+      teamAPlayerIds: teamA,
+      teamBPlayerIds: teamB,
+      skinsPlayerIds: skins,
+      keyedPlayerIds: keyed,
+      unmatchedNames: stillUnmatched,
+    };
+  });
 
   return betsArray.map(b => ({ success: true, ...b }));
 }
