@@ -7986,6 +7986,20 @@ export default function MatchDetail() {
                   Cancel
                 </Button>
                 {total > 1 && (
+                  <Button
+                    variant="outline"
+                    disabled={pendingBetScanIndex === 0}
+                    onClick={() => {
+                      const prevIdx = pendingBetScanIndex - 1;
+                      setPendingBetScanIndex(prevIdx);
+                      seedEditState(pendingBetScanResults[prevIdx]);
+                    }}
+                    data-testid="button-prev-bet-scan"
+                  >
+                    ← Back
+                  </Button>
+                )}
+                {total > 1 && (
                   <Button variant="outline" onClick={advanceOrClose} data-testid="button-skip-bet-scan">
                     Skip
                   </Button>

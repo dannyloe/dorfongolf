@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   groupMemberships, groupJoinRequests, groupPlayers,
@@ -1528,7 +1529,6 @@ export class DatabaseStorage implements IStorage {
       courseName: string;
     }[];
   }> {
-    const { PRESET_PLAYERS, PLAYER_ALIASES } = await import("@shared/models/auth");
     const allHandicaps = await this.getPlayerHandicaps();
     const handicapMap = new Map(allHandicaps.map(h => [h.presetPlayerName, h]));
     const claimedList = await this.getPresetPlayersClaimed();
