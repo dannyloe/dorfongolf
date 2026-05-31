@@ -8057,41 +8057,142 @@ export default function MatchDetail() {
                 <Button
                   onClick={async () => {
                     const amt = betScanEditAmount !== '' ? Number(betScanEditAmount) : undefined;
-                    // Split keyedPlayerIds into Team A captains only.
-                    // For a 2-man wheel both captains are in keyedPlayerIds, but the
-                    // wheel expansion logic (keyedTeamAIds) expects only Team A captains.
-                    // Passing a Team B captain in keyedTeamAIds would expand them vs
-                    // their own team, which is wrong.
                     const allKeyed: number[] = currentBet.keyedPlayerIds || [];
+                    // Only Team A captains go into keyedTeamAIds — filtering out Team B captains
+                    // prevents them from being expanded against their own team.
                     const keyedA = allKeyed.filter((id: number) => betScanEditTeamA.includes(id));
-                    const editedResult = {
-                      ...currentBet,
-                      matchType: betScanEditMatchType,
-                      teamAPlayerIds: betScanEditMatchType === 'skins' ? [] : betScanEditTeamA,
-                      teamBPlayerIds: betScanEditTeamB,
-                      skinsPlayerIds: betScanEditMatchType === 'skins' ? betScanEditTeamA : [],
-                      keyedPlayerIds: keyedA,
-                      unitAmount: betScanEditMatchType === 'death_match' ? undefined : amt,
-                      deathMatchBaseBet: betScanEditMatchType === 'death_match' ? amt : undefined,
-                      useNet: betScanEditUseNet,
-                    };
-                    applyVoiceMatchResult(editedResult);
-                    // Log correction diff between Gemini output and user-applied result
-                    const geminiRaw = betScanGeminiResults[pendingBetScanIndex];
-                    if (geminiRaw) {
+
+                    // Shared: log correction diff between Gemini output and what the user applied
+                    const logCorrection = async (appliedOutput: any) => {
+                      const geminiRaw = betScanGeminiResults[pendingBetScanIndex];
+                      if (!geminiRaw) return;
                       try {
-                        const allPlayerNames = players.map((p: Player) => p.name);
                         await apiRequest("POST", "/api/bet-slip-scan-correction-log", {
                           matchId: matchId ?? null,
                           geminiOutput: geminiRaw,
-                          appliedOutput: editedResult,
-                          playerNames: allPlayerNames,
+                          appliedOutput,
+                          playerNames: players.map((p: Player) => p.name),
                           courseName: match?.name || undefined,
                         });
-                      } catch {
-                        // Non-critical — swallow silently
-                      }
+                      } catch { /* non-critical */ }
+                    };
+
+                    if (isLast) {
+                      // Last bet: pre-fill the match creation form for manual review (existing behavior)
+                      const editedResult = {
+                        ...currentBet,
+                        matchType: betScanEditMatchType,
+                        teamAPlayerIds: betScanEditMatchType === 'skins' ? [] : betScanEditTeamA,
+                        teamBPlayerIds: betScanEditTeamB,
+                        skinsPlayerIds: betScanEditMatchType === 'skins' ? betScanEditTeamA : [],
+                        keyedPlayerIds: keyedA,
+                        unitAmount: betScanEditMatchType === 'death_match' ? undefined : amt,
+                        deathMatchBaseBet: betScanEditMatchType === 'death_match' ? amt : undefined,
+                        useNet: betScanEditUseNet,
+                      };
+                      applyVoiceMatchResult(editedResult);
+                      await logCorrection(editedResult);
+                      advanceOrClose();
+                      return;
                     }
+
+                    // Apply & Next: create the match directly via API, then advance.
+                    // applyVoiceMatchResult only sets React state which gets overwritten by
+                    // the next bet's seedEditState before React re-renders, so we must call
+                    // the API directly here.
+                    const amtCents = amt != null ? amt * 100 : 2000;
+                    const isMatchPlay = betScanEditMatchType === 'match_play_1_ball' || betScanEditMatchType === 'match_play_2_ball';
+                    const isNassau = betScanEditMatchType === 'nassau';
+                    const useNet = betScanEditUseNet && !!(match?.isHandicapped);
+
+                    try {
+                      if (betScanEditMatchType === 'skins') {
+                        const skinsIds = betScanEditTeamA;
+                        if (skinsIds.length >= 2) {
+                          const playerNames = skinsIds.map((id: number) => players.find((p: Player) => p.id === id)?.name || '').join(', ');
+                          await new Promise<void>((resolve, reject) => {
+                            createEventMatch.mutate({
+                              name: `Skins: ${playerNames}`,
+                              matchType: 'skins',
+                              unitAmount: amtCents,
+                              teamA: { name: 'Skins Players', playerIds: skinsIds },
+                              teamB: { name: 'Skins Players', playerIds: skinsIds },
+                              autoPressOriginal: false,
+                              autoPressAllPresses: false,
+                              autoPressNassauFront9: true,
+                              autoPressNassauBack9: true,
+                              autoPressNassauOverall: true,
+                              useNetScoring: useNet,
+                              startOnBack9: dayStartOnBack9,
+                            } as any, { onSuccess: () => resolve(), onError: (e: any) => reject(e) });
+                          });
+                          toast({ title: 'Bet created', description: `Skins — ${playerNames}` });
+                        }
+                      } else if (keyedA.length > 0) {
+                        // Wheel/keyed bet: expand each Team A captain vs each Team B player
+                        let created = 0;
+                        for (const keyedPlayerId of keyedA) {
+                          for (const opponentId of betScanEditTeamB) {
+                            const keyedName = players.find((p: Player) => p.id === keyedPlayerId)?.name || '';
+                            const oppName = players.find((p: Player) => p.id === opponentId)?.name || '';
+                            await new Promise<void>((resolve, reject) => {
+                              createEventMatch.mutate({
+                                name: `${keyedName} vs ${oppName}`,
+                                matchType: betScanEditMatchType,
+                                unitAmount: amtCents,
+                                teamA: { name: keyedName, playerIds: [keyedPlayerId] },
+                                teamB: { name: oppName, playerIds: [opponentId] },
+                                autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
+                                autoPressAllPresses: false,
+                                autoPressNassauFront9: isNassau ? autoPressOriginal : true,
+                                autoPressNassauBack9: isNassau ? autoPressOriginal : true,
+                                autoPressNassauOverall: isNassau ? autoPressOriginal : true,
+                                useNetScoring: useNet,
+                                startOnBack9: dayStartOnBack9,
+                              } as any, { onSuccess: () => { created++; resolve(); }, onError: (e: any) => reject(e) });
+                            });
+                          }
+                        }
+                        toast({ title: 'Bets created', description: `${created} wheel match-up(s) created` });
+                      } else {
+                        // Normal team vs team bet
+                        const teamAName = betScanEditTeamA.map((id: number) => players.find((p: Player) => p.id === id)?.name || '').join(' / ');
+                        const teamBName = betScanEditTeamB.map((id: number) => players.find((p: Player) => p.id === id)?.name || '').join(' / ');
+                        await new Promise<void>((resolve, reject) => {
+                          createEventMatch.mutate({
+                            name: `${teamAName} vs ${teamBName}`,
+                            matchType: betScanEditMatchType,
+                            unitAmount: amtCents,
+                            teamA: { name: teamAName, playerIds: betScanEditTeamA },
+                            teamB: { name: teamBName, playerIds: betScanEditTeamB },
+                            autoPressOriginal: (isMatchPlay || isNassau) ? autoPressOriginal : false,
+                            autoPressAllPresses: false,
+                            autoPressNassauFront9: isNassau ? autoPressOriginal : true,
+                            autoPressNassauBack9: isNassau ? autoPressOriginal : true,
+                            autoPressNassauOverall: isNassau ? autoPressOriginal : true,
+                            useNetScoring: useNet,
+                            startOnBack9: dayStartOnBack9,
+                          } as any, { onSuccess: () => resolve(), onError: (e: any) => reject(e) });
+                        });
+                        toast({ title: 'Bet created', description: `${teamAName} vs ${teamBName}` });
+                      }
+
+                      await logCorrection({
+                        matchType: betScanEditMatchType,
+                        teamAPlayerIds: betScanEditTeamA,
+                        teamBPlayerIds: betScanEditTeamB,
+                        keyedPlayerIds: keyedA,
+                        unitAmount: amt,
+                        useNet: betScanEditUseNet,
+                      });
+                    } catch (err: any) {
+                      toast({
+                        title: 'Failed to create bet',
+                        description: err?.message || 'Unknown error — skipping',
+                        variant: 'destructive',
+                      });
+                    }
+
                     advanceOrClose();
                   }}
                   data-testid="button-apply-bet-scan"
