@@ -1117,7 +1117,7 @@ export default function MatchDetail() {
       .join('/');
   };
 
-  // Generate canonical signature for duplicate detection
+  // Generate canonical signature for exact duplicate detection
   // Format: "matchType|netScoring|sortedTeamAIds|sortedTeamBIds" (teams sorted so A < B)
   // Includes useNetScoring so gross and net matches with same players are allowed
   const getMatchSignature = (matchType: string, teamAIds: number[], teamBIds: number[], isNetScoring: boolean): string => {
@@ -1126,6 +1126,13 @@ export default function MatchDetail() {
     // Sort teams alphabetically so A vs B and B vs A are the same
     const teams = [sortedA, sortedB].sort();
     return `${matchType}|${isNetScoring ? 'net' : 'gross'}|${teams[0]}|${teams[1]}`;
+  };
+
+  // Loose signature for "possible duplicate" detection: same players + same amount, ignoring bet type.
+  // Catches e.g. Nassau and match play with identical players and dollar amount.
+  const getMatchSignatureLoose = (teamAIds: number[], teamBIds: number[], unitAmountCents: number, isNetScoring: boolean): string => {
+    const allIds = [...teamAIds, ...teamBIds].sort((a, b) => a - b).join(',');
+    return `${allIds}|${unitAmountCents}|${isNetScoring ? 'net' : 'gross'}`;
   };
 
   // Check if a match with the same players, type, and scoring mode already exists
@@ -4092,6 +4099,7 @@ export default function MatchDetail() {
           <div className="space-y-3 mt-4">
             {(() => {
               const sigToIds = new Map<string, number[]>();
+              const looseSigToIds = new Map<string, number[]>();
               for (const em of eventMatches) {
                 if (em.parentMatchId) continue;
                 const aIds = em.teams[0]?.members.map(m => m.playerId) || [];
@@ -4099,9 +4107,15 @@ export default function MatchDetail() {
                 const sig = getMatchSignature(em.matchType, aIds, bIds, em.useNetScoring ?? false);
                 if (!sigToIds.has(sig)) sigToIds.set(sig, []);
                 sigToIds.get(sig)!.push(em.id);
+                const looseSig = getMatchSignatureLoose(aIds, bIds, em.unitAmount, em.useNetScoring ?? false);
+                if (!looseSigToIds.has(looseSig)) looseSigToIds.set(looseSig, []);
+                looseSigToIds.get(looseSig)!.push(em.id);
               }
-              const duplicateMatchIds = new Set(
+              const exactDupMatchIds = new Set(
                 [...sigToIds.values()].filter(ids => ids.length > 1).flat()
+              );
+              const possibleDupMatchIds = new Set(
+                [...looseSigToIds.values()].filter(ids => ids.length > 1).flat().filter(id => !exactDupMatchIds.has(id))
               );
               return filteredMatches.map((em) => {
               const teamA = em.teams[0];
@@ -4137,7 +4151,7 @@ export default function MatchDetail() {
               const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
 
               return (
-                <div key={em.id} className={`border rounded-xl overflow-hidden ${duplicateMatchIds.has(em.id) ? 'border-yellow-400 dark:border-yellow-500' : 'border-border'}`}>
+                <div key={em.id} className={`border rounded-xl overflow-hidden ${exactDupMatchIds.has(em.id) ? 'border-red-400 dark:border-red-500' : possibleDupMatchIds.has(em.id) ? 'border-yellow-400 dark:border-yellow-500' : 'border-border'}`}>
                   <div className="flex items-center">
                     <button
                       onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
@@ -4278,13 +4292,22 @@ export default function MatchDetail() {
                         <span>Copy forward</span>
                       </Button>
                     )}
-                    {duplicateMatchIds.has(em.id) && (
+                    {exactDupMatchIds.has(em.id) && (
                       <span
-                        className="mr-1 flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-600 rounded-full px-2 py-0.5 whitespace-nowrap"
-                        title="This bet appears to be a duplicate of another bet in this match"
+                        className="mr-1 flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-600 rounded-full px-2 py-0.5 whitespace-nowrap"
+                        title="This bet is an exact duplicate of another bet in this match"
                         data-testid={`badge-duplicate-match-${em.id}`}
                       >
                         ⚠ Duplicate
+                      </span>
+                    )}
+                    {possibleDupMatchIds.has(em.id) && (
+                      <span
+                        className="mr-1 flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-600 rounded-full px-2 py-0.5 whitespace-nowrap"
+                        title="Same players and amount as another bet — possible duplicate with a different bet type"
+                        data-testid={`badge-possible-duplicate-match-${em.id}`}
+                      >
+                        ? Possible dup
                       </span>
                     )}
                     {isCreator && (
