@@ -4089,7 +4089,20 @@ export default function MatchDetail() {
           </p>
         ) : (
           <div className="space-y-3 mt-4">
-            {filteredMatches.map((em) => {
+            {(() => {
+              const sigToIds = new Map<string, number[]>();
+              for (const em of eventMatches) {
+                if (em.parentMatchId) continue;
+                const aIds = em.teams[0]?.members.map(m => m.playerId) || [];
+                const bIds = em.teams[1]?.members.map(m => m.playerId) || [];
+                const sig = getMatchSignature(em.matchType, aIds, bIds, em.useNetScoring ?? false);
+                if (!sigToIds.has(sig)) sigToIds.set(sig, []);
+                sigToIds.get(sig)!.push(em.id);
+              }
+              const duplicateMatchIds = new Set(
+                [...sigToIds.values()].filter(ids => ids.length > 1).flat()
+              );
+              return filteredMatches.map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
               // For Ryder Cup side matches, use the day's setting (authoritative source) for startOnBack9
@@ -4123,7 +4136,7 @@ export default function MatchDetail() {
               const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
 
               return (
-                <div key={em.id} className="border border-border rounded-xl overflow-hidden">
+                <div key={em.id} className={`border rounded-xl overflow-hidden ${duplicateMatchIds.has(em.id) ? 'border-yellow-400 dark:border-yellow-500' : 'border-border'}`}>
                   <div className="flex items-center">
                     <button
                       onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
@@ -4263,6 +4276,15 @@ export default function MatchDetail() {
                         <Copy className="w-3 h-3" />
                         <span>Copy forward</span>
                       </Button>
+                    )}
+                    {duplicateMatchIds.has(em.id) && (
+                      <span
+                        className="mr-1 flex items-center gap-1 text-[10px] sm:text-xs font-semibold text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-600 rounded-full px-2 py-0.5 whitespace-nowrap"
+                        title="This bet appears to be a duplicate of another bet in this match"
+                        data-testid={`badge-duplicate-match-${em.id}`}
+                      >
+                        ⚠ Duplicate
+                      </span>
                     )}
                     {isCreator && (
                       <Button
@@ -7163,7 +7185,8 @@ export default function MatchDetail() {
                   )}
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         );
         })()}
