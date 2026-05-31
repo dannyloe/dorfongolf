@@ -2960,9 +2960,17 @@ Transcript to parse: "${transcript}"`;
       });
       const { imageBase64, players } = bodySchema.parse(req.body);
 
+      const allAliases = await db.select().from(playerAliases);
+      const aliasMap = new Map<string, string[]>();
+      for (const a of allAliases) {
+        if (!aliasMap.has(a.canonicalName)) aliasMap.set(a.canonicalName, []);
+        aliasMap.get(a.canonicalName)!.push(a.alias);
+      }
+      const playersWithAliases = players.map(p => ({ ...p, aliases: aliasMap.get(p.name) ?? [] }));
+
       const activeRules = await storage.getActiveScanPatternRules();
       const extraRulesText = activeRules.length > 0 ? activeRules.join("\n") : undefined;
-      const result = await scanBetSlip({ imageBase64, players, extraRulesText });
+      const result = await scanBetSlip({ imageBase64, players: playersWithAliases, extraRulesText });
       res.json(result);
     } catch (err) {
       console.error("Bet slip scan error:", err);
@@ -2982,9 +2990,17 @@ Transcript to parse: "${transcript}"`;
       });
       const { imageBase64, players } = bodySchema.parse(req.body);
 
+      const allAliases = await db.select().from(playerAliases);
+      const aliasMap = new Map<string, string[]>();
+      for (const a of allAliases) {
+        if (!aliasMap.has(a.canonicalName)) aliasMap.set(a.canonicalName, []);
+        aliasMap.get(a.canonicalName)!.push(a.alias);
+      }
+      const playersWithAliases = players.map(p => ({ ...p, aliases: aliasMap.get(p.name) ?? [] }));
+
       const activeRules = await storage.getActiveScanPatternRules();
       const extraRulesText = activeRules.length > 0 ? activeRules.join("\n") : undefined;
-      const result = await scanBetSlip({ imageBase64, players, extraRulesText });
+      const result = await scanBetSlip({ imageBase64, players: playersWithAliases, extraRulesText });
       res.json(result);
     } catch (err) {
       console.error("Bet slip scan error:", err);

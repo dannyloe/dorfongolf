@@ -505,7 +505,7 @@ export interface ScannedBetResult {
  */
 export async function scanBetSlip(params: {
   imageBase64: string;
-  players: Array<{ id: number; name: string }>;
+  players: Array<{ id: number; name: string; aliases?: string[] }>;
   extraRulesText?: string;
 }): Promise<ScannedBetResult> {
   const { imageBase64, players, extraRulesText } = params;
@@ -522,11 +522,14 @@ export async function scanBetSlip(params: {
     throw new Error("Invalid image data");
   }
 
-  const playerList = players.map(p => `  - ID ${p.id}: "${p.name}"`).join("\n");
+  const playerList = players.map(p => {
+    const aka = p.aliases && p.aliases.length > 0 ? ` (aka: ${p.aliases.join(", ")})` : "";
+    return `  - ID ${p.id}: "${p.name}"${aka}`;
+  }).join("\n");
 
   const prompt = `You are reading a handwritten golf betting slip photo. Extract the bet configuration.
 
-Available players (use exact IDs — fuzzy-match on nicknames, first names, last names, initials):
+Available players (use exact IDs — match on canonical name, aliases, nicknames, first names, last names, or initials):
 ${playerList}
 
 Match types recognized:
@@ -545,6 +548,11 @@ Player assignment rules:
 - teamBPlayerIds = players on the second team / right side / Team B
 - For skins: put all players in skinsPlayerIds, leave teamA/B empty
 - If a player is listed as "vs everyone" or similar, put them in keyedPlayerIds
+
+Wheel / keyed-player rules:
+- A checkmark (✓ or ✓-like mark), asterisk (*), or the word "wheel" written next to or above a player's name means that player is "the wheel" — they play against everyone individually.
+- Put wheel players in keyedPlayerIds (not in teamA or teamB).
+- When one or more wheel players are present and the bet type is not explicitly stated, assume matchType: "match_play_1_ball" with 2-player teams on each side.
 
 Amount rules:
 - "$20" or "20" → unitAmount: 20
