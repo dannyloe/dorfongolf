@@ -556,9 +556,14 @@ Player assignment rules:
 - If a player is listed as "vs everyone" or similar, put them in keyedPlayerIds
 
 Wheel / keyed-player rules:
-- A checkmark (✓ or ✓-like mark), asterisk (*), or the word "wheel" written next to or above a player's name means that player is "the wheel" — they play against everyone individually.
-- Put wheel players in keyedPlayerIds (not in teamA or teamB).
-- When one or more wheel players are present and the bet type is not explicitly stated, assume matchType: "match_play_1_ball" with 2-player teams on each side.
+- A checkmark (✓ or ✓-like mark), asterisk (*), or the word "wheel" written next to or above a player's name means that player is "the wheel" (captain) for their side.
+- TEAM CONTEXT: If the checkmarked player has teammates listed under them (other players grouped with them as a team), keep that player in their team array (teamAPlayerIds or teamBPlayerIds) AND ALSO add them to keyedPlayerIds. They are both a team member and the designated captain/wheel. Example: "Ty A ✓" heading Team A → Ty A goes in teamAPlayerIds AND keyedPlayerIds.
+- SOLO CONTEXT: If a checkmarked player appears alone (no teammates grouped with them), put them ONLY in keyedPlayerIds.
+- When keyed players are present, assume matchType: "match_play_1_ball" if not explicitly stated.
+
+1-man vs-multiple expansion rule:
+- When a section reads "[SinglePlayer] vs [Player1], [Player2], [Player3]" with a "1 man", "1 ball", or individual match label, this is NOT one bet with many players on one side — it is MULTIPLE separate 1v1 bets, one per opponent. Expand into N separate bet objects, each with the single player in teamAPlayerIds and one opponent in teamBPlayerIds.
+- Example: "1 Man $20 Match, DLoe vs CP, Sam, Harmon" → three separate bet objects: {teamA:[DLoe], teamB:[CP]}, {teamA:[DLoe], teamB:[Sam]}, {teamA:[DLoe], teamB:[Harmon]}, all with matchType: "match_play_1_ball" and unitAmount: 20.
 
 Amount rules:
 - "$20" or "20" → unitAmount: 20

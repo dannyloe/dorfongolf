@@ -2966,6 +2966,11 @@ Transcript to parse: "${transcript}"`;
         if (!aliasMap.has(a.canonicalName)) aliasMap.set(a.canonicalName, []);
         aliasMap.get(a.canonicalName)!.push(a.alias);
       }
+      const { PLAYER_ALIASES: HARDCODED_ALIASES } = await import("@shared/models/auth");
+      for (const [alias, canonical] of Object.entries(HARDCODED_ALIASES)) {
+        if (!aliasMap.has(canonical)) aliasMap.set(canonical, []);
+        if (!aliasMap.get(canonical)!.includes(alias)) aliasMap.get(canonical)!.push(alias);
+      }
       const playersWithAliases = players.map(p => ({ ...p, aliases: aliasMap.get(p.name) ?? [] }));
 
       const activeRules = await storage.getActiveScanPatternRules();
@@ -2995,6 +3000,11 @@ Transcript to parse: "${transcript}"`;
       for (const a of allAliases) {
         if (!aliasMap.has(a.canonicalName)) aliasMap.set(a.canonicalName, []);
         aliasMap.get(a.canonicalName)!.push(a.alias);
+      }
+      const { PLAYER_ALIASES: HARDCODED_ALIASES_2 } = await import("@shared/models/auth");
+      for (const [alias, canonical] of Object.entries(HARDCODED_ALIASES_2)) {
+        if (!aliasMap.has(canonical)) aliasMap.set(canonical, []);
+        if (!aliasMap.get(canonical)!.includes(alias)) aliasMap.get(canonical)!.push(alias);
       }
       const playersWithAliases = players.map(p => ({ ...p, aliases: aliasMap.get(p.name) ?? [] }));
 
