@@ -2970,8 +2970,8 @@ Transcript to parse: "${transcript}"`;
 
       const activeRules = await storage.getActiveScanPatternRules();
       const extraRulesText = activeRules.length > 0 ? activeRules.join("\n") : undefined;
-      const result = await scanBetSlip({ imageBase64, players: playersWithAliases, extraRulesText });
-      res.json(result);
+      const bets = await scanBetSlip({ imageBase64, players: playersWithAliases, extraRulesText });
+      res.json({ success: true, bets });
     } catch (err) {
       console.error("Bet slip scan error:", err);
       if (err instanceof z.ZodError) {
@@ -3000,8 +3000,8 @@ Transcript to parse: "${transcript}"`;
 
       const activeRules = await storage.getActiveScanPatternRules();
       const extraRulesText = activeRules.length > 0 ? activeRules.join("\n") : undefined;
-      const result = await scanBetSlip({ imageBase64, players: playersWithAliases, extraRulesText });
-      res.json(result);
+      const bets = await scanBetSlip({ imageBase64, players: playersWithAliases, extraRulesText });
+      res.json({ success: true, bets });
     } catch (err) {
       console.error("Bet slip scan error:", err);
       if (err instanceof z.ZodError) {

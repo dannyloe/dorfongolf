@@ -507,7 +507,7 @@ export async function scanBetSlip(params: {
   imageBase64: string;
   players: Array<{ id: number; name: string; aliases?: string[] }>;
   extraRulesText?: string;
-}): Promise<ScannedBetResult> {
+}): Promise<ScannedBetResult[]> {
   const { imageBase64, players, extraRulesText } = params;
 
   if (!ai) {
@@ -527,9 +527,13 @@ export async function scanBetSlip(params: {
     return `  - ID ${p.id}: "${p.name}"${aka}`;
   }).join("\n");
 
-  const prompt = `You are reading a handwritten golf betting slip photo. Extract the bet configuration.
+  const prompt = `You are reading a handwritten golf betting slip photo. Find EVERY separate bet written on the slip and return them all.
 
-Available players (use exact IDs — match on canonical name, aliases, nicknames, first names, last names, or initials):
+Available players. To match a name written on the slip to a player ID:
+- Compare the written name against the canonical name AND all aliases.
+- Accept a match if the written text is a prefix of 3+ characters of any canonical name or alias (e.g. "Pat" matches "Patrick", "Sch" matches "Schmidt").
+- Accept a match if the written text IS an alias exactly (e.g. "Hot Left" if that is an alias).
+- If a name still cannot be matched after these checks, add it to unmatchedNames.
 ${playerList}
 
 Match types recognized:
@@ -564,23 +568,27 @@ Net/gross:
 - "net", "hdcp", "handicap", "strokes" → useNet: true
 - "gross", no mention → useNet: false
 
-Return ONLY valid JSON with NO markdown, no code blocks, no explanation:
-{
-  "matchType": "nassau",
-  "isRoundRobin": false,
-  "roundRobinSubtype": null,
-  "teamAPlayerIds": [],
-  "teamBPlayerIds": [],
-  "keyedPlayerIds": [],
-  "skinsPlayerIds": [],
-  "unitAmount": null,
-  "deathMatchBaseBet": null,
-  "twoBallBet": null,
-  "threeBallBet": null,
-  "useNet": false,
-  "parsedSummary": "Brief human-readable description of what was extracted",
-  "unmatchedNames": []
-}${extraRulesText ? `\n\nAdditional rules based on past scan corrections:\n${extraRulesText}` : ""}`;
+Return ONLY a valid JSON array with NO markdown, no code blocks, no explanation.
+Each element of the array represents one distinct bet found on the slip. If there is only one bet, return an array with one element.
+
+[
+  {
+    "matchType": "nassau",
+    "isRoundRobin": false,
+    "roundRobinSubtype": null,
+    "teamAPlayerIds": [],
+    "teamBPlayerIds": [],
+    "keyedPlayerIds": [],
+    "skinsPlayerIds": [],
+    "unitAmount": null,
+    "deathMatchBaseBet": null,
+    "twoBallBet": null,
+    "threeBallBet": null,
+    "useNet": false,
+    "parsedSummary": "Brief human-readable description of this bet",
+    "unmatchedNames": []
+  }
+]${extraRulesText ? `\n\nAdditional rules based on past scan corrections:\n${extraRulesText}` : ""}`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -596,13 +604,24 @@ Return ONLY valid JSON with NO markdown, no code blocks, no explanation:
   });
 
   const text = response.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+
+  // Accept either a bare array [...] or a wrapper { bets: [...] }
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  const objectMatch = text.match(/\{[\s\S]*"bets"\s*:\s*(\[[\s\S]*\])[\s\S]*\}/);
+  let betsArray: any[];
+  if (arrayMatch) {
+    betsArray = JSON.parse(arrayMatch[0]);
+  } else if (objectMatch) {
+    betsArray = JSON.parse(objectMatch[1]);
+  } else {
     throw new Error("Could not read the bet slip. Please try a clearer photo.");
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
-  return { success: true, ...parsed };
+  if (!Array.isArray(betsArray) || betsArray.length === 0) {
+    throw new Error("Could not read the bet slip. Please try a clearer photo.");
+  }
+
+  return betsArray.map(b => ({ success: true, ...b }));
 }
 
 // ─── Duplicate-bet detection helper ─────────────────────────────────────────
