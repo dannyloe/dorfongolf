@@ -3256,106 +3256,208 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSideMatchLedgerData(eventId: number) {
-    const allMatches = await db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt);
+    // Fetch matches and days in parallel — both are independent of each other
+    const [allMatches, days] = await Promise.all([
+      db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt),
+      db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId)),
+    ]);
 
-    const allEventMatches: any[] = [];
-    const allScores: Score[] = [];
-    const courseDataMap: Map<number, { holes: CourseHole[]; tees: CourseTee[] }> = new Map();
+    const matchIds = allMatches.map((m) => m.id);
+    const dayIds = days.map((d) => d.id);
 
-    for (const match of allMatches) {
-      const eventMatchesList = await this.getEventMatches(match.id);
-      for (const em of eventMatchesList) {
-        const withTeams = await this.getEventMatchWithTeams(em.id);
-        if (withTeams) {
-          allEventMatches.push(withTeams);
-        }
-      }
-      const matchScores = await this.getMatchScores(match.id);
-      allScores.push(...matchScores);
-      
-      if (match.courseId && !courseDataMap.has(match.courseId)) {
-        const holes = await this.getCourseHoles(match.courseId);
-        const tees = await this.getCourseTees(match.courseId);
-        courseDataMap.set(match.courseId, { holes, tees });
-      }
+    // --- Phase 1: bulk-fetch all match-related data in parallel ---
+    const [
+      allEventMatchRows,
+      allScores,
+      allPairings,
+    ] = await Promise.all([
+      matchIds.length > 0
+        ? db.select().from(eventMatches).where(inArray(eventMatches.eventId, matchIds))
+        : Promise.resolve([]),
+      matchIds.length > 0
+        ? db.select().from(scores).where(inArray(scores.matchId, matchIds))
+        : Promise.resolve([]),
+      dayIds.length > 0
+        ? db.select().from(ryderCupPairings).where(inArray(ryderCupPairings.dayId, dayIds))
+        : Promise.resolve([]),
+    ]);
+
+    // Bulk-fetch teams and pairing sides in parallel
+    const eventMatchIds = allEventMatchRows.map((em) => em.id);
+    const pairingIds = allPairings.map((p) => p.id);
+
+    const [allTeams, allPairingSides] = await Promise.all([
+      eventMatchIds.length > 0
+        ? db.select().from(teams).where(inArray(teams.eventMatchId, eventMatchIds))
+        : Promise.resolve([]),
+      pairingIds.length > 0
+        ? db.select().from(ryderCupPairingSides).where(inArray(ryderCupPairingSides.pairingId, pairingIds))
+        : Promise.resolve([]),
+    ]);
+
+    // Bulk-fetch team members, pairing scores, and handicap overrides in parallel
+    const teamIds = allTeams.map((t) => t.id);
+    const sideIds = allPairingSides.map((s) => s.id);
+
+    // Collect all ryderCupTeamMember IDs referenced by sides
+    const referencedMemberIds = Array.from(
+      new Set(
+        allPairingSides.flatMap((s) =>
+          [s.player1Id, s.player2Id].filter((id): id is number => id !== null)
+        )
+      )
+    );
+
+    const [allTeamMembers, allPairingScores, allTeamMemberRows, handicapOverrideRows] = await Promise.all([
+      teamIds.length > 0
+        ? db.select().from(teamMembers).where(inArray(teamMembers.teamId, teamIds))
+        : Promise.resolve([]),
+      sideIds.length > 0
+        ? db.select().from(ryderCupPairingScores).where(inArray(ryderCupPairingScores.sideId, sideIds))
+        : Promise.resolve([]),
+      referencedMemberIds.length > 0
+        ? db.select().from(ryderCupTeamMembers).where(inArray(ryderCupTeamMembers.id, referencedMemberIds))
+        : Promise.resolve([]),
+      eventMatchIds.length > 0
+        ? db.select().from(matchPlayerHandicaps).where(inArray(matchPlayerHandicaps.eventMatchId, eventMatchIds))
+        : Promise.resolve([]),
+    ]);
+
+    // Bulk-fetch players for all team members
+    const playerIds = Array.from(new Set(allTeamMembers.map((m) => m.playerId)));
+    const allPlayers = playerIds.length > 0
+      ? await db.select().from(players).where(inArray(players.id, playerIds))
+      : [];
+
+    // Bulk-fetch course data for all unique course IDs
+    const uniqueCourseIds = Array.from(new Set(allMatches.map((m) => m.courseId).filter((id): id is number => id !== null)));
+    const [allCourseHoles, allCourseTees] = await Promise.all([
+      uniqueCourseIds.length > 0
+        ? db.select().from(courseHoles).where(inArray(courseHoles.courseId, uniqueCourseIds)).orderBy(courseHoles.holeNumber)
+        : Promise.resolve([]),
+      uniqueCourseIds.length > 0
+        ? db.select().from(courseTees).where(inArray(courseTees.courseId, uniqueCourseIds))
+        : Promise.resolve([]),
+    ]);
+
+    // --- Phase 2: assemble in-memory data structures ---
+
+    // Build player lookup map
+    const playerMap = new Map(allPlayers.map((p) => [p.id, p]));
+
+    // Build ryderCupTeamMember lookup map
+    const rcMemberMap = new Map(allTeamMemberRows.map((m) => [m.id, m]));
+
+    // Build team members grouped by teamId
+    const membersByTeamId = new Map<number, typeof allTeamMembers>();
+    for (const member of allTeamMembers) {
+      if (!membersByTeamId.has(member.teamId)) membersByTeamId.set(member.teamId, []);
+      membersByTeamId.get(member.teamId)!.push(member);
     }
 
-    const courseData: Record<number, { holes: CourseHole[]; tees: CourseTee[] }> = {};
-    courseDataMap.forEach((data, courseId) => {
-      courseData[courseId] = data;
+    // Build teams grouped by eventMatchId
+    const teamsByEventMatchId = new Map<number, typeof allTeams>();
+    for (const team of allTeams) {
+      if (!teamsByEventMatchId.has(team.eventMatchId)) teamsByEventMatchId.set(team.eventMatchId, []);
+      teamsByEventMatchId.get(team.eventMatchId)!.push(team);
+    }
+
+    // Assemble allEventMatches with teams and members (mirrors getEventMatchWithTeams shape)
+    const allEventMatches: any[] = allEventMatchRows.map((em) => {
+      const emTeams = teamsByEventMatchId.get(em.id) ?? [];
+      const teamsWithMembers = emTeams.map((team) => {
+        const members = membersByTeamId.get(team.id) ?? [];
+        const membersWithPlayers = members.map((member) => ({
+          ...member,
+          player: playerMap.get(member.playerId),
+        }));
+        return { ...team, members: membersWithPlayers };
+      });
+      return { ...em, teams: teamsWithMembers };
     });
 
-    // Get Ryder Cup pairing scores for this event
-    // Build a map of player name -> scores per hole, grouped by day number
+    // Build course data map
+    const courseData: Record<number, { holes: CourseHole[]; tees: CourseTee[] }> = {};
+    for (const courseId of uniqueCourseIds) {
+      courseData[courseId] = {
+        holes: allCourseHoles.filter((h) => h.courseId === courseId),
+        tees: allCourseTees.filter((t) => t.courseId === courseId),
+      };
+    }
+
+    // Build pairing scores grouped by sideId
+    const pairingScoresBySideId = new Map<number, typeof allPairingScores>();
+    for (const ps of allPairingScores) {
+      if (!pairingScoresBySideId.has(ps.sideId)) pairingScoresBySideId.set(ps.sideId, []);
+      pairingScoresBySideId.get(ps.sideId)!.push(ps);
+    }
+
+    // Build pairing sides grouped by pairingId
+    const sidesByPairingId = new Map<number, typeof allPairingSides>();
+    for (const side of allPairingSides) {
+      if (!sidesByPairingId.has(side.pairingId)) sidesByPairingId.set(side.pairingId, []);
+      sidesByPairingId.get(side.pairingId)!.push(side);
+    }
+
+    // Build pairings grouped by dayId
+    const pairingsByDayId = new Map<number, typeof allPairings>();
+    for (const pairing of allPairings) {
+      if (!pairingsByDayId.has(pairing.dayId)) pairingsByDayId.set(pairing.dayId, []);
+      pairingsByDayId.get(pairing.dayId)!.push(pairing);
+    }
+
+    // Build Ryder Cup score/player-data/startOnBack9 maps from bulk-fetched data
     const ryderCupScoresByDay: Record<number, Record<string, Record<number, number>>> = {};
-    
-    // Build a map of player name -> handicap/tee data from Ryder Cup pairings, grouped by day number
-    // This is the authoritative source for handicap data in side matches
     const ryderCupPlayerDataByDay: Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>> = {};
-    
-    // Build a map of day number -> startOnBack9 setting
     const startOnBack9ByDay: Record<number, boolean> = {};
-    
-    // Get all days for this event
-    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
-    
+
     for (const day of days) {
       ryderCupScoresByDay[day.dayNumber] = {};
       ryderCupPlayerDataByDay[day.dayNumber] = {};
       startOnBack9ByDay[day.dayNumber] = day.startOnBack9 ?? false;
-      
-      // Get all pairings for this day
-      const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
-      
-      for (const pairing of pairings) {
-        // Get all sides for this pairing
-        const sides = await db.select().from(ryderCupPairingSides).where(eq(ryderCupPairingSides.pairingId, pairing.id));
-        
+
+      const dayPairings = pairingsByDayId.get(day.id) ?? [];
+      for (const pairing of dayPairings) {
+        const sides = sidesByPairingId.get(pairing.id) ?? [];
         for (const side of sides) {
-          // Get scores for this side
-          const scores = await db.select().from(ryderCupPairingScores).where(eq(ryderCupPairingScores.sideId, side.id));
-          
-          // Look up current player names from team members if IDs are set
+          const sideScores = pairingScoresBySideId.get(side.id) ?? [];
+
           let player1Name = side.player1Name;
           let player2Name = side.player2Name;
-          
+
           if (side.player1Id) {
-            const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
-            if (member1) player1Name = member1.playerName;
+            const member = rcMemberMap.get(side.player1Id);
+            if (member) player1Name = member.playerName;
           }
           if (side.player2Id) {
-            const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
-            if (member2) player2Name = member2.playerName;
+            const member = rcMemberMap.get(side.player2Id);
+            if (member) player2Name = member.playerName;
           }
-          
-          // Map player1 scores and handicap data
+
           if (player1Name) {
             if (!ryderCupScoresByDay[day.dayNumber][player1Name]) {
               ryderCupScoresByDay[day.dayNumber][player1Name] = {};
             }
-            for (const score of scores) {
+            for (const score of sideScores) {
               if (score.player1Strokes !== null) {
                 ryderCupScoresByDay[day.dayNumber][player1Name][score.holeNumber] = score.player1Strokes;
               }
             }
-            // Store handicap and tee data from the pairing side (authoritative source)
             ryderCupPlayerDataByDay[day.dayNumber][player1Name] = {
               handicapIndex: side.player1HandicapIndex,
               teeId: side.player1TeeId,
             };
           }
-          
-          // Map player2 scores and handicap data
+
           if (player2Name) {
             if (!ryderCupScoresByDay[day.dayNumber][player2Name]) {
               ryderCupScoresByDay[day.dayNumber][player2Name] = {};
             }
-            for (const score of scores) {
+            for (const score of sideScores) {
               if (score.player2Strokes !== null) {
                 ryderCupScoresByDay[day.dayNumber][player2Name][score.holeNumber] = score.player2Strokes;
               }
             }
-            // Store handicap and tee data from the pairing side (authoritative source)
             ryderCupPlayerDataByDay[day.dayNumber][player2Name] = {
               handicapIndex: side.player2HandicapIndex,
               teeId: side.player2TeeId,
@@ -3365,20 +3467,13 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Fetch handicap overrides for all event matches
-    const eventMatchIds = allEventMatches.map((em: any) => em.id);
+    // Assemble handicap overrides map
     const handicapOverrides: Record<number, Record<number, number>> = {};
-    
-    if (eventMatchIds.length > 0) {
-      const overrides = await db.select().from(matchPlayerHandicaps)
-        .where(inArray(matchPlayerHandicaps.eventMatchId, eventMatchIds));
-      
-      for (const override of overrides) {
-        if (!handicapOverrides[override.eventMatchId]) {
-          handicapOverrides[override.eventMatchId] = {};
-        }
-        handicapOverrides[override.eventMatchId][override.playerId] = override.courseHandicap;
+    for (const override of handicapOverrideRows) {
+      if (!handicapOverrides[override.eventMatchId]) {
+        handicapOverrides[override.eventMatchId] = {};
       }
+      handicapOverrides[override.eventMatchId][override.playerId] = override.courseHandicap;
     }
 
     return {
