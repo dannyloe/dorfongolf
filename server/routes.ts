@@ -10,7 +10,7 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
-import { scanScorecardImageMultiShot, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
+import { scanScorecardImage, scanScorecardImageMultiShot, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs } from "./scanAnalysis";
 import { uploadScorecardImage } from "./imageStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -2100,7 +2100,7 @@ export async function registerRoutes(
       const imageUrl = await uploadScorecardImage(input.imageBase64).catch(() => null);
 
       const extraRules = await storage.getActiveScanPatternRules();
-      const result = await scanScorecardImageMultiShot({
+      const result = await scanScorecardImage({
         imageBase64: input.imageBase64,
         playerNames: input.playerNames,
         courseName: input.courseName,

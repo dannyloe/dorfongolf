@@ -199,6 +199,50 @@ function normalizeHole(h: GeminiHole): NormalizedHole {
   return { holeNumber, strokes, confidence };
 }
 
+/**
+ * Post-processing guard applied after every Gemini response.
+ * 1. Nulls any strokes value ≥ 20 — minimum realistic 9-hole total is ~27,
+ *    so anything ≥ 20 in a single-hole slot is a subtotal that leaked through.
+ * 2. Deduplicates holes within each half: if the same holeNumber appears more
+ *    than once (e.g. Gemini included both the score AND the Out column under
+ *    hole 10), keep the entry with the lower strokes value.
+ * 3. Filters out any player row where every hole ended up null — these are
+ *    players Gemini hallucinated from the match list but found no card data for.
+ */
+function applyPostProcessing(players: NormalizedPlayer[]): NormalizedPlayer[] {
+  const processed = players.map(player => {
+    // Step 1: strip strokes ≥ 20 (subtotals masquerading as hole scores)
+    const stripped = player.holes.map(h => ({
+      ...h,
+      strokes: h.strokes !== null && h.strokes >= 20 ? null : h.strokes,
+    }));
+
+    // Step 2: deduplicate by holeNumber within each half — keep the lower-strokes entry
+    const byHole = new Map<number, NormalizedHole>();
+    for (const h of stripped) {
+      const existing = byHole.get(h.holeNumber);
+      if (!existing) {
+        byHole.set(h.holeNumber, h);
+      } else {
+        // Prefer the entry with a non-null, lower strokes value (likely the real score)
+        const existingVal = existing.strokes ?? Infinity;
+        const newVal = h.strokes ?? Infinity;
+        if (newVal < existingVal) byHole.set(h.holeNumber, h);
+      }
+    }
+
+    // Rebuild sorted hole list
+    const cleanHoles = Array.from(byHole.values()).sort(
+      (a, b) => a.holeNumber - b.holeNumber
+    );
+
+    return { ...player, holes: cleanHoles };
+  });
+
+  // Step 3: drop rows where every hole is null (player not on the card)
+  return processed.filter(player => player.holes.some(h => h.strokes !== null));
+}
+
 export async function scanScorecardImage(params: {
   imageBase64: string;
   playerNames: string[];
@@ -227,9 +271,10 @@ Rules:
 - Try to match visible names to the known players list; otherwise use the name as written.
 - "rawText" is optional free-form notes about the card.
 
-CRITICAL — subtotal columns must be completely ignored:
-- Golf scorecards contain summary columns labelled "Out", "In", "Back", "Tot", "Total", "Front", or "Hdcp"/"HCP"/"Net".
-- Do NOT treat the value in an "Out" / "In" / "Back" / "Tot" column as the score for hole 10, hole 11, or any hole. It is a running total and must be discarded.
+CRITICAL — subtotal columns must be completely ignored (column-position rule):
+- A standard 18-hole scorecard row contains exactly 20 columns: holes 1–9, then an "Out" subtotal, then holes 10–18, then an "In" or "Total" subtotal.
+- Skip by POSITION, not just by label: the value that appears IMMEDIATELY AFTER hole 9's score in the row (before hole 10 begins) is ALWAYS the "Out" running total — skip it even if there is no "Out" label visible. Likewise, the value IMMEDIATELY AFTER hole 18's score is ALWAYS the "In"/"Total" — skip it.
+- Do NOT map either of those positional subtotals to any hole number. They are running totals and must be discarded entirely.
 - Even if a subtotal value looks like a plausible single-hole score (e.g. "37" or "4"), it must still be skipped.
 
 CRITICAL — count sanity check:
@@ -237,7 +282,7 @@ CRITICAL — count sanity check:
 - If either half has more than 9 entries, you accidentally included a subtotal column. Remove the extra entry before returning results.
 
 CRITICAL — large values in score rows:
-- Any value of 30 or higher appearing anywhere in a player's score row is almost certainly a subtotal (e.g. front-9 total = 37), not a hole score. Skip it.
+- Any value of 20 or higher appearing anywhere in a player's score row is almost certainly a subtotal (e.g. front-9 total = 37), not a hole score. Skip it.
 
 CRITICAL — match play annotations:
 - Some scorecards have running match play totals written next to or near hole scores (e.g. "+2", "-1", "AS", "1UP"). These are NOT hole scores.
@@ -318,7 +363,7 @@ CRITICAL — visual decorations around scores:
     throw new Error("Could not parse scorecard. Please try with a clearer image.");
   }
 
-  const scores = (parsed.scores ?? []).map((p: GeminiPlayer) => ({
+  const rawScores = (parsed.scores ?? []).map((p: GeminiPlayer) => ({
     playerName: String(p.playerName ?? ""),
     holes: (p.holes ?? [])
       .map(normalizeHole)
@@ -330,7 +375,7 @@ CRITICAL — visual decorations around scores:
 
   return {
     success: true,
-    scores,
+    scores: applyPostProcessing(rawScores),
     rawText: parsed.rawText ?? "",
   };
 }
@@ -472,11 +517,16 @@ export async function scanScorecardImageMultiShot(params: {
     mergedScores.push({ playerName, holes: mergedHoles });
   }
 
+  // Apply post-processing and filter out all-null rows (null-flood fix)
+  const cleanedScores = applyPostProcessing(mergedScores);
+
   return {
     success: true,
-    scores: mergedScores,
+    scores: cleanedScores,
     rawText: successfulResults[0]?.rawText ?? "",
-    disputedHoles,
+    disputedHoles: disputedHoles.filter(d =>
+      cleanedScores.some(p => p.playerName === d.playerName)
+    ),
   };
 }
 
