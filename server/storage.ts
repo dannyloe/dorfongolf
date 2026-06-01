@@ -39,7 +39,7 @@ import {
   type EventPlayingGroup, type EventPlayingGroupMember, type EventPlayingGroupWithMembers,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
-import { eq, and, lt, lte, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
+import { eq, and, lt, lte, inArray, or, isNull, isNotNull, desc, gte, sql } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -147,6 +147,7 @@ export interface IStorage {
   pairUserToPresetPlayer(presetPlayerId: number, userId: string): Promise<PresetPlayer>;
   unpairUserFromPresetPlayer(presetPlayerId: number): Promise<PresetPlayer>;
   tryAutoLinkUserToGroupPlayer(groupId: number, userId: string): Promise<boolean>;
+  tryAutoLinkGroupPlayerToMembers(groupId: number, presetPlayerId: number): Promise<boolean>;
   getGroupPairings(groupId: number): Promise<{
     linkedPairs: Array<{ presetPlayer: { id: number; name: string; userId: string | null }; user: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null } }>;
     unlinkedUsers: Array<{ id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }>;
@@ -2540,6 +2541,49 @@ export class DatabaseStorage implements IStorage {
     // Exactly one match — auto-link
     try {
       await this.pairUserToPresetPlayer(matches[0].id, userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async tryAutoLinkGroupPlayerToMembers(groupId: number, presetPlayerId: number): Promise<boolean> {
+    // Skip if the preset player is already linked to a user
+    const [pp] = await db.select({ id: presetPlayers.id, name: presetPlayers.name, userId: presetPlayers.userId })
+      .from(presetPlayers).where(eq(presetPlayers.id, presetPlayerId));
+    if (!pp || pp.userId) return false;
+
+    const playerName = pp.name.toLowerCase().trim();
+
+    // Get all group members
+    const members = await db.select({ userId: groupMemberships.userId })
+      .from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
+    if (members.length === 0) return false;
+
+    const memberUserIds = members.map(m => m.userId);
+
+    // Get user records for all members, excluding those already linked to a preset player
+    const memberUsers = await db.select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    }).from(users).where(inArray(users.id, memberUserIds));
+
+    // Filter out users already linked to any preset player
+    const linkedUserIds = await db.select({ userId: presetPlayers.userId })
+      .from(presetPlayers).where(isNotNull(presetPlayers.userId));
+    const linkedSet = new Set(linkedUserIds.map(r => r.userId).filter(Boolean));
+
+    const matches = memberUsers.filter(u => {
+      if (linkedSet.has(u.id)) return false;
+      const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').toLowerCase().trim();
+      return fullName === playerName;
+    });
+
+    if (matches.length !== 1) return false;
+
+    try {
+      await this.pairUserToPresetPlayer(presetPlayerId, matches[0].id);
       return true;
     } catch {
       return false;

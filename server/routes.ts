@@ -3561,6 +3561,7 @@ Transcript to parse: "${transcript}"`;
     try {
       const input = api.groups.addPlayer.input.parse(req.body);
       const gp = await storage.addGroupPlayer(groupId, input.presetPlayerId, userId);
+      await storage.tryAutoLinkGroupPlayerToMembers(groupId, input.presetPlayerId).catch(() => {});
       res.status(201).json(gp);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -3586,6 +3587,7 @@ Transcript to parse: "${transcript}"`;
         try {
           const gp = await storage.addGroupPlayer(groupId, presetPlayerId, userId);
           results.push(gp);
+          await storage.tryAutoLinkGroupPlayerToMembers(groupId, presetPlayerId).catch(() => {});
         } catch (err) {
         }
       }
@@ -3617,6 +3619,7 @@ Transcript to parse: "${transcript}"`;
 
       try {
         await storage.addGroupPlayer(groupId, presetPlayer.id, userId);
+        await storage.tryAutoLinkGroupPlayerToMembers(groupId, presetPlayer.id).catch(() => {});
       } catch (err: any) {
         if (!err.message?.includes('already') && !err.message?.includes('duplicate')) {
           throw err;
