@@ -39,7 +39,7 @@ import {
   type EventPlayingGroup, type EventPlayingGroupMember, type EventPlayingGroupWithMembers,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
 } from "@shared/schema";
-import { eq, and, lt, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
+import { eq, and, lt, lte, inArray, or, isNull, desc, gte, sql } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -1188,17 +1188,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getLedgerData(startDate?: Date, endDate?: Date) {
-    // Get all matches (optionally filtered by date)
-    let allMatches = await db.select().from(matches).orderBy(matches.createdAt);
-    
+    // Build date conditions and push them into the SQL WHERE clause
+    const dateConditions = [];
     if (startDate) {
-      allMatches = allMatches.filter(m => m.createdAt && new Date(m.createdAt) >= startDate);
+      dateConditions.push(gte(matches.createdAt, startDate));
     }
     if (endDate) {
       const endOfDay = new Date(endDate);
       endOfDay.setHours(23, 59, 59, 999);
-      allMatches = allMatches.filter(m => m.createdAt && new Date(m.createdAt) <= endOfDay);
+      dateConditions.push(lte(matches.createdAt, endOfDay));
     }
+    const whereClause = dateConditions.length > 0 ? and(...dateConditions) : undefined;
+
+    const allMatches = await db.select().from(matches).where(whereClause).orderBy(matches.createdAt);
 
     const allMatchIds = allMatches.map(m => m.id);
 
