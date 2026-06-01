@@ -414,6 +414,48 @@ export interface LedgerEntry {
   teamBMembers?: string[];
   teamName?: string;
   teamIndex?: number;
+  resultText?: string;
+  nassauLeg?: 'F9' | 'B9' | 'Ov';
+}
+
+export function buildResultText(
+  results: HoleResult[],
+  winner: 'A' | 'B' | 'tie' | null,
+  isComplete: boolean,
+  matchType?: string
+): string {
+  if (results.length === 0) return '';
+  const playedHoles = results.filter(r => r.teamAScore !== null && r.teamBScore !== null);
+  const lastPlayed = playedHoles[playedHoles.length - 1];
+  if (!lastPlayed) return '';
+
+  const diff = lastPlayed.cumulativeA - lastPlayed.cumulativeB;
+  const totalHoles = results.length;
+  const holesRemaining = Math.max(0, totalHoles - playedHoles.length);
+
+  if (matchType === 'stroke_play') {
+    if (!isComplete) return '';
+    if (diff === 0) return 'Tied';
+    const margin = Math.abs(diff);
+    return diff < 0 ? `${margin} Up` : `${margin} Down`;
+  }
+
+  if (winner === 'tie') return 'Halved';
+  if (winner === null) {
+    // In-progress: show current standing
+    if (playedHoles.length === 0) return '';
+    if (diff > 0) return `${Math.abs(diff)} Up`;
+    if (diff < 0) return `${Math.abs(diff)} Down`;
+    return 'All Square';
+  }
+
+  const absDiff = Math.abs(diff);
+  if (holesRemaining > 0 && absDiff > holesRemaining) {
+    return diff > 0 ? `${absDiff} & ${holesRemaining}` : `${absDiff} & ${holesRemaining} Down`;
+  }
+  if (diff > 0) return `${absDiff} Up`;
+  if (diff < 0) return `${absDiff} Down`;
+  return 'Halved';
 }
 
 export interface PlayerBalance {
@@ -552,7 +594,22 @@ export function calculateLedger(
       for (const m of teamA.members) playerTeamIndex.set(m.playerId, 0);
       for (const m of teamB.members) playerTeamIndex.set(m.playerId, 1);
       
+      const nassauResultsByLeg: Record<string, HoleResult[]> = {
+        'Front 9': nassauResults.front9,
+        'Back 9': nassauResults.back9,
+        'Overall': nassauResults.overall,
+      };
+      const nassauLegMap: Record<string, 'F9' | 'B9' | 'Ov'> = {
+        'Front 9': 'F9',
+        'Back 9': 'B9',
+        'Overall': 'Ov',
+      };
+
       for (const ns of nassauSettlements) {
+        const legResults = nassauResultsByLeg[ns.betName] ?? [];
+        const nassauWinner = ns.settlement.winner ?? (ns.settlement.isTie ? 'tie' : null);
+        const legResultText = buildResultText(legResults, nassauWinner, ns.settlement.isComplete);
+        const nassauLeg = nassauLegMap[ns.betName];
         for (const s of ns.settlement.settlements) {
           const teamIdx = playerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
           entries.push({
@@ -570,6 +627,8 @@ export function calculateLedger(
             teamBMembers,
             teamName: s.teamName,
             teamIndex: teamIdx,
+            resultText: legResultText || undefined,
+            nassauLeg,
           });
 
           if (ns.settlement.isComplete) {
@@ -651,8 +710,10 @@ export function calculateLedger(
       for (const m of teamB.members) dmPlayerTeamIndex.set(m.playerId, 1);
 
       const addDeathMatchSettlement = (
-        betType: string, winner: 'A' | 'B' | 'tie' | null, isComplete: boolean, betAmount: number
+        betType: string, winner: 'A' | 'B' | 'tie' | null, isComplete: boolean, betAmount: number, results: HoleResult[]
       ) => {
+        const dmResultText = buildResultText(results, winner, isComplete) || undefined;
+
         if (!isComplete || winner === null) {
           for (const m of [...teamA.members, ...teamB.members]) {
             entries.push({
@@ -670,6 +731,7 @@ export function calculateLedger(
               teamBMembers,
               teamName: teamA.members.some(tm => tm.playerId === m.playerId) ? teamA.name : teamB.name,
               teamIndex: dmPlayerTeamIndex.get(m.playerId) ?? 0,
+              resultText: dmResultText,
             });
           }
           return;
@@ -696,6 +758,7 @@ export function calculateLedger(
               teamBMembers,
               teamName: teamIdx === 0 ? teamA.name : teamB.name,
               teamIndex: teamIdx,
+              resultText: dmResultText,
             });
           }
           return;
@@ -718,6 +781,7 @@ export function calculateLedger(
             teamBMembers,
             teamName: teamIdx === 0 ? teamA.name : teamB.name,
             teamIndex: teamIdx,
+            resultText: dmResultText,
           });
 
           if (isComplete) {
@@ -746,6 +810,7 @@ export function calculateLedger(
             teamBMembers,
             teamName: teamIdx === 0 ? teamA.name : teamB.name,
             teamIndex: teamIdx,
+            resultText: dmResultText,
           });
 
           if (isComplete) {
@@ -758,8 +823,8 @@ export function calculateLedger(
         }
       };
 
-      addDeathMatchSettlement('Best Ball', dmResults.bestBall.winner, dmResults.bestBall.isComplete, bestBallBet);
-      addDeathMatchSettlement('2nd Ball', dmResults.secondBall.winner, dmResults.secondBall.isComplete, secondBallBet);
+      addDeathMatchSettlement('Best Ball', dmResults.bestBall.winner, dmResults.bestBall.isComplete, bestBallBet, dmResults.bestBall.results);
+      addDeathMatchSettlement('2nd Ball', dmResults.secondBall.winner, dmResults.secondBall.isComplete, secondBallBet, dmResults.secondBall.results);
     } else if (em.matchType === 'two_three_ball') {
       const ttbNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       const ttbResults = calculateTwoThreeBallResults(em, scores, ttbNetContext);
@@ -785,9 +850,17 @@ export function calculateLedger(
       for (const m of teamA.members) ttbPlayerTeamIndex.set(m.playerId, 0);
       for (const m of teamB.members) ttbPlayerTeamIndex.set(m.playerId, 1);
 
-      const emit = (prefix: '2 Ball' | '3rd Ball', settlements: NassauSettlement[]) => {
+      const getLegHoles = (legResults: NassauResults, betName: string): HoleResult[] => {
+        if (betName.includes('Front 9') || betName.startsWith('F9')) return legResults.front9;
+        if (betName.includes('Back 9') || betName.startsWith('B9')) return legResults.back9;
+        return legResults.overall;
+      };
+
+      const emit = (prefix: '2 Ball' | '3rd Ball', settlements: NassauSettlement[], legResults: NassauResults) => {
         for (const ns of settlements) {
           const betLabel = `${prefix} – ${ns.betName}`;
+          const legHoles = getLegHoles(legResults, ns.betName);
+          const legResultText = buildResultText(legHoles, ns.settlement.winner, ns.settlement.isComplete) || undefined;
           for (const s of ns.settlement.settlements) {
             const teamIdx = ttbPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
             entries.push({
@@ -805,6 +878,7 @@ export function calculateLedger(
               teamBMembers,
               teamName: s.teamName,
               teamIndex: teamIdx,
+              resultText: legResultText,
             });
 
             if (ns.settlement.isComplete) {
@@ -819,8 +893,8 @@ export function calculateLedger(
         }
       };
 
-      emit('2 Ball', twoBallSettlements);
-      emit('3rd Ball', threeBallSettlements);
+      emit('2 Ball', twoBallSettlements, ttbResults.twoBall);
+      emit('3rd Ball', threeBallSettlements, ttbResults.threeBall);
     } else if (em.matchType === 'one_two_three_ball') {
       const otzbNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       const otzbResults = calculateOneTwoThreeBallResults(em, scores, otzbNetContext);
@@ -846,9 +920,17 @@ export function calculateLedger(
       for (const m of teamA.members) otzbPlayerTeamIndex.set(m.playerId, 0);
       for (const m of teamB.members) otzbPlayerTeamIndex.set(m.playerId, 1);
 
-      const emitOtzb = (prefix: '1 Ball' | '2nd3rd Ball', settlements: NassauSettlement[]) => {
+      const getLegHolesOtzb = (legResults: NassauResults, betName: string): HoleResult[] => {
+        if (betName.includes('Front 9') || betName.startsWith('F9')) return legResults.front9;
+        if (betName.includes('Back 9') || betName.startsWith('B9')) return legResults.back9;
+        return legResults.overall;
+      };
+
+      const emitOtzb = (prefix: '1 Ball' | '2nd3rd Ball', settlements: NassauSettlement[], legResults: NassauResults) => {
         for (const ns of settlements) {
           const betLabel = `${prefix} – ${ns.betName}`;
+          const legHoles = getLegHolesOtzb(legResults, ns.betName);
+          const legResultText = buildResultText(legHoles, ns.settlement.winner, ns.settlement.isComplete) || undefined;
           for (const s of ns.settlement.settlements) {
             const teamIdx = otzbPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
             entries.push({
@@ -866,6 +948,7 @@ export function calculateLedger(
               teamBMembers,
               teamName: s.teamName,
               teamIndex: teamIdx,
+              resultText: legResultText,
             });
 
             if (ns.settlement.isComplete) {
@@ -880,8 +963,8 @@ export function calculateLedger(
         }
       };
 
-      emitOtzb('1 Ball', oneBallSettlements);
-      emitOtzb('2nd3rd Ball', twoThirdBallSettlements);
+      emitOtzb('1 Ball', oneBallSettlements, otzbResults.oneBall);
+      emitOtzb('2nd3rd Ball', twoThirdBallSettlements, otzbResults.twoThirdBall);
     } else {
       // calculateMatchPlayResults now handles startOnBack9 internally - pass original scores
       const matchPlayNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
@@ -902,6 +985,9 @@ export function calculateLedger(
       for (const m of teamA.members) matchPlayerTeamIndex.set(m.playerId, 0);
       for (const m of teamB.members) matchPlayerTeamIndex.set(m.playerId, 1);
       
+      const matchWinner = settlement.winner ?? (settlement.isTie ? 'tie' : null);
+      const matchResultText = buildResultText(results, matchWinner, settlement.isComplete, em.matchType);
+
       for (const s of settlement.settlements) {
         const teamIdx = matchPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
         entries.push({
@@ -919,6 +1005,7 @@ export function calculateLedger(
           teamBMembers,
           teamName: s.teamName,
           teamIndex: teamIdx,
+          resultText: matchResultText || undefined,
         });
 
         if (settlement.isComplete) {
