@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff, Link2, Loader2 } from "lucide-react";
+import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff, Link2, Loader2, AlertTriangle, Unlink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -68,6 +69,16 @@ interface PresetPlayer {
   aliases: string[];
 }
 
+interface GroupPairings {
+  linkedPairs: Array<{
+    presetPlayer: { id: number; name: string; userId: string | null };
+    user: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null };
+  }>;
+  unlinkedUsers: Array<{ id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }>;
+  unlinkedPlayers: Array<{ id: number; name: string }>;
+  brokenLegacyLinks: Array<{ userId: string; presetPlayerName: string; firstName: string | null; lastName: string | null }>;
+}
+
 export default function Groups() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -82,6 +93,8 @@ export default function Groups() {
   const [playerSearchQuery, setPlayerSearchQuery] = useState("");
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<number>>(new Set());
   const [playerFilter, setPlayerFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
+  const [pairPlayerIdForUser, setPairPlayerIdForUser] = useState<Record<string, number | null>>({});
+  const [pairUserIdForPlayer, setPairUserIdForPlayer] = useState<Record<number, string | null>>({});
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
     queryKey: ["/api/groups/my"],
@@ -102,6 +115,8 @@ export default function Groups() {
     enabled: !!selectedGroupId,
   });
 
+  const isAdmin = groupDetail?.role === "admin";
+
   const { data: allPresetPlayers = [] } = useQuery<PresetPlayer[]>({
     queryKey: ["/api/preset-players"],
     queryFn: async () => {
@@ -110,6 +125,44 @@ export default function Groups() {
       return res.json();
     },
     enabled: !!selectedGroupId,
+  });
+
+  const { data: groupPairings, isLoading: pairingsLoading } = useQuery<GroupPairings>({
+    queryKey: ["/api/groups", selectedGroupId, "pairings"],
+    queryFn: async () => {
+      const res = await fetch(`/api/groups/${selectedGroupId}/pairings`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch pairings");
+      return res.json();
+    },
+    enabled: !!selectedGroupId && isAdmin,
+  });
+
+  const pairMutation = useMutation({
+    mutationFn: async ({ presetPlayerId, userId }: { presetPlayerId: number; userId: string }) => {
+      return apiRequest("POST", `/api/groups/${selectedGroupId}/players/${presetPlayerId}/pair`, { userId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId, "pairings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players"] });
+      toast({ title: "Paired", description: "Player linked to user account." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const unpairMutation = useMutation({
+    mutationFn: async (presetPlayerId: number) => {
+      return apiRequest("DELETE", `/api/groups/${selectedGroupId}/players/${presetPlayerId}/pair`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId, "pairings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players"] });
+      toast({ title: "Unpaired", description: "Player unlinked from user account." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
   });
 
   const createGroupMutation = useMutation({
@@ -356,8 +409,6 @@ export default function Groups() {
     return "?";
   };
 
-  const isAdmin = groupDetail?.role === "admin";
-
   const existingPlayerIds = new Set(groupDetail?.players.map(p => p.presetPlayerId) ?? []);
   const availablePlayers = allPresetPlayers.filter(p => !existingPlayerIds.has(p.id));
 
@@ -465,6 +516,7 @@ export default function Groups() {
           <Tabs defaultValue="players">
             <TabsList>
               <TabsTrigger value="players" data-testid="tab-players">Players</TabsTrigger>
+              {isAdmin && <TabsTrigger value="pairings" data-testid="tab-pairings">Pairings</TabsTrigger>}
               {isAdmin && <TabsTrigger value="requests" data-testid="tab-requests">Join Requests</TabsTrigger>}
             </TabsList>
 
@@ -656,6 +708,204 @@ export default function Groups() {
                 <p className="text-muted-foreground text-center py-8">No players yet. Add some to get started.</p>
               )}
             </TabsContent>
+
+            {isAdmin && (
+              <TabsContent value="pairings" className="space-y-4 mt-4">
+                <p className="text-sm text-muted-foreground">
+                  Link user accounts to player names. This creates a permanent connection so renaming a player won't break the link.
+                </p>
+
+                {pairingsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Broken legacy links warning */}
+                    {(groupPairings?.brokenLegacyLinks ?? []).length > 0 && (
+                      <Card className="border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/20">
+                        <CardContent className="pt-4">
+                          <div className="flex items-start gap-2 mb-3">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Broken legacy links</p>
+                              <p className="text-xs text-muted-foreground">These users have a player name string set but no FK link. Use the pair button to fix.</p>
+                            </div>
+                          </div>
+                          {groupPairings?.brokenLegacyLinks.map(bl => (
+                            <div key={bl.userId} className="flex items-center gap-2 text-sm py-1" data-testid={`broken-link-${bl.userId}`}>
+                              <AlertTriangle className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                              <span className="font-medium">{bl.firstName ? `${bl.firstName} ${bl.lastName ?? ''}`.trim() : bl.userId}</span>
+                              <span className="text-muted-foreground">→ claimed "{bl.presetPlayerName}" (unconfirmed)</span>
+                            </div>
+                          ))}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Existing linked pairs */}
+                    {(groupPairings?.linkedPairs ?? []).length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Linked Pairs</h3>
+                        <div className="space-y-2">
+                          {groupPairings?.linkedPairs.map(lp => (
+                            <Card key={lp.presetPlayer.id} data-testid={`pair-${lp.presetPlayer.id}`}>
+                              <CardContent className="pt-3 pb-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                      <Avatar className="w-7 h-7">
+                                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                                          {lp.presetPlayer.name[0].toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="font-medium text-sm">{lp.presetPlayer.name}</span>
+                                    </div>
+                                    <Check className="w-4 h-4 text-emerald-500" />
+                                    <div className="flex items-center gap-2">
+                                      <Avatar className="w-7 h-7">
+                                        <AvatarFallback className="text-xs">
+                                          {lp.user.firstName?.[0]?.toUpperCase() ?? '?'}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <span className="text-sm">{lp.user.firstName ? `${lp.user.firstName} ${lp.user.lastName ?? ''}`.trim() : lp.user.id}</span>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => unpairMutation.mutate(lp.presetPlayer.id)}
+                                    disabled={unpairMutation.isPending}
+                                    data-testid={`button-unpair-${lp.presetPlayer.id}`}
+                                  >
+                                    <Unlink className="w-3.5 h-3.5 mr-1" />
+                                    Unpair
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Unlinked players: pick a user to pair */}
+                    {(groupPairings?.unlinkedPlayers ?? []).length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Unlinked Players</h3>
+                        <div className="space-y-2">
+                          {groupPairings?.unlinkedPlayers.map(pp => (
+                            <Card key={pp.id} className="border-dashed" data-testid={`unlinked-player-${pp.id}`}>
+                              <CardContent className="pt-3 pb-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <Avatar className="w-7 h-7">
+                                    <AvatarFallback className="text-xs bg-muted">{pp.name[0].toUpperCase()}</AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-medium text-sm flex-1 min-w-0 truncate">{pp.name}</span>
+                                  <div className="flex items-center gap-2">
+                                    <Select
+                                      value={pairUserIdForPlayer[pp.id] ?? ""}
+                                      onValueChange={(val) => setPairUserIdForPlayer(prev => ({ ...prev, [pp.id]: val }))}
+                                    >
+                                      <SelectTrigger className="w-44 h-8 text-xs" data-testid={`select-user-for-player-${pp.id}`}>
+                                        <SelectValue placeholder="Pick a user…" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {(groupPairings?.unlinkedUsers ?? []).map(u => (
+                                          <SelectItem key={u.id} value={u.id}>
+                                            {u.firstName ? `${u.firstName} ${u.lastName ?? ''}`.trim() : u.id}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      disabled={!pairUserIdForPlayer[pp.id] || pairMutation.isPending}
+                                      onClick={() => {
+                                        const uid = pairUserIdForPlayer[pp.id];
+                                        if (uid) {
+                                          pairMutation.mutate({ presetPlayerId: pp.id, userId: uid });
+                                          setPairUserIdForPlayer(prev => ({ ...prev, [pp.id]: null }));
+                                        }
+                                      }}
+                                      data-testid={`button-pair-player-${pp.id}`}
+                                    >
+                                      Pair
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Unlinked users: pick a player to pair */}
+                    {(groupPairings?.unlinkedUsers ?? []).length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Unlinked Members</h3>
+                        <div className="space-y-2">
+                          {groupPairings?.unlinkedUsers.map(u => (
+                            <Card key={u.id} className="border-dashed" data-testid={`unlinked-user-${u.id}`}>
+                              <CardContent className="pt-3 pb-3">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <Avatar className="w-7 h-7">
+                                    <AvatarFallback className="text-xs">{u.firstName?.[0]?.toUpperCase() ?? '?'}</AvatarFallback>
+                                  </Avatar>
+                                  <span className="font-medium text-sm flex-1 min-w-0 truncate">
+                                    {u.firstName ? `${u.firstName} ${u.lastName ?? ''}`.trim() : u.id}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <Select
+                                      value={pairPlayerIdForUser[u.id]?.toString() ?? ""}
+                                      onValueChange={(val) => setPairPlayerIdForUser(prev => ({ ...prev, [u.id]: parseInt(val) }))}
+                                    >
+                                      <SelectTrigger className="w-44 h-8 text-xs" data-testid={`select-player-for-user-${u.id}`}>
+                                        <SelectValue placeholder="Pick a player…" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {(groupPairings?.unlinkedPlayers ?? []).map(pp => (
+                                          <SelectItem key={pp.id} value={pp.id.toString()}>
+                                            {pp.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <Button
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      disabled={!pairPlayerIdForUser[u.id] || pairMutation.isPending}
+                                      onClick={() => {
+                                        const ppId = pairPlayerIdForUser[u.id];
+                                        if (ppId) {
+                                          pairMutation.mutate({ presetPlayerId: ppId, userId: u.id });
+                                          setPairPlayerIdForUser(prev => ({ ...prev, [u.id]: null }));
+                                        }
+                                      }}
+                                      data-testid={`button-pair-user-${u.id}`}
+                                    >
+                                      Pair
+                                    </Button>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(groupPairings?.linkedPairs ?? []).length === 0 &&
+                     (groupPairings?.unlinkedPlayers ?? []).length === 0 &&
+                     (groupPairings?.unlinkedUsers ?? []).length === 0 && (
+                      <p className="text-muted-foreground text-center py-8">No members or players in this group yet.</p>
+                    )}
+                  </div>
+                )}
+              </TabsContent>
+            )}
 
             {isAdmin && (
               <TabsContent value="requests" className="space-y-3 mt-4">

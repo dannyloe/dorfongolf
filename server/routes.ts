@@ -3551,6 +3551,96 @@ Transcript to parse: "${transcript}"`;
     res.status(204).send();
   });
 
+  // === PAIRING ENDPOINTS ===
+
+  // GET group pairings summary (admin-only)
+  app.get('/api/groups/:id/pairings', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can view pairings" });
+    }
+    try {
+      const pairings = await storage.getGroupPairings(groupId);
+      res.json(pairings);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST pair a user to a preset player (admin-only, scoped to group members/players)
+  app.post('/api/groups/:id/players/:presetPlayerId/pair', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const presetPlayerId = parseInt(req.params.presetPlayerId);
+    const user = req.user as any;
+    const adminUserId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, adminUserId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can pair players" });
+    }
+    try {
+      const schema = z.object({ userId: z.string().min(1) });
+      const input = schema.parse(req.body);
+
+      // Verify presetPlayerId belongs to this group
+      const groupPlayers = await storage.getGroupPlayers(groupId);
+      const playerInGroup = groupPlayers.some(gp => gp.presetPlayerId === presetPlayerId);
+      if (!playerInGroup) {
+        return res.status(400).json({ message: "Player does not belong to this group" });
+      }
+
+      // Verify target userId is a member of this group
+      const targetMembership = await storage.getGroupMembership(groupId, input.userId);
+      if (!targetMembership) {
+        return res.status(400).json({ message: "User is not a member of this group" });
+      }
+
+      const updated = await storage.pairUserToPresetPlayer(presetPlayerId, input.userId);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE unpair a preset player from its user (admin-only, scoped to group players)
+  app.delete('/api/groups/:id/players/:presetPlayerId/pair', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const presetPlayerId = parseInt(req.params.presetPlayerId);
+    const user = req.user as any;
+    const adminUserId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, adminUserId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can unpair players" });
+    }
+    try {
+      // Verify presetPlayerId belongs to this group before unpairing
+      const groupPlayers = await storage.getGroupPlayers(groupId);
+      const playerInGroup = groupPlayers.some(gp => gp.presetPlayerId === presetPlayerId);
+      if (!playerInGroup) {
+        return res.status(400).json({ message: "Player does not belong to this group" });
+      }
+
+      const updated = await storage.unpairUserFromPresetPlayer(presetPlayerId);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // === RYDER CUP ROUTES ===
 
   app.get(api.ryderCup.list.path, isAuthenticated, async (req, res) => {

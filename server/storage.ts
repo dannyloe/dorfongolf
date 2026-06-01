@@ -136,6 +136,17 @@ export interface IStorage {
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
   getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
 
+  // Pairing: link a user account to a preset player (FK sync)
+  pairUserToPresetPlayer(presetPlayerId: number, userId: string): Promise<PresetPlayer>;
+  unpairUserFromPresetPlayer(presetPlayerId: number): Promise<PresetPlayer>;
+  getGroupPairings(groupId: number): Promise<{
+    linkedPairs: Array<{ presetPlayer: { id: number; name: string; userId: string | null }; user: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null } }>;
+    unlinkedUsers: Array<{ id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }>;
+    unlinkedPlayers: Array<{ id: number; name: string }>;
+    brokenLegacyLinks: Array<{ userId: string; presetPlayerName: string; firstName: string | null; lastName: string | null }>;
+  }>;
+  getPresetPlayerById(id: number): Promise<PresetPlayer | undefined>;
+
   // Match code methods
   getMatchByCode(code: string): Promise<Match | undefined>;
   backfillMatchCodes(): Promise<number>;
@@ -1145,11 +1156,18 @@ export class DatabaseStorage implements IStorage {
 
   async claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect> {
     if (presetPlayerName) {
-      // Check if already claimed by someone else
+      // Check if already claimed by someone else via the string index
       const [existingClaim] = await db.select().from(users)
         .where(eq(users.presetPlayerName, presetPlayerName));
       if (existingClaim && existingClaim.id !== userId) {
         throw new Error(`${presetPlayerName} is already claimed by another user`);
+      }
+
+      // Check if the preset player FK is already held by a different user — fail atomically
+      const [ppRow] = await db.select().from(presetPlayers)
+        .where(eq(presetPlayers.name, presetPlayerName));
+      if (ppRow && ppRow.userId && ppRow.userId !== userId) {
+        throw new Error(`${presetPlayerName} is already linked to another account`);
       }
     }
 
@@ -1157,6 +1175,23 @@ export class DatabaseStorage implements IStorage {
       .set({ presetPlayerName })
       .where(eq(users.id, userId))
       .returning();
+
+    // Keep the FK in sync: write preset_players.userId whenever the string is set/cleared
+    if (presetPlayerName) {
+      // Set FK on the matching preset player only if unowned or already owned by this user
+      await db.update(presetPlayers)
+        .set({ userId })
+        .where(and(
+          eq(presetPlayers.name, presetPlayerName),
+          or(isNull(presetPlayers.userId), eq(presetPlayers.userId, userId))
+        ));
+    } else {
+      // Unclaiming: clear FK on any preset player that was linked to this user
+      await db.update(presetPlayers)
+        .set({ userId: null })
+        .where(eq(presetPlayers.userId, userId));
+    }
+
     return updated;
   }
 
@@ -1172,6 +1207,12 @@ export class DatabaseStorage implements IStorage {
       .set({ presetPlayerName, firstName, lastName })
       .where(eq(users.id, userId))
       .returning();
+
+    // Sync FK
+    await db.update(presetPlayers)
+      .set({ userId })
+      .where(eq(presetPlayers.name, presetPlayerName));
+
     return updated;
   }
 
@@ -2174,6 +2215,146 @@ export class DatabaseStorage implements IStorage {
       sql`LOWER(${presetPlayers.name}) = LOWER(${name})`
     );
     return player;
+  }
+
+  async getPresetPlayerById(id: number): Promise<PresetPlayer | undefined> {
+    const [player] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, id));
+    return player;
+  }
+
+  async pairUserToPresetPlayer(presetPlayerId: number, userId: string): Promise<PresetPlayer> {
+    // Check the user exists
+    const targetUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (targetUser.length === 0) throw new Error("User not found");
+
+    // Check the preset player exists
+    const [pp] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, presetPlayerId));
+    if (!pp) throw new Error("Preset player not found");
+
+    // Check if another preset player is already linked to this user
+    const [existingLinkForUser] = await db.select().from(presetPlayers)
+      .where(eq(presetPlayers.userId, userId));
+    if (existingLinkForUser && existingLinkForUser.id !== presetPlayerId) {
+      throw new Error(`User is already linked to player "${existingLinkForUser.name}". Unpair first.`);
+    }
+
+    // If the preset player is currently linked to a different user, clear that user's string first
+    if (pp.userId && pp.userId !== userId) {
+      await db.update(users)
+        .set({ presetPlayerName: null })
+        .where(eq(users.id, pp.userId));
+    }
+
+    // Write the FK
+    const [updated] = await db.update(presetPlayers)
+      .set({ userId })
+      .where(eq(presetPlayers.id, presetPlayerId))
+      .returning();
+
+    // Keep preset_player_name string in sync on the new user row
+    await db.update(users)
+      .set({ presetPlayerName: pp.name })
+      .where(eq(users.id, userId));
+
+    return updated;
+  }
+
+  async unpairUserFromPresetPlayer(presetPlayerId: number): Promise<PresetPlayer> {
+    const [pp] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, presetPlayerId));
+    if (!pp) throw new Error("Preset player not found");
+
+    // Clear the string on the user row if it matches this player
+    if (pp.userId) {
+      await db.update(users)
+        .set({ presetPlayerName: null })
+        .where(eq(users.id, pp.userId));
+    }
+
+    const [updated] = await db.update(presetPlayers)
+      .set({ userId: null })
+      .where(eq(presetPlayers.id, presetPlayerId))
+      .returning();
+
+    return updated;
+  }
+
+  async getGroupPairings(groupId: number): Promise<{
+    linkedPairs: Array<{ presetPlayer: { id: number; name: string; userId: string | null }; user: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null } }>;
+    unlinkedUsers: Array<{ id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }>;
+    unlinkedPlayers: Array<{ id: number; name: string }>;
+    brokenLegacyLinks: Array<{ userId: string; presetPlayerName: string; firstName: string | null; lastName: string | null }>;
+  }> {
+    // Get all group members
+    const memberships = await db.select().from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
+    const memberUserIds = memberships.map(m => m.userId);
+
+    // Get all group players (preset players)
+    const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+    const groupPresetPlayerIds = gps.map(gp => gp.presetPlayerId);
+
+    // Fetch user rows for members
+    const memberUsers = memberUserIds.length > 0
+      ? await db.select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          presetPlayerName: users.presetPlayerName,
+        }).from(users).where(inArray(users.id, memberUserIds))
+      : [];
+
+    // Fetch preset player rows for group players
+    const groupPPs = groupPresetPlayerIds.length > 0
+      ? await db.select({ id: presetPlayers.id, name: presetPlayers.name, userId: presetPlayers.userId })
+          .from(presetPlayers).where(inArray(presetPlayers.id, groupPresetPlayerIds))
+      : [];
+
+    // Build lookup maps
+    const userMap = new Map(memberUsers.map(u => [u.id, u]));
+    const ppByUserId = new Map(groupPPs.filter(pp => pp.userId).map(pp => [pp.userId!, pp]));
+
+    const linkedPairs: Array<{ presetPlayer: { id: number; name: string; userId: string | null }; user: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null } }> = [];
+    const unlinkedPlayers: Array<{ id: number; name: string }> = [];
+
+    for (const pp of groupPPs) {
+      if (pp.userId && userMap.has(pp.userId)) {
+        linkedPairs.push({ presetPlayer: pp, user: userMap.get(pp.userId)! });
+      } else if (pp.userId && !userMap.has(pp.userId)) {
+        // Player linked to user outside this group — still show as unlinked player in this group
+        unlinkedPlayers.push({ id: pp.id, name: pp.name });
+      } else {
+        unlinkedPlayers.push({ id: pp.id, name: pp.name });
+      }
+    }
+
+    // Unlinked users: group members who have no preset_player FK globally (not just in this group).
+    // A member linked to a player outside this group should not show as "unlinked".
+    const globallyLinkedRows = memberUserIds.length > 0
+      ? await db.select({ userId: presetPlayers.userId })
+          .from(presetPlayers)
+          .where(inArray(presetPlayers.userId, memberUserIds))
+      : [];
+    const globallyLinkedUserIds = new Set(globallyLinkedRows.map(r => r.userId).filter(Boolean) as string[]);
+    const unlinkedUsers = memberUsers.filter(u => !globallyLinkedUserIds.has(u.id));
+
+    // Broken legacy links: users with preset_player_name that doesn't match any preset player's FK
+    const brokenLegacyLinks: Array<{ userId: string; presetPlayerName: string; firstName: string | null; lastName: string | null }> = [];
+    for (const u of memberUsers) {
+      if (!u.presetPlayerName) continue;
+      // Find if there's a preset player in the DB with this name that has this user linked
+      const matchingPP = groupPPs.find(pp => pp.name === u.presetPlayerName);
+      const linkedPP = ppByUserId.get(u.id);
+      // Broken = user claims a name via string but the FK doesn't agree
+      if (u.presetPlayerName && (!linkedPP || linkedPP.name !== u.presetPlayerName)) {
+        brokenLegacyLinks.push({
+          userId: u.id,
+          presetPlayerName: u.presetPlayerName,
+          firstName: u.firstName,
+          lastName: u.lastName,
+        });
+      }
+    }
+
+    return { linkedPairs, unlinkedUsers, unlinkedPlayers, brokenLegacyLinks };
   }
 
   async presetPlayerExists(name: string): Promise<boolean> {

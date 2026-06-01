@@ -243,6 +243,7 @@ export const presetPlayers = pgTable("preset_players", {
   name: text("name").notNull().unique(),
   showInRoster: boolean("show_in_roster").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
+  userId: text("user_id").unique().references(() => users.id, { onDelete: "set null" }), // nullable — one user per player
 });
 
 // Dynamic player aliases - supplements the hardcoded PLAYER_ALIASES

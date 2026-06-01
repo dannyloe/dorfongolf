@@ -78,6 +78,27 @@
       "when": 1748476800000,
       "tag": "0010_add_scan_correction_log_gemini_raw_text",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1748736000000,
+      "tag": "0011_add_playing_groups_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1748822400000,
+      "tag": "0012_add_scan_pattern_machine_generated",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1748908800000,
+      "tag": "0013_add_preset_player_user_fk",
+      "breakpoints": true
     }
   ]
 }
