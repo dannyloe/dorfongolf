@@ -218,88 +218,117 @@ export function PlayingGroupsSection({
         <div className="space-y-4 mt-3">
           {/* Lock panel */}
           <div className="p-3 rounded-xl border border-border bg-muted/30 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Lock players together
-              </p>
-              {atMaxLock && (
-                <p className="text-xs text-muted-foreground">Max 4 per lock</p>
-              )}
-            </div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Lock players together
+            </p>
 
-            <div className="flex flex-wrap gap-2">
-              {players.map((p) => {
-                const isInLock = lockedPlayerSet.has(p.name);
-                const isSelected = lockingSelection.includes(p.name);
-                const isDisabled = isInLock || (atMaxLock && !isSelected);
-                return (
-                  <button
-                    key={p.id}
-                    disabled={isDisabled}
-                    onClick={() => {
-                      if (isSelected) {
-                        setLockingSelection((sel) => sel.filter((n) => n !== p.name));
-                      } else if (!isDisabled) {
-                        setLockingSelection((sel) => [...sel, p.name]);
-                      }
-                    }}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
-                      ${isInLock ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-600 opacity-60 cursor-not-allowed" : ""}
-                      ${isSelected ? "bg-primary text-primary-foreground border-primary" : ""}
-                      ${!isInLock && !isSelected ? "bg-background text-foreground border-border hover:border-primary" : ""}
-                      ${isDisabled && !isInLock ? "opacity-40 cursor-not-allowed" : ""}
-                    `}
-                    data-testid={`button-lock-player-${p.id}`}
-                  >
-                    {p.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {justLocked && lockingSelection.length === 0 && lockedSets.length > 0 && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <Lock className="w-3 h-3 shrink-0" />
-                Pair locked — select players to lock another pair
-              </p>
-            )}
-
-            {lockingSelection.length >= 2 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setLockedSets((sets) => [...sets, [...lockingSelection]]);
-                  setLockingSelection([]);
-                  setJustLocked(true);
-                }}
-                data-testid="button-confirm-lock"
-              >
-                <Lock className="w-3.5 h-3.5 mr-1.5" />
-                Lock {lockingSelection.join(" + ")}
-              </Button>
-            )}
-
+            {/* Committed locks */}
             {lockedSets.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {lockedSets.map((set, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-600"
-                  >
-                    <Lock className="w-3 h-3 shrink-0" />
-                    {set.join(" + ")}
-                    <button
-                      onClick={() => setLockedSets((sets) => sets.filter((_, j) => j !== i))}
-                      className="ml-0.5 hover:text-red-500"
-                      data-testid={`button-remove-lock-${i}`}
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">Locked pairs:</p>
+                <div className="flex flex-wrap gap-2">
+                  {lockedSets.map((set, i) => (
+                    <span
+                      key={i}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-600"
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </span>
-                ))}
+                      <Lock className="w-3 h-3 shrink-0" />
+                      {set.join(" + ")}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setLockedSets((sets) => sets.filter((_, j) => j !== i)); }}
+                        className="ml-0.5 hover:text-red-500"
+                        data-testid={`button-remove-lock-${i}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
+
+            {/* Player picker — tap to stage a new lock */}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {lockingSelection.length === 0
+                  ? "Tap players to build a new lock:"
+                  : `Building new lock — tap more or confirm:`}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {players.map((p) => {
+                  const isInLock = lockedPlayerSet.has(p.name);
+                  const isSelected = lockingSelection.includes(p.name);
+                  const isDisabled = isInLock || (atMaxLock && !isSelected);
+                  return (
+                    <button
+                      key={p.id}
+                      disabled={isDisabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isSelected) {
+                          setLockingSelection((sel) => sel.filter((n) => n !== p.name));
+                        } else if (!isDisabled) {
+                          setLockingSelection((sel) => [...sel, p.name]);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                        ${isInLock ? "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-600 opacity-50 cursor-not-allowed" : ""}
+                        ${isSelected ? "bg-primary text-primary-foreground border-primary ring-2 ring-primary/30" : ""}
+                        ${!isInLock && !isSelected ? "bg-background text-foreground border-border hover:border-primary" : ""}
+                        ${isDisabled && !isInLock ? "opacity-40 cursor-not-allowed" : ""}
+                      `}
+                      data-testid={`button-lock-player-${p.id}`}
+                    >
+                      {p.name}
+                    </button>
+                  );
+                })}
+                {atMaxLock && <p className="text-xs text-muted-foreground self-center">Max 4</p>}
+              </div>
+
+              {/* Staging box — only visible when ≥1 player selected */}
+              {lockingSelection.length > 0 && (
+                <div className="flex items-center gap-2 p-2 rounded-lg border-2 border-primary/40 bg-primary/5">
+                  <div className="flex-1 flex flex-wrap gap-1.5">
+                    {lockingSelection.map((name) => (
+                      <span key={name} className="px-2 py-0.5 rounded-full text-xs font-medium bg-primary text-primary-foreground">
+                        {name}
+                      </span>
+                    ))}
+                    {lockingSelection.length < 2 && (
+                      <span className="px-2 py-0.5 rounded-full text-xs text-muted-foreground border border-dashed border-muted-foreground/40">
+                        + 1 more
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    {lockingSelection.length >= 2 && (
+                      <Button
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLockedSets((sets) => [...sets, [...lockingSelection]]);
+                          setLockingSelection([]);
+                          setJustLocked(true);
+                        }}
+                        data-testid="button-confirm-lock"
+                      >
+                        <Lock className="w-3.5 h-3.5 mr-1" />
+                        Lock
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => { e.stopPropagation(); setLockingSelection([]); }}
+                      data-testid="button-cancel-lock"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Generate / Share row */}
