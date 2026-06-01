@@ -114,6 +114,7 @@ export function PlayingGroupsSection({
   const [visible, setVisible] = useState(false);
   const [lockedSets, setLockedSets] = useState<string[][]>([]);
   const [lockingSelection, setLockingSelection] = useState<string[]>([]);
+  const [justLocked, setJustLocked] = useState(false);
   const [preview, setPreview] = useState<GroupEntry[] | null>(null);
   const [activePlayer, setActivePlayer] = useState<string | null>(null);
   const [groupError, setGroupError] = useState<string | null>(null);
@@ -256,6 +257,13 @@ export function PlayingGroupsSection({
               })}
             </div>
 
+            {justLocked && lockingSelection.length === 0 && lockedSets.length > 0 && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <Lock className="w-3 h-3 shrink-0" />
+                Pair locked — select players to lock another pair
+              </p>
+            )}
+
             {lockingSelection.length >= 2 && (
               <Button
                 size="sm"
@@ -263,6 +271,7 @@ export function PlayingGroupsSection({
                 onClick={() => {
                   setLockedSets((sets) => [...sets, [...lockingSelection]]);
                   setLockingSelection([]);
+                  setJustLocked(true);
                 }}
                 data-testid="button-confirm-lock"
               >

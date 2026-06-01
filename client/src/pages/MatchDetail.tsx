@@ -2620,6 +2620,7 @@ export default function MatchDetail() {
                 <p className="text-xs text-muted-foreground mb-2">Players in this match ({players.length}):</p>
                 <div className="flex flex-wrap gap-1.5">
                   {players.map((p) => {
+
                     const playerHasScores = scores.some((s: Score) => s.playerId === p.id);
                     const phoneStatus = p.userId ? playerPhoneStatus?.find(s => s.userId === p.userId) : null;
                     const hasPhone = phoneStatus?.phoneVerified === true;
@@ -2687,6 +2688,11 @@ export default function MatchDetail() {
                 </div>
               </div>
             )}
+
+            {/* Playing Groups — nested sub-section inside Add Player card */}
+            <div className="px-4">
+              <PlayingGroupsSection players={players} matchName={match.name ?? "Match"} />
+            </div>
           </div>
         );
       })()}
@@ -7845,9 +7851,6 @@ export default function MatchDetail() {
           </tbody>
         </table>
       </div>
-
-      {/* Playing Groups Section */}
-      <PlayingGroupsSection players={players} matchName={match.name ?? "Match"} />
 
       {/* Match Chat Section */}
       {user && (
