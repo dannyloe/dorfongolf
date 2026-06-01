@@ -3229,6 +3229,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(400).json({ message: "You are already a member of this group" });
       }
       await storage.addGroupMember(group.id, userId, 'member');
+      await storage.tryAutoLinkUserToGroupPlayer(group.id, userId).catch(() => {});
       res.json(group);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -3332,6 +3333,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(400).json({ message: "User is already a member of this group" });
       }
       const member = await storage.addGroupMember(groupId, input.userId, input.role);
+      await storage.tryAutoLinkUserToGroupPlayer(groupId, input.userId).catch(() => {});
       res.status(201).json(member);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -3426,6 +3428,7 @@ Transcript to parse: "${transcript}"`;
       const updated = await storage.resolveJoinRequest(requestId, input.status);
       if (input.status === 'approved') {
         await storage.addGroupMember(groupId, updated.userId, 'member');
+        await storage.tryAutoLinkUserToGroupPlayer(groupId, updated.userId).catch(() => {});
       }
       res.json(updated);
     } catch (err) {

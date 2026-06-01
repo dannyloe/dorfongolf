@@ -139,6 +139,7 @@ export interface IStorage {
   // Pairing: link a user account to a preset player (FK sync)
   pairUserToPresetPlayer(presetPlayerId: number, userId: string): Promise<PresetPlayer>;
   unpairUserFromPresetPlayer(presetPlayerId: number): Promise<PresetPlayer>;
+  tryAutoLinkUserToGroupPlayer(groupId: number, userId: string): Promise<boolean>;
   getGroupPairings(groupId: number): Promise<{
     linkedPairs: Array<{ presetPlayer: { id: number; name: string; userId: string | null }; user: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null } }>;
     unlinkedUsers: Array<{ id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }>;
@@ -2355,6 +2356,47 @@ export class DatabaseStorage implements IStorage {
     }
 
     return { linkedPairs, unlinkedUsers, unlinkedPlayers, brokenLegacyLinks };
+  }
+
+  async tryAutoLinkUserToGroupPlayer(groupId: number, userId: string): Promise<boolean> {
+    // Skip if user is already linked to any preset player globally
+    const [existingLink] = await db.select().from(presetPlayers).where(eq(presetPlayers.userId, userId));
+    if (existingLink) return false;
+
+    // Get the user's name
+    const [userRow] = await db.select({
+      firstName: users.firstName,
+      lastName: users.lastName,
+    }).from(users).where(eq(users.id, userId));
+    if (!userRow) return false;
+
+    const { firstName, lastName } = userRow;
+    if (!firstName && !lastName) return false;
+
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').toLowerCase().trim();
+    if (!fullName) return false;
+
+    // Get unlinked preset players in this group
+    const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+    if (gps.length === 0) return false;
+    const ppIds = gps.map(gp => gp.presetPlayerId);
+
+    const unlinkedPPs = await db.select({ id: presetPlayers.id, name: presetPlayers.name })
+      .from(presetPlayers)
+      .where(and(inArray(presetPlayers.id, ppIds), isNull(presetPlayers.userId)));
+
+    // Find exact name matches (case-insensitive)
+    const matches = unlinkedPPs.filter(pp => pp.name.toLowerCase().trim() === fullName);
+
+    if (matches.length !== 1) return false;
+
+    // Exactly one match — auto-link
+    try {
+      await this.pairUserToPresetPlayer(matches[0].id, userId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async presetPlayerExists(name: string): Promise<boolean> {
