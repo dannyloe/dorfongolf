@@ -10,7 +10,7 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
-import { scanScorecardImage, scanScorecardImageMultiShot, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
+import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 import { uploadScorecardImage } from "./imageStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -2466,7 +2466,7 @@ export async function registerRoutes(
           const playerNames = matchPlayers.map((p: { name: string }) => p.name);
 
           const extraRules = await storage.getActiveScanPatternRules();
-          const result = await scanScorecardImageMultiShot({ imageBase64, playerNames, courseName: match.courseName, extraRules });
+          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules });
 
           // Create correction log at scan time — captures dismissed and failed scans too.
           // Log ALL attempts regardless of success so every scan attempt is permanently
