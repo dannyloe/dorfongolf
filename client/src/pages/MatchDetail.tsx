@@ -8216,26 +8216,7 @@ export default function MatchDetail() {
                       } catch { /* non-critical */ }
                     };
 
-                    if (isLast) {
-                      // Last bet: pre-fill the match creation form for manual review (existing behavior)
-                      const editedResult = {
-                        ...currentBet,
-                        matchType: betScanEditMatchType,
-                        teamAPlayerIds: betScanEditMatchType === 'skins' ? [] : betScanEditTeamA,
-                        teamBPlayerIds: betScanEditTeamB,
-                        skinsPlayerIds: betScanEditMatchType === 'skins' ? betScanEditTeamA : [],
-                        keyedPlayerIds: keyedA,
-                        unitAmount: betScanEditMatchType === 'death_match' ? undefined : amt,
-                        deathMatchBaseBet: betScanEditMatchType === 'death_match' ? amt : undefined,
-                        useNet: betScanEditUseNet,
-                      };
-                      applyVoiceMatchResult(editedResult);
-                      await logCorrection(editedResult);
-                      advanceOrClose();
-                      return;
-                    }
-
-                    // Apply & Next: create the match directly via API, then advance.
+                    // Create the bet directly via API, then advance.
                     // applyVoiceMatchResult only sets React state which gets overwritten by
                     // the next bet's seedEditState before React re-renders, so we must call
                     // the API directly here.
@@ -8365,7 +8346,7 @@ export default function MatchDetail() {
                   }}
                   data-testid="button-apply-bet-scan"
                 >
-                  {isLast ? 'Apply to Form' : 'Apply & Next'}
+                  {isLast ? 'Apply' : 'Apply & Next'}
                 </Button>
               </DialogFooter>
             </DialogContent>
