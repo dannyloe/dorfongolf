@@ -11,7 +11,7 @@ import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
 import { scanScorecardImage, scanScorecardImageMultiShot, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
-import { analyzeCorrectionLogs } from "./scanAnalysis";
+import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 import { uploadScorecardImage } from "./imageStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import express from "express";
@@ -5589,6 +5589,38 @@ Transcript to parse: "${transcript}"`;
       const detected = analyzeCorrectionLogs(logs, minOccurrences);
       const patterns = await storage.upsertScanPatterns(detected);
       res.json({ analyzed: logs.length, detected: detected.length, patterns });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: auto-learn per-course patterns from correction logs (machine-generated rules)
+  app.post("/api/admin/scan-patterns/auto-learn", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const minOccurrences = Number(req.body?.minOccurrences ?? 2);
+      const logs = await storage.listScanCorrectionLogs();
+      // Only analyze accepted/applied scans: non-bet-slip logs where appliedOutput
+      // contains at least one player entry (empty array = scan was never applied).
+      const scorecardLogs = logs.filter(l =>
+        l.source !== "bet_slip" &&
+        Array.isArray(l.appliedOutput) &&
+        (l.appliedOutput as any[]).length > 0
+      );
+      const detected = analyzeByCourseName(scorecardLogs, minOccurrences);
+      const patterns = await storage.upsertScanPatterns(detected);
+      const courses = Array.from(new Set(scorecardLogs.map(l => (l as any).courseName).filter(Boolean)));
+      res.json({
+        analyzed: scorecardLogs.length,
+        courses: courses.length,
+        detected: detected.length,
+        patterns,
+      });
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });

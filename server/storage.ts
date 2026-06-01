@@ -186,6 +186,7 @@ export interface IStorage {
     promptRule: string;
     occurrences: number;
     exampleLogIds: number[];
+    machineGenerated?: boolean;
   }>): Promise<ScanPattern[]>;
   markPatternAddressed(id: number, addressed: boolean): Promise<ScanPattern | undefined>;
   getActiveScanPatternRules(): Promise<string[]>;
@@ -447,6 +448,7 @@ export class DatabaseStorage implements IStorage {
     promptRule: string;
     occurrences: number;
     exampleLogIds: number[];
+    machineGenerated?: boolean;
   }>): Promise<ScanPattern[]> {
     const results: ScanPattern[] = [];
     for (const p of patterns) {
@@ -477,6 +479,7 @@ export class DatabaseStorage implements IStorage {
             promptRule: p.promptRule,
             occurrences: p.occurrences,
             exampleLogIds: p.exampleLogIds,
+            machineGenerated: p.machineGenerated ?? false,
           })
           .returning();
         results.push(created);

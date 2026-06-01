@@ -309,6 +309,7 @@ export const scanPatterns = pgTable("scan_patterns", {
   exampleLogIds: integer("example_log_ids").array().notNull().default([]),
   addressed: boolean("addressed").notNull().default(false),
   addressedAt: timestamp("addressed_at"),
+  machineGenerated: boolean("machine_generated").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

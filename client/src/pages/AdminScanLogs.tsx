@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ type ScanPattern = {
   exampleLogIds: number[];
   addressed: boolean;
   addressedAt: string | null;
+  machineGenerated: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -431,6 +432,11 @@ function PatternRow({ pattern, onToggleAddressed }: { pattern: ScanPattern; onTo
             >
               {pattern.patternType === "hole_shift" ? "Hole shift" : "Digit misread"}
             </Badge>
+            {pattern.machineGenerated && (
+              <Badge variant="outline" className="text-xs text-purple-600 border-purple-300 flex items-center gap-1">
+                <Bot className="w-3 h-3" />Machine generated
+              </Badge>
+            )}
             <span className="text-sm font-medium truncate">{pattern.description}</span>
             {pattern.addressed && (
               <Badge variant="secondary" className="text-xs flex items-center gap-1">
@@ -533,6 +539,21 @@ export default function AdminScanLogs() {
     },
     onError: () => {
       toast({ title: "Analysis failed", description: "Could not analyze logs.", variant: "destructive" });
+    },
+  });
+
+  const autoLearnMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/scan-patterns/auto-learn", { minOccurrences: 2 }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/scan-patterns"] });
+      toast({
+        title: "Auto-learn complete",
+        description: `Scanned ${data.analyzed} scorecard${data.analyzed !== 1 ? "s" : ""} across ${data.courses} course${data.courses !== 1 ? "s" : ""}, promoted ${data.detected} per-course rule${data.detected !== 1 ? "s" : ""}.`,
+      });
+    },
+    onError: () => {
+      toast({ title: "Auto-learn failed", description: "Could not run auto-learn.", variant: "destructive" });
     },
   });
 
@@ -785,17 +806,31 @@ export default function AdminScanLogs() {
                 Patterns are detected from correction logs. Active rules are automatically injected into every Gemini scan prompt.
               </p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              onClick={() => analyzeMutation.mutate()}
-              disabled={analyzeMutation.isPending}
-              data-testid="button-analyze-patterns"
-            >
-              <RefreshCw className={`w-4 h-4 ${analyzeMutation.isPending ? "animate-spin" : ""}`} />
-              {analyzeMutation.isPending ? "Analyzing…" : "Re-analyze logs"}
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => autoLearnMutation.mutate()}
+                disabled={autoLearnMutation.isPending || analyzeMutation.isPending}
+                data-testid="button-auto-learn-patterns"
+                title="Group correction logs by course and auto-promote recurring per-course errors into pattern rules"
+              >
+                <Bot className={`w-4 h-4 ${autoLearnMutation.isPending ? "animate-spin" : ""}`} />
+                {autoLearnMutation.isPending ? "Learning…" : "Auto-learn by course"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => analyzeMutation.mutate()}
+                disabled={analyzeMutation.isPending || autoLearnMutation.isPending}
+                data-testid="button-analyze-patterns"
+              >
+                <RefreshCw className={`w-4 h-4 ${analyzeMutation.isPending ? "animate-spin" : ""}`} />
+                {analyzeMutation.isPending ? "Analyzing…" : "Re-analyze logs"}
+              </Button>
+            </div>
           </div>
 
           {patternsLoading ? (

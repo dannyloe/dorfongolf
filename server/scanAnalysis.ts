@@ -13,6 +13,7 @@ export type DetectedPattern = {
   promptRule: string;
   occurrences: number;
   exampleLogIds: number[];
+  machineGenerated?: boolean;
 };
 
 function buildDiffs(
@@ -55,8 +56,12 @@ function detectShift(diffs: HoleDiff[]): boolean {
 
 export function analyzeCorrectionLogs(
   logs: CorrectionLog[],
-  minOccurrences = 2
+  minOccurrences = 2,
+  courseName?: string
 ): DetectedPattern[] {
+  const keyPrefix = courseName ? `course:${courseName}:` : "";
+  const courseLabel = courseName ? ` at ${courseName}` : "";
+
   const shiftLogIds: number[] = [];
   const swapMap = new Map<
     string,
@@ -80,7 +85,7 @@ export function analyzeCorrectionLogs(
       if (!isShift) {
         for (const d of diffs) {
           if (d.changed && d.gemini !== null && d.applied !== null) {
-            const key = `hole:${d.hole}:${d.gemini}->${d.applied}`;
+            const key = `${keyPrefix}hole:${d.hole}:${d.gemini}->${d.applied}`;
             if (!swapMap.has(key)) {
               swapMap.set(key, {
                 count: 0,
@@ -104,10 +109,11 @@ export function analyzeCorrectionLogs(
   if (shiftLogIds.length >= minOccurrences) {
     patterns.push({
       patternType: "hole_shift",
-      patternKey: "hole_shift",
-      description: `Column shift detected in ${shiftLogIds.length} scan${shiftLogIds.length !== 1 ? "s" : ""} — Gemini misaligns hole columns (front-9 total bleeds into hole 10 score)`,
-      promptRule:
-        "IMPORTANT: Do NOT include Front 9, Back 9, or Total subtotal rows as hole scores. Subtotal cells appear between hole 9 and hole 10 columns — skip them entirely and map only the 18 individual hole score cells.",
+      patternKey: `${keyPrefix}hole_shift`,
+      description: `Column shift detected in ${shiftLogIds.length} scan${shiftLogIds.length !== 1 ? "s" : ""}${courseLabel} — Gemini misaligns hole columns (front-9 total bleeds into hole 10 score)`,
+      promptRule: courseName
+        ? `IMPORTANT (${courseName}): Do NOT include Front 9, Back 9, or Total subtotal rows as hole scores. Subtotal cells appear between hole 9 and hole 10 columns — skip them entirely and map only the 18 individual hole score cells.`
+        : "IMPORTANT: Do NOT include Front 9, Back 9, or Total subtotal rows as hole scores. Subtotal cells appear between hole 9 and hole 10 columns — skip them entirely and map only the 18 individual hole score cells.",
       occurrences: shiftLogIds.length,
       exampleLogIds: shiftLogIds.slice(0, 5),
     });
@@ -118,8 +124,10 @@ export function analyzeCorrectionLogs(
       patterns.push({
         patternType: "digit_swap",
         patternKey: key,
-        description: `Hole ${entry.hole}: Gemini reads ${entry.geminiVal}, user corrects to ${entry.appliedVal} (${entry.count} time${entry.count !== 1 ? "s" : ""})`,
-        promptRule: `For hole ${entry.hole}, be especially careful — this digit is sometimes misread as ${entry.geminiVal} when it should be ${entry.appliedVal}. Double-check this cell before reporting it.`,
+        description: `Hole ${entry.hole}${courseLabel}: Gemini reads ${entry.geminiVal}, user corrects to ${entry.appliedVal} (${entry.count} time${entry.count !== 1 ? "s" : ""})`,
+        promptRule: courseName
+          ? `At ${courseName}, for hole ${entry.hole}, be especially careful — this digit is sometimes misread as ${entry.geminiVal} when it should be ${entry.appliedVal}. Double-check this cell before reporting it.`
+          : `For hole ${entry.hole}, be especially careful — this digit is sometimes misread as ${entry.geminiVal} when it should be ${entry.appliedVal}. Double-check this cell before reporting it.`,
         occurrences: entry.count,
         exampleLogIds: entry.logIds.slice(0, 5),
       });
@@ -127,4 +135,29 @@ export function analyzeCorrectionLogs(
   }
 
   return patterns.sort((a, b) => b.occurrences - a.occurrences);
+}
+
+export function analyzeByCourseName(
+  logs: Array<CorrectionLog & { courseName?: string | null }>,
+  minOccurrences = 2
+): DetectedPattern[] {
+  const byCourseName = new Map<string, CorrectionLog[]>();
+
+  for (const log of logs) {
+    const course = log.courseName?.trim() || "";
+    if (!course) continue;
+    if (!byCourseName.has(course)) byCourseName.set(course, []);
+    byCourseName.get(course)!.push(log);
+  }
+
+  const all: DetectedPattern[] = [];
+  for (const [course, courseLogs] of byCourseName) {
+    if (courseLogs.length < minOccurrences) continue;
+    const detected = analyzeCorrectionLogs(courseLogs, minOccurrences, course);
+    for (const p of detected) {
+      all.push({ ...p, machineGenerated: true });
+    }
+  }
+
+  return all.sort((a, b) => b.occurrences - a.occurrences);
 }
