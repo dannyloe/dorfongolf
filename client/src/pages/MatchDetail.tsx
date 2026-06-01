@@ -2,6 +2,7 @@ import { useQuery, useMutationState, useQueryClient } from "@tanstack/react-quer
 import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useApplyPendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, useNotifyEligibleCount, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
+import { PlayingGroupsSection } from "@/components/PlayingGroupsSection";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
@@ -7752,6 +7753,9 @@ export default function MatchDetail() {
           </tbody>
         </table>
       </div>
+
+      {/* Playing Groups Section */}
+      <PlayingGroupsSection players={players} matchName={match.name ?? "Match"} />
 
       {/* Match Chat Section */}
       {user && (
