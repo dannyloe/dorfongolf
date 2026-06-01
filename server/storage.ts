@@ -136,6 +136,13 @@ export interface IStorage {
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
   getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
 
+  // Hidden / auto-created player management
+  getHiddenPlayers(): Promise<Array<PresetPlayer & { matchCount: number }>>;
+  promoteHiddenPlayer(id: number): Promise<PresetPlayer>;
+  deletePresetPlayerById(id: number, force: boolean): Promise<{ deleted: boolean; hasHistory: boolean }>;
+  bulkDeleteInactivePlayers(inactiveDays: number, dryRun: boolean): Promise<Array<PresetPlayer & { matchCount: number }>>;
+  getGroupAutoCreatedPlayers(groupId: number): Promise<Array<PresetPlayer & { matchCount: number }>>;
+
   // Pairing: link a user account to a preset player (FK sync)
   pairUserToPresetPlayer(presetPlayerId: number, userId: string): Promise<PresetPlayer>;
   unpairUserFromPresetPlayer(presetPlayerId: number): Promise<PresetPlayer>;
@@ -611,10 +618,24 @@ export class DatabaseStorage implements IStorage {
     }
     
     if (player.name) {
-      // Look up preset player ID for dynamic name updates
-      const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, player.name));
+      // Look up preset player ID for dynamic name updates — case-insensitive to avoid duplicates
+      const [preset] = await db.select().from(presetPlayers)
+        .where(sql`LOWER(${presetPlayers.name}) = LOWER(${player.name})`);
       if (preset) {
         presetPlayerId = preset.id;
+        // Update lastActivityAt on the preset player
+        await db.update(presetPlayers)
+          .set({ lastActivityAt: new Date() })
+          .where(eq(presetPlayers.id, preset.id));
+      } else if (!player.userId) {
+        // No preset player found and this is a guest name — auto-create a hidden preset player
+        const [newPreset] = await db.insert(presetPlayers).values({
+          name: player.name,
+          showInRoster: false,
+          isAutoCreated: true,
+          lastActivityAt: new Date(),
+        }).returning();
+        presetPlayerId = newPreset.id;
       }
       
       const defaultHandicap = await this.getPlayerHandicap(player.name);
@@ -2209,6 +2230,132 @@ export class DatabaseStorage implements IStorage {
   async createPresetPlayer(name: string, showInRoster: boolean = true): Promise<PresetPlayer> {
     const [newPlayer] = await db.insert(presetPlayers).values({ name, showInRoster }).returning();
     return newPlayer;
+  }
+
+  async getHiddenPlayers(): Promise<Array<PresetPlayer & { matchCount: number }>> {
+    const rows = await db
+      .select({
+        id: presetPlayers.id,
+        name: presetPlayers.name,
+        showInRoster: presetPlayers.showInRoster,
+        isAutoCreated: presetPlayers.isAutoCreated,
+        lastActivityAt: presetPlayers.lastActivityAt,
+        createdAt: presetPlayers.createdAt,
+        userId: presetPlayers.userId,
+        matchCount: sql<number>`COUNT(DISTINCT ${players.matchId})::int`,
+      })
+      .from(presetPlayers)
+      .leftJoin(players, eq(players.presetPlayerId, presetPlayers.id))
+      .where(and(eq(presetPlayers.isAutoCreated, true), eq(presetPlayers.showInRoster, false)))
+      .groupBy(presetPlayers.id)
+      .orderBy(desc(presetPlayers.lastActivityAt));
+    return rows as Array<PresetPlayer & { matchCount: number }>;
+  }
+
+  async promoteHiddenPlayer(id: number): Promise<PresetPlayer> {
+    const [updated] = await db
+      .update(presetPlayers)
+      .set({ showInRoster: true })
+      .where(eq(presetPlayers.id, id))
+      .returning();
+    if (!updated) throw new Error("Player not found");
+    return updated;
+  }
+
+  async deletePresetPlayerById(id: number, force: boolean): Promise<{ deleted: boolean; hasHistory: boolean }> {
+    // Check match history
+    const [countRow] = await db
+      .select({ cnt: sql<number>`COUNT(*)::int` })
+      .from(players)
+      .where(eq(players.presetPlayerId, id));
+    const hasHistory = (countRow?.cnt ?? 0) > 0;
+
+    if (hasHistory && !force) {
+      return { deleted: false, hasHistory: true };
+    }
+
+    // If forcing, clear the FK reference on match player rows so history is preserved
+    if (hasHistory && force) {
+      await db
+        .update(players)
+        .set({ presetPlayerId: null })
+        .where(eq(players.presetPlayerId, id));
+    }
+
+    // Also clean up group_players references
+    await db.delete(groupPlayers).where(eq(groupPlayers.presetPlayerId, id));
+
+    await db.delete(presetPlayers).where(eq(presetPlayers.id, id));
+    return { deleted: true, hasHistory };
+  }
+
+  async bulkDeleteInactivePlayers(inactiveDays: number, dryRun: boolean): Promise<Array<PresetPlayer & { matchCount: number }>> {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - inactiveDays);
+
+    const rows = await db
+      .select({
+        id: presetPlayers.id,
+        name: presetPlayers.name,
+        showInRoster: presetPlayers.showInRoster,
+        isAutoCreated: presetPlayers.isAutoCreated,
+        lastActivityAt: presetPlayers.lastActivityAt,
+        createdAt: presetPlayers.createdAt,
+        userId: presetPlayers.userId,
+        matchCount: sql<number>`COUNT(DISTINCT ${players.matchId})::int`,
+      })
+      .from(presetPlayers)
+      .leftJoin(players, eq(players.presetPlayerId, presetPlayers.id))
+      .where(
+        and(
+          eq(presetPlayers.isAutoCreated, true),
+          eq(presetPlayers.showInRoster, false),
+          or(
+            isNull(presetPlayers.lastActivityAt),
+            lt(presetPlayers.lastActivityAt, cutoff)
+          )
+        )
+      )
+      .groupBy(presetPlayers.id)
+      .orderBy(desc(presetPlayers.lastActivityAt));
+
+    if (dryRun) {
+      return rows as Array<PresetPlayer & { matchCount: number }>;
+    }
+
+    // Actually delete them (force delete — clearing FK refs)
+    for (const row of rows) {
+      await this.deletePresetPlayerById(row.id, true);
+    }
+    return rows as Array<PresetPlayer & { matchCount: number }>;
+  }
+
+  async getGroupAutoCreatedPlayers(groupId: number): Promise<Array<PresetPlayer & { matchCount: number }>> {
+    // Find auto-created preset players who appeared in this group's matches
+    const rows = await db
+      .select({
+        id: presetPlayers.id,
+        name: presetPlayers.name,
+        showInRoster: presetPlayers.showInRoster,
+        isAutoCreated: presetPlayers.isAutoCreated,
+        lastActivityAt: presetPlayers.lastActivityAt,
+        createdAt: presetPlayers.createdAt,
+        userId: presetPlayers.userId,
+        matchCount: sql<number>`COUNT(DISTINCT ${players.matchId})::int`,
+      })
+      .from(presetPlayers)
+      .innerJoin(players, eq(players.presetPlayerId, presetPlayers.id))
+      .innerJoin(matches, eq(players.matchId, matches.id))
+      .where(
+        and(
+          eq(presetPlayers.isAutoCreated, true),
+          eq(presetPlayers.showInRoster, false),
+          eq(matches.groupId, groupId)
+        )
+      )
+      .groupBy(presetPlayers.id)
+      .orderBy(desc(presetPlayers.lastActivityAt));
+    return rows as Array<PresetPlayer & { matchCount: number }>;
   }
 
   async getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined> {

@@ -242,6 +242,8 @@ export const presetPlayers = pgTable("preset_players", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   showInRoster: boolean("show_in_roster").notNull().default(true),
+  isAutoCreated: boolean("is_auto_created").notNull().default(false),
+  lastActivityAt: timestamp("last_activity_at"),
   createdAt: timestamp("created_at").defaultNow(),
   userId: text("user_id").unique().references(() => users.id, { onDelete: "set null" }), // nullable — one user per player
 });

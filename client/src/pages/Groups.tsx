@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff, Link2, Loader2, AlertTriangle, Unlink } from "lucide-react";
+import { Users, UserPlus, Copy, Shield, RefreshCw, Check, X, ArrowLeft, Plus, Trash2, Share2, Search, Phone, PhoneOff, Link2, Loader2, AlertTriangle, Unlink, Ghost, ChevronDown, ChevronUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,14 @@ interface PresetPlayer {
   aliases: string[];
 }
 
+interface GuestPlayer {
+  id: number;
+  name: string;
+  isAutoCreated: boolean;
+  lastActivityAt: string | null;
+  matchCount: number;
+}
+
 interface GroupPairings {
   linkedPairs: Array<{
     presetPlayer: { id: number; name: string; userId: string | null };
@@ -95,6 +103,10 @@ export default function Groups() {
   const [playerFilter, setPlayerFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
   const [pairPlayerIdForUser, setPairPlayerIdForUser] = useState<Record<string, number | null>>({});
   const [pairUserIdForPlayer, setPairUserIdForPlayer] = useState<Record<number, string | null>>({});
+  const [guestPlayersExpanded, setGuestPlayersExpanded] = useState(false);
+  const [guestDeleteConfirmId, setGuestDeleteConfirmId] = useState<number | null>(null);
+  const [guestDeleteConfirmName, setGuestDeleteConfirmName] = useState<string>("");
+  const [guestDeleteHasHistory, setGuestDeleteHasHistory] = useState(false);
 
   const { data: myGroups = [], isLoading: groupsLoading } = useQuery<GroupSummary[]>({
     queryKey: ["/api/groups/my"],
@@ -116,6 +128,7 @@ export default function Groups() {
   });
 
   const isAdmin = groupDetail?.role === "admin";
+  const isGlobalAdmin = user?.isAdmin ?? false;
 
   const { data: allPresetPlayers = [] } = useQuery<PresetPlayer[]>({
     queryKey: ["/api/preset-players"],
@@ -135,6 +148,63 @@ export default function Groups() {
       return res.json();
     },
     enabled: !!selectedGroupId && isAdmin,
+  });
+
+  const { data: guestPlayers = [] } = useQuery<GuestPlayer[]>({
+    queryKey: ["/api/groups", selectedGroupId, "guest-players"],
+    queryFn: async () => {
+      const res = await fetch(`/api/groups/${selectedGroupId}/guest-players`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch guest players");
+      return res.json();
+    },
+    enabled: !!selectedGroupId && isGlobalAdmin,
+  });
+
+  const promoteGuestMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("PATCH", `/api/preset-players/${id}/show`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId, "guest-players"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId] });
+      toast({ title: "Player added to roster" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteGuestMutation = useMutation({
+    mutationFn: async ({ id, force }: { id: number; force: boolean }) => {
+      const res = await fetch(`/api/preset-players/${id}${force ? "?force=true" : ""}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        const err = new Error(body.message || "Player has history") as any;
+        err.hasHistory = true;
+        throw err;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Delete failed");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/groups", selectedGroupId, "guest-players"] });
+      setGuestDeleteConfirmId(null);
+      setGuestDeleteConfirmName("");
+      setGuestDeleteHasHistory(false);
+      toast({ title: "Guest player deleted" });
+    },
+    onError: (err: any) => {
+      if (err.hasHistory) {
+        setGuestDeleteHasHistory(true);
+      } else {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
+    },
   });
 
   const pairMutation = useMutation({
@@ -707,6 +777,72 @@ export default function Groups() {
               {totalPlayerCount === 0 && (
                 <p className="text-muted-foreground text-center py-8">No players yet. Add some to get started.</p>
               )}
+
+              {/* Guest Players section — global admin only */}
+              {isGlobalAdmin && guestPlayers.length > 0 && (
+                <div className="mt-4">
+                  <button
+                    className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground w-full py-2 px-1"
+                    onClick={() => setGuestPlayersExpanded(v => !v)}
+                    data-testid="button-toggle-guest-players"
+                  >
+                    <Ghost className="w-4 h-4" />
+                    Inactive / Guest Players ({guestPlayers.length})
+                    {guestPlayersExpanded ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                  </button>
+
+                  {guestPlayersExpanded && (
+                    <div className="space-y-2 mt-2">
+                      <p className="text-xs text-muted-foreground px-1">
+                        These players appeared in this group's matches but were never added to the roster.
+                      </p>
+                      {guestPlayers.map((gp) => (
+                        <Card key={gp.id} className="border-dashed opacity-75" data-testid={`card-guest-${gp.id}`}>
+                          <CardContent className="pt-3 pb-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-3">
+                                <Ghost className="w-5 h-5 text-muted-foreground/50" />
+                                <div>
+                                  <p className="font-medium text-sm" data-testid={`text-guest-name-${gp.id}`}>{gp.name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {gp.matchCount} match{gp.matchCount !== 1 ? "es" : ""} · Last active:{" "}
+                                    {gp.lastActivityAt ? new Date(gp.lastActivityAt).toLocaleDateString() : "never"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => promoteGuestMutation.mutate(gp.id)}
+                                  disabled={promoteGuestMutation.isPending}
+                                  data-testid={`button-promote-guest-${gp.id}`}
+                                >
+                                  Add to Roster
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setGuestDeleteConfirmId(gp.id);
+                                    setGuestDeleteConfirmName(gp.name);
+                                    setGuestDeleteHasHistory(false);
+                                    deleteGuestMutation.mutate({ id: gp.id, force: false });
+                                  }}
+                                  disabled={deleteGuestMutation.isPending}
+                                  data-testid={`button-delete-guest-${gp.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </TabsContent>
 
             {isAdmin && (
@@ -1194,6 +1330,46 @@ export default function Groups() {
               data-testid="button-submit-create-group"
             >
               {createGroupMutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Guest player delete warning dialog (Groups tab) */}
+      <Dialog
+        open={guestDeleteConfirmId !== null && guestDeleteHasHistory}
+        onOpenChange={(open) => { if (!open) { setGuestDeleteConfirmId(null); setGuestDeleteConfirmName(""); setGuestDeleteHasHistory(false); } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Player Has Match History
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p className="text-sm">
+              <strong>{guestDeleteConfirmName}</strong> has appeared in recorded matches.
+              Deleting will remove their guest player record — past match records will keep
+              the player's name but lose the link to this profile.
+            </p>
+            <p className="text-sm font-medium">Are you sure you want to delete anyway?</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setGuestDeleteConfirmId(null); setGuestDeleteConfirmName(""); setGuestDeleteHasHistory(false); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteGuestMutation.isPending}
+              onClick={() => {
+                if (guestDeleteConfirmId !== null) {
+                  deleteGuestMutation.mutate({ id: guestDeleteConfirmId, force: true });
+                }
+              }}
+              data-testid="button-confirm-force-delete-guest"
+            >
+              {deleteGuestMutation.isPending ? "Deleting…" : "Delete anyway"}
             </Button>
           </DialogFooter>
         </DialogContent>

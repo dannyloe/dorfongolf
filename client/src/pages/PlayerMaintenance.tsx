@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, Hash, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Users, Search, Hash, Link2, Shield, ShieldCheck, ChevronDown, ChevronUp, Plus, Trash2, MapPin, UserPlus, KeyRound, Eye, EyeOff, Ghost, AlertTriangle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -26,6 +26,16 @@ interface PlayerData {
   claimedByName: string | null;
   isAdmin: boolean | null;
   showInRoster: boolean;
+}
+
+interface HiddenPlayer {
+  id: number;
+  name: string;
+  showInRoster: boolean;
+  isAutoCreated: boolean;
+  lastActivityAt: string | null;
+  createdAt: string | null;
+  matchCount: number;
 }
 
 interface AvailableTee {
@@ -295,9 +305,141 @@ export default function PlayerMaintenance() {
   const [newPassword, setNewPassword] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [hiddenPlayersExpanded, setHiddenPlayersExpanded] = useState(false);
+  const [autoCleanThreshold, setAutoCleanThreshold] = useState<string>("365");
+  const [autoCleanPreview, setAutoCleanPreview] = useState<HiddenPlayer[] | null>(null);
+  const [autoCleanDialogOpen, setAutoCleanDialogOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState<string>("");
+  const [deleteHasHistory, setDeleteHasHistory] = useState(false);
+  const [selectedHiddenIds, setSelectedHiddenIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
 
   const { data, isLoading: isLoadingPlayers } = useQuery<PlayerDataResponse>({
     queryKey: ["/api/preset-players/full"],
+  });
+
+  const { data: hiddenPlayers = [], isLoading: isLoadingHidden } = useQuery<HiddenPlayer[]>({
+    queryKey: ["/api/preset-players/hidden"],
+    enabled: !!(currentUser?.isAdmin),
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("PATCH", `/api/preset-players/${id}/show`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/hidden"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      toast({ title: "Player added to roster" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteHiddenMutation = useMutation({
+    mutationFn: async ({ id, force }: { id: number; force: boolean }) => {
+      const res = await fetch(`/api/preset-players/${id}${force ? "?force=true" : ""}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({}));
+        const err = new Error(body.message || "Player has history") as any;
+        err.hasHistory = true;
+        throw err;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Delete failed");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/hidden"] });
+      setDeleteConfirmId(null);
+      setDeleteConfirmName("");
+      setDeleteHasHistory(false);
+      toast({ title: "Player deleted" });
+    },
+    onError: async (err: any) => {
+      if (err.hasHistory) {
+        setDeleteHasHistory(true);
+      } else {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
+    },
+  });
+
+  const bulkDeleteSelectedMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.all(
+        ids.map(id => fetch(`/api/preset-players/${id}?force=true`, { method: "DELETE", credentials: "include" }))
+      );
+      const failed = results.filter(r => !r.ok);
+      if (failed.length > 0) {
+        throw new Error(`${failed.length} deletion${failed.length > 1 ? "s" : ""} failed`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/hidden"] });
+      setSelectedHiddenIds(new Set());
+      setBulkDeleteDialogOpen(false);
+      toast({ title: "Selected players deleted" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkPromoteSelectedMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      await Promise.all(ids.map(id => apiRequest("PATCH", `/api/preset-players/${id}/show`)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/hidden"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/full"] });
+      setSelectedHiddenIds(new Set());
+      toast({ title: "Players added to roster" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkDeletePreviewMutation = useMutation({
+    mutationFn: async (inactiveDays: number) => {
+      const res = await apiRequest("POST", "/api/preset-players/bulk-delete-inactive", {
+        inactiveDays,
+        dryRun: true,
+      });
+      return res.json() as Promise<{ dryRun: boolean; count: number; players: HiddenPlayer[] }>;
+    },
+    onSuccess: (data) => {
+      setAutoCleanPreview(data.players);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (inactiveDays: number) => {
+      const res = await apiRequest("POST", "/api/preset-players/bulk-delete-inactive", {
+        inactiveDays,
+        dryRun: false,
+      });
+      return res.json() as Promise<{ dryRun: boolean; count: number; players: HiddenPlayer[] }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preset-players/hidden"] });
+      setAutoCleanDialogOpen(false);
+      setAutoCleanPreview(null);
+      toast({ title: `${data.count} player${data.count === 1 ? "" : "s"} deleted` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
   });
 
   const { data: courses } = useCourses();
@@ -788,6 +930,295 @@ export default function PlayerMaintenance() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Hidden / Guest Players Section (admin only) */}
+      {currentUser?.isAdmin && (
+        <Card className="mt-6">
+          <CardHeader
+            className="pb-3 cursor-pointer"
+            onClick={() => setHiddenPlayersExpanded(v => !v)}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Ghost className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base">
+                  Hidden / Guest Players
+                </CardTitle>
+                <Badge variant="secondary">{hiddenPlayers.length}</Badge>
+              </div>
+              {hiddenPlayersExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Auto-created when unrecognized names appear in matches. Not shown in roster.
+            </p>
+          </CardHeader>
+
+          {hiddenPlayersExpanded && (
+            <CardContent>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {selectedHiddenIds.size > 0 && (
+                    <>
+                      <span className="text-sm text-muted-foreground">{selectedHiddenIds.size} selected</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => bulkPromoteSelectedMutation.mutate(Array.from(selectedHiddenIds))}
+                        disabled={bulkPromoteSelectedMutation.isPending}
+                        data-testid="button-bulk-promote-selected"
+                      >
+                        {bulkPromoteSelectedMutation.isPending ? "Adding…" : "Add to Roster"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setBulkDeleteDialogOpen(true)}
+                        data-testid="button-bulk-delete-selected"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        Delete selected
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setAutoCleanPreview(null);
+                    setAutoCleanDialogOpen(true);
+                  }}
+                  data-testid="button-auto-clean"
+                >
+                  Auto-clean inactive
+                </Button>
+              </div>
+
+              {isLoadingHidden ? (
+                <div className="text-center py-6 text-muted-foreground">Loading…</div>
+              ) : hiddenPlayers.length === 0 ? (
+                <p className="text-center py-6 text-muted-foreground text-sm">No hidden players.</p>
+              ) : (
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[40px]">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all"
+                            checked={selectedHiddenIds.size === hiddenPlayers.length && hiddenPlayers.length > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedHiddenIds(new Set(hiddenPlayers.map(hp => hp.id)));
+                              } else {
+                                setSelectedHiddenIds(new Set());
+                              }
+                            }}
+                            data-testid="checkbox-select-all-hidden"
+                          />
+                        </TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="w-[120px]">Last Active</TableHead>
+                        <TableHead className="w-[90px] text-center">Matches</TableHead>
+                        <TableHead className="w-[180px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {hiddenPlayers.map((hp) => (
+                        <TableRow key={hp.id} data-testid={`row-hidden-${hp.id}`}>
+                          <TableCell>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${hp.name}`}
+                              checked={selectedHiddenIds.has(hp.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedHiddenIds);
+                                if (e.target.checked) next.add(hp.id);
+                                else next.delete(hp.id);
+                                setSelectedHiddenIds(next);
+                              }}
+                              data-testid={`checkbox-hidden-${hp.id}`}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{hp.name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {hp.lastActivityAt
+                              ? new Date(hp.lastActivityAt).toLocaleDateString()
+                              : "Never"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline">{hp.matchCount}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => promoteMutation.mutate(hp.id)}
+                                disabled={promoteMutation.isPending}
+                                data-testid={`button-promote-${hp.id}`}
+                              >
+                                Add to Roster
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setDeleteConfirmId(hp.id);
+                                  setDeleteConfirmName(hp.name);
+                                  setDeleteHasHistory(false);
+                                  deleteHiddenMutation.mutate({ id: hp.id, force: false });
+                                }}
+                                disabled={deleteHiddenMutation.isPending}
+                                data-testid={`button-delete-hidden-${hp.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
+
+      {/* Delete hidden player — "has history" warning dialog */}
+      <Dialog
+        open={deleteConfirmId !== null && deleteHasHistory}
+        onOpenChange={(open) => { if (!open) { setDeleteConfirmId(null); setDeleteConfirmName(""); setDeleteHasHistory(false); } }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Player Has Match History
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-2">
+            <p className="text-sm">
+              <strong>{deleteConfirmName}</strong> has appeared in recorded matches.
+              Deleting will remove their guest player record — past match records will keep
+              the player's name but lose the link to this profile.
+            </p>
+            <p className="text-sm font-medium">Are you sure you want to delete anyway?</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteConfirmId(null); setDeleteConfirmName(""); setDeleteHasHistory(false); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteHiddenMutation.isPending}
+              onClick={() => {
+                if (deleteConfirmId !== null) {
+                  deleteHiddenMutation.mutate({ id: deleteConfirmId, force: true });
+                }
+              }}
+              data-testid="button-confirm-force-delete-hidden"
+            >
+              {deleteHiddenMutation.isPending ? "Deleting…" : "Delete anyway"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk delete selected dialog */}
+      <Dialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Delete {selectedHiddenIds.size} Guest Player{selectedHiddenIds.size === 1 ? "" : "s"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm">
+              This will permanently delete the selected {selectedHiddenIds.size} guest player record{selectedHiddenIds.size === 1 ? "" : "s"}.
+              Any match history will be preserved — player names will remain on past records.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDeleteDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={bulkDeleteSelectedMutation.isPending}
+              onClick={() => bulkDeleteSelectedMutation.mutate(Array.from(selectedHiddenIds))}
+              data-testid="button-confirm-bulk-delete"
+            >
+              {bulkDeleteSelectedMutation.isPending ? "Deleting…" : "Delete all selected"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Auto-clean dialog */}
+      <Dialog open={autoCleanDialogOpen} onOpenChange={(open) => { if (!open) { setAutoCleanDialogOpen(false); setAutoCleanPreview(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Auto-clean Inactive Guest Players</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Remove players inactive for more than:</Label>
+              <Select value={autoCleanThreshold} onValueChange={setAutoCleanThreshold}>
+                <SelectTrigger data-testid="select-clean-threshold">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="90">3 months</SelectItem>
+                  <SelectItem value="180">6 months</SelectItem>
+                  <SelectItem value="365">12 months</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {autoCleanPreview === null ? (
+              <p className="text-sm text-muted-foreground">Preview which players would be removed before deleting.</p>
+            ) : autoCleanPreview.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No players match this threshold.</p>
+            ) : (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{autoCleanPreview.length} player{autoCleanPreview.length === 1 ? "" : "s"} would be removed:</p>
+                <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+                  {autoCleanPreview.map(hp => (
+                    <div key={hp.id} className="text-sm flex items-center justify-between">
+                      <span>{hp.name}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {hp.lastActivityAt ? new Date(hp.lastActivityAt).toLocaleDateString() : "Never active"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => bulkDeletePreviewMutation.mutate(parseInt(autoCleanThreshold))}
+              disabled={bulkDeletePreviewMutation.isPending}
+              data-testid="button-preview-clean"
+            >
+              {bulkDeletePreviewMutation.isPending ? "Loading…" : "Preview"}
+            </Button>
+            {autoCleanPreview !== null && autoCleanPreview.length > 0 && (
+              <Button
+                variant="destructive"
+                onClick={() => bulkDeleteMutation.mutate(parseInt(autoCleanThreshold))}
+                disabled={bulkDeleteMutation.isPending}
+                data-testid="button-confirm-clean"
+              >
+                {bulkDeleteMutation.isPending ? "Deleting…" : `Delete ${autoCleanPreview.length} Player${autoCleanPreview.length === 1 ? "" : "s"}`}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Admin: User Accounts Management */}
       {currentUser?.isAdmin && (

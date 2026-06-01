@@ -1465,6 +1465,98 @@ export async function registerRoutes(
     }
   });
 
+  // Hidden / auto-created player management (admin-only)
+  app.get('/api/preset-players/hidden', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ message: "Admins only" });
+      const players = await storage.getHiddenPlayers();
+      res.json(players);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch('/api/preset-players/:id/show', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ message: "Admins only" });
+      const id = parseInt(req.params.id);
+      const updated = await storage.promoteHiddenPlayer(id);
+      res.json(updated);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete('/api/preset-players/:id', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ message: "Admins only" });
+      const id = parseInt(req.params.id);
+      // Only allow deleting auto-created hidden players via this endpoint
+      const player = await storage.getPresetPlayerById(id);
+      if (!player) return res.status(404).json({ message: "Player not found" });
+      if (!player.isAutoCreated || player.showInRoster) {
+        return res.status(400).json({ message: "Only hidden auto-created guest players can be deleted via this endpoint" });
+      }
+      const force = req.query.force === 'true';
+      const result = await storage.deletePresetPlayerById(id, force);
+      if (!result.deleted) {
+        return res.status(409).json({ message: "Player has match history. Set force=true to delete anyway.", hasHistory: true });
+      }
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post('/api/preset-players/bulk-delete-inactive', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const isAdmin = await storage.isUserAdmin(userId);
+      if (!isAdmin) return res.status(403).json({ message: "Admins only" });
+      const schema = z.object({
+        inactiveDays: z.number().int().min(1).max(3650),
+        dryRun: z.boolean().default(true),
+      });
+      const input = schema.parse(req.body);
+      const affected = await storage.bulkDeleteInactivePlayers(input.inactiveDays, input.dryRun);
+      res.json({ dryRun: input.dryRun, count: affected.length, players: affected });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get('/api/groups/:id/guest-players', isAuthenticated, async (req, res) => {
+    try {
+      const groupId = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const membership = await storage.getGroupMembership(groupId, userId);
+      if (!membership) return res.status(403).json({ message: "Not a group member" });
+      const players = await storage.getGroupAutoCreatedPlayers(groupId);
+      res.json(players);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Courses Routes
   app.get(api.courses.list.path, isAuthenticated, async (req, res) => {
     try {
