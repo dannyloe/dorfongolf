@@ -7371,101 +7371,188 @@ export default function MatchDetail() {
                       if (teamA) teamA.members.forEach(m => playerTeamIndex.set(m.playerId, 0));
                       if (teamB) teamB.members.forEach(m => playerTeamIndex.set(m.playerId, 1));
                       
-                      // Nassau detection helpers
+                      // Bet type detection helpers
                       const nassauBetTypes = new Set(['Front 9', 'Back 9', 'Overall']);
-                      const isNassauLeg = (bt?: string) => !!bt && nassauBetTypes.has(bt) && !bt.startsWith('2 Ball') && !bt.startsWith('3 Ball');
+                      const isNassauLeg = (bt?: string) => !!bt && nassauBetTypes.has(bt);
+                      const isDeathMatchLeg = (bt?: string) => bt === 'Best Ball' || bt === '2nd Ball';
+                      const isTTBLeg = (bt?: string) => !!bt && (bt.startsWith('2 Ball –') || bt.startsWith('3rd Ball –'));
+                      const isOTZBLeg = (bt?: string) => !!bt && (bt.startsWith('1 Ball –') || bt.startsWith('2nd3rd Ball –'));
                       const deriveNassauLeg = (bt?: string): 'F9' | 'B9' | 'Ov' | undefined => {
                         if (bt === 'Front 9') return 'F9';
                         if (bt === 'Back 9') return 'B9';
                         if (bt === 'Overall') return 'Ov';
                         return undefined;
                       };
+                      const parseTTBLeg = (bt: string): { prefix: string; leg: 'F9' | 'B9' | 'Ov' } | null => {
+                        const m = bt.match(/^(2 Ball|3rd Ball|1 Ball|2nd3rd Ball) – (Front 9|Back 9|Overall)$/);
+                        if (!m) return null;
+                        const leg: 'F9' | 'B9' | 'Ov' = m[2] === 'Front 9' ? 'F9' : m[2] === 'Back 9' ? 'B9' : 'Ov';
+                        return { prefix: m[1], leg };
+                      };
 
-                      // Group entries by bet type and aggregate by team
+                      // Group entries by merged bet type (Death Match, TTB, OTZB legs combined)
                       const groupedByBetType = matchEntries.reduce((acc, entry) => {
                         const rawBetType = entry.betType || 'Match';
-                        const isNassau = isNassauLeg(rawBetType);
-                        const betType = isNassau ? 'Nassau' : rawBetType;
-                        if (!acc[betType]) {
-                          acc[betType] = {
-                            betType,
+                        let groupKey: string;
+                        let displayLabel: string;
+                        let groupType: string;
+
+                        if (isNassauLeg(rawBetType)) {
+                          groupKey = 'Nassau'; displayLabel = 'Nassau'; groupType = 'nassau';
+                        } else if (isDeathMatchLeg(rawBetType)) {
+                          groupKey = 'Death Match'; displayLabel = 'Death Match'; groupType = 'death_match';
+                        } else if (isTTBLeg(rawBetType)) {
+                          groupKey = '2/3 Ball'; displayLabel = '2/3 Ball'; groupType = 'ttb';
+                        } else if (isOTZBLeg(rawBetType)) {
+                          groupKey = '1/2/3 Ball'; displayLabel = '1/2/3 Ball'; groupType = 'otzb';
+                        } else if (rawBetType === 'Skins') {
+                          groupKey = 'Skins'; displayLabel = 'Skins'; groupType = 'skins';
+                        } else {
+                          groupKey = rawBetType; displayLabel = rawBetType; groupType = 'other';
+                        }
+
+                        if (!acc[groupKey]) {
+                          acc[groupKey] = {
+                            betType: groupKey, displayLabel, groupType,
                             isAutoPress: entry.isAutoPress,
                             pressHole: entry.pressHole,
                             teamAMembers: [] as { name: string; amount: number; playerId: number }[],
                             teamBMembers: [] as { name: string; amount: number; playerId: number }[],
-                            teamATotal: 0,
-                            teamBTotal: 0,
+                            teamATotal: 0, teamBTotal: 0,
+                            teamAPlayerIds: new Set<number>(),
+                            teamBPlayerIds: new Set<number>(),
                             processedPlayers: new Set<number>(),
-                            isNassau,
+                            isNassau: false,
                             nassauLegs: {} as Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }>,
                             nassauTeamAPlayerIds: new Set<number>(),
                             nassauTeamBPlayerIds: new Set<number>(),
                             resultText: undefined as string | undefined,
+                            deathMatchLegs: {} as Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string }>,
+                            ttbSubLegs: {} as Record<string, Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }>>,
+                            otzbSubLegs: {} as Record<string, Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }>>,
                           };
                         }
-                        if (isNassau) {
+
+                        const group = acc[groupKey];
+
+                        if (groupType === 'nassau') {
+                          group.isNassau = true;
                           const leg = entry.nassauLeg || deriveNassauLeg(rawBetType);
                           if (leg) {
-                            if (!acc[betType].nassauLegs[leg]) {
-                              acc[betType].nassauLegs[leg] = { teamAAmount: 0, teamBAmount: 0, resultText: entry.resultText, isAutoPress: entry.isAutoPress };
+                            if (!group.nassauLegs[leg]) {
+                              group.nassauLegs[leg] = { teamAAmount: 0, teamBAmount: 0, resultText: entry.resultText, isAutoPress: entry.isAutoPress };
                             }
                             const dedupKey = entry.playerId * 100 + (leg === 'F9' ? 1 : leg === 'B9' ? 2 : 3);
-                            if (!acc[betType].processedPlayers.has(dedupKey)) {
-                              acc[betType].processedPlayers.add(dedupKey);
+                            if (!group.processedPlayers.has(dedupKey)) {
+                              group.processedPlayers.add(dedupKey);
                               const teamIdx = entry.teamIndex ?? playerTeamIndex.get(entry.playerId) ?? 0;
                               if (teamIdx === 0) {
-                                acc[betType].nassauLegs[leg].teamAAmount += entry.amount;
-                                acc[betType].teamATotal += entry.amount;
-                                acc[betType].nassauTeamAPlayerIds.add(entry.playerId);
+                                group.nassauLegs[leg].teamAAmount += entry.amount;
+                                group.teamATotal += entry.amount;
+                                group.nassauTeamAPlayerIds.add(entry.playerId);
+                                group.teamAPlayerIds.add(entry.playerId);
                               } else {
-                                acc[betType].nassauLegs[leg].teamBAmount += entry.amount;
-                                acc[betType].teamBTotal += entry.amount;
-                                acc[betType].nassauTeamBPlayerIds.add(entry.playerId);
+                                group.nassauLegs[leg].teamBAmount += entry.amount;
+                                group.teamBTotal += entry.amount;
+                                group.nassauTeamBPlayerIds.add(entry.playerId);
+                                group.teamBPlayerIds.add(entry.playerId);
+                              }
+                            }
+                          }
+                        } else if (groupType === 'death_match') {
+                          if (!group.deathMatchLegs[rawBetType]) {
+                            group.deathMatchLegs[rawBetType] = { teamAAmount: 0, teamBAmount: 0, resultText: entry.resultText };
+                          }
+                          const subKey = rawBetType === 'Best Ball' ? 1 : 2;
+                          const dedupKey = entry.playerId * 10 + subKey;
+                          if (!group.processedPlayers.has(dedupKey)) {
+                            group.processedPlayers.add(dedupKey);
+                            const teamIdx = entry.teamIndex ?? playerTeamIndex.get(entry.playerId) ?? 0;
+                            if (teamIdx === 0) {
+                              group.deathMatchLegs[rawBetType].teamAAmount += entry.amount;
+                              group.teamATotal += entry.amount;
+                              group.teamAPlayerIds.add(entry.playerId);
+                            } else {
+                              group.deathMatchLegs[rawBetType].teamBAmount += entry.amount;
+                              group.teamBTotal += entry.amount;
+                              group.teamBPlayerIds.add(entry.playerId);
+                            }
+                          }
+                        } else if (groupType === 'ttb' || groupType === 'otzb') {
+                          const subLegs = groupType === 'ttb' ? group.ttbSubLegs : group.otzbSubLegs;
+                          const parsed = parseTTBLeg(rawBetType);
+                          if (parsed) {
+                            const { prefix, leg } = parsed;
+                            if (!subLegs[prefix]) subLegs[prefix] = {};
+                            if (!subLegs[prefix][leg]) {
+                              subLegs[prefix][leg] = { teamAAmount: 0, teamBAmount: 0, resultText: entry.resultText, isAutoPress: entry.isAutoPress };
+                            }
+                            const prefixIdx = (prefix === '2 Ball' || prefix === '1 Ball') ? 0 : 3000;
+                            const dedupKey = entry.playerId * 10000 + prefixIdx + (leg === 'F9' ? 1 : leg === 'B9' ? 2 : 3);
+                            if (!group.processedPlayers.has(dedupKey)) {
+                              group.processedPlayers.add(dedupKey);
+                              const teamIdx = entry.teamIndex ?? playerTeamIndex.get(entry.playerId) ?? 0;
+                              if (teamIdx === 0) {
+                                subLegs[prefix][leg].teamAAmount += entry.amount;
+                                group.teamATotal += entry.amount;
+                                group.teamAPlayerIds.add(entry.playerId);
+                              } else {
+                                subLegs[prefix][leg].teamBAmount += entry.amount;
+                                group.teamBTotal += entry.amount;
+                                group.teamBPlayerIds.add(entry.playerId);
                               }
                             }
                           }
                         } else {
-                          if (!acc[betType].processedPlayers.has(entry.playerId)) {
-                            acc[betType].processedPlayers.add(entry.playerId);
+                          if (!group.processedPlayers.has(entry.playerId)) {
+                            group.processedPlayers.add(entry.playerId);
                             const teamIdx = entry.teamIndex ?? playerTeamIndex.get(entry.playerId) ?? 0;
                             const memberEntry = { name: entry.playerName, amount: entry.amount, playerId: entry.playerId };
                             if (teamIdx === 0) {
-                              acc[betType].teamAMembers.push(memberEntry);
-                              acc[betType].teamATotal += entry.amount;
+                              group.teamAMembers.push(memberEntry);
+                              group.teamATotal += entry.amount;
+                              group.teamAPlayerIds.add(entry.playerId);
                             } else {
-                              acc[betType].teamBMembers.push(memberEntry);
-                              acc[betType].teamBTotal += entry.amount;
+                              group.teamBMembers.push(memberEntry);
+                              group.teamBTotal += entry.amount;
+                              group.teamBPlayerIds.add(entry.playerId);
                             }
                           }
-                          if (entry.resultText && !acc[betType].resultText) {
-                            acc[betType].resultText = entry.resultText;
+                          if (entry.resultText && !group.resultText) {
+                            group.resultText = entry.resultText;
                           }
                         }
+
                         return acc;
                       }, {} as Record<string, {
                         betType: string;
+                        displayLabel: string;
+                        groupType: string;
                         isAutoPress?: boolean;
                         pressHole?: number | null;
                         teamAMembers: { name: string; amount: number; playerId: number }[];
                         teamBMembers: { name: string; amount: number; playerId: number }[];
                         teamATotal: number;
                         teamBTotal: number;
+                        teamAPlayerIds: Set<number>;
+                        teamBPlayerIds: Set<number>;
                         processedPlayers: Set<number>;
                         isNassau: boolean;
                         nassauLegs: Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }>;
                         nassauTeamAPlayerIds: Set<number>;
                         nassauTeamBPlayerIds: Set<number>;
                         resultText?: string;
+                        deathMatchLegs: Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string }>;
+                        ttbSubLegs: Record<string, Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }>>;
+                        otzbSubLegs: Record<string, Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }>>;
                       }>);
-                      
+
                       const betGroups = Object.values(groupedByBetType);
-                      
-                      // Determine match title - show opponent when a player is selected
+
+                      // Determine match title
                       let matchTitle = matchEntries[0]?.matchName || 'Match';
                       if (teamA && teamB) {
                         if (selectedStandingsPlayer !== null) {
-                          // Find which team the selected player is on using match entries
-                          // (more reliable than playerTeamIndex since player IDs may differ across matches)
                           const selectedPlayerEntry = matchEntries.find(e => e.playerId === selectedStandingsPlayer);
                           const selectedPlayerTeam = selectedPlayerEntry?.teamIndex ?? playerTeamIndex.get(selectedStandingsPlayer);
                           if (selectedPlayerTeam === 0) {
@@ -7479,130 +7566,170 @@ export default function MatchDetail() {
                           matchTitle = `${teamA.name} vs ${teamB.name}${matchType ? ` - ${matchType}` : ''}`;
                         }
                       }
-                      
+
+                      const AutoPressBadgeInline = () => (
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-amber-500 text-amber-600 text-[9px] font-bold flex-shrink-0" title="Auto Press">P</span>
+                      );
+
+                      const NassauLegSummary = ({ legs }: { legs: Record<string, { teamAAmount: number; teamBAmount: number; resultText?: string; isAutoPress?: boolean }> }) => {
+                        const legOrder: Array<'F9' | 'B9' | 'Ov'> = ['F9', 'B9', 'Ov'];
+                        const parts = legOrder.map(leg => {
+                          const l = legs[leg];
+                          if (!l) return null;
+                          const won = l.teamAAmount !== 0 || l.teamBAmount !== 0;
+                          return (
+                            <span key={leg} className="inline-flex items-center gap-0.5">
+                              <span className="text-muted-foreground">{leg}</span>{' '}
+                              <span className={won ? 'text-foreground' : 'text-muted-foreground'}>{l.resultText || '–'}</span>
+                              {l.isAutoPress && <AutoPressBadgeInline />}
+                            </span>
+                          );
+                        }).filter(Boolean);
+                        return (
+                          <>
+                            {parts.map((p, i) => (
+                              <span key={i} className="inline-flex items-center">
+                                {i > 0 && <span className="mx-1 text-muted-foreground">·</span>}
+                                {p}
+                              </span>
+                            ))}
+                          </>
+                        );
+                      };
+
                       return (
                         <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
-                          <div className="text-sm font-semibold mb-3">{matchTitle}</div>
-                          {betGroups.map((group, gIdx) => {
-                            const teamAWon = group.teamATotal > 0;
-                            const teamBWon = group.teamBTotal > 0;
-                            const isTie = group.teamATotal === 0 && group.teamBTotal === 0;
-                            const winAmount = Math.max(Math.abs(group.teamATotal), Math.abs(group.teamBTotal));
-                            const isSkinsBet = group.betType === 'Skins';
-                            const perPersonAmount = group.isNassau
-                              ? (() => {
-                                  const aCount = group.nassauTeamAPlayerIds.size || 1;
-                                  const bCount = group.nassauTeamBPlayerIds.size || 1;
-                                  const aNet = Math.abs(group.teamATotal) / aCount;
-                                  const bNet = Math.abs(group.teamBTotal) / bCount;
-                                  return Math.max(aNet, bNet);
-                                })()
-                              : Math.abs(
-                                  group.teamAMembers[0]?.amount ?? group.teamBMembers[0]?.amount ?? 0
-                                );
-                            const teamAHasSelected = selectedStandingsPlayer !== null &&
-                              group.teamAMembers.some(m => m.playerId === selectedStandingsPlayer);
-                            const teamBHasSelected = selectedStandingsPlayer !== null &&
-                              group.teamBMembers.some(m => m.playerId === selectedStandingsPlayer);
-                            
-                            const isNassauGroup = group.isNassau;
-                            const AutoPressBadgeInline = () => (
-                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-amber-500 text-amber-600 text-[9px] font-bold" title="Auto Press">P</span>
-                            );
+                          <div className="text-xs font-semibold text-muted-foreground mb-2">{matchTitle}</div>
+                          <div className="space-y-2">
+                            {betGroups.map((group, gIdx) => {
+                              const teamAWon = group.teamATotal > 0;
+                              const teamBWon = group.teamBTotal > 0;
+                              const isTie = group.teamATotal === 0 && group.teamBTotal === 0;
+                              const isSkinsBet = group.groupType === 'skins';
+                              const teamAName = teamA?.name || 'Team A';
+                              const teamBName = teamB?.name || 'Team B';
+                              const winnerName = teamAWon ? teamAName : teamBName;
+                              const loserName = teamAWon ? teamBName : teamAName;
+                              const aCount = group.teamAPlayerIds.size || 1;
+                              const bCount = group.teamBPlayerIds.size || 1;
+                              const perPersonAmount = teamAWon
+                                ? Math.abs(group.teamATotal) / aCount
+                                : teamBWon
+                                ? Math.abs(group.teamBTotal) / bCount
+                                : 0;
+                              const totalWinAmount = Math.max(Math.abs(group.teamATotal), Math.abs(group.teamBTotal));
 
-                            return (
-                              <div key={gIdx} className={gIdx > 0 ? 'mt-3 pt-3 border-t border-border' : ''}>
-                                <div className="flex items-center justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-semibold">{group.betType}</span>
-                                    {!isNassauGroup && group.isAutoPress && (
-                                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border-2 border-amber-500 text-amber-600 text-[10px] font-bold" title="Auto Press">
-                                        P
-                                      </span>
-                                    )}
-                                    {group.pressHole && (
-                                      <span className="text-xs text-muted-foreground">Press hole {group.pressHole}</span>
+                              return (
+                                <div key={gIdx} className={gIdx > 0 ? 'pt-2 border-t border-border/50' : ''}>
+                                  {/* Line 1: condensed winner summary */}
+                                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0 text-sm leading-snug">
+                                    {isSkinsBet ? (
+                                      <>
+                                        <span className="font-semibold">Skins</span>
+                                        <span className="text-muted-foreground">–</span>
+                                        <span className="font-semibold text-primary">${totalWinAmount.toFixed(2)}</span>
+                                      </>
+                                    ) : isTie ? (
+                                      <>
+                                        <span className="font-semibold">{teamAName}</span>
+                                        <span className="text-muted-foreground">tied</span>
+                                        <span className="font-semibold">{teamBName}</span>
+                                        <span className="text-muted-foreground">–</span>
+                                        <span className="text-xs text-muted-foreground">{group.displayLabel}</span>
+                                        <span className="text-muted-foreground text-xs">$0.00</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="font-semibold text-primary">{winnerName}</span>
+                                        <span className="text-muted-foreground">wins</span>
+                                        <span className="font-semibold text-primary">${perPersonAmount.toFixed(2)}</span>
+                                        <span className="text-muted-foreground">from</span>
+                                        <span className="font-semibold">{loserName}</span>
+                                        <span className="text-muted-foreground">–</span>
+                                        <span className="text-xs text-muted-foreground">{group.displayLabel}</span>
+                                        {group.isAutoPress && group.groupType === 'other' && <AutoPressBadgeInline />}
+                                      </>
                                     )}
                                   </div>
-                                  <div className="text-right">
-                                    <span className={`text-sm font-bold ${isTie ? 'text-muted-foreground' : 'text-primary'}`}>
-                                      {isTie
-                                        ? 'Tie'
-                                        : isSkinsBet
-                                          ? `$${winAmount.toFixed(2)}`
-                                          : `$${perPersonAmount.toFixed(2)}/person`}
-                                    </span>
-                                    {!isNassauGroup && !isSkinsBet && group.resultText && (
-                                      <div className="text-xs text-muted-foreground mt-0.5">{group.resultText}</div>
+
+                                  {/* Line 2: bet-specific summary */}
+                                  <div className="mt-0.5 text-xs text-muted-foreground flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
+                                    {group.isNassau && (
+                                      <NassauLegSummary legs={group.nassauLegs} />
+                                    )}
+                                    {group.groupType === 'death_match' && (() => {
+                                      const bb = group.deathMatchLegs['Best Ball'];
+                                      const sb = group.deathMatchLegs['2nd Ball'];
+                                      return (
+                                        <>
+                                          {bb && (
+                                            <span className="inline-flex items-center gap-1">
+                                              <span>Best Ball:</span>
+                                              <span className={(bb.teamAAmount !== 0 || bb.teamBAmount !== 0) ? 'text-foreground' : ''}>{bb.resultText || '–'}</span>
+                                            </span>
+                                          )}
+                                          {bb && sb && <span className="mx-1">·</span>}
+                                          {sb && (
+                                            <span className="inline-flex items-center gap-1">
+                                              <span>2nd Ball:</span>
+                                              <span className={(sb.teamAAmount !== 0 || sb.teamBAmount !== 0) ? 'text-foreground' : ''}>{sb.resultText || '–'}</span>
+                                            </span>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
+                                    {group.groupType === 'ttb' && (
+                                      <div className="space-y-0.5 w-full">
+                                        {['2 Ball', '3rd Ball'].map(prefix => {
+                                          const legs = group.ttbSubLegs[prefix];
+                                          if (!legs || Object.keys(legs).length === 0) return null;
+                                          return (
+                                            <div key={prefix} className="flex items-center gap-1">
+                                              <span className="font-medium text-foreground/70">{prefix}:</span>
+                                              <NassauLegSummary legs={legs} />
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    {group.groupType === 'otzb' && (
+                                      <div className="space-y-0.5 w-full">
+                                        {['1 Ball', '2nd3rd Ball'].map(prefix => {
+                                          const legs = group.otzbSubLegs[prefix];
+                                          if (!legs || Object.keys(legs).length === 0) return null;
+                                          return (
+                                            <div key={prefix} className="flex items-center gap-1">
+                                              <span className="font-medium text-foreground/70">{prefix}:</span>
+                                              <NassauLegSummary legs={legs} />
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    {group.groupType === 'skins' && (() => {
+                                      const allPlayers = [...group.teamAMembers, ...group.teamBMembers];
+                                      const winners = allPlayers.filter(m => m.amount > 0);
+                                      if (winners.length === 0) return <span>No winners</span>;
+                                      return (
+                                        <>
+                                          {winners.map((m, i) => (
+                                            <span key={m.playerId} className="inline-flex items-center gap-1">
+                                              {i > 0 && <span className="mx-0.5">·</span>}
+                                              <span className="text-primary font-medium">{m.name}</span>
+                                              <span className="text-primary">+${m.amount.toFixed(2)}</span>
+                                            </span>
+                                          ))}
+                                        </>
+                                      );
+                                    })()}
+                                    {group.groupType === 'other' && group.resultText && (
+                                      <span>{group.resultText}</span>
                                     )}
                                   </div>
                                 </div>
-
-                                {isNassauGroup && (() => {
-                                  const legOrder: Array<'F9' | 'B9' | 'Ov'> = ['F9', 'B9', 'Ov'];
-                                  const parts = legOrder.map(leg => {
-                                    const l = group.nassauLegs[leg];
-                                    if (!l) return null;
-                                    const won = l.teamAAmount > 0 || l.teamBAmount > 0;
-                                    return (
-                                      <span key={leg} className="inline-flex items-center gap-0.5">
-                                        <span className="text-muted-foreground">{leg}</span>{' '}
-                                        <span className={won ? 'text-foreground' : 'text-muted-foreground'}>{l.resultText || '–'}</span>
-                                        {l.isAutoPress && <AutoPressBadgeInline />}
-                                      </span>
-                                    );
-                                  }).filter(Boolean);
-                                  return (
-                                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs mb-2 text-muted-foreground">
-                                      {parts.map((p, i) => (
-                                        <span key={i} className="flex items-center gap-1">
-                                          {i > 0 && <span className="text-muted-foreground">·</span>}
-                                          {p}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  );
-                                })()}
-                                
-                                {isSkinsBet ? (
-                                  <div className="space-y-1">
-                                    {[...group.teamAMembers, ...group.teamBMembers].map((m, mIdx) => (
-                                      <div 
-                                        key={mIdx}
-                                        className={`flex justify-between text-xs px-2 py-1 rounded ${
-                                          selectedStandingsPlayer === m.playerId ? 'ring-1 ring-primary' : ''
-                                        } ${
-                                          m.amount > 0 
-                                            ? 'text-primary bg-primary/5' 
-                                            : m.amount < 0 
-                                            ? 'text-destructive bg-destructive/5'
-                                            : 'text-muted-foreground'
-                                        }`}
-                                      >
-                                        <span>{m.name}</span>
-                                        <span className="font-medium">
-                                          {m.amount > 0 ? '+' : ''}{m.amount === 0 ? 'Push' : `$${m.amount.toFixed(2)}`}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <div className={`rounded-lg p-2 ${teamAWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'} ${teamAHasSelected ? 'ring-1 ring-primary' : ''}`}>
-                                      <div className={`text-xs font-medium ${teamAWon ? 'text-primary' : isTie ? 'text-muted-foreground' : 'text-destructive'}`}>
-                                        {teamA?.name || 'Team A'} {teamAWon && '(Won)'}
-                                      </div>
-                                    </div>
-                                    <div className={`rounded-lg p-2 ${teamBWon ? 'bg-primary/10 border border-primary/30' : 'bg-muted/50'} ${teamBHasSelected ? 'ring-1 ring-primary' : ''}`}>
-                                      <div className={`text-xs font-medium ${teamBWon ? 'text-primary' : isTie ? 'text-muted-foreground' : 'text-destructive'}`}>
-                                        {teamB?.name || 'Team B'} {teamBWon && '(Won)'}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     });
