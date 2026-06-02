@@ -7633,6 +7633,19 @@ export default function MatchDetail() {
                                 : 0;
                               const totalWinAmount = Math.max(Math.abs(group.teamATotal), Math.abs(group.teamBTotal));
 
+                              // Determine if filtered player won/lost this bet (null = no filter, tie, or skins)
+                              let filteredPlayerWon: boolean | null = null;
+                              if (selectedStandingsPlayer !== null && !isTie && !isSkinsBet) {
+                                if (teamAWon && group.teamAPlayerIds.has(selectedStandingsPlayer)) {
+                                  filteredPlayerWon = true;
+                                } else if (teamBWon && group.teamBPlayerIds.has(selectedStandingsPlayer)) {
+                                  filteredPlayerWon = true;
+                                } else {
+                                  filteredPlayerWon = false;
+                                }
+                              }
+                              const amountColorClass = filteredPlayerWon === true ? 'text-green-600' : filteredPlayerWon === false ? 'text-red-600' : 'text-primary';
+
                               const betGroupKey = `${matchId}-${gIdx}`;
                               const isBetGroupExpanded = expandedBetGroups.has(betGroupKey);
 
@@ -7673,7 +7686,7 @@ export default function MatchDetail() {
                                             <>
                                               <span className="font-semibold text-primary">{winnerName}</span>
                                               <span className="text-muted-foreground">wins</span>
-                                              <span className="font-semibold text-primary">${perPersonAmount.toFixed(2)}</span>
+                                              <span className={`font-semibold ${amountColorClass}`}>${perPersonAmount.toFixed(2)}</span>
                                               <span className="text-muted-foreground">from</span>
                                               <span className="font-semibold">{loserName}</span>
                                               <span className="text-muted-foreground">–</span>
