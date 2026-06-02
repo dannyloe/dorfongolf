@@ -1,7 +1,7 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users, Menu } from "lucide-react";
+import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users, Menu, Key } from "lucide-react";
 import { CreateMatchModal } from "./CreateMatchModal";
 import { useState } from "react";
 import {
@@ -76,6 +76,12 @@ export function Layout({ children }: { children: ReactNode }) {
                     <Link href="/profile" className="flex items-center gap-2 w-full" data-testid="mobile-link-profile">
                       <User className="w-4 h-4" />
                       Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/api-keys" className="flex items-center gap-2 w-full" data-testid="mobile-link-api-keys">
+                      <Key className="w-4 h-4" />
+                      API Keys
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

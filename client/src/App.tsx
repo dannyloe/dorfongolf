@@ -27,6 +27,7 @@ import SmsOptIn from "@/pages/SmsOptIn";
 import SmsConsent from "@/pages/SmsConsent";
 import PhoneSetup from "@/pages/PhoneSetup";
 import AdminScanLogs from "@/pages/AdminScanLogs";
+import ApiKeys from "@/pages/ApiKeys";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component }: { component: React.ComponentType }) {
@@ -126,6 +127,9 @@ function Router() {
       </Route>
       <Route path="/admin/scan-logs">
         <PrivateRoute component={AdminScanLogs} />
+      </Route>
+      <Route path="/api-keys">
+        <PrivateRoute component={ApiKeys} />
       </Route>
       <Route component={NotFound} />
     </Switch>

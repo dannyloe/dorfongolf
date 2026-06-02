@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format, subDays, startOfYear } from "date-fns";
-import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Filter, ArrowLeft, MapPin, Users, Trophy, Plus, Trash2, X, ChevronDown, ChevronRight, Loader2, Download } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -766,6 +766,12 @@ export default function Ledger() {
             </p>
           </div>
         </div>
+        <a href="/api/export/scores.xlsx" download data-testid="button-export-excel">
+          <Button variant="outline" size="sm">
+            <Download className="w-4 h-4 mr-2" />
+            Export Scores
+          </Button>
+        </a>
       </motion.div>
 
       <div className="flex flex-wrap items-center gap-2">

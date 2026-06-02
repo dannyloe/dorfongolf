@@ -13,6 +13,7 @@ import {
   scanCorrectionLogs,
   scanPatterns,
   eventPlayingGroups, eventPlayingGroupMembers,
+  apiKeys,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
   type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
@@ -37,7 +38,8 @@ import {
   type ScanCorrectionLog,
   type ScanPattern,
   type EventPlayingGroup, type EventPlayingGroupMember, type EventPlayingGroupWithMembers,
-  type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest
+  type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest,
+  type ApiKey
 } from "@shared/schema";
 import { eq, and, lt, lte, inArray, or, isNull, isNotNull, desc, gte, sql } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -215,6 +217,17 @@ export interface IStorage {
   getEventPlayingGroups(eventId: number): Promise<EventPlayingGroupWithMembers[]>;
   saveEventPlayingGroups(eventId: number, groups: { members: { playerName: string; teamMemberId?: number | null }[]; lockedPlayerNames: string[] }[]): Promise<EventPlayingGroupWithMembers[]>;
   deleteEventPlayingGroups(eventId: number): Promise<void>;
+
+  // API Keys
+  createApiKey(userId: string, name: string, keyHash: string): Promise<ApiKey>;
+  getApiKeys(userId: string): Promise<ApiKey[]>;
+  deleteApiKey(id: number, userId: string): Promise<boolean>;
+  getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined>;
+  updateApiKeyLastUsed(id: number): Promise<void>;
+
+  // Export data
+  getExportScores(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>>;
+  getExportBetResults(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; eventMatchName: string; betType: string | null; unitAmountCents: number; teamAName: string; teamBName: string; teamANetCents: number; teamBNetCents: number; isComplete: boolean }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4715,6 +4728,139 @@ export class DatabaseStorage implements IStorage {
         await tx.delete(eventPlayingGroups).where(eq(eventPlayingGroups.eventId, eventId));
       }
     });
+  }
+
+  async createApiKey(userId: string, name: string, keyHash: string): Promise<ApiKey> {
+    const [key] = await db.insert(apiKeys).values({ userId, name, keyHash }).returning();
+    return key;
+  }
+
+  async getApiKeys(userId: string): Promise<ApiKey[]> {
+    return db.select().from(apiKeys).where(eq(apiKeys.userId, userId)).orderBy(desc(apiKeys.createdAt));
+  }
+
+  async deleteApiKey(id: number, userId: string): Promise<boolean> {
+    const result = await db.delete(apiKeys).where(and(eq(apiKeys.id, id), eq(apiKeys.userId, userId))).returning();
+    return result.length > 0;
+  }
+
+  async getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined> {
+    const [key] = await db.select().from(apiKeys).where(eq(apiKeys.keyHash, keyHash));
+    return key;
+  }
+
+  async updateApiKeyLastUsed(id: number): Promise<void> {
+    await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
+  }
+
+  private async getAccessibleMatchIds(userId: string): Promise<number[]> {
+    const [roleRows, playerRows, creatorRows] = await Promise.all([
+      db.select({ matchId: matchRoles.matchId }).from(matchRoles).where(eq(matchRoles.userId, userId)),
+      db.select({ matchId: players.matchId }).from(players).where(eq(players.userId, userId)),
+      db.select({ id: matches.id }).from(matches).where(eq(matches.creatorId, userId)),
+    ]);
+    const ids = new Set<number>();
+    for (const r of roleRows) ids.add(r.matchId);
+    for (const r of playerRows) ids.add(r.matchId);
+    for (const r of creatorRows) ids.add(r.id);
+    return Array.from(ids);
+  }
+
+  async getExportScores(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>> {
+    const allMatchIds = await this.getAccessibleMatchIds(userId);
+    if (allMatchIds.length === 0) return [];
+
+    const rows = await db
+      .select({
+        date: matches.createdAt,
+        courseName: matches.courseName,
+        matchName: matches.name,
+        playerName: players.name,
+        holeNumber: scores.holeNumber,
+        strokes: scores.strokes,
+      })
+      .from(scores)
+      .innerJoin(players, eq(scores.playerId, players.id))
+      .innerJoin(matches, eq(scores.matchId, matches.id))
+      .where(inArray(scores.matchId, allMatchIds))
+      .orderBy(matches.createdAt, matches.id, players.id, scores.holeNumber);
+
+    return rows.map(r => ({
+      date: r.date ?? new Date(),
+      courseName: r.courseName,
+      matchName: r.matchName,
+      playerName: r.playerName,
+      holeNumber: r.holeNumber,
+      strokes: r.strokes,
+    }));
+  }
+
+  async getExportBetResults(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; eventMatchName: string; betType: string | null; unitAmountCents: number; teamAName: string; teamBName: string; teamANetCents: number; teamBNetCents: number; isComplete: boolean }>> {
+    const allMatchIds = await this.getAccessibleMatchIds(userId);
+    if (allMatchIds.length === 0) return [];
+
+    const emRows = await db.select().from(eventMatches).where(inArray(eventMatches.eventId, allMatchIds));
+    if (emRows.length === 0) return [];
+    const emIds = emRows.map(em => em.id);
+
+    const [resultRows, teamRows, matchRows] = await Promise.all([
+      db.select().from(eventMatchResults).where(inArray(eventMatchResults.eventMatchId, emIds)),
+      db.select().from(teams).where(inArray(teams.eventMatchId, emIds)),
+      db.select({ id: matches.id, createdAt: matches.createdAt, courseName: matches.courseName, name: matches.name })
+        .from(matches).where(inArray(matches.id, allMatchIds)),
+    ]);
+
+    const matchMap = new Map(matchRows.map(m => [m.id, m]));
+    const emMap = new Map(emRows.map(em => [em.id, em]));
+
+    // Build team name lookup: emId -> { 0: teamName, 1: teamName }
+    const teamNameMap = new Map<number, Record<number, string>>();
+    for (const t of teamRows) {
+      const idx = t.name.toLowerCase().includes('b') || (teams as any).index === 1 ? undefined : undefined;
+      const existing = teamNameMap.get(t.eventMatchId) ?? {};
+      // Determine team index by order of insertion: first team is index 0, second is index 1
+      const currentKeys = Object.keys(existing).length;
+      existing[currentKeys] = t.name;
+      teamNameMap.set(t.eventMatchId, existing);
+    }
+
+    // Group results by emId + betType
+    type GroupKey = string;
+    const grouped = new Map<GroupKey, { emId: number; betType: string | null; teamANet: number; teamBNet: number; isComplete: boolean }>();
+    for (const r of resultRows) {
+      const key = `${r.eventMatchId}|${r.betType ?? ''}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { emId: r.eventMatchId, betType: r.betType, teamANet: 0, teamBNet: 0, isComplete: r.isComplete });
+      }
+      const g = grouped.get(key)!;
+      if (r.teamIndex === 0) g.teamANet += r.amount;
+      else if (r.teamIndex === 1) g.teamBNet += r.amount;
+      if (r.isComplete) g.isComplete = true;
+    }
+
+    const output: Array<{ date: Date; courseName: string; matchName: string | null; eventMatchName: string; betType: string | null; unitAmountCents: number; teamAName: string; teamBName: string; teamANetCents: number; teamBNetCents: number; isComplete: boolean }> = [];
+    for (const g of grouped.values()) {
+      const em = emMap.get(g.emId);
+      if (!em) continue;
+      const match = matchMap.get(em.eventId);
+      if (!match) continue;
+      const teamNames = teamNameMap.get(g.emId) ?? {};
+      output.push({
+        date: match.createdAt ?? new Date(),
+        courseName: match.courseName,
+        matchName: match.name,
+        eventMatchName: em.name,
+        betType: g.betType,
+        unitAmountCents: em.unitAmount,
+        teamAName: teamNames[0] ?? 'Team A',
+        teamBName: teamNames[1] ?? 'Team B',
+        teamANetCents: g.teamANet,
+        teamBNetCents: g.teamBNet,
+        isComplete: g.isComplete,
+      });
+    }
+    output.sort((a, b) => a.date.getTime() - b.date.getTime());
+    return output;
   }
 }
 

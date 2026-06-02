@@ -334,6 +334,20 @@ export const eventPlayingGroupMembers = pgTable("event_playing_group_members", {
   isLocked: boolean("is_locked").notNull().default(false), // true = part of a locked pair/group
 });
 
+// API keys for external access
+export const apiKeys = pgTable("api_keys", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+});
+
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true, createdAt: true, lastUsedAt: true });
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+
 // In-app messages between users
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),

@@ -6201,6 +6201,156 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // ── API Key Management (session-auth only) ──────────────────────────────────
+  app.get("/api/api-keys", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const keys = await storage.getApiKeys(user.claims.sub);
+      res.json(keys.map(k => ({ id: k.id, name: k.name, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt })));
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/api-keys", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { name } = z.object({ name: z.string().min(1).max(100) }).parse(req.body);
+
+      const crypto = await import("crypto");
+      const rawKey = "dgk_" + crypto.randomBytes(32).toString("hex");
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+
+      const key = await storage.createApiKey(user.claims.sub, name, keyHash);
+      res.status(201).json({ id: key.id, name: key.name, createdAt: key.createdAt, rawKey });
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/api-keys/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteApiKey(id, user.claims.sub);
+      if (!deleted) return res.status(404).json({ message: "Key not found" });
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ── isApiKeyAuth middleware ──────────────────────────────────────────────────
+  async function isApiKeyAuth(req: any, res: any, next: any) {
+    const authHeader = req.headers.authorization as string | undefined;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return res.status(401).json({ message: "Missing or invalid Authorization header" });
+    }
+    const rawKey = authHeader.slice(7);
+    const crypto = await import("crypto");
+    const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+    const keyRow = await storage.getApiKeyByHash(keyHash);
+    if (!keyRow) return res.status(401).json({ message: "Invalid API key" });
+    storage.updateApiKeyLastUsed(keyRow.id).catch(() => {});
+    req.apiKeyUserId = keyRow.userId;
+    next();
+  }
+
+  function sessionOrApiKey(req: any, res: any, next: any) {
+    if (req.headers.authorization?.startsWith("Bearer ")) {
+      return isApiKeyAuth(req, res, next);
+    }
+    return isAuthenticated(req, res, next);
+  }
+
+  function getExportUserId(req: any): string {
+    return req.apiKeyUserId ?? (req.user as any).claims.sub;
+  }
+
+  // ── Export endpoints ─────────────────────────────────────────────────────────
+  async function buildScoresWorkbook(userId: string) {
+    const XLSX = await import("xlsx");
+    const [scoreRows, betRows] = await Promise.all([
+      storage.getExportScores(userId),
+      storage.getExportBetResults(userId),
+    ]);
+
+    // ── Scores sheet: one row per player per match ──────────────────────────
+    const grouped = new Map<string, { date: Date; courseName: string; matchName: string | null; playerName: string; holes: Record<number, number> }>();
+    for (const row of scoreRows) {
+      const key = `${row.date.toISOString()}|${row.courseName}|${row.matchName ?? ""}|${row.playerName}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, { date: row.date, courseName: row.courseName, matchName: row.matchName, playerName: row.playerName, holes: {} });
+      }
+      grouped.get(key)!.holes[row.holeNumber] = row.strokes;
+    }
+
+    const scoreSheetRows: any[] = [["Date", "Course", "Match Name", "Player", ...Array.from({ length: 18 }, (_, i) => `H${i + 1}`), "Out", "In", "Total"]];
+    for (const entry of grouped.values()) {
+      const holes = entry.holes;
+      const out = Array.from({ length: 9 }, (_, i) => holes[i + 1] ?? 0).reduce((a, b) => a + b, 0);
+      const inn = Array.from({ length: 9 }, (_, i) => holes[i + 10] ?? 0).reduce((a, b) => a + b, 0);
+      const total = out + inn;
+      const dateStr = entry.date.toISOString().split("T")[0];
+      scoreSheetRows.push([dateStr, entry.courseName, entry.matchName ?? "", entry.playerName, ...Array.from({ length: 18 }, (_, i) => holes[i + 1] ?? ""), out || "", inn || "", total || ""]);
+    }
+
+    // ── Bet Results sheet: one row per event match bet ──────────────────────
+    const betSheetRows: any[] = [["Date", "Course", "Match Name", "Bet Type", "Unit Amount", "Team A", "Team B", "Winner", "Net (Team A)", "Net (Team B)"]];
+    for (const r of betRows) {
+      const dateStr = r.date.toISOString().split("T")[0];
+      const unitDollars = (r.unitAmountCents / 100).toFixed(2);
+      const teamADollars = (r.teamANetCents / 100).toFixed(2);
+      const teamBDollars = (r.teamBNetCents / 100).toFixed(2);
+      const winner = !r.isComplete ? "In Progress" : r.teamANetCents > 0 ? r.teamAName : r.teamBNetCents > 0 ? r.teamBName : "Tie";
+      const betLabel = r.betType ? `${r.eventMatchName} - ${r.betType}` : r.eventMatchName;
+      betSheetRows.push([dateStr, r.courseName, r.matchName ?? "", betLabel, unitDollars, r.teamAName, r.teamBName, winner, teamADollars, teamBDollars]);
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(scoreSheetRows), "Scores");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(betSheetRows), "Bet Results");
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  }
+
+  app.get("/api/export/scores.xlsx", sessionOrApiKey, async (req, res) => {
+    try {
+      const userId = getExportUserId(req);
+      const buf = await buildScoresWorkbook(userId);
+      const dateStr = new Date().toISOString().split("T")[0];
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="dorfon-golf-export-${dateStr}.xlsx"`);
+      res.send(buf);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/export/scores.csv", sessionOrApiKey, async (req, res) => {
+    try {
+      const userId = getExportUserId(req);
+      const rows = await storage.getExportScores(userId);
+      const header = "date,course,match_name,player_name,hole,strokes\n";
+      const body = rows.map(r => {
+        const dateStr = r.date.toISOString().split("T")[0];
+        const escape = (s: string) => `"${s.replace(/"/g, '""')}"`;
+        return [dateStr, escape(r.courseName), escape(r.matchName ?? ""), escape(r.playerName), r.holeNumber, r.strokes].join(",");
+      }).join("\n");
+      const dateStr = new Date().toISOString().split("T")[0];
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="dorfon-golf-scores-${dateStr}.csv"`);
+      res.send(header + body);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
 
