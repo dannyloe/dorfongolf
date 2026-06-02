@@ -2045,6 +2045,7 @@ export class DatabaseStorage implements IStorage {
         role: membership?.role || 'member',
       });
     }
+    result.sort((a, b) => a.memberCount - b.memberCount || a.name.localeCompare(b.name));
     return result;
   }
 
