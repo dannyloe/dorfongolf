@@ -107,8 +107,8 @@ function NassauStatusRows({
           {legStatusLabel(nassauResults.front9, nassauSettlements.find(n => n.betName === 'Front 9'), teamAName, teamBName)}
         </td>
       </tr>
-      <tr className="border-t border-border/50 bg-green-50/50 dark:bg-green-950/30">
-        <td className="p-1 font-semibold text-xs text-emerald-700 dark:text-emerald-400">{prefix}B9</td>
+      <tr className="border-t border-border/50 bg-blue-50/50 dark:bg-blue-950/30">
+        <td className="p-1 font-semibold text-xs text-blue-700 dark:text-blue-400">{prefix}B9</td>
         {firstNine.map(h => (
           <td key={h} className="p-1 text-center text-muted-foreground/20 text-xs">–</td>
         ))}
@@ -353,6 +353,29 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
     winner: dmResults.secondBall.winner,
   } : null;
 
+  // Build per-hole winner map from whichever result set is available
+  const holeWinnerMap = new Map<number, 'A' | 'B' | 'tie'>();
+  const teamAPlayerIds = new Set<number>((teamA?.members ?? []).map((m: any) => m.playerId as number));
+  {
+    let holeResultsForColoring: HoleResult[] = [];
+    if (matchPlayResults) {
+      holeResultsForColoring = matchPlayResults;
+    } else if (nassauResults) {
+      holeResultsForColoring = nassauResults.overall;
+    } else if (dmResults) {
+      holeResultsForColoring = dmResults.bestBall.results;
+    } else if (ttbResults) {
+      holeResultsForColoring = (ttbResults as any).twoBall?.overall ?? [];
+    } else if (otzbResults) {
+      holeResultsForColoring = (otzbResults as any).oneBall?.overall ?? [];
+    }
+    for (const r of holeResultsForColoring) {
+      if (r.teamAScore !== null && r.teamBScore !== null) {
+        holeWinnerMap.set(r.holeNumber, r.teamAScore < r.teamBScore ? 'A' : r.teamAScore > r.teamBScore ? 'B' : 'tie');
+      }
+    }
+  }
+
   return (
     <div className="bg-muted/10 border-t border-border/40">
       <div className="overflow-x-auto">
@@ -390,8 +413,13 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
                     <td className="p-1 pr-3 font-medium truncate max-w-[90px]">{name}</td>
                     {firstNineHoles.map(h => {
                       const { gross, net, strokes } = getHoleData(pid, h);
+                      const hw = holeWinnerMap.get(h);
+                      const isTeamA = teamAPlayerIds.has(pid);
+                      const holeBg = hw === 'A' && isTeamA ? 'bg-blue-100 dark:bg-blue-900/40'
+                        : hw === 'B' && !isTeamA ? 'bg-red-100 dark:bg-red-900/40'
+                        : '';
                       return (
-                        <td key={h} className="text-center p-0.5">
+                        <td key={h} className={`text-center p-0.5 ${holeBg}`}>
                           <ScoreCellCompact score={gross} netScore={net} strokesReceived={strokes} />
                         </td>
                       );
@@ -408,8 +436,13 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
                     </td>
                     {secondNineHoles.map(h => {
                       const { gross, net, strokes } = getHoleData(pid, h);
+                      const hw = holeWinnerMap.get(h);
+                      const isTeamA = teamAPlayerIds.has(pid);
+                      const holeBg = hw === 'A' && isTeamA ? 'bg-blue-100 dark:bg-blue-900/40'
+                        : hw === 'B' && !isTeamA ? 'bg-red-100 dark:bg-red-900/40'
+                        : '';
                       return (
-                        <td key={h} className="text-center p-0.5">
+                        <td key={h} className={`text-center p-0.5 ${holeBg}`}>
                           <ScoreCellCompact score={gross} netScore={net} strokesReceived={strokes} />
                         </td>
                       );
@@ -465,7 +498,7 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
                     settlement={dm2BSettlement}
                     teamAName={teamAName}
                     teamBName={teamBName}
-                    colorClass="bg-green-50/50 dark:bg-green-950/30"
+                    colorClass="bg-blue-50/50 dark:bg-blue-950/30"
                   />
                 </>
               )}
@@ -541,8 +574,8 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
           {teamA && teamB && (
             <div className="flex items-center gap-3 text-xs">
               <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" />
-                <span className="font-semibold text-primary">{teamAName}</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                <span className="font-semibold text-blue-600 dark:text-blue-400">{teamAName}</span>
                 <span className="text-muted-foreground">
                   ({teamA.members?.map((m: any) => m.player?.name || `#${m.playerId}`).join(', ')})
                 </span>
