@@ -766,7 +766,11 @@ export default function Ledger() {
             </p>
           </div>
         </div>
-        <a href="/api/export/scores.xlsx" download data-testid="button-export-excel">
+        <a
+          href={`/api/export/scores.xlsx${dateRange.from || dateRange.to ? `?${new URLSearchParams([...(dateRange.from ? [["start", dateRange.from.toISOString()]] : []), ...(dateRange.to ? [["end", dateRange.to.toISOString()]] : [])]).toString()}` : ""}`}
+          download
+          data-testid="button-export-excel"
+        >
           <Button variant="outline" size="sm">
             <Download className="w-4 h-4 mr-2" />
             Export Scores

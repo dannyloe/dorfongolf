@@ -226,7 +226,7 @@ export interface IStorage {
   updateApiKeyLastUsed(id: number): Promise<void>;
 
   // Export data
-  getExportScores(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>>;
+  getExportScores(userId: string, start?: Date, end?: Date): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>>;
   getExportBetResults(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; eventMatchName: string; betType: string | null; unitAmountCents: number; teamAName: string; teamBName: string; teamANetCents: number; teamBNetCents: number; isComplete: boolean }>>;
 }
 
@@ -4766,9 +4766,13 @@ export class DatabaseStorage implements IStorage {
     return Array.from(ids);
   }
 
-  async getExportScores(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>> {
+  async getExportScores(userId: string, start?: Date, end?: Date): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>> {
     const allMatchIds = await this.getAccessibleMatchIds(userId);
     if (allMatchIds.length === 0) return [];
+
+    const conditions = [inArray(scores.matchId, allMatchIds)];
+    if (start) conditions.push(gte(matches.createdAt, start));
+    if (end) conditions.push(lte(matches.createdAt, end));
 
     const rows = await db
       .select({
@@ -4782,7 +4786,7 @@ export class DatabaseStorage implements IStorage {
       .from(scores)
       .innerJoin(players, eq(scores.playerId, players.id))
       .innerJoin(matches, eq(scores.matchId, matches.id))
-      .where(inArray(scores.matchId, allMatchIds))
+      .where(and(...conditions))
       .orderBy(matches.createdAt, matches.id, players.id, scores.holeNumber);
 
     return rows.map(r => ({

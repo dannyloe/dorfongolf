@@ -6272,10 +6272,16 @@ Transcript to parse: "${transcript}"`;
   }
 
   // ── Export endpoints ─────────────────────────────────────────────────────────
-  async function buildScoresWorkbook(userId: string) {
+  function parseDateParam(val: unknown): Date | undefined {
+    if (typeof val !== "string" || !val) return undefined;
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? undefined : d;
+  }
+
+  async function buildScoresWorkbook(userId: string, start?: Date, end?: Date) {
     const XLSX = await import("xlsx");
     const [scoreRows, betRows] = await Promise.all([
-      storage.getExportScores(userId),
+      storage.getExportScores(userId, start, end),
       storage.getExportBetResults(userId),
     ]);
 
@@ -6320,7 +6326,9 @@ Transcript to parse: "${transcript}"`;
   app.get("/api/export/scores.xlsx", sessionOrApiKey, async (req, res) => {
     try {
       const userId = getExportUserId(req);
-      const buf = await buildScoresWorkbook(userId);
+      const start = parseDateParam(req.query.start);
+      const end = parseDateParam(req.query.end);
+      const buf = await buildScoresWorkbook(userId, start, end);
       const dateStr = new Date().toISOString().split("T")[0];
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="dorfon-golf-export-${dateStr}.xlsx"`);
@@ -6334,7 +6342,9 @@ Transcript to parse: "${transcript}"`;
   app.get("/api/export/scores.csv", sessionOrApiKey, async (req, res) => {
     try {
       const userId = getExportUserId(req);
-      const rows = await storage.getExportScores(userId);
+      const start = parseDateParam(req.query.start);
+      const end = parseDateParam(req.query.end);
+      const rows = await storage.getExportScores(userId, start, end);
       const header = "date,course,match_name,player_name,hole,strokes\n";
       const body = rows.map(r => {
         const dateStr = r.date.toISOString().split("T")[0];
