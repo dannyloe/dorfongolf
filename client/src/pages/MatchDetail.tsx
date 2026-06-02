@@ -2,12 +2,13 @@ import { useQuery, useMutationState, useQueryClient } from "@tanstack/react-quer
 import { useMatch, useAddPlayer, useRemovePlayer, useSubmitScore, useDeleteMatch, useCreateEventMatch, useDeleteEventMatch, useReplicateEventMatchToSiblings, useCreatePress, useDeletePress, useRenamePress, useUpdateAutoPress, useUpdateNetScoring, useUpdateUnitAmount, useUpdateMatchType, useCourses, useUpdateHandicapped, usePlayerHandicaps, useUpsertPlayerHandicap, useUpdatePlayerMatchHandicap, useCourseTees, useUpdatePlayerTee, useMatchPlayerHandicaps, useUpsertMatchPlayerHandicap, useCopyBetsFromEvent, useMatches, useUpdateMatchDetails, useGroups, useCreateGroup, useFullPlayerData, useMyMatchRole, useMatchRoles, useUpsertMatchRole, useDeleteMatchRole, usePendingScans, useDismissPendingScan, useSubmitScoresBulk, usePendingSmsBets, useUpdatePendingSmsBet, useApplyPendingSmsBet, useDeletePendingSmsBet, useNotifyMatchPlayers, useNotifyEligibleCount, type MatchPlayerHandicap, type UserMatchRole, type PendingScorecardScan, type PendingSmsBet } from "@/hooks/use-matches";
 import { Checkbox } from "@/components/ui/checkbox";
 import MatchChat from "@/components/MatchChat";
+import { MatchScorecardPanel } from "@/components/MatchScorecardPanel";
 import { PlayingGroupsSection } from "@/components/PlayingGroupsSection";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2, Smartphone, PhoneOff } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, ChevronRight, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2, Smartphone, PhoneOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -717,6 +718,16 @@ export default function MatchDetail() {
   
   // Selected player in standings (for filtering Match Results)
   const [selectedStandingsPlayer, setSelectedStandingsPlayer] = useState<number | null>(null);
+
+  // Expanded bet group rows in Match Results (key = `${eventMatchId}-${betGroupIndex}`)
+  const [expandedBetGroups, setExpandedBetGroups] = useState<Set<string>>(new Set());
+  const toggleBetGroup = (key: string) => {
+    setExpandedBetGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      return next;
+    });
+  };
 
   // Pending scan review modal state
   const [reviewingScan, setReviewingScan] = useState<PendingScorecardScan | null>(null);
@@ -7357,6 +7368,9 @@ export default function MatchDetail() {
                         </p>
                       );
                     }
+
+                    // Capture outer route-param matchId before the map lambda shadows it
+                    const parentMatchIdForPanel = matchId;
                     
                     return filteredMatchIds.map((matchId) => {
                       const matchEntries = entries.filter(e => e.matchId === matchId);
@@ -7619,113 +7633,140 @@ export default function MatchDetail() {
                                 : 0;
                               const totalWinAmount = Math.max(Math.abs(group.teamATotal), Math.abs(group.teamBTotal));
 
+                              const betGroupKey = `${matchId}-${gIdx}`;
+                              const isBetGroupExpanded = expandedBetGroups.has(betGroupKey);
+
                               return (
                                 <div key={gIdx} className={gIdx > 0 ? 'pt-2 border-t border-border/50' : ''}>
-                                  {/* Line 1: condensed winner summary */}
-                                  <div className="flex flex-wrap items-center gap-x-1 gap-y-0 text-sm leading-snug">
-                                    {isSkinsBet ? (
-                                      <>
-                                        <span className="font-semibold">Skins</span>
-                                        <span className="text-muted-foreground">–</span>
-                                        <span className="font-semibold text-primary">${totalWinAmount.toFixed(2)}</span>
-                                      </>
-                                    ) : isTie ? (
-                                      <>
-                                        <span className="font-semibold">{teamAName}</span>
-                                        <span className="text-muted-foreground">tied</span>
-                                        <span className="font-semibold">{teamBName}</span>
-                                        <span className="text-muted-foreground">–</span>
-                                        <span className="text-xs text-muted-foreground">{group.displayLabel}</span>
-                                        <span className="text-muted-foreground text-xs">$0.00</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="font-semibold text-primary">{winnerName}</span>
-                                        <span className="text-muted-foreground">wins</span>
-                                        <span className="font-semibold text-primary">${perPersonAmount.toFixed(2)}</span>
-                                        <span className="text-muted-foreground">from</span>
-                                        <span className="font-semibold">{loserName}</span>
-                                        <span className="text-muted-foreground">–</span>
-                                        <span className="text-xs text-muted-foreground">{group.displayLabel}</span>
-                                        {group.isAutoPress && group.groupType === 'other' && <AutoPressBadgeInline />}
-                                      </>
-                                    )}
-                                  </div>
+                                  {/* Clickable row: chevron + summary lines */}
+                                  <button
+                                    data-testid={`expand-bet-group-${betGroupKey}`}
+                                    className="w-full text-left"
+                                    onClick={() => toggleBetGroup(betGroupKey)}
+                                  >
+                                    <div className="flex items-start gap-1.5">
+                                      <span className="mt-0.5 text-muted-foreground shrink-0">
+                                        {isBetGroupExpanded
+                                          ? <ChevronDown className="w-3.5 h-3.5" />
+                                          : <ChevronRight className="w-3.5 h-3.5" />
+                                        }
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        {/* Line 1: condensed winner summary */}
+                                        <div className="flex flex-wrap items-center gap-x-1 gap-y-0 text-sm leading-snug">
+                                          {isSkinsBet ? (
+                                            <>
+                                              <span className="font-semibold">Skins</span>
+                                              <span className="text-muted-foreground">–</span>
+                                              <span className="font-semibold text-primary">${totalWinAmount.toFixed(2)}</span>
+                                            </>
+                                          ) : isTie ? (
+                                            <>
+                                              <span className="font-semibold">{teamAName}</span>
+                                              <span className="text-muted-foreground">tied</span>
+                                              <span className="font-semibold">{teamBName}</span>
+                                              <span className="text-muted-foreground">–</span>
+                                              <span className="text-xs text-muted-foreground">{group.displayLabel}</span>
+                                              <span className="text-muted-foreground text-xs">$0.00</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <span className="font-semibold text-primary">{winnerName}</span>
+                                              <span className="text-muted-foreground">wins</span>
+                                              <span className="font-semibold text-primary">${perPersonAmount.toFixed(2)}</span>
+                                              <span className="text-muted-foreground">from</span>
+                                              <span className="font-semibold">{loserName}</span>
+                                              <span className="text-muted-foreground">–</span>
+                                              <span className="text-xs text-muted-foreground">{group.displayLabel}</span>
+                                              {group.isAutoPress && group.groupType === 'other' && <AutoPressBadgeInline />}
+                                            </>
+                                          )}
+                                        </div>
 
-                                  {/* Line 2: bet-specific summary */}
-                                  <div className="mt-0.5 text-xs text-muted-foreground flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
-                                    {group.isNassau && (
-                                      <NassauLegSummary legs={group.nassauLegs} />
-                                    )}
-                                    {group.groupType === 'death_match' && (() => {
-                                      const bb = group.deathMatchLegs['Best Ball'];
-                                      const sb = group.deathMatchLegs['2nd Ball'];
-                                      return (
-                                        <>
-                                          {bb && (
-                                            <span className="inline-flex items-center gap-1">
-                                              <span>Best Ball:</span>
-                                              <span className={(bb.teamAAmount !== 0 || bb.teamBAmount !== 0) ? 'text-foreground' : ''}>{bb.resultText || '–'}</span>
-                                            </span>
+                                        {/* Line 2: bet-specific summary */}
+                                        <div className="mt-0.5 text-xs text-muted-foreground flex flex-wrap items-center gap-x-0.5 gap-y-0.5">
+                                          {group.isNassau && (
+                                            <NassauLegSummary legs={group.nassauLegs} />
                                           )}
-                                          {bb && sb && <span className="mx-1">·</span>}
-                                          {sb && (
-                                            <span className="inline-flex items-center gap-1">
-                                              <span>2nd Ball:</span>
-                                              <span className={(sb.teamAAmount !== 0 || sb.teamBAmount !== 0) ? 'text-foreground' : ''}>{sb.resultText || '–'}</span>
-                                            </span>
+                                          {group.groupType === 'death_match' && (() => {
+                                            const bb = group.deathMatchLegs['Best Ball'];
+                                            const sb = group.deathMatchLegs['2nd Ball'];
+                                            return (
+                                              <>
+                                                {bb && (
+                                                  <span className="inline-flex items-center gap-1">
+                                                    <span>Best Ball:</span>
+                                                    <span className={(bb.teamAAmount !== 0 || bb.teamBAmount !== 0) ? 'text-foreground' : ''}>{bb.resultText || '–'}</span>
+                                                  </span>
+                                                )}
+                                                {bb && sb && <span className="mx-1">·</span>}
+                                                {sb && (
+                                                  <span className="inline-flex items-center gap-1">
+                                                    <span>2nd Ball:</span>
+                                                    <span className={(sb.teamAAmount !== 0 || sb.teamBAmount !== 0) ? 'text-foreground' : ''}>{sb.resultText || '–'}</span>
+                                                  </span>
+                                                )}
+                                              </>
+                                            );
+                                          })()}
+                                          {group.groupType === 'ttb' && (
+                                            <div className="space-y-0.5 w-full">
+                                              {['2 Ball', '3rd Ball'].map(prefix => {
+                                                const legs = group.ttbSubLegs[prefix];
+                                                if (!legs || Object.keys(legs).length === 0) return null;
+                                                return (
+                                                  <div key={prefix} className="flex items-center gap-1">
+                                                    <span className="font-medium text-foreground/70">{prefix}:</span>
+                                                    <NassauLegSummary legs={legs} />
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
                                           )}
-                                        </>
-                                      );
-                                    })()}
-                                    {group.groupType === 'ttb' && (
-                                      <div className="space-y-0.5 w-full">
-                                        {['2 Ball', '3rd Ball'].map(prefix => {
-                                          const legs = group.ttbSubLegs[prefix];
-                                          if (!legs || Object.keys(legs).length === 0) return null;
-                                          return (
-                                            <div key={prefix} className="flex items-center gap-1">
-                                              <span className="font-medium text-foreground/70">{prefix}:</span>
-                                              <NassauLegSummary legs={legs} />
+                                          {group.groupType === 'otzb' && (
+                                            <div className="space-y-0.5 w-full">
+                                              {['1 Ball', '2nd3rd Ball'].map(prefix => {
+                                                const legs = group.otzbSubLegs[prefix];
+                                                if (!legs || Object.keys(legs).length === 0) return null;
+                                                return (
+                                                  <div key={prefix} className="flex items-center gap-1">
+                                                    <span className="font-medium text-foreground/70">{prefix}:</span>
+                                                    <NassauLegSummary legs={legs} />
+                                                  </div>
+                                                );
+                                              })}
                                             </div>
-                                          );
-                                        })}
+                                          )}
+                                          {group.groupType === 'skins' && (() => {
+                                            const allPlayers = [...group.teamAMembers, ...group.teamBMembers];
+                                            const winners = allPlayers.filter(m => m.amount > 0);
+                                            if (winners.length === 0) return <span>No winners</span>;
+                                            return (
+                                              <>
+                                                {winners.map((m, i) => (
+                                                  <span key={m.playerId} className="inline-flex items-center gap-1">
+                                                    {i > 0 && <span className="mx-0.5">·</span>}
+                                                    <span className="text-primary font-medium">{m.name}</span>
+                                                    <span className="text-primary">+${m.amount.toFixed(2)}</span>
+                                                  </span>
+                                                ))}
+                                              </>
+                                            );
+                                          })()}
+                                          {group.groupType === 'other' && group.resultText && (
+                                            <span>{group.resultText}</span>
+                                          )}
+                                        </div>
                                       </div>
-                                    )}
-                                    {group.groupType === 'otzb' && (
-                                      <div className="space-y-0.5 w-full">
-                                        {['1 Ball', '2nd3rd Ball'].map(prefix => {
-                                          const legs = group.otzbSubLegs[prefix];
-                                          if (!legs || Object.keys(legs).length === 0) return null;
-                                          return (
-                                            <div key={prefix} className="flex items-center gap-1">
-                                              <span className="font-medium text-foreground/70">{prefix}:</span>
-                                              <NassauLegSummary legs={legs} />
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                    {group.groupType === 'skins' && (() => {
-                                      const allPlayers = [...group.teamAMembers, ...group.teamBMembers];
-                                      const winners = allPlayers.filter(m => m.amount > 0);
-                                      if (winners.length === 0) return <span>No winners</span>;
-                                      return (
-                                        <>
-                                          {winners.map((m, i) => (
-                                            <span key={m.playerId} className="inline-flex items-center gap-1">
-                                              {i > 0 && <span className="mx-0.5">·</span>}
-                                              <span className="text-primary font-medium">{m.name}</span>
-                                              <span className="text-primary">+${m.amount.toFixed(2)}</span>
-                                            </span>
-                                          ))}
-                                        </>
-                                      );
-                                    })()}
-                                    {group.groupType === 'other' && group.resultText && (
-                                      <span>{group.resultText}</span>
-                                    )}
-                                  </div>
+                                    </div>
+                                  </button>
+
+                                  {/* Expanded scorecard panel */}
+                                  {isBetGroupExpanded && (
+                                    <div className="mt-2">
+                                      <MatchScorecardPanel parentMatchId={parentMatchIdForPanel} eventMatchId={matchId} />
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
