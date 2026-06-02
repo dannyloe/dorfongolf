@@ -14,15 +14,38 @@ import {
   type NassauSettlement,
   type NetScoringContext,
 } from "@/lib/matchplay";
-import { buildNetScoringContext, type PlayerHandicapInfo } from "@/lib/handicap";
+import { buildNetScoringContext, getStrokesForHole, type PlayerHandicapInfo } from "@/lib/handicap";
 
 interface MatchScorecardPanelProps {
   parentMatchId: number;
   eventMatchId: number;
 }
 
-function ScoreCellCompact({ score }: { score: number | null }) {
+function ScoreCellCompact({
+  score,
+  netScore,
+  strokesReceived = 0,
+}: {
+  score: number | null;
+  netScore?: number | null;
+  strokesReceived?: number;
+}) {
   if (score === null) return <span className="text-muted-foreground font-mono text-xs">–</span>;
+
+  // Net scoring active and this hole has a stroke adjustment
+  if (netScore !== null && netScore !== undefined && strokesReceived > 0) {
+    return (
+      <span className="relative inline-flex flex-col items-center leading-none gap-0">
+        <span className="font-mono text-xs font-semibold text-foreground">{netScore}</span>
+        <span className="font-mono text-[9px] text-muted-foreground/55 leading-none">{score}</span>
+        <span
+          className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-blue-400/80"
+          title={`${strokesReceived} stroke${strokesReceived > 1 ? 's' : ''} received`}
+        />
+      </span>
+    );
+  }
+
   return <span className="font-mono text-xs">{score}</span>;
 }
 
@@ -259,6 +282,29 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
     return hasAny ? total : null;
   };
 
+  const useNet = !!(eventMatch.useNetScoring && netContext);
+
+  // Returns { gross, net, strokes } for a player/hole under net scoring
+  const getHoleData = (playerId: number, hole: number) => {
+    const gross = getScore(playerId, hole);
+    if (!useNet || gross === null) return { gross, net: null as number | null, strokes: 0 };
+    const relHcp = netContext!.playerHandicaps.get(playerId) ?? 0;
+    const holeRank = netContext!.holeHandicaps.get(hole) ?? 18;
+    const strokes = getStrokesForHole(relHcp, holeRank);
+    return { gross, net: gross - strokes, strokes };
+  };
+
+  // Sum of net scores (or gross if no net context) for a range of holes
+  const netHoleSum = (playerId: number, from: number, to: number): number | null => {
+    if (!useNet) return holeSum(playerId, from, to);
+    let total = 0, hasAny = false;
+    for (let h = from; h <= to; h++) {
+      const { net } = getHoleData(playerId, h);
+      if (net !== null) { total += net; hasAny = true; }
+    }
+    return hasAny ? total : null;
+  };
+
   const firstNineHoles = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const secondNineHoles = [10, 11, 12, 13, 14, 15, 16, 17, 18];
   const matchType = eventMatch.matchType as string;
@@ -332,30 +378,61 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
               {[...(teamA?.members ?? []), ...(teamB?.members ?? [])].map((m: any) => {
                 const pid: number = m.playerId;
                 const name: string = m.player?.name || `#${pid}`;
-                const out = holeSum(pid, 1, 9);
-                const inVal = holeSum(pid, 10, 18);
+                const out = netHoleSum(pid, 1, 9);
+                const inVal = netHoleSum(pid, 10, 18);
                 const total = out !== null && inVal !== null ? out + inVal : (out ?? inVal);
+                // For gross totals (shown in lighter color when net is active)
+                const grossOut = holeSum(pid, 1, 9);
+                const grossIn = holeSum(pid, 10, 18);
+                const grossTotal = grossOut !== null && grossIn !== null ? grossOut + grossIn : (grossOut ?? grossIn);
                 return (
                   <tr key={pid} className="border-t border-border/20">
                     <td className="p-1 pr-3 font-medium truncate max-w-[90px]">{name}</td>
-                    {firstNineHoles.map(h => (
-                      <td key={h} className="text-center p-0.5">
-                        <ScoreCellCompact score={getScore(pid, h)} />
-                      </td>
-                    ))}
+                    {firstNineHoles.map(h => {
+                      const { gross, net, strokes } = getHoleData(pid, h);
+                      return (
+                        <td key={h} className="text-center p-0.5">
+                          <ScoreCellCompact score={gross} netScore={net} strokesReceived={strokes} />
+                        </td>
+                      );
+                    })}
                     <td className="text-center p-0.5 font-semibold bg-muted/20">
-                      {out !== null ? out : <span className="text-muted-foreground">–</span>}
+                      {out !== null ? (
+                        <span className="inline-flex flex-col items-center leading-none">
+                          <span>{out}</span>
+                          {useNet && grossOut !== null && grossOut !== out && (
+                            <span className="text-[9px] text-muted-foreground/55 leading-none">{grossOut}</span>
+                          )}
+                        </span>
+                      ) : <span className="text-muted-foreground">–</span>}
                     </td>
-                    {secondNineHoles.map(h => (
-                      <td key={h} className="text-center p-0.5">
-                        <ScoreCellCompact score={getScore(pid, h)} />
-                      </td>
-                    ))}
+                    {secondNineHoles.map(h => {
+                      const { gross, net, strokes } = getHoleData(pid, h);
+                      return (
+                        <td key={h} className="text-center p-0.5">
+                          <ScoreCellCompact score={gross} netScore={net} strokesReceived={strokes} />
+                        </td>
+                      );
+                    })}
                     <td className="text-center p-0.5 font-semibold bg-muted/20">
-                      {inVal !== null ? inVal : <span className="text-muted-foreground">–</span>}
+                      {inVal !== null ? (
+                        <span className="inline-flex flex-col items-center leading-none">
+                          <span>{inVal}</span>
+                          {useNet && grossIn !== null && grossIn !== inVal && (
+                            <span className="text-[9px] text-muted-foreground/55 leading-none">{grossIn}</span>
+                          )}
+                        </span>
+                      ) : <span className="text-muted-foreground">–</span>}
                     </td>
                     <td className="text-center p-0.5 font-bold bg-muted/30">
-                      {total !== null ? total : <span className="text-muted-foreground">–</span>}
+                      {total !== null ? (
+                        <span className="inline-flex flex-col items-center leading-none">
+                          <span>{total}</span>
+                          {useNet && grossTotal !== null && grossTotal !== total && (
+                            <span className="text-[9px] text-muted-foreground/55 leading-none font-normal">{grossTotal}</span>
+                          )}
+                        </span>
+                      ) : <span className="text-muted-foreground">–</span>}
                     </td>
                   </tr>
                 );
@@ -448,9 +525,16 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
 
           {/* ── Net Scoring Indicator ── */}
           {eventMatch.useNetScoring && (
-            <p className="text-xs text-muted-foreground italic">
-              {netContext ? 'Net scoring applied (handicap-adjusted).' : 'Net scoring enabled; handicap data loading…'}
-            </p>
+            <div className="text-xs text-muted-foreground italic flex items-center gap-1.5">
+              {netContext ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400/80 inline-block shrink-0" />
+                  Net scores shown (handicap-adjusted). Gross score in small text below. Blue dot = stroke received.
+                </>
+              ) : (
+                'Net scoring enabled; handicap data loading…'
+              )}
+            </div>
           )}
 
           {/* ── Team Names ── */}
