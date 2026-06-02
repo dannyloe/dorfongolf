@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { User, Save, X, Plus, Loader2, Phone, Check, Bell, Users, Shield, LogOut, KeyRound, Eye, EyeOff } from "lucide-react";
+import { User, Save, X, Plus, Loader2, Phone, Check, Bell, Users, Shield, LogOut, KeyRound, Eye, EyeOff, Key, ArrowRight } from "lucide-react";
+import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -859,6 +860,27 @@ export default function Profile() {
               </Button>
             </CardContent>
           )}
+        </Card>
+
+        {/* API Keys */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Key className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">API Keys</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-sm text-muted-foreground mb-4">
+              Generate API keys to access your data from external tools like Power Query, Excel, or custom scripts.
+            </p>
+            <Link href="/api-keys">
+              <Button variant="outline" size="sm" data-testid="link-api-keys">
+                Manage API Keys
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+          </CardContent>
         </Card>
 
         <div className="flex justify-end">
