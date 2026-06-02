@@ -207,7 +207,6 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
 
   if (!match) return null;
 
-  const players: any[] = match.players || [];
   const scores: any[] = match.scores || [];
   const eventMatches: any[] = match.eventMatches || [];
   const eventMatch = eventMatches.find((em: any) => em.id === eventMatchId);
@@ -330,16 +329,18 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
               </tr>
             </thead>
             <tbody>
-              {players.map((p: any) => {
-                const out = holeSum(p.id, 1, 9);
-                const inVal = holeSum(p.id, 10, 18);
+              {[...(teamA?.members ?? []), ...(teamB?.members ?? [])].map((m: any) => {
+                const pid: number = m.playerId;
+                const name: string = m.player?.name || `#${pid}`;
+                const out = holeSum(pid, 1, 9);
+                const inVal = holeSum(pid, 10, 18);
                 const total = out !== null && inVal !== null ? out + inVal : (out ?? inVal);
                 return (
-                  <tr key={p.id} className="border-t border-border/20">
-                    <td className="p-1 pr-3 font-medium truncate max-w-[90px]">{p.name}</td>
+                  <tr key={pid} className="border-t border-border/20">
+                    <td className="p-1 pr-3 font-medium truncate max-w-[90px]">{name}</td>
                     {firstNineHoles.map(h => (
                       <td key={h} className="text-center p-0.5">
-                        <ScoreCellCompact score={getScore(p.id, h)} />
+                        <ScoreCellCompact score={getScore(pid, h)} />
                       </td>
                     ))}
                     <td className="text-center p-0.5 font-semibold bg-muted/20">
@@ -347,7 +348,7 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
                     </td>
                     {secondNineHoles.map(h => (
                       <td key={h} className="text-center p-0.5">
-                        <ScoreCellCompact score={getScore(p.id, h)} />
+                        <ScoreCellCompact score={getScore(pid, h)} />
                       </td>
                     ))}
                     <td className="text-center p-0.5 font-semibold bg-muted/20">
@@ -473,67 +474,6 @@ export function MatchScorecardPanel({ parentMatchId, eventMatchId }: MatchScorec
             </div>
           )}
 
-          {/* ── Nassau Settlements ── */}
-          {isNassau && nassauSettlements && nassauSettlements.length > 0 && (
-            <div className="border-t border-border/40 pt-2">
-              <p className="text-xs font-semibold text-muted-foreground mb-1.5">Nassau Settlements</p>
-              <div className="flex flex-wrap gap-2">
-                {nassauSettlements.map((ns) => {
-                  const pot = ns.settlement.totalPot;
-                  const complete = ns.settlement.isComplete;
-                  const winner = ns.settlement.winner;
-                  const winnerName = winner === 'A' ? teamAName : winner === 'B' ? teamBName : null;
-                  return (
-                    <div
-                      key={ns.betName}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                        complete
-                          ? winner
-                            ? 'bg-primary/10 text-primary border-primary/20'
-                            : 'bg-muted text-muted-foreground border-border'
-                          : 'bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-300 dark:border-yellow-800/30'
-                      }`}
-                    >
-                      <span className="opacity-70">{ns.betName}</span>
-                      {ns.autoPressTriggered && (
-                        <span className="ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full border border-amber-500 text-amber-600 text-[8px] font-bold">P</span>
-                      )}
-                      {' · '}
-                      {winnerName ? `${winnerName} +$${(Math.abs(pot) / 100).toFixed(2)}` : `$${(Math.abs(pot) / 100).toFixed(2)}`}
-                      {!complete && ' …'}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ── Match Play Settlement ── */}
-          {!isNassau && !isDeathMatch && !isTwoThreeBall && !isOneTwoThreeBall && matchPlaySettlement && teamA && teamB && (
-            <div className="border-t border-border/40 pt-2">
-              <p className="text-xs font-semibold text-muted-foreground mb-1.5">Settlement</p>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { name: teamAName, amount: matchPlaySettlement.settlements.filter((s: any) => s.teamName === teamAName).reduce((acc: number, s: any) => acc + s.amount, 0) / (teamA.members?.length || 1) },
-                  { name: teamBName, amount: matchPlaySettlement.settlements.filter((s: any) => s.teamName === teamBName).reduce((acc: number, s: any) => acc + s.amount, 0) / (teamB.members?.length || 1) },
-                ].map(team => (
-                  <span
-                    key={team.name}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                      team.amount > 0
-                        ? 'bg-primary/10 text-primary border-primary/20'
-                        : team.amount < 0
-                        ? 'bg-destructive/10 text-destructive border-destructive/20'
-                        : 'bg-muted text-muted-foreground border-border'
-                    }`}
-                  >
-                    {team.name}: {team.amount > 0 ? '+' : ''}{team.amount === 0 ? 'Even' : `$${team.amount.toFixed(2)}`}
-                    {!matchPlaySettlement.isComplete && ' …'}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
 
         </div>
       </div>
