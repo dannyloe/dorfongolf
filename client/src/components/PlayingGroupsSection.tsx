@@ -42,6 +42,7 @@ import {
   Merge,
   Plus,
   UserPlus,
+  Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -275,13 +276,17 @@ function CartSlotCard({
 
 function SortableGroupCard({
   group,
+  groupIndex,
   ungroupedPlayers,
   onAddPlayer,
+  onDelete,
   activePlayerId,
 }: {
   group: GroupEntry;
+  groupIndex: number;
   ungroupedPlayers: string[];
   onAddPlayer: (groupId: string, playerName: string) => void;
+  onDelete: (groupId: string) => void;
   activePlayerId: string | null;
 }) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging, isOver } =
@@ -333,10 +338,23 @@ function SortableGroupCard({
               <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50" />
             </div>
             <Flag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-            <span>Group</span>
+            <span>Group {groupIndex + 1}</span>
             <Badge variant="outline" className="ml-auto text-xs font-normal shrink-0">
               {group.players.length}p
             </Badge>
+            {group.players.length === 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(group.id);
+                }}
+                className="shrink-0 rounded p-0.5 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                title="Remove empty group"
+                data-testid={`button-delete-group-${group.id}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -640,6 +658,10 @@ export function PlayingGroupsSection({
     setPreview((prev) => (prev ? arrayMove(prev, fromIdx, toIdx) : prev));
   };
 
+  const deleteGroup = (groupId: string) => {
+    setPreview((prev) => (prev ? prev.filter((g) => g.id !== groupId) : prev));
+  };
+
   const addPlayerToGroup = (groupId: string, playerName: string) => {
     setPreview((prev) => {
       if (!prev) return prev;
@@ -799,12 +821,14 @@ export function PlayingGroupsSection({
               >
                 <SortableContext items={groupIds} strategy={rectSortingStrategy}>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {preview.map((group) => (
+                    {preview.map((group, idx) => (
                       <SortableGroupCard
                         key={group.id}
                         group={group}
+                        groupIndex={idx}
                         ungroupedPlayers={ungroupedPlayers}
                         onAddPlayer={addPlayerToGroup}
+                        onDelete={deleteGroup}
                         activePlayerId={activeId}
                       />
                     ))}
