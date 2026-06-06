@@ -732,6 +732,7 @@ export default function MatchDetail() {
   // Pending scan review modal state
   const [reviewingScan, setReviewingScan] = useState<PendingScorecardScan | null>(null);
   const [scanEditableScores, setScanEditableScores] = useState<Record<string, Record<number, string>>>({});
+  const [scanShiftHistory, setScanShiftHistory] = useState<Record<string, { front: Record<number, string>[]; back: Record<number, string>[] }>>({});
   const [scanPlayerMappings, setScanPlayerMappings] = useState<Record<string, number | null>>({});
   const [scanSuggestedPresets, setScanSuggestedPresets] = useState<Record<string, string | null>>({});
   const [scanApplying, setScanApplying] = useState(false);
@@ -2447,6 +2448,7 @@ export default function MatchDetail() {
                                 setScanEditableScores(initialEditable);
                                 setScanPlayerMappings(initialMappings);
                                 setScanSuggestedPresets(initialPresets);
+                                setScanShiftHistory({});
                               }
                               setReviewingScan(scan);
                             }}
@@ -8558,7 +8560,18 @@ export default function MatchDetail() {
         const shiftScores = (playerName: string, range: 'front' | 'back', direction: 'left' | 'right') => {
           const holes = range === 'front' ? [1,2,3,4,5,6,7,8,9] : [10,11,12,13,14,15,16,17,18];
           setScanEditableScores((prev) => {
-            const playerScores = { ...(prev[playerName] || {}) };
+            const snapshot = { ...(prev[playerName] || {}) };
+            setScanShiftHistory((hist) => {
+              const playerHist = hist[playerName] ?? { front: [], back: [] };
+              return {
+                ...hist,
+                [playerName]: {
+                  ...playerHist,
+                  [range]: [...playerHist[range], snapshot],
+                },
+              };
+            });
+            const playerScores = { ...snapshot };
             if (direction === 'left') {
               // shift left: hole[i] = hole[i+1], clear last hole
               for (let i = 0; i < holes.length - 1; i++) {
@@ -8582,6 +8595,23 @@ export default function MatchDetail() {
               return next;
             });
           }, 1000);
+        };
+
+        const undoShift = (playerName: string, range: 'front' | 'back') => {
+          setScanShiftHistory((hist) => {
+            const playerHist = hist[playerName] ?? { front: [], back: [] };
+            const stack = playerHist[range];
+            if (stack.length === 0) return hist;
+            const previous = stack[stack.length - 1];
+            setScanEditableScores((prev) => ({ ...prev, [playerName]: { ...(prev[playerName] || {}), ...previous } }));
+            return {
+              ...hist,
+              [playerName]: {
+                ...playerHist,
+                [range]: stack.slice(0, -1),
+              },
+            };
+          });
         };
 
         const calculateTotals = (playerName: string) => {
@@ -8619,6 +8649,7 @@ export default function MatchDetail() {
             queryClient.invalidateQueries({ queryKey: ['/api/matches/:id', matchId] });
             queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-scans"] });
             toast({ title: "Scores applied successfully!" });
+            setScanShiftHistory({});
             setReviewingScan(null);
           } catch (err) {
             toast({ title: "Failed to apply scores", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
@@ -8630,7 +8661,7 @@ export default function MatchDetail() {
         const hasAnyMapping = Object.values(scanPlayerMappings).some((id) => id !== null);
 
         return (
-          <Dialog open={true} onOpenChange={(open) => { if (!open) setReviewingScan(null); }}>
+          <Dialog open={true} onOpenChange={(open) => { if (!open) { setScanShiftHistory({}); setReviewingScan(null); } }}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -8800,6 +8831,16 @@ export default function MatchDetail() {
                           >
                             Right →
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => undoShift(scannedPlayer.playerName, 'front')}
+                            disabled={(scanShiftHistory[scannedPlayer.playerName]?.front?.length ?? 0) === 0}
+                            data-testid={`button-undo-shift-front-${scannedPlayer.playerName}`}
+                          >
+                            Undo
+                          </Button>
                         </div>
                       </div>
 
@@ -8868,6 +8909,16 @@ export default function MatchDetail() {
                           >
                             Right →
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => undoShift(scannedPlayer.playerName, 'back')}
+                            disabled={(scanShiftHistory[scannedPlayer.playerName]?.back?.length ?? 0) === 0}
+                            data-testid={`button-undo-shift-back-${scannedPlayer.playerName}`}
+                          >
+                            Undo
+                          </Button>
                         </div>
                       </div>
 
@@ -8893,7 +8944,7 @@ export default function MatchDetail() {
                 <Button
                   variant="outline"
                   disabled={scanApplying}
-                  onClick={() => setReviewingScan(null)}
+                  onClick={() => { setScanShiftHistory({}); setReviewingScan(null); }}
                   data-testid="button-close-pending-scan-review"
                 >
                   Close
