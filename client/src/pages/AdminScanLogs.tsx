@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot, Send, Phone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -511,11 +511,13 @@ export default function AdminScanLogs() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"logs" | "patterns">("logs");
+  const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test">("logs");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "scorecard" | "bet_slip">("all");
+  const [smsPhone, setSmsPhone] = useState("");
+  const [smsResult, setSmsResult] = useState<{ ok: boolean; sid?: string; to?: string; error?: string } | null>(null);
 
   const { data: logs, isLoading: logsLoading, error: logsError } = useQuery<ScanCorrectionLog[]>({
     queryKey: ["/api/admin/scan-correction-logs"],
@@ -565,6 +567,25 @@ export default function AdminScanLogs() {
     },
     onError: () => {
       toast({ title: "Update failed", description: "Could not update pattern.", variant: "destructive" });
+    },
+  });
+
+  const testSmsMutation = useMutation({
+    mutationFn: (to: string) => apiRequest("POST", "/api/admin/test-sms", { to: to || undefined }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setSmsResult(data);
+    },
+    onError: async (err: any) => {
+      let message = "Failed to send test SMS";
+      try {
+        const data = await err.json?.();
+        if (data?.message) message = data.message;
+        if (data?.error) message = data.error;
+        setSmsResult({ ok: false, error: message });
+      } catch {
+        setSmsResult({ ok: false, error: message });
+      }
     },
   });
 
@@ -681,6 +702,14 @@ export default function AdminScanLogs() {
           {(patterns ?? []).length > 0 && (
             <span className="ml-1 text-xs bg-muted rounded-full px-1.5 py-0.5">{(patterns ?? []).length}</span>
           )}
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === "sms-test" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("sms-test")}
+          data-testid="tab-sms-test"
+        >
+          <Phone className="w-4 h-4" />
+          SMS Test
         </button>
       </div>
 
@@ -884,6 +913,62 @@ export default function AdminScanLogs() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "sms-test" && (
+        <div className="space-y-4 max-w-md">
+          <div>
+            <h2 className="text-base font-semibold">Send Test SMS</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Fire a test message to confirm Plivo is wired up correctly. Leave the phone field blank to send to your own profile number.
+            </p>
+          </div>
+
+          <div className="bg-muted/40 border border-border/50 rounded-lg p-4 space-y-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="sms-test-phone" className="text-sm">Phone number (optional)</Label>
+              <Input
+                id="sms-test-phone"
+                type="tel"
+                placeholder="Leave blank to use your profile number"
+                value={smsPhone}
+                onChange={e => { setSmsPhone(e.target.value); setSmsResult(null); }}
+                data-testid="input-sms-test-phone"
+                className="h-9"
+              />
+            </div>
+
+            <Button
+              onClick={() => { setSmsResult(null); testSmsMutation.mutate(smsPhone); }}
+              disabled={testSmsMutation.isPending}
+              data-testid="button-send-test-sms"
+              className="flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+              {testSmsMutation.isPending ? "Sending…" : "Send test SMS"}
+            </Button>
+
+            {smsResult && (
+              <div
+                data-testid="sms-test-result"
+                className={`rounded-md border px-4 py-3 text-sm flex flex-col gap-1 ${smsResult.ok ? "bg-green-50 border-green-200 text-green-800 dark:bg-green-950/40 dark:border-green-800 dark:text-green-300" : "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300"}`}
+              >
+                {smsResult.ok ? (
+                  <>
+                    <span className="font-semibold flex items-center gap-1.5"><CheckCircle className="w-4 h-4" />Message sent</span>
+                    {smsResult.to && <span className="text-xs">To: {smsResult.to}</span>}
+                    {smsResult.sid && <span className="text-xs text-muted-foreground">SID: {smsResult.sid}</span>}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" />Failed to send</span>
+                    {smsResult.error && <span className="text-xs">{smsResult.error}</span>}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

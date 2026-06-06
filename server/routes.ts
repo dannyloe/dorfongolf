@@ -5763,6 +5763,35 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // Admin: send a test SMS to verify Plivo is wired up
+  app.post("/api/admin/test-sms", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      let to: string = req.body?.to ?? "";
+      if (!to) {
+        const profile = await storage.getUser(userId);
+        to = profile?.phone ?? "";
+      }
+      if (!to) {
+        return res.status(400).json({ message: "No phone number provided and no phone number found on your profile. Add one in your profile settings first." });
+      }
+      const { sendSMS } = await import("./plivo");
+      const result = await sendSMS(to, "Golf Betting test message — Plivo is wired up correctly! ⛳");
+      if (result.success) {
+        res.json({ ok: true, sid: result.sid, to });
+      } else {
+        res.status(502).json({ ok: false, error: result.error ?? "Unknown error" });
+      }
+    } catch (err: any) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: err.message ?? "Internal server error" });
+    }
+  });
+
   // Admin: mark a scan pattern as addressed (or reactivate it)
   app.patch("/api/admin/scan-patterns/:id/addressed", isAuthenticated, async (req, res) => {
     try {
