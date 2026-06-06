@@ -344,17 +344,46 @@ function SmsBetsPanel({
               <>
                 {bet.parsedBets && bet.parsedBets.length > 0 ? (
                   <div className="space-y-1 mb-1.5">
-                    {(bet.parsedBets as Array<{ betType: string; amountCents: number; players: string[]; description: string }>).map((pb, i) => (
-                      <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">
-                        <span className="font-medium">{pb.description}</span>
-                        {pb.amountCents > 0 && (
-                          <span className="ml-1 text-muted-foreground">(${(pb.amountCents / 100).toFixed(0)})</span>
-                        )}
-                        {pb.players.length > 0 && (
-                          <span className="ml-1 text-muted-foreground text-[10px]">— {pb.players.join(", ")}</span>
-                        )}
-                      </div>
-                    ))}
+                    {(bet.parsedBets as import("@shared/schema").ParsedSmsBet[]).map((pb, i) => {
+                      const isRR = pb.isRoundRobin && pb.teamAPlayers && pb.teamBPlayers;
+                      const rrGroupACount = pb.teamAPlayers?.length ?? 0;
+                      const rrGroupBCount = pb.teamBPlayers?.length ?? 0;
+                      // Estimate pairing count: C(n,2) for each group, cross-producted
+                      const rrGroupATeams = rrGroupACount >= 2 ? (rrGroupACount * (rrGroupACount - 1)) / 2 : 0;
+                      const rrGroupBTeams = rrGroupBCount >= 2 ? (rrGroupBCount * (rrGroupBCount - 1)) / 2 : 0;
+                      const rrPairingCount = rrGroupATeams * rrGroupBTeams;
+                      return (
+                        <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="font-medium">{pb.description}</span>
+                            {isRR && (
+                              <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded px-1 font-medium" data-testid={`sms-bet-rr-badge-${bet.id}-${i}`}>
+                                Round Robin
+                              </span>
+                            )}
+                            {pb.amountCents > 0 && (
+                              <span className="text-muted-foreground">(${(pb.amountCents / 100).toFixed(0)})</span>
+                            )}
+                          </div>
+                          {isRR ? (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground space-y-0.5" data-testid={`sms-bet-rr-detail-${bet.id}-${i}`}>
+                              <div>Group A: {pb.teamAPlayers!.join(", ")}</div>
+                              <div>Group B: {pb.teamBPlayers!.join(", ")}</div>
+                              {(pb.keyedPlayers ?? []).length > 0 && (
+                                <div>Keyed: {pb.keyedPlayers!.join(", ")}</div>
+                              )}
+                              {rrPairingCount > 0 && (
+                                <div className="font-medium text-foreground/70">→ {rrPairingCount} pairing{rrPairingCount !== 1 ? "s" : ""} will be created</div>
+                              )}
+                            </div>
+                          ) : (
+                            pb.players.length > 0 && (
+                              <span className="text-muted-foreground text-[10px]">— {pb.players.join(", ")}</span>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground mb-1.5">No bets parsed from this message</p>

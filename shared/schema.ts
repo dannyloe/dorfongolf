@@ -720,7 +720,17 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type PendingScorecardScan = typeof pendingScorecardScans.$inferSelect;
 export type InsertPendingScorecardScan = z.infer<typeof insertPendingScorecardScanSchema>;
 
-export type ParsedSmsBet = { betType: string; amountCents: number; players: string[]; description: string };
+export type ParsedSmsBet = {
+  betType: string;
+  amountCents: number;
+  players: string[];
+  description: string;
+  isRoundRobin?: boolean;
+  roundRobinSubtype?: "nassau" | "match_play_1_ball";
+  teamAPlayers?: string[];
+  teamBPlayers?: string[];
+  keyedPlayers?: string[];
+};
 export type PendingSmsBet = typeof pendingSmsBets.$inferSelect;
 export type InsertPendingSmsBet = z.infer<typeof insertPendingSmsBetSchema>;
 
@@ -773,6 +783,7 @@ export type CreateEventMatchRequest = {
   autoPressNassauOverall?: boolean;
   useNetScoring?: boolean;
   startOnBack9?: boolean;
+  isRoundRobinGenerated?: boolean;
   teamA: { name: string; playerIds: number[] };
   teamB: { name: string; playerIds: number[] };
   // Optional: For 5-5-5-3 matches that support multiple teams

@@ -6091,7 +6091,7 @@ Transcript to parse: "${transcript}"`;
       if (bet.status === "applied") return res.status(409).json({ message: "Bet is already applied" });
       if (bet.status === "dismissed") return res.status(409).json({ message: "Bet has been dismissed" });
 
-      const parsedBets = (bet.parsedBets ?? []) as Array<{ betType: string; amountCents: number; players: string[]; description: string }>;
+      const parsedBets = (bet.parsedBets ?? []) as import("@shared/schema").ParsedSmsBet[];
       if (parsedBets.length === 0) {
         return res.status(422).json({ message: "No parsed bets to apply — edit the bet first to add bet details before applying" });
       }
@@ -6107,44 +6107,112 @@ Transcript to parse: "${transcript}"`;
         other: "nassau",
       };
 
+      // Fuzzy-match a player name string to a match player ID
+      const resolvePlayerId = (name: string): number | null => {
+        const lc = name.toLowerCase().trim();
+        const found = matchPlayers.find(p =>
+          p.name.toLowerCase() === lc || p.name.toLowerCase().includes(lc) || lc.includes(p.name.toLowerCase())
+        );
+        return found ? found.id : null;
+      };
+
+      // Generate all 2-player team combos from a list of player IDs, optionally filtered by keyed IDs
+      const generateTwoPlayerTeams = (playerIds: number[], keyedIds: number[] = []): [number, number][] => {
+        const teams: [number, number][] = [];
+        for (let i = 0; i < playerIds.length; i++) {
+          for (let j = i + 1; j < playerIds.length; j++) {
+            teams.push([playerIds[i], playerIds[j]]);
+          }
+        }
+        if (keyedIds.length > 0) {
+          return teams.filter(t => keyedIds.includes(t[0]) || keyedIds.includes(t[1]));
+        }
+        return teams;
+      };
+
       const createdEventMatches = [];
       const failedBets: string[] = [];
       for (const pb of parsedBets) {
         const matchType = betTypeMap[pb.betType] ?? "nassau";
         const unitAmount = pb.amountCents > 0 ? pb.amountCents : 0;
 
-        // Match player names to actual match player IDs (split evenly across two teams)
-        const teamAIds: number[] = [];
-        const teamBIds: number[] = [];
-        for (let i = 0; i < pb.players.length; i++) {
-          const lc = pb.players[i].toLowerCase();
-          const found = matchPlayers.find(p =>
-            p.name.toLowerCase() === lc || p.name.toLowerCase().includes(lc)
-          );
-          if (found) {
-            (i % 2 === 0 ? teamAIds : teamBIds).push(found.id);
-          }
-        }
+        if (pb.isRoundRobin && pb.teamAPlayers && pb.teamBPlayers) {
+          // Round Robin: generate all cross-product 2v2 pairings between the two groups
+          const groupAIds = pb.teamAPlayers.map(resolvePlayerId).filter((id): id is number => id !== null);
+          const groupBIds = pb.teamBPlayers.map(resolvePlayerId).filter((id): id is number => id !== null);
+          const keyedIds = (pb.keyedPlayers ?? []).map(resolvePlayerId).filter((id): id is number => id !== null);
 
-        try {
-          const em = await storage.createEventMatch(matchId, {
-            name: pb.description,
-            matchType,
-            unitAmount,
-            teamA: { name: "Team A", playerIds: teamAIds },
-            teamB: { name: "Team B", playerIds: teamBIds },
-            autoPressOriginal: true,
-            autoPressAllPresses: false,
-            autoPressNassauFront9: true,
-            autoPressNassauBack9: true,
-            autoPressNassauOverall: true,
-            useNetScoring: false,
-            startOnBack9: false,
-          });
-          createdEventMatches.push(em);
-        } catch (emErr) {
-          console.warn("[apply-sms-bet] Could not create eventMatch for parsed bet:", emErr);
-          failedBets.push(pb.description);
+          // Split keyed players by which group they belong to
+          const keyedAIds = keyedIds.filter(id => groupAIds.includes(id));
+          const keyedBIds = keyedIds.filter(id => groupBIds.includes(id));
+
+          const groupATeams = generateTwoPlayerTeams(groupAIds, keyedAIds);
+          const groupBTeams = generateTwoPlayerTeams(groupBIds, keyedBIds);
+
+          if (groupATeams.length === 0 || groupBTeams.length === 0) {
+            console.warn("[apply-sms-bet] Round Robin could not generate pairings — insufficient resolved players", { groupAIds, groupBIds });
+            failedBets.push(pb.description);
+            continue;
+          }
+
+          let pairingIndex = 1;
+          for (const teamA of groupATeams) {
+            for (const teamB of groupBTeams) {
+              const pairingName = `${pb.description} (${pairingIndex++}/${groupATeams.length * groupBTeams.length})`;
+              try {
+                const em = await storage.createEventMatch(matchId, {
+                  name: pairingName,
+                  matchType,
+                  unitAmount,
+                  teamA: { name: "Team A", playerIds: [...teamA] },
+                  teamB: { name: "Team B", playerIds: [...teamB] },
+                  autoPressOriginal: true,
+                  autoPressAllPresses: false,
+                  autoPressNassauFront9: true,
+                  autoPressNassauBack9: true,
+                  autoPressNassauOverall: true,
+                  useNetScoring: false,
+                  startOnBack9: false,
+                  isRoundRobinGenerated: true,
+                });
+                createdEventMatches.push(em);
+              } catch (emErr) {
+                console.warn("[apply-sms-bet] Could not create Round Robin eventMatch:", emErr);
+                failedBets.push(pairingName);
+              }
+            }
+          }
+        } else {
+          // Standard bet: split players evenly across two teams
+          const teamAIds: number[] = [];
+          const teamBIds: number[] = [];
+          for (let i = 0; i < pb.players.length; i++) {
+            const id = resolvePlayerId(pb.players[i]);
+            if (id !== null) {
+              (i % 2 === 0 ? teamAIds : teamBIds).push(id);
+            }
+          }
+
+          try {
+            const em = await storage.createEventMatch(matchId, {
+              name: pb.description,
+              matchType,
+              unitAmount,
+              teamA: { name: "Team A", playerIds: teamAIds },
+              teamB: { name: "Team B", playerIds: teamBIds },
+              autoPressOriginal: true,
+              autoPressAllPresses: false,
+              autoPressNassauFront9: true,
+              autoPressNassauBack9: true,
+              autoPressNassauOverall: true,
+              useNetScoring: false,
+              startOnBack9: false,
+            });
+            createdEventMatches.push(em);
+          } catch (emErr) {
+            console.warn("[apply-sms-bet] Could not create eventMatch for parsed bet:", emErr);
+            failedBets.push(pb.description);
+          }
         }
       }
 

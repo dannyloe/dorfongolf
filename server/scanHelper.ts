@@ -46,7 +46,16 @@ Rules:
 - If the message does not describe any bets (e.g. it's just a score or a greeting), return an empty array.
 - If the amount applies to each leg of a nassau (front/back/overall), report the per-leg amount.
 
-Return JSON array. Each element: { betType, amountCents, players, description }`;
+Round Robin rules:
+- If the message mentions "round robin" (or "RR"), set isRoundRobin=true.
+- Round Robin Nassau → betType="nassau", roundRobinSubtype="nassau"
+- Round Robin Match Play → betType="match_play", roundRobinSubtype="match_play_1_ball"
+- Split players into two groups: teamAPlayers (Group 1 / side A) and teamBPlayers (Group 2 / side B). Format like "A/B vs C/D" means teamAPlayers=[A,B] and teamBPlayers=[C,D].
+- If some players are marked as "keyed" or "wheel" (play in every pairing), put them in keyedPlayers.
+- For a Round Robin bet, leave "players" as an empty array — use teamAPlayers and teamBPlayers instead.
+- "description" should say e.g. "Nassau Round Robin $20 — A/B vs C/D".
+
+Return JSON array. Each element: { betType, amountCents, players, description, isRoundRobin, roundRobinSubtype, teamAPlayers, teamBPlayers, keyedPlayers }`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -62,6 +71,11 @@ Return JSON array. Each element: { betType, amountCents, players, description }`
             amountCents: { type: GenAIType.INTEGER },
             players: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
             description: { type: GenAIType.STRING },
+            isRoundRobin: { type: GenAIType.BOOLEAN },
+            roundRobinSubtype: { type: GenAIType.STRING },
+            teamAPlayers: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
+            teamBPlayers: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
+            keyedPlayers: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
           },
           required: ["betType", "amountCents", "players", "description"],
         },
