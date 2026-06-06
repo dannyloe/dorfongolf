@@ -335,6 +335,22 @@ function SmsBetsPanel({
                       }}
                       data-testid={`sms-bet-edit-description-${bet.id}-${i}`}
                     />
+                    <label
+                      className="flex items-center gap-1.5 cursor-pointer w-fit"
+                      data-testid={`sms-bet-edit-rr-toggle-${bet.id}-${i}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-3.5 h-3.5 accent-blue-600"
+                        checked={d.isRoundRobin ?? false}
+                        onChange={e => {
+                          const next = [...drafts];
+                          next[i] = { ...next[i], isRoundRobin: e.target.checked };
+                          setDrafts(next);
+                        }}
+                      />
+                      <span className="text-[10px] font-medium text-muted-foreground">Round Robin</span>
+                    </label>
                     <div className="flex gap-1">
                       <Input
                         className="h-6 text-xs w-20"
