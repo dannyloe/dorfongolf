@@ -24,6 +24,10 @@ export default function SmsConsent() {
           Reply <strong>HELP</strong> for help.
         </p>
         <p>
+          SMS messages are delivered via <a href="https://www.plivo.com/legal/privacy/" target="_blank" rel="noopener noreferrer">Plivo</a>.
+          Your phone number may be processed by Plivo when you use SMS features.
+        </p>
+        <p>
           <a href="/privacy">Privacy Policy</a> |{" "}
           <a href="/terms">Terms of Service</a>
         </p>
@@ -86,6 +90,13 @@ export default function SmsConsent() {
                 <p><strong className="text-foreground">Message frequency:</strong> Typically 1–5 messages per golf round or match. Message &amp; data rates may apply.</p>
                 <p>Reply <strong className="text-foreground">STOP</strong> to any message to opt out at any time.</p>
                 <p>Reply <strong className="text-foreground">HELP</strong> to any message for assistance.</p>
+                <p>
+                  SMS messages are delivered via Plivo. Your phone number may be processed by Plivo when you use SMS features.{" "}
+                  <a href="https://www.plivo.com/legal/privacy/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                    Plivo's Privacy Policy
+                  </a>{" "}
+                  applies to data processed through their platform.
+                </p>
                 <p className="pt-1">
                   <Link href="/privacy" className="text-primary underline underline-offset-2">Privacy Policy</Link>
                   {" · "}

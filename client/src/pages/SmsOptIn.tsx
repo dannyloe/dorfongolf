@@ -206,6 +206,13 @@ export default function SmsOptIn() {
                   <p>Message and data rates may apply.</p>
                   <p>Reply <strong className="text-foreground">HELP</strong> for help or <strong className="text-foreground">STOP</strong> to opt out at any time.</p>
                   <p>
+                    SMS messages are delivered via Plivo. Your phone number may be processed by Plivo when you use SMS features.{" "}
+                    <a href="https://www.plivo.com/legal/privacy/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                      Plivo's Privacy Policy
+                    </a>{" "}
+                    applies to data processed through their platform.
+                  </p>
+                  <p>
                     See our{" "}
                     <Link href="/terms" className="text-primary underline underline-offset-2">
                       Terms of Service
