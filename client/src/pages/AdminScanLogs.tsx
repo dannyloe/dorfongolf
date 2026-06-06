@@ -589,7 +589,7 @@ export default function AdminScanLogs() {
     },
   });
 
-  const isAdmin = user && (user as any).claims?.sub === ADMIN_USER_ID;
+  const isAdmin = user && ((user as any).isAdmin === true || (user as any).id === ADMIN_USER_ID);
 
   const courseNames = useMemo(() => {
     if (!logs) return [];
