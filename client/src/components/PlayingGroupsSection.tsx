@@ -463,6 +463,7 @@ export function PlayingGroupsSection({
   const [preview, setPreview] = useState<GroupEntry[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [cartsPanelOpen, setCartsPanelOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -736,7 +737,23 @@ export function PlayingGroupsSection({
 
       {visible && (
         <div className="space-y-4 mt-3">
-          {!preview && (
+          {preview && (
+            <button
+              onClick={() => setCartsPanelOpen((v) => !v)}
+              className="flex items-center gap-2 w-full text-left py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-toggle-cart-pairings"
+            >
+              <Merge className="w-3.5 h-3.5" />
+              Cart Pairings
+              {cartsPanelOpen ? (
+                <ChevronUp className="w-3.5 h-3.5 ml-auto" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 ml-auto" />
+              )}
+            </button>
+          )}
+
+          {(!preview || cartsPanelOpen) && (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
