@@ -2340,18 +2340,31 @@ export async function registerRoutes(
       const codeMatch = rawBody.toUpperCase().match(/\b([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4})\b/);
       const matchCode = codeMatch?.[1];
 
-      if (!matchCode) {
-        const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Please include your 4-character match code in the message body along with a photo of the scorecard.</Message></Response>`;
-        res.type("text/xml").send(twimlReply);
-        return;
-      }
+      let match: Awaited<ReturnType<typeof storage.getMatchByCode>> | undefined;
 
-      // Look up match by extracted 4-char code
-      const match = await storage.getMatchByCode(matchCode);
-      if (!match) {
-        const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, we couldn't find a match with code "${matchCode}". Check the code and try again.</Message></Response>`;
-        res.type("text/xml").send(twimlReply);
-        return;
+      if (!matchCode) {
+        // No match code in message — try to resolve by sender's phone number
+        const activeMatches = await storage.getActiveMatchesByPhone(from);
+        if (activeMatches.length === 1) {
+          match = activeMatches[0];
+          console.log(`[SMS Inbound] Resolved match ${match.id} by phone lookup for ${from.replace(/\d(?=\d{4})/g, "*")}`);
+        } else if (activeMatches.length > 1) {
+          const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>You're in multiple active matches. Please include your 4-character match code in the message so we know which match to apply it to.</Message></Response>`;
+          res.type("text/xml").send(twimlReply);
+          return;
+        } else {
+          const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Please include your 4-character match code in the message body along with a photo of the scorecard.</Message></Response>`;
+          res.type("text/xml").send(twimlReply);
+          return;
+        }
+      } else {
+        // Look up match by extracted 4-char code
+        match = await storage.getMatchByCode(matchCode);
+        if (!match) {
+          const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Sorry, we couldn't find a match with code "${matchCode}". Check the code and try again.</Message></Response>`;
+          res.type("text/xml").send(twimlReply);
+          return;
+        }
       }
 
       // If no media, try to parse the text body as a bet description or scores

@@ -246,6 +246,7 @@ export const presetPlayers = pgTable("preset_players", {
   lastActivityAt: timestamp("last_activity_at"),
   createdAt: timestamp("created_at").defaultNow(),
   userId: text("user_id").unique().references(() => users.id, { onDelete: "set null" }), // nullable — one user per player
+  phone: text("phone").unique(), // optional — admin-supplied phone for players without accounts yet
 });
 
 // Dynamic player aliases - supplements the hardcoded PLAYER_ALIASES

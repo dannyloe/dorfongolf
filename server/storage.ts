@@ -176,6 +176,7 @@ export interface IStorage {
   updatePendingSmsBet(id: number, data: Partial<{ status: string; parsedBets: ParsedSmsBet[] | null; duplicateOf: string | null }>): Promise<PendingSmsBet>;
   deletePendingSmsBet(id: number): Promise<boolean>;
   getUserByPhone(phone: string): Promise<typeof users.$inferSelect | undefined>;
+  getActiveMatchesByPhone(phone: string): Promise<Match[]>;
   getGroupMembersWithPhone(groupId: number): Promise<{ phone: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null }[]>;
 
   // SMS opt-in
@@ -393,6 +394,92 @@ export class DatabaseStorage implements IStorage {
       if (user) return user;
     }
     return undefined;
+  }
+
+  async getActiveMatchesByPhone(phone: string): Promise<Match[]> {
+    const matchIdSet = new Set<number>();
+
+    // Normalize the phone number variants to try
+    const digits = phone.replace(/\D/g, '');
+    const phoneCandidates = [...new Set([phone, `+1${digits}`, digits].filter(Boolean))];
+
+    // --- Path 1: user-account-based lookup ---
+    const user = await this.getUserByPhone(phone);
+    if (user) {
+      // Matches created by this user
+      const createdMatches = await db
+        .select({ id: matches.id })
+        .from(matches)
+        .where(and(eq(matches.creatorId, user.id), eq(matches.completed, false)));
+      createdMatches.forEach(m => matchIdSet.add(m.id));
+
+      // Matches where user has a matchRole (organizer/viewer)
+      const roleMatches = await db
+        .select({ matchId: matchRoles.matchId })
+        .from(matchRoles)
+        .innerJoin(matches, eq(matchRoles.matchId, matches.id))
+        .where(and(eq(matchRoles.userId, user.id), eq(matches.completed, false)));
+      roleMatches.forEach(m => matchIdSet.add(m.matchId));
+
+      // Matches where user is a player record (by userId)
+      const playerUserMatches = await db
+        .select({ matchId: players.matchId })
+        .from(players)
+        .innerJoin(matches, eq(players.matchId, matches.id))
+        .where(and(eq(players.userId, user.id), eq(matches.completed, false)));
+      playerUserMatches.forEach(m => matchIdSet.add(m.matchId));
+    }
+
+    // --- Path 2: presetPlayer-based lookup (independent of user account) ---
+    // Two sub-paths to find the relevant presetPlayer ID:
+    //   2a. Direct phone match on presetPlayers.phone (admin-added players without accounts)
+    //   2b. Via the linked user account (userId link, then presetPlayerName fallback)
+    let resolvedPresetPlayerId: number | null = null;
+
+    // 2a: Direct lookup by phone stored on the presetPlayers row
+    for (const candidate of phoneCandidates) {
+      const [ppByPhone] = await db
+        .select({ id: presetPlayers.id })
+        .from(presetPlayers)
+        .where(eq(presetPlayers.phone, candidate));
+      if (ppByPhone) {
+        resolvedPresetPlayerId = ppByPhone.id;
+        break;
+      }
+    }
+
+    // 2b: Via the user's linked presetPlayer (when no direct phone match)
+    if (resolvedPresetPlayerId === null && user) {
+      // Primary: explicit userId link on the presetPlayers row
+      const [ppByUserId] = await db
+        .select({ id: presetPlayers.id })
+        .from(presetPlayers)
+        .where(eq(presetPlayers.userId, user.id));
+      if (ppByUserId) {
+        resolvedPresetPlayerId = ppByUserId.id;
+      } else if (user.presetPlayerName) {
+        // Fallback: match by the name the user claimed (handles edge cases where
+        // presetPlayers.userId hasn't been synced yet)
+        const [ppByName] = await db
+          .select({ id: presetPlayers.id })
+          .from(presetPlayers)
+          .where(eq(presetPlayers.name, user.presetPlayerName));
+        if (ppByName) resolvedPresetPlayerId = ppByName.id;
+      }
+    }
+
+    if (resolvedPresetPlayerId !== null) {
+      const presetPlayerMatches = await db
+        .select({ matchId: players.matchId })
+        .from(players)
+        .innerJoin(matches, eq(players.matchId, matches.id))
+        .where(and(eq(players.presetPlayerId, resolvedPresetPlayerId), eq(matches.completed, false)));
+      presetPlayerMatches.forEach(m => matchIdSet.add(m.matchId));
+    }
+
+    if (matchIdSet.size === 0) return [];
+
+    return db.select().from(matches).where(inArray(matches.id, Array.from(matchIdSet)));
   }
 
   async createSmsOptIn(data: { phoneNumber: string; consentGiven: boolean; userId?: string | null }): Promise<SmsOptIn> {
