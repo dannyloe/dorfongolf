@@ -53,6 +53,12 @@ export default function TermsOfService() {
             <p>
               If you opt in to SMS alerts, you consent to receive text messages from Golf Betting regarding match invitations, score updates, bet results, and match reminders. You may opt out at any time by replying <strong className="text-foreground">STOP</strong> to any message. Message and data rates may apply. Up to 4 messages per active match, per week.
             </p>
+            <p>
+              SMS messages are delivered via Plivo. Your phone number may be processed by Plivo when you use SMS features. Data processed through Plivo is subject to{" "}
+              <a href="https://www.plivo.com/legal/privacy/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                Plivo's Privacy Policy
+              </a>.
+            </p>
           </section>
 
           <section className="space-y-2">
