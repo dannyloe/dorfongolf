@@ -121,7 +121,6 @@ function SortablePlayerRow({
           ref={inputRef}
           type="text"
           inputMode="numeric"
-          pattern="[0-9]*"
           maxLength={2}
           value={editValue}
           onChange={(e) => onScoreChange(e.target.value)}
@@ -487,7 +486,19 @@ export default function QuickScoreEntry() {
       }
     } catch (err) {
       if (myToken !== scanTokenRef.current) return;
-      setScanError(err instanceof Error ? err.message : "Failed to process scorecard");
+      const rawMsg = err instanceof Error ? err.message : "Failed to process scorecard";
+      // iOS Safari aborts fetch() with "Load failed" when the screen locks or the
+      // app is backgrounded during the long Gemini call. Map it to a friendlier message.
+      const networkAbort =
+        rawMsg === "Load failed" ||
+        rawMsg === "Failed to fetch" ||
+        rawMsg.includes("NetworkError") ||
+        rawMsg.includes("network request failed");
+      setScanError(
+        networkAbort
+          ? "Scan was interrupted — keep the app open and screen on while scanning. Tap 'Try again'."
+          : rawMsg
+      );
     } finally {
       if (myToken === scanTokenRef.current) {
         setScanInProgress(false);
