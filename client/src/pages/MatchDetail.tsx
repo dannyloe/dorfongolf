@@ -239,15 +239,47 @@ function SmsBetsPanel({
   applySmsBet,
   updateSmsBet,
   deleteSmsBet,
+  highlightTrigger,
+  onHighlightClear,
 }: {
   bets: PendingSmsBet[];
   applySmsBet: ReturnType<typeof useApplyPendingSmsBet>;
   updateSmsBet: ReturnType<typeof useUpdatePendingSmsBet>;
   deleteSmsBet: ReturnType<typeof useDeletePendingSmsBet>;
+  highlightTrigger?: { id: number; nonce: number } | null;
+  onHighlightClear?: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<ParsedBetDraft[]>([]);
+  const betRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (highlightTrigger == null) return;
+    setCollapsed(false);
+  }, [highlightTrigger]);
+
+  useEffect(() => {
+    if (highlightTrigger == null) return;
+    if (collapsed) return;
+    const raf = requestAnimationFrame(() => {
+      const el = betRefs.current.get(highlightTrigger.id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.remove("sms-bet-highlight");
+        void el.offsetWidth;
+        el.classList.add("sms-bet-highlight");
+        const timer = setTimeout(() => {
+          el.classList.remove("sms-bet-highlight");
+          onHighlightClear?.();
+        }, 1500);
+        return () => clearTimeout(timer);
+      } else {
+        onHighlightClear?.();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [highlightTrigger, collapsed]);
 
   function startEdit(bet: PendingSmsBet) {
     setEditingId(bet.id);
@@ -302,6 +334,7 @@ function SmsBetsPanel({
         return (
           <div
             key={bet.id}
+            ref={(el) => { if (el) betRefs.current.set(bet.id, el); else betRefs.current.delete(bet.id); }}
             className={`p-3 rounded-lg border ${bet.status === "duplicate" ? "border-yellow-300/60 bg-yellow-50/60 dark:bg-yellow-900/10" : bet.status === "applied" ? "border-emerald-300/60 bg-emerald-50/60 dark:bg-emerald-900/10" : "border-border/50 bg-muted/30"}`}
             data-testid={`pending-sms-bet-${bet.id}`}
           >
@@ -773,6 +806,7 @@ export default function MatchDetail() {
   const [keyedTeamAIds, setKeyedTeamAIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
   const [expandedRrHeaders, setExpandedRrHeaders] = useState<Set<number>>(new Set());
+  const [smsBetHighlightTrigger, setSmsBetHighlightTrigger] = useState<{ id: number; nonce: number } | null>(null);
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
   const [matchesCollapsed, setMatchesCollapsed] = useState(false);
@@ -2517,6 +2551,8 @@ export default function MatchDetail() {
                 applySmsBet={applySmsBet}
                 updateSmsBet={updateSmsBet}
                 deleteSmsBet={deleteSmsBet}
+                highlightTrigger={smsBetHighlightTrigger}
+                onHighlightClear={() => setSmsBetHighlightTrigger(null)}
               />
             )}
 
@@ -4357,6 +4393,19 @@ export default function MatchDetail() {
                             · {em.smsSenderName}
                           </span>
                         )}
+                        {em.sourceSmsBetId != null && pendingSmsBets.some(b => b.id === em.sourceSmsBetId && b.status !== "dismissed") && (
+                          <button
+                            onClick={() => {
+                              if (em.sourceSmsBetId == null) return;
+                              setSmsBetHighlightTrigger({ id: em.sourceSmsBetId, nonce: Date.now() });
+                            }}
+                            className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 shrink-0 flex items-center gap-0.5 underline underline-offset-2"
+                            data-testid={`button-rr-jump-to-bet-${em.sourceSmsBetId}`}
+                            title="Jump to source bet in Pending Bets panel"
+                          >
+                            Source bet ↑
+                          </button>
+                        )}
                         {em.smsRawText && (
                           <button
                             onClick={() => {
@@ -4368,7 +4417,7 @@ export default function MatchDetail() {
                                 return next;
                               });
                             }}
-                            className="ml-auto text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 shrink-0 flex items-center gap-0.5"
+                            className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 shrink-0 flex items-center gap-0.5"
                             data-testid={`button-rr-expand-${em.sourceSmsBetId}`}
                           >
                             {isRrHeaderExpanded ? 'Hide' : 'View text'}
