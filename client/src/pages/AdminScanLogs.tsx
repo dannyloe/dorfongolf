@@ -508,7 +508,7 @@ function PatternRow({ pattern, onToggleAddressed }: { pattern: ScanPattern; onTo
 const ADMIN_USER_ID = "52861828";
 
 export default function AdminScanLogs() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test">("logs");
@@ -625,6 +625,15 @@ export default function AdminScanLogs() {
     const pct = (n: number) => scorecardTotal > 0 ? Math.round((n / scorecardTotal) * 100) + "%" : "—";
     return { total, scorecardTotal, betSlipTotal, accepted, edited, shifted, pct };
   }, [filteredLogs]);
+
+  if (authLoading) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Scan Correction Logs</h1>
+        <p className="text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
 
   if (!user || !isAdmin) {
     return (
