@@ -6174,6 +6174,7 @@ Transcript to parse: "${transcript}"`;
                   useNetScoring: false,
                   startOnBack9: false,
                   isRoundRobinGenerated: true,
+                  sourceSmsBetId: betId,
                 });
                 createdEventMatches.push(em);
               } catch (emErr) {

@@ -145,6 +145,7 @@ export const eventMatches = pgTable("event_matches", {
   hasBeenReplicated: boolean("has_been_replicated").notNull().default(false),
   startOnBack9: boolean("start_on_back_9").notNull().default(false), // when true, play starts on hole 10 (back 9 first)
   isRoundRobinGenerated: boolean("is_round_robin_generated").notNull().default(false),
+  sourceSmsBetId: integer("source_sms_bet_id"), // FK to pending_sms_bets.id for round robin SMS bets
   deathMatchBaseBet: integer("death_match_base_bet"), // in cents - the base bet for death match
   deathMatchBestBallBet: integer("death_match_best_ball_bet"), // in cents - best ball stroke play bet (defaults to base)
   deathMatchSecondBallBet: integer("death_match_second_ball_bet"), // in cents - match play on second ball (defaults to base/2)
@@ -815,6 +816,7 @@ export type CreateEventMatchRequest = {
   autoPressTwoThirdBallFront9?: boolean;
   autoPressTwoThirdBallBack9?: boolean;
   autoPressTwoThirdBallOverall?: boolean;
+  sourceSmsBetId?: number;
 };
 
 export type GroupWithDetails = Group & {

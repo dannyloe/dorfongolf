@@ -1009,6 +1009,7 @@ export class DatabaseStorage implements IStorage {
       useNetScoring: data.useNetScoring ?? false,
       startOnBack9: data.startOnBack9 ?? false,
       isRoundRobinGenerated: data.isRoundRobinGenerated ?? false,
+      sourceSmsBetId: data.sourceSmsBetId ?? null,
       deathMatchBaseBet: data.deathMatchBaseBet ?? null,
       deathMatchBestBallBet: data.deathMatchBestBallBet ?? null,
       deathMatchSecondBallBet: data.deathMatchSecondBallBet ?? null,

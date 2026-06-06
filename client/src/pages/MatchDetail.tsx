@@ -4272,6 +4272,18 @@ export default function MatchDetail() {
               const possibleDupMatchIds = new Set(
                 [...looseSigToIds.values()].filter(ids => ids.length > 1).flat().filter(id => !exactDupMatchIds.has(id))
               );
+
+              // Group filtered matches by sourceSmsBetId so we can render group headers
+              const rrGroupSize = new Map<number, number>();
+              const rrGroupFirstId = new Map<number, number>();
+              for (const em of filteredMatches) {
+                if (em.isRoundRobinGenerated && em.sourceSmsBetId != null) {
+                  const sid = em.sourceSmsBetId;
+                  rrGroupSize.set(sid, (rrGroupSize.get(sid) ?? 0) + 1);
+                  if (!rrGroupFirstId.has(sid)) rrGroupFirstId.set(sid, em.id);
+                }
+              }
+
               return filteredMatches.map((em) => {
               const teamA = em.teams[0];
               const teamB = em.teams[1];
@@ -4305,8 +4317,21 @@ export default function MatchDetail() {
               const isExpanded = expandedMatch === em.id;
               const pressMatches = eventMatches.filter(pm => pm.parentMatchId === em.id);
 
+              const isRrGroupFirst = em.isRoundRobinGenerated && em.sourceSmsBetId != null && rrGroupFirstId.get(em.sourceSmsBetId) === em.id;
+              const rrCount = em.sourceSmsBetId != null ? (rrGroupSize.get(em.sourceSmsBetId) ?? 0) : 0;
+
               return (
-                <div key={em.id} className={`border rounded-xl overflow-hidden ${exactDupMatchIds.has(em.id) ? 'border-red-400 dark:border-red-500' : possibleDupMatchIds.has(em.id) ? 'border-yellow-400 dark:border-yellow-500' : 'border-border'}`}>
+                <Fragment key={em.id}>
+                  {isRrGroupFirst && (
+                    <div className="flex items-center gap-2 pt-1 pb-0.5" data-testid={`label-rr-group-${em.sourceSmsBetId}`}>
+                      <MessageSquare className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0" />
+                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                        From SMS Round Robin · {rrCount} {rrCount === 1 ? 'pairing' : 'pairings'}
+                      </span>
+                      <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
+                    </div>
+                  )}
+                <div className={`border rounded-xl overflow-hidden ${exactDupMatchIds.has(em.id) ? 'border-red-400 dark:border-red-500' : possibleDupMatchIds.has(em.id) ? 'border-yellow-400 dark:border-yellow-500' : em.isRoundRobinGenerated && em.sourceSmsBetId != null ? 'border-blue-200 dark:border-blue-800' : 'border-border'}`}>
                   <div className="flex items-center">
                     <button
                       onClick={() => setExpandedMatch(isExpanded ? null : em.id)}
@@ -7363,6 +7388,7 @@ export default function MatchDetail() {
                     </motion.div>
                   )}
                 </div>
+                </Fragment>
               );
             });
             })()}

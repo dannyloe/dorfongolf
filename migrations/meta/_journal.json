@@ -113,6 +113,13 @@
       "when": 1780760000000,
       "tag": "0015_add_preset_player_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780900000000,
+      "tag": "0016_add_source_sms_bet_id_to_event_matches",
+      "breakpoints": true
     }
   ]
 }
