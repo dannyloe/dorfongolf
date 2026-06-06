@@ -323,9 +323,18 @@ function SmsBetsPanel({
                 {drafts.map((d, i) => {
                   const pairings = d.isRoundRobin ? rrPairingCount(d.teamAPlayers ?? "", d.teamBPlayers ?? "") : 0;
                   return (
-                  <div key={i} className="space-y-1 bg-background/80 rounded p-2 border border-border/40">
+                  <div key={i} className="space-y-1 bg-background/80 rounded p-2 border border-border/40 relative">
+                    <button
+                      type="button"
+                      className="absolute top-1.5 right-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                      onClick={() => setDrafts(drafts.filter((_, idx) => idx !== i))}
+                      data-testid={`button-remove-sms-draft-${bet.id}-${i}`}
+                      title="Remove this bet"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                     <Input
-                      className="h-6 text-xs"
+                      className="h-6 text-xs pr-6"
                       value={d.description}
                       placeholder="Description"
                       onChange={e => {
@@ -434,6 +443,14 @@ function SmsBetsPanel({
                   </div>
                   );
                 })}
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
+                  onClick={() => setDrafts([...drafts, { betType: "", amountCents: 0, players: "", description: "", isRoundRobin: false, teamAPlayers: "", teamBPlayers: "", keyedPlayers: "" }])}
+                  data-testid={`button-add-sms-draft-${bet.id}`}
+                >
+                  <Plus className="w-3 h-3" /> Add bet
+                </button>
                 <div className="flex gap-1">
                   <Button size="sm" className="h-6 text-xs px-2" onClick={saveEdit} disabled={updateSmsBet.isPending} data-testid={`button-save-sms-bet-edit-${bet.id}`}>
                     {updateSmsBet.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
