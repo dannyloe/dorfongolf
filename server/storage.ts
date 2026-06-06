@@ -894,7 +894,30 @@ export class DatabaseStorage implements IStorage {
       teamsByEm.set(t.eventMatchId, arr);
     }
 
-    return ems.map(em => ({ ...em, teams: teamsByEm.get(em.id) ?? [] }));
+    // Attach SMS source info for round-robin generated matches
+    const smsBetIds = Array.from(new Set(
+      ems.map(e => e.sourceSmsBetId).filter((id): id is number => id != null)
+    ));
+    const smsMap = new Map<number, { senderName: string; rawText: string }>();
+    if (smsBetIds.length > 0) {
+      const smsBets = await db
+        .select({ id: pendingSmsBets.id, senderName: pendingSmsBets.senderName, rawText: pendingSmsBets.rawText })
+        .from(pendingSmsBets)
+        .where(inArray(pendingSmsBets.id, smsBetIds));
+      for (const s of smsBets) {
+        smsMap.set(s.id, { senderName: s.senderName, rawText: s.rawText });
+      }
+    }
+
+    return ems.map(em => {
+      const smsInfo = em.sourceSmsBetId != null ? smsMap.get(em.sourceSmsBetId) : undefined;
+      return {
+        ...em,
+        teams: teamsByEm.get(em.id) ?? [],
+        smsSenderName: smsInfo?.senderName ?? null,
+        smsRawText: smsInfo?.rawText ?? null,
+      };
+    });
   }
 
   async updateMatchStatus(matchId: number, completed: boolean): Promise<Match> {

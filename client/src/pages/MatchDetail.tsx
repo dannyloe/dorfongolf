@@ -133,6 +133,10 @@ interface EventMatch {
   autoPressThreeBallBack9?: boolean;
   autoPressThreeBallOverall?: boolean;
   teams: Team[];
+  isRoundRobinGenerated?: boolean;
+  sourceSmsBetId?: number | null;
+  smsSenderName?: string | null;
+  smsRawText?: string | null;
 }
 
 function ScoreCell({ score, par, testId, strokesReceived = 0 }: { score: number | null; par: number; testId: string; strokesReceived?: number }) {
@@ -768,6 +772,7 @@ export default function MatchDetail() {
   const [teamBPlayerIds, setTeamBPlayerIds] = useState<number[]>([]);
   const [keyedTeamAIds, setKeyedTeamAIds] = useState<number[]>([]);
   const [expandedMatch, setExpandedMatch] = useState<number | null>(null);
+  const [expandedRrHeaders, setExpandedRrHeaders] = useState<Set<number>>(new Set());
   const [autoPressOriginal, setAutoPressOriginal] = useState(true);
   const [addPlayerCollapsed, setAddPlayerCollapsed] = useState(true);
   const [matchesCollapsed, setMatchesCollapsed] = useState(false);
@@ -4336,16 +4341,52 @@ export default function MatchDetail() {
 
               const isRrGroupFirst = em.isRoundRobinGenerated && em.sourceSmsBetId != null && rrGroupFirstId.get(em.sourceSmsBetId) === em.id;
               const rrCount = em.sourceSmsBetId != null ? (rrGroupSize.get(em.sourceSmsBetId) ?? 0) : 0;
+              const isRrHeaderExpanded = em.sourceSmsBetId != null && expandedRrHeaders.has(em.sourceSmsBetId);
 
               return (
                 <Fragment key={em.id}>
                   {isRrGroupFirst && (
-                    <div className="flex items-center gap-2 pt-1 pb-0.5" data-testid={`label-rr-group-${em.sourceSmsBetId}`}>
-                      <MessageSquare className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0" />
-                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                        From SMS Round Robin · {rrCount} {rrCount === 1 ? 'pairing' : 'pairings'}
-                      </span>
-                      <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
+                    <div className="flex flex-col gap-0.5 pt-1 pb-0.5" data-testid={`label-rr-group-${em.sourceSmsBetId}`}>
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0" />
+                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                          From SMS Round Robin · {rrCount} {rrCount === 1 ? 'pairing' : 'pairings'}
+                        </span>
+                        {em.smsSenderName && (
+                          <span className="text-xs text-blue-500 dark:text-blue-400">
+                            · {em.smsSenderName}
+                          </span>
+                        )}
+                        {em.smsRawText && (
+                          <button
+                            onClick={() => {
+                              if (em.sourceSmsBetId == null) return;
+                              setExpandedRrHeaders(prev => {
+                                const next = new Set(prev);
+                                if (next.has(em.sourceSmsBetId!)) next.delete(em.sourceSmsBetId!);
+                                else next.add(em.sourceSmsBetId!);
+                                return next;
+                              });
+                            }}
+                            className="ml-auto text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 shrink-0 flex items-center gap-0.5"
+                            data-testid={`button-rr-expand-${em.sourceSmsBetId}`}
+                          >
+                            {isRrHeaderExpanded ? 'Hide' : 'View text'}
+                            <ChevronDown className={`w-3 h-3 transition-transform ${isRrHeaderExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                        )}
+                        <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
+                      </div>
+                      {!isRrHeaderExpanded && em.smsRawText && (
+                        <p className="text-xs text-muted-foreground pl-5 truncate" data-testid={`text-rr-snippet-${em.sourceSmsBetId}`}>
+                          "{em.smsRawText.length > 80 ? em.smsRawText.slice(0, 80) + '…' : em.smsRawText}"
+                        </p>
+                      )}
+                      {isRrHeaderExpanded && em.smsRawText && (
+                        <p className="text-xs text-muted-foreground pl-5 whitespace-pre-wrap break-words bg-blue-50 dark:bg-blue-950/30 rounded p-2" data-testid={`text-rr-fulltext-${em.sourceSmsBetId}`}>
+                          "{em.smsRawText}"
+                        </p>
+                      )}
                     </div>
                   )}
                 <div className={`border rounded-xl overflow-hidden ${exactDupMatchIds.has(em.id) ? 'border-red-400 dark:border-red-500' : possibleDupMatchIds.has(em.id) ? 'border-yellow-400 dark:border-yellow-500' : em.isRoundRobinGenerated && em.sourceSmsBetId != null ? 'border-blue-200 dark:border-blue-800' : 'border-border'}`}>
