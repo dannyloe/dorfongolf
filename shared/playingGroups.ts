@@ -5,6 +5,23 @@
 
 export type LockedSet = string[];
 
+/**
+ * A cart pair represents one golf cart that holds up to 2 players by default,
+ * or more if multiple carts have been merged into a pre-group.
+ */
+export interface CartPair {
+  players: string[];
+  isMerged?: boolean;
+}
+
+/**
+ * Compute the number of 2-seat cart slots needed for n players.
+ * e.g. 4 players → 2 carts, 5 players → 3 carts, 6 players → 3 carts.
+ */
+export function computeCartCount(n: number): number {
+  return Math.ceil(n / 2);
+}
+
 export interface GeneratedGroup {
   players: string[];
   lockedPlayerNames: Set<string>;
