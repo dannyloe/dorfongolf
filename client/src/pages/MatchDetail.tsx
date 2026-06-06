@@ -211,7 +211,24 @@ function ScoreCell({ score, par, testId, strokesReceived = 0 }: { score: number 
 
 // ─── SMS Bets Panel with inline edit ─────────────────────────────────────────
 
-type ParsedBetDraft = { betType: string; amountCents: number; players: string; description: string };
+type ParsedBetDraft = {
+  betType: string;
+  amountCents: number;
+  players: string;
+  description: string;
+  isRoundRobin?: boolean;
+  teamAPlayers?: string;
+  teamBPlayers?: string;
+  keyedPlayers?: string;
+};
+
+function rrPairingCount(groupA: string, groupB: string): number {
+  const aLen = groupA.split(",").map(s => s.trim()).filter(Boolean).length;
+  const bLen = groupB.split(",").map(s => s.trim()).filter(Boolean).length;
+  const aTeams = aLen >= 2 ? (aLen * (aLen - 1)) / 2 : 0;
+  const bTeams = bLen >= 2 ? (bLen * (bLen - 1)) / 2 : 0;
+  return aTeams * bTeams;
+}
 
 function SmsBetsPanel({
   bets,
@@ -230,8 +247,17 @@ function SmsBetsPanel({
 
   function startEdit(bet: PendingSmsBet) {
     setEditingId(bet.id);
-    const pb = (bet.parsedBets ?? []) as Array<{ betType: string; amountCents: number; players: string[]; description: string }>;
-    setDrafts(pb.map(b => ({ ...b, players: b.players.join(", ") })));
+    const pb = (bet.parsedBets ?? []) as import("@shared/schema").ParsedSmsBet[];
+    setDrafts(pb.map(b => ({
+      betType: b.betType,
+      amountCents: b.amountCents,
+      players: b.players.join(", "),
+      description: b.description,
+      isRoundRobin: b.isRoundRobin ?? false,
+      teamAPlayers: (b.teamAPlayers ?? []).join(", "),
+      teamBPlayers: (b.teamBPlayers ?? []).join(", "),
+      keyedPlayers: (b.keyedPlayers ?? []).join(", "),
+    })));
   }
 
   function cancelEdit() {
@@ -244,8 +270,12 @@ function SmsBetsPanel({
     const parsedBets: PendingSmsBet["parsedBets"] = drafts.map(d => ({
       betType: d.betType.trim(),
       amountCents: d.amountCents,
-      players: d.players.split(",").map(p => p.trim()).filter(Boolean),
+      players: d.isRoundRobin ? [] : d.players.split(",").map(p => p.trim()).filter(Boolean),
       description: d.description.trim(),
+      isRoundRobin: d.isRoundRobin ?? false,
+      teamAPlayers: d.isRoundRobin ? (d.teamAPlayers ?? "").split(",").map(p => p.trim()).filter(Boolean) : undefined,
+      teamBPlayers: d.isRoundRobin ? (d.teamBPlayers ?? "").split(",").map(p => p.trim()).filter(Boolean) : undefined,
+      keyedPlayers: d.isRoundRobin ? (d.keyedPlayers ?? "").split(",").map(p => p.trim()).filter(Boolean) : undefined,
     }));
     updateSmsBet.mutate(
       { betId: editingId, parsedBets },
@@ -290,7 +320,9 @@ function SmsBetsPanel({
             {/* Parsed bets — view or edit mode */}
             {isEditing ? (
               <div className="space-y-2 mb-2">
-                {drafts.map((d, i) => (
+                {drafts.map((d, i) => {
+                  const pairings = d.isRoundRobin ? rrPairingCount(d.teamAPlayers ?? "", d.teamBPlayers ?? "") : 0;
+                  return (
                   <div key={i} className="space-y-1 bg-background/80 rounded p-2 border border-border/40">
                     <Input
                       className="h-6 text-xs"
@@ -317,20 +349,75 @@ function SmsBetsPanel({
                         }}
                         data-testid={`sms-bet-edit-amount-${bet.id}-${i}`}
                       />
-                      <Input
-                        className="h-6 text-xs flex-1"
-                        value={d.players}
-                        placeholder="Players (comma-separated)"
-                        onChange={e => {
-                          const next = [...drafts];
-                          next[i] = { ...next[i], players: e.target.value };
-                          setDrafts(next);
-                        }}
-                        data-testid={`sms-bet-edit-players-${bet.id}-${i}`}
-                      />
+                      {!d.isRoundRobin && (
+                        <Input
+                          className="h-6 text-xs flex-1"
+                          value={d.players}
+                          placeholder="Players (comma-separated)"
+                          onChange={e => {
+                            const next = [...drafts];
+                            next[i] = { ...next[i], players: e.target.value };
+                            setDrafts(next);
+                          }}
+                          data-testid={`sms-bet-edit-players-${bet.id}-${i}`}
+                        />
+                      )}
                     </div>
+                    {d.isRoundRobin && (
+                      <div className="space-y-1 mt-1">
+                        <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded px-1 font-medium inline-block mb-0.5">Round Robin</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground w-14 shrink-0">Group A</span>
+                          <Input
+                            className="h-6 text-xs flex-1"
+                            value={d.teamAPlayers ?? ""}
+                            placeholder="Group A players (comma-separated)"
+                            onChange={e => {
+                              const next = [...drafts];
+                              next[i] = { ...next[i], teamAPlayers: e.target.value };
+                              setDrafts(next);
+                            }}
+                            data-testid={`sms-bet-edit-group-a-${bet.id}-${i}`}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground w-14 shrink-0">Group B</span>
+                          <Input
+                            className="h-6 text-xs flex-1"
+                            value={d.teamBPlayers ?? ""}
+                            placeholder="Group B players (comma-separated)"
+                            onChange={e => {
+                              const next = [...drafts];
+                              next[i] = { ...next[i], teamBPlayers: e.target.value };
+                              setDrafts(next);
+                            }}
+                            data-testid={`sms-bet-edit-group-b-${bet.id}-${i}`}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground w-14 shrink-0">Keyed</span>
+                          <Input
+                            className="h-6 text-xs flex-1"
+                            value={d.keyedPlayers ?? ""}
+                            placeholder="Keyed players (optional, comma-separated)"
+                            onChange={e => {
+                              const next = [...drafts];
+                              next[i] = { ...next[i], keyedPlayers: e.target.value };
+                              setDrafts(next);
+                            }}
+                            data-testid={`sms-bet-edit-keyed-${bet.id}-${i}`}
+                          />
+                        </div>
+                        {pairings > 0 && (
+                          <div className="text-[10px] font-medium text-foreground/70" data-testid={`sms-bet-edit-pairings-${bet.id}-${i}`}>
+                            → {pairings} pairing{pairings !== 1 ? "s" : ""} will be created
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
                 <div className="flex gap-1">
                   <Button size="sm" className="h-6 text-xs px-2" onClick={saveEdit} disabled={updateSmsBet.isPending} data-testid={`button-save-sms-bet-edit-${bet.id}`}>
                     {updateSmsBet.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
