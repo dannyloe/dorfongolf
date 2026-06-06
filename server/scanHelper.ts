@@ -272,14 +272,17 @@ Rules:
 - "rawText" is optional free-form notes about the card.
 
 CRITICAL — subtotal columns must be completely ignored (column-position rule):
-- A standard 18-hole scorecard row contains exactly 20 columns: holes 1–9, then an "Out" subtotal, then holes 10–18, then an "In" or "Total" subtotal.
-- Skip by POSITION, not just by label: the value that appears IMMEDIATELY AFTER hole 9's score in the row (before hole 10 begins) is ALWAYS the "Out" running total — skip it even if there is no "Out" label visible. Likewise, the value IMMEDIATELY AFTER hole 18's score is ALWAYS the "In"/"Total" — skip it.
+- A standard 18-hole scorecard row contains exactly 20 cells: 9 hole scores (holes 1–9), then the "Out" subtotal cell, then 9 hole scores (holes 10–18), then the "In"/"Total" subtotal cell.
+- The 10th cell by position in any player row is ALWAYS the "Out" subtotal — skip it regardless of whether a label ("Out", "Total", or nothing) is visible above it. The 20th cell is always the "In"/"Total" — skip it too.
+- Count cells positionally from left to right: cell 1 = hole 1, cell 2 = hole 2, …, cell 9 = hole 9, cell 10 = OUT (SKIP), cell 11 = hole 10, …, cell 19 = hole 18, cell 20 = IN/Total (SKIP).
 - Do NOT map either of those positional subtotals to any hole number. They are running totals and must be discarded entirely.
-- Even if a subtotal value looks like a plausible single-hole score (e.g. "37" or "4"), it must still be skipped.
+- Even if the subtotal value looks like a plausible single-hole score (e.g. "4" or "5"), it must still be skipped — judge by position, not by value.
 
-CRITICAL — count sanity check:
-- After reading all scores, verify you have exactly 9 scores for holes 1–9 and exactly 9 scores for holes 10–18 (scores that are "" or "X" still count toward the 9).
-- If either half has more than 9 entries, you accidentally included a subtotal column. Remove the extra entry before returning results.
+CRITICAL — count sanity check (MANDATORY before returning):
+- After reading all scores, count: you must have exactly 9 entries for holes 1–9 and exactly 9 entries for holes 10–18 (entries that are "" or "X" still count toward the 9).
+- If either half has more than 9 entries, you accidentally included a subtotal column — remove the extra positional entry (the one at cell 10 or cell 20) before returning.
+- If either half has fewer than 9 entries, a hole score is missing — fill it as "" rather than shifting other scores.
+- NEVER shift real hole scores to fill a gap left by removing a subtotal. Each hole number must map to its correct positional cell.
 
 CRITICAL — large values in score rows:
 - Any value of 20 or higher appearing anywhere in a player's score row is almost certainly a subtotal (e.g. front-9 total = 37), not a hole score. Skip it.

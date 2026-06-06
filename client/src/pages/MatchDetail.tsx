@@ -8554,6 +8554,27 @@ export default function MatchDetail() {
           return dh.some(d => d.playerName === playerName && d.holeNumber === hole);
         };
 
+        const shiftScores = (playerName: string, range: 'front' | 'back', direction: 'left' | 'right') => {
+          const holes = range === 'front' ? [1,2,3,4,5,6,7,8,9] : [10,11,12,13,14,15,16,17,18];
+          setScanEditableScores((prev) => {
+            const playerScores = { ...(prev[playerName] || {}) };
+            if (direction === 'left') {
+              // shift left: hole[i] = hole[i+1], clear last hole
+              for (let i = 0; i < holes.length - 1; i++) {
+                playerScores[holes[i]] = playerScores[holes[i + 1]] ?? "";
+              }
+              playerScores[holes[holes.length - 1]] = "";
+            } else {
+              // shift right: hole[i+1] = hole[i], clear first hole
+              for (let i = holes.length - 1; i > 0; i--) {
+                playerScores[holes[i]] = playerScores[holes[i - 1]] ?? "";
+              }
+              playerScores[holes[0]] = "";
+            }
+            return { ...prev, [playerName]: playerScores };
+          });
+        };
+
         const calculateTotals = (playerName: string) => {
           const holes = scanEditableScores[playerName] || {};
           let front9 = 0; let back9 = 0; let hasAll = true;
@@ -8748,6 +8769,30 @@ export default function MatchDetail() {
                         </div>
                       </div>
 
+                      <div className="flex items-center justify-between px-0.5">
+                        <span className="text-xs text-muted-foreground">Front 9 shift:</span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => shiftScores(scannedPlayer.playerName, 'front', 'left')}
+                            data-testid={`button-shift-front-left-${scannedPlayer.playerName}`}
+                          >
+                            ← Left
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => shiftScores(scannedPlayer.playerName, 'front', 'right')}
+                            data-testid={`button-shift-front-right-${scannedPlayer.playerName}`}
+                          >
+                            Right →
+                          </Button>
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-10 gap-1">
                         {[10,11,12,13,14,15,16,17,18].map((hole) => {
                           const holeData = scannedPlayer.holes.find((h) => h.holeNumber === hole);
@@ -8788,6 +8833,30 @@ export default function MatchDetail() {
                         <div className="text-center">
                           <div className="text-xs text-muted-foreground mb-1">IN</div>
                           <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">{totals.back9 ?? "-"}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between px-0.5">
+                        <span className="text-xs text-muted-foreground">Back 9 shift:</span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => shiftScores(scannedPlayer.playerName, 'back', 'left')}
+                            data-testid={`button-shift-back-left-${scannedPlayer.playerName}`}
+                          >
+                            ← Left
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => shiftScores(scannedPlayer.playerName, 'back', 'right')}
+                            data-testid={`button-shift-back-right-${scannedPlayer.playerName}`}
+                          >
+                            Right →
+                          </Button>
                         </div>
                       </div>
 
