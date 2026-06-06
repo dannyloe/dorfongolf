@@ -1,5 +1,6 @@
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
+import { grok } from "./grokClient";
 import { z } from "zod";
 import type { ParsedSmsBet } from "@shared/schema";
 
@@ -257,20 +258,13 @@ function applyPostProcessing(players: NormalizedPlayer[]): NormalizedPlayer[] {
   return processed.filter(player => player.holes.some(h => h.strokes !== null));
 }
 
-export async function scanScorecardImage(params: {
-  imageBase64: string;
-  playerNames: string[];
-  courseName?: string;
-  extraRules?: string[];
-}): Promise<ScanScorecardResult> {
-  const { imageBase64, playerNames, courseName, extraRules } = params;
-
+function buildScorecardPrompt(playerNames: string[], courseName?: string, extraRules?: string[]): string {
   const extraRulesText =
     extraRules && extraRules.length > 0
       ? `\n\nAdditional rules based on past scan corrections:\n${extraRules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
       : "";
 
-  const prompt = `You are reading a golf scorecard photo. Extract per-hole scores.
+  return `You are reading a golf scorecard photo. Extract per-hole scores.
 
 Known players in this match: ${playerNames.join(", ")}
 ${courseName ? `Course: ${courseName}` : ""}
@@ -308,7 +302,24 @@ CRITICAL — match play annotations:
 CRITICAL — visual decorations around scores:
 - Scorers sometimes circle, box, or underline individual hole scores as personal notation. These marks are purely decorative — ignore them entirely.
 - Read only the numeral(s) inside the mark. Never let a surrounding border, circle outline, or underline bleed into the digit itself.
-- Specifically: a boxed "4" is 4, not "14" or "41". A circled "3" is 3, not "03" or "30".${extraRulesText}`;
+- Specifically: a boxed "4" is 4, not "14" or "41". A circled "3" is 3, not "03" or "30".
+
+Return JSON matching this shape exactly: { "scores": [ { "playerName": string, "holes": [ { "holeNumber": number, "strokes": string, "confidence": "high"|"medium"|"low" } ] } ], "rawText": string }${extraRulesText}`;
+}
+
+async function scanScorecardImageWithGemini(params: {
+  imageBase64: string;
+  playerNames: string[];
+  courseName?: string;
+  extraRules?: string[];
+}): Promise<ScanScorecardResult> {
+  const { imageBase64, playerNames, courseName, extraRules } = params;
+
+  if (!ai) {
+    throw new Error("AI features are currently unavailable");
+  }
+
+  const prompt = buildScorecardPrompt(playerNames, courseName, extraRules);
 
   const mimeMatch = imageBase64.match(/^data:(image\/[^;]+);base64,/);
   const mimeType = mimeMatch?.[1] || "image/jpeg";
@@ -316,10 +327,6 @@ CRITICAL — visual decorations around scores:
 
   if (!base64Data) {
     throw new Error("Invalid image data");
-  }
-
-  if (!ai) {
-    throw new Error("AI features are currently unavailable");
   }
 
   const response = await ai.models.generateContent({
@@ -395,6 +402,73 @@ CRITICAL — visual decorations around scores:
     scores: applyPostProcessing(rawScores),
     rawText: parsed.rawText ?? "",
   };
+}
+
+async function scanScorecardImageWithGrok(params: {
+  imageBase64: string;
+  playerNames: string[];
+  courseName?: string;
+  extraRules?: string[];
+}): Promise<ScanScorecardResult> {
+  if (!grok) {
+    throw new Error("XAI_API_KEY is not set — add it in Secrets");
+  }
+
+  const { imageBase64, playerNames, courseName, extraRules } = params;
+  const prompt = buildScorecardPrompt(playerNames, courseName, extraRules);
+
+  const completion = await grok.chat.completions.create({
+    model: "grok-2-vision-1212",
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: imageBase64 } },
+        ],
+      },
+    ],
+  });
+
+  const text = completion.choices[0]?.message?.content ?? "{}";
+
+  let parsed: z.infer<typeof geminiResponseSchema>;
+  try {
+    parsed = geminiResponseSchema.parse(JSON.parse(text));
+  } catch {
+    throw new Error("Could not parse scorecard. Please try with a clearer image.");
+  }
+
+  const rawScores = (parsed.scores ?? []).map((p: GeminiPlayer) => ({
+    playerName: String(p.playerName ?? ""),
+    holes: (p.holes ?? [])
+      .map(normalizeHole)
+      .filter(
+        (h: NormalizedHole) =>
+          Number.isFinite(h.holeNumber) && h.holeNumber >= 1 && h.holeNumber <= 18
+      ),
+  }));
+
+  return {
+    success: true,
+    scores: applyPostProcessing(rawScores),
+    rawText: parsed.rawText ?? "",
+  };
+}
+
+export async function scanScorecardImage(params: {
+  imageBase64: string;
+  playerNames: string[];
+  courseName?: string;
+  extraRules?: string[];
+  provider?: "gemini" | "grok";
+}): Promise<ScanScorecardResult> {
+  const { provider = "gemini", ...rest } = params;
+  if (provider === "grok") {
+    return scanScorecardImageWithGrok(rest);
+  }
+  return scanScorecardImageWithGemini(rest);
 }
 
 // ─── Bet slip photo parser ───────────────────────────────────────────────────

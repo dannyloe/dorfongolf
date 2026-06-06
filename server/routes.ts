@@ -2192,11 +2192,13 @@ export async function registerRoutes(
       const imageUrl = await uploadScorecardImage(input.imageBase64).catch(() => null);
 
       const extraRules = await storage.getActiveScanPatternRules();
+      const scanProvider = (await storage.getAppSetting("scanProvider")) as "gemini" | "grok" | null ?? "gemini";
       const result = await scanScorecardImage({
         imageBase64: input.imageBase64,
         playerNames: input.playerNames,
         courseName: input.courseName,
         extraRules,
+        provider: scanProvider,
       });
 
       // Create correction log at scan time when matchId is provided, so the record
@@ -2525,7 +2527,8 @@ export async function registerRoutes(
           const playerNames = matchPlayers.map((p: { name: string }) => p.name);
 
           const extraRules = await storage.getActiveScanPatternRules();
-          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules });
+          const scanProvider = (await storage.getAppSetting("scanProvider")) as "gemini" | "grok" | null ?? "gemini";
+          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules, provider: scanProvider });
 
           // Create correction log at scan time — captures dismissed and failed scans too.
           // Log ALL attempts regardless of success so every scan attempt is permanently
@@ -5802,6 +5805,41 @@ Transcript to parse: "${transcript}"`;
     } catch (err: any) {
       console.error("[route error]", err);
       res.status(500).json({ message: err.message ?? "Internal server error" });
+    }
+  });
+
+  // Admin: get/set app settings
+  app.get("/api/admin/settings", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const scanProvider = (await storage.getAppSetting("scanProvider")) ?? "gemini";
+      res.json({ scanProvider });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/settings", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const { scanProvider } = req.body;
+      if (scanProvider !== "gemini" && scanProvider !== "grok") {
+        return res.status(400).json({ message: "scanProvider must be 'gemini' or 'grok'" });
+      }
+      await storage.setAppSetting("scanProvider", scanProvider);
+      res.json({ scanProvider });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

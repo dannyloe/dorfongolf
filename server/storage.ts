@@ -12,6 +12,7 @@ import {
   smsOptIns,
   scanCorrectionLogs,
   scanPatterns,
+  appSettings,
   eventPlayingGroups, eventPlayingGroupMembers,
   apiKeys,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
@@ -229,6 +230,10 @@ export interface IStorage {
   // Export data
   getExportScores(userId: string, start?: Date, end?: Date): Promise<Array<{ date: Date; courseName: string; matchName: string | null; playerName: string; holeNumber: number; strokes: number }>>;
   getExportBetResults(userId: string): Promise<Array<{ date: Date; courseName: string; matchName: string | null; eventMatchName: string; betType: string | null; unitAmountCents: number; teamAName: string; teamBName: string; teamANetCents: number; teamBNetCents: number; isComplete: boolean }>>;
+
+  // App settings
+  getAppSetting(key: string): Promise<string | null>;
+  setAppSetting(key: string, value: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4976,6 +4981,16 @@ export class DatabaseStorage implements IStorage {
     }
     output.sort((a, b) => a.date.getTime() - b.date.getTime());
     return output;
+  }
+
+  async getAppSetting(key: string): Promise<string | null> {
+    const rows = await db.select().from(appSettings).where(eq(appSettings.key, key));
+    return rows[0]?.value ?? null;
+  }
+
+  async setAppSetting(key: string, value: string): Promise<void> {
+    await db.insert(appSettings).values({ key, value })
+      .onConflictDoUpdate({ target: appSettings.key, set: { value } });
   }
 }
 

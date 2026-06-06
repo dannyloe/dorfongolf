@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot, Send, Phone } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot, Send, Phone, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -511,7 +511,9 @@ export default function AdminScanLogs() {
   const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test">("logs");
+  const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test" | "settings">("logs");
+  const [scanProvider, setScanProvider] = useState<"gemini" | "grok">("gemini");
+  const [providerSaving, setProviderSaving] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
@@ -527,6 +529,27 @@ export default function AdminScanLogs() {
   const { data: patterns, isLoading: patternsLoading } = useQuery<ScanPattern[]>({
     queryKey: ["/api/admin/scan-patterns"],
     enabled: !!user,
+  });
+
+  const { data: adminSettings } = useQuery<{ scanProvider: "gemini" | "grok" }>({
+    queryKey: ["/api/admin/settings"],
+    enabled: !!user,
+  });
+
+  const settingsMutation = useMutation({
+    mutationFn: (provider: "gemini" | "grok") =>
+      apiRequest("POST", "/api/admin/settings", { scanProvider: provider }),
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setScanProvider(data.scanProvider);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+      toast({ title: "Saved", description: `Scan provider set to ${data.scanProvider === "grok" ? "Grok" : "Gemini"}.` });
+      setProviderSaving(false);
+    },
+    onError: () => {
+      toast({ title: "Save failed", description: "Could not update scan provider.", variant: "destructive" });
+      setProviderSaving(false);
+    },
   });
 
   const analyzeMutation = useMutation({
@@ -719,6 +742,14 @@ export default function AdminScanLogs() {
         >
           <Phone className="w-4 h-4" />
           SMS Test
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === "settings" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("settings")}
+          data-testid="tab-settings"
+        >
+          <Settings className="w-4 h-4" />
+          Settings
         </button>
       </div>
 
@@ -922,6 +953,59 @@ export default function AdminScanLogs() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "settings" && (
+        <div className="space-y-4 max-w-md">
+          <div>
+            <h2 className="text-base font-semibold">Scorecard Scan Provider</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Choose which AI model reads scorecard photos. Gemini is the default. Grok requires an <code className="text-xs bg-muted px-1 py-0.5 rounded">XAI_API_KEY</code> secret.
+            </p>
+          </div>
+
+          <div className="bg-muted/40 border border-border/50 rounded-lg p-4 space-y-3">
+            {(["gemini", "grok"] as const).map((p) => {
+              const current = adminSettings?.scanProvider ?? "gemini";
+              const isSelected = current === p;
+              return (
+                <label
+                  key={p}
+                  data-testid={`radio-scan-provider-${p}`}
+                  className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${isSelected ? "border-primary bg-primary/5" : "border-border hover:bg-muted/60"}`}
+                >
+                  <input
+                    type="radio"
+                    name="scanProvider"
+                    value={p}
+                    checked={isSelected}
+                    disabled={settingsMutation.isPending}
+                    onChange={() => {
+                      setProviderSaving(true);
+                      settingsMutation.mutate(p);
+                    }}
+                    className="mt-0.5 accent-primary"
+                  />
+                  <div>
+                    <div className="text-sm font-medium">
+                      {p === "gemini" ? "Gemini" : "Grok"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {p === "gemini"
+                        ? "Google Gemini 2.5 Flash — current default"
+                        : "xAI Grok Vision — requires XAI_API_KEY secret"}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+            {providerSaving && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <RefreshCw className="w-3 h-3 animate-spin" /> Saving…
+              </p>
+            )}
+          </div>
         </div>
       )}
 

@@ -319,6 +319,12 @@ export const scanPatterns = pgTable("scan_patterns", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// App-level settings — simple key-value store for admin-controlled config
+export const appSettings = pgTable("app_settings", {
+  key:   text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
 // Playing groups for events - organizer-defined tee groups for any event type
 export const eventPlayingGroups = pgTable("event_playing_groups", {
   id: serial("id").primaryKey(),
