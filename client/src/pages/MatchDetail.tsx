@@ -2897,7 +2897,7 @@ export default function MatchDetail() {
 
             {/* Playing Groups — nested sub-section inside Add Player card */}
             <div className="px-4">
-              <PlayingGroupsSection players={players} matchName={match.name ?? "Match"} />
+              <PlayingGroupsSection players={players} matchName={match.name ?? "Match"} matchId={match.id} />
             </div>
           </div>
         );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type CSSProperties } from "react";
+import { useState, useEffect, useRef, useMemo, type CSSProperties } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -64,6 +64,48 @@ interface GroupEntry {
 
 function makeGroupId(): string {
   return `grp-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+const STORAGE_KEY_PREFIX = "playing-groups-v1-";
+
+interface PersistedGroups {
+  playerIds: number[];
+  carts: CartEntry[];
+  preview: GroupEntry[] | null;
+  cartsPanelOpen: boolean;
+}
+
+function loadPersistedGroups(matchId: number, players: Player[]): PersistedGroups | null {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${matchId}`);
+    if (!raw) return null;
+    const parsed: PersistedGroups = JSON.parse(raw);
+    const currentIds = [...players.map((p) => p.id)].sort((a, b) => a - b);
+    const storedIds = [...(parsed.playerIds ?? [])].sort((a, b) => a - b);
+    if (JSON.stringify(currentIds) !== JSON.stringify(storedIds)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedGroups(
+  matchId: number,
+  players: Player[],
+  carts: CartEntry[],
+  preview: GroupEntry[] | null,
+  cartsPanelOpen: boolean,
+) {
+  try {
+    const data: PersistedGroups = {
+      playerIds: [...players.map((p) => p.id)].sort((a, b) => a - b),
+      carts,
+      preview,
+      cartsPanelOpen,
+    };
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${matchId}`, JSON.stringify(data));
+  } catch {
+  }
 }
 
 function DraggablePoolChip({ name }: { name: string }) {
@@ -453,9 +495,11 @@ function SortableGroupCard({
 export function PlayingGroupsSection({
   players,
   matchName,
+  matchId,
 }: {
   players: Player[];
   matchName: string;
+  matchId: number;
 }) {
   const { toast } = useToast();
   const [visible, setVisible] = useState(false);
@@ -470,8 +514,50 @@ export function PlayingGroupsSection({
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
+  // Stable signature of the current player roster (sorted IDs joined).
+  // Changes when players are added or removed.
+  const playerSig = useMemo(
+    () => [...players.map((p) => p.id)].sort((a, b) => a - b).join(","),
+    [players],
+  );
+
+  // Tracks the match+roster context that was last synced so we can detect
+  // changes across renders (matchId switch, player add/remove) and avoid
+  // restoring stale data when players prop arrives asynchronously.
+  const syncedContextRef = useRef<{ matchId: number; playerSig: string } | null>(null);
+
+  // Hydrate from localStorage on mount and whenever matchId or player roster
+  // changes. Skips when players haven't loaded yet (empty roster).
   useEffect(() => {
-    if (visible && !preview) {
+    if (players.length === 0) return;
+
+    const prev = syncedContextRef.current;
+    const unchanged = prev?.matchId === matchId && prev?.playerSig === playerSig;
+    if (unchanged) return;
+
+    syncedContextRef.current = { matchId, playerSig };
+
+    const persisted = loadPersistedGroups(matchId, players);
+    if (persisted) {
+      setCarts(persisted.carts);
+      setPreview(persisted.preview);
+      setCartsPanelOpen(persisted.cartsPanelOpen);
+    } else {
+      // New match or roster changed — start fresh
+      setCarts([]);
+      setPreview(null);
+      setCartsPanelOpen(false);
+    }
+  }, [matchId, playerSig]);
+
+  // Save to localStorage whenever the relevant state changes.
+  useEffect(() => {
+    if (players.length === 0) return;
+    savePersistedGroups(matchId, players, carts, preview, cartsPanelOpen);
+  }, [carts, preview, cartsPanelOpen, matchId, playerSig]);
+
+  useEffect(() => {
+    if (visible && !preview && carts.length === 0) {
       const count = computeCartCount(players.length);
       setCarts(Array.from({ length: count }, () => ({ players: [] })));
     }
