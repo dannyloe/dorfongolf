@@ -738,6 +738,7 @@ export default function MatchDetail() {
   const [scanApplying, setScanApplying] = useState(false);
   const [scanNewPlayerNames, setScanNewPlayerNames] = useState<Record<string, string>>({});
   const [scanShiftedHoles, setScanShiftedHoles] = useState<Record<string, number[]>>({});
+  const [scanShiftDirection, setScanShiftDirection] = useState<Record<string, 'left' | 'right'>>({});
 
   // Phone setup sharing state
   const [sharingSetupLinkFor, setSharingSetupLinkFor] = useState<string | null>(null);
@@ -8587,6 +8588,7 @@ export default function MatchDetail() {
             }
             return { ...prev, [playerName]: playerScores };
           });
+          setScanShiftDirection((prev) => ({ ...prev, [playerName]: direction }));
           setScanShiftedHoles((prev) => ({ ...prev, [playerName]: holes }));
           setTimeout(() => {
             setScanShiftedHoles((prev) => {
@@ -8594,7 +8596,12 @@ export default function MatchDetail() {
               delete next[playerName];
               return next;
             });
-          }, 1000);
+            setScanShiftDirection((prev) => {
+              const next = { ...prev };
+              delete next[playerName];
+              return next;
+            });
+          }, 400);
         };
 
         const undoShift = (playerName: string, range: 'front' | 'back') => {
@@ -8776,6 +8783,8 @@ export default function MatchDetail() {
                           const textColor = diff === null || diff === 0 ? "" : diff < 0 ? "text-red-500" : "text-blue-500";
                           const disputed = isDisputedHole(scannedPlayer.playerName, hole);
                           const shifted = scanShiftedHoles[scannedPlayer.playerName]?.includes(hole);
+                          const shiftDir = scanShiftDirection[scannedPlayer.playerName];
+                          const slideClass = shifted ? (shiftDir === 'left' ? 'animate-slide-from-right' : 'animate-slide-from-left') : '';
                           return (
                             <div key={hole} className="text-center">
                               <div className="text-xs text-muted-foreground mb-1">{hole}</div>
@@ -8796,7 +8805,7 @@ export default function MatchDetail() {
                                     const v = e.target.value.replace(/\D/g, "");
                                     setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
                                   }}
-                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 transition-colors duration-200 ${shifted ? "bg-yellow-100 dark:bg-yellow-800/50 border-yellow-400 border-2" : disputed ? "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400" : "bg-transparent"} ${textColor}`}
+                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 transition-colors duration-200 ${shifted ? "bg-yellow-100 dark:bg-yellow-800/50 border-yellow-400 border-2" : disputed ? "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400" : "bg-transparent"} ${textColor} ${slideClass}`}
                                   data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
                                 />
                                 <div className="absolute -top-1 -right-1 z-20">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
@@ -8854,6 +8863,8 @@ export default function MatchDetail() {
                           const textColor = diff === null || diff === 0 ? "" : diff < 0 ? "text-red-500" : "text-blue-500";
                           const disputed = isDisputedHole(scannedPlayer.playerName, hole);
                           const shifted = scanShiftedHoles[scannedPlayer.playerName]?.includes(hole);
+                          const shiftDir = scanShiftDirection[scannedPlayer.playerName];
+                          const slideClass = shifted ? (shiftDir === 'left' ? 'animate-slide-from-right' : 'animate-slide-from-left') : '';
                           return (
                             <div key={hole} className="text-center">
                               <div className="text-xs text-muted-foreground mb-1">{hole}</div>
@@ -8874,7 +8885,7 @@ export default function MatchDetail() {
                                     const v = e.target.value.replace(/\D/g, "");
                                     setScanEditableScores((prev) => ({ ...prev, [scannedPlayer.playerName]: { ...prev[scannedPlayer.playerName], [hole]: v } }));
                                   }}
-                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 transition-colors duration-200 ${shifted ? "bg-yellow-100 dark:bg-yellow-800/50 border-yellow-400 border-2" : disputed ? "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400" : "bg-transparent"} ${textColor}`}
+                                  className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 transition-colors duration-200 ${shifted ? "bg-yellow-100 dark:bg-yellow-800/50 border-yellow-400 border-2" : disputed ? "bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400" : "bg-transparent"} ${textColor} ${slideClass}`}
                                   data-testid={`input-pending-scan-${scannedPlayer.playerName}-${hole}`}
                                 />
                                 <div className="absolute -top-1 -right-1 z-20">{getConfidenceIcon(holeData?.confidence?.toString())}</div>
