@@ -84,10 +84,10 @@ export default function PrivacyPolicy() {
                 </p>
                 <p className="mt-3">
                   <strong>Your phone number is never sold or shared with third parties for marketing purposes.</strong>{" "}
-                  Phone numbers are used solely to deliver Golf Betting match notifications via Twilio. Data processed
-                  through Twilio is subject to{" "}
-                  <a href="https://www.twilio.com/en-us/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
-                    Twilio's Privacy Policy
+                  Phone numbers are used solely to deliver Golf Betting match notifications via Plivo. Data processed
+                  through Plivo is subject to{" "}
+                  <a href="https://www.plivo.com/legal/privacy/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                    Plivo's Privacy Policy
                   </a>.
                 </p>
                 <p className="mt-3">
@@ -119,9 +119,9 @@ export default function PrivacyPolicy() {
                 <p className="mb-3">Golf Betting integrates with the following third-party services:</p>
                 <ul className="list-disc pl-5 space-y-2">
                   <li>
-                    <strong>Twilio:</strong> Used to send and receive SMS messages for match notifications and
-                    scorecard submission. Your phone number may be processed by Twilio when you use SMS features.
-                    Twilio's privacy policy applies to data processed through their platform.
+                    <strong>Plivo:</strong> Used to send and receive SMS messages for match notifications and
+                    scorecard submission. Your phone number may be processed by Plivo when you use SMS features.
+                    Plivo's privacy policy applies to data processed through their platform.
                   </li>
                   <li>
                     <strong>Google Gemini AI:</strong> Used to analyze scorecard images you submit via text message.

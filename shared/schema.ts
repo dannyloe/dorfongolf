@@ -99,7 +99,7 @@ export const pendingScorecardScans = pgTable("pending_scorecard_scans", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
   fromPhone: text("from_phone").notNull(), // masked sender phone
-  mediaUrl: text("media_url").notNull(), // Twilio media URL
+  mediaUrl: text("media_url").notNull(), // provider media URL
   imageUrl: text("image_url"), // Permanent Object Storage URL (null until uploaded)
   correctionLogId: integer("correction_log_id"), // FK to scan_correction_logs row created at scan time
   status: text("status").notNull().default("pending"), // pending, processing, done, error

@@ -9,13 +9,13 @@ import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as 
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
-import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getTwilioClient, getTwilioFromPhoneNumber } from "./twilio";
+import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
 import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 import { uploadScorecardImage } from "./imageStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import express from "express";
-import twilioLib from "twilio";
+import plivoLib from "plivo";
 
 // Helper to send match invitation notification to a player (non-blocking)
 async function notifyPlayerOfMatchInvitation(
@@ -2247,64 +2247,19 @@ export async function registerRoutes(
     }
   });
 
-  // Helper: fetch Twilio credentials from Replit Connectors, supplemented by env vars.
-  // Auth token is required for webhook validation and media downloads; it comes from
-  // TWILIO_AUTH_TOKEN env var (primary) or connector settings (fallback).
-  async function getTwilioRawCredentials(): Promise<{ accountSid?: string; apiKey?: string; apiKeySecret?: string; authToken?: string } | null> {
-    try {
-      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-      const xReplitToken = process.env.REPL_IDENTITY
-        ? 'repl ' + process.env.REPL_IDENTITY
-        : process.env.WEB_REPL_RENEWAL
-        ? 'depl ' + process.env.WEB_REPL_RENEWAL
-        : null;
-
-      let accountSid: string | undefined;
-      let apiKey: string | undefined;
-      let apiKeySecret: string | undefined;
-      let authToken: string | undefined;
-
-      // Try to load from connector
-      if (hostname && xReplitToken) {
-        const r = await fetch(`https://${hostname}/api/v2/connection?include_secrets=true&connector_names=twilio`, {
-          headers: { 'Accept': 'application/json', 'X_REPLIT_TOKEN': xReplitToken },
-        });
-        if (r.ok) {
-          const d = await r.json();
-          const s = d.items?.[0]?.settings;
-          if (s) {
-            accountSid = s.account_sid;
-            apiKey = s.api_key;
-            apiKeySecret = s.api_key_secret;
-            authToken = s.auth_token; // may be undefined if connector doesn't expose it
-          }
-        }
-      }
-
-      // Auth token from env var takes precedence (connectors typically only provide API key/secret)
-      if (process.env.TWILIO_AUTH_TOKEN) authToken = process.env.TWILIO_AUTH_TOKEN;
-      if (process.env.TWILIO_ACCOUNT_SID) accountSid = process.env.TWILIO_ACCOUNT_SID;
-
-      if (!accountSid && !apiKey) return null;
-      return { accountSid, apiKey, apiKeySecret, authToken };
-    } catch {
-      return null;
-    }
-  }
-
   // Public config endpoint — returns non-sensitive frontend config
   app.get("/api/config", async (req, res) => {
     try {
-      const { getTwilioFromPhoneNumber } = await import("./twilio");
-      let twilioPhoneNumber: string | null = null;
+      const { getPlivoFromPhoneNumber } = await import("./plivo");
+      let phoneNumber: string | null = null;
       try {
-        twilioPhoneNumber = await getTwilioFromPhoneNumber();
+        phoneNumber = getPlivoFromPhoneNumber();
       } catch {
-        twilioPhoneNumber = null;
+        phoneNumber = null;
       }
-      res.json({ twilioPhoneNumber });
+      res.json({ phoneNumber });
     } catch (err) {
-      res.json({ twilioPhoneNumber: null });
+      res.json({ phoneNumber: null });
     }
   });
 
@@ -2331,51 +2286,53 @@ export async function registerRoutes(
     }
   });
 
-  // Helper: validate Twilio webhook signature using the Twilio SDK (requires auth token).
-  // Twilio signs requests with HMAC-SHA1 using the account auth token as the secret.
-  function validateTwilioSignature(req: any, authToken: string | undefined): boolean {
+  // Helper: validate Plivo webhook signature using X-Plivo-Signature-V3 and HMAC-SHA256.
+  function validatePlivoSignature(req: any, authToken: string | undefined): boolean {
     if (!authToken) return false;
-    const twilioSignature = req.headers['x-twilio-signature'];
-    if (!twilioSignature) return false;
+    const signature = req.headers['x-plivo-signature-v3'];
+    const nonce = req.headers['x-plivo-signature-v3-nonce'];
+    if (!signature || !nonce) return false;
 
-    // Build canonical URL
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers['x-forwarded-host'] || req.headers.host || '';
     const url = `${protocol}://${host}/api/sms/inbound`;
-
-    return twilioLib.validateRequest(authToken, twilioSignature, url, req.body as Record<string, string>);
-  }
-
-  // Inbound MMS webhook — Twilio posts here when a text with a photo arrives
-  // NOTE: This endpoint is intentionally public (no isAuthenticated) so Twilio can reach it.
-  // Twilio signature validation using X-Twilio-Signature is performed to reject forgeries.
-  app.post("/api/sms/inbound", express.urlencoded({ extended: false }), async (req, res) => {
-    const twimlEmpty = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+    const method = req.method;
 
     try {
-      // Validate Twilio signature to reject forged requests.
-      // If credentials cannot be fetched we fail closed — reject the request rather than process untrusted data.
-      const creds = await getTwilioRawCredentials();
-      if (!creds?.authToken) {
-        // Auth token is required for signature validation; fail closed.
-        // Set TWILIO_AUTH_TOKEN env var (from Twilio console → Account → Auth Token).
-        console.error("[SMS Inbound] No auth token available — rejecting request. Set TWILIO_AUTH_TOKEN secret.");
-        res.status(403).type("text/xml").send(twimlEmpty);
+      return plivoLib.validateV3Signature(method, url, nonce, authToken, signature, req.body as Record<string, string>);
+    } catch {
+      return false;
+    }
+  }
+
+  // Inbound MMS webhook — Plivo posts here when a text with a photo arrives
+  // NOTE: This endpoint is intentionally public (no isAuthenticated) so Plivo can reach it.
+  // Plivo signature validation using X-Plivo-Signature-V3 is performed to reject forgeries.
+  app.post("/api/sms/inbound", express.urlencoded({ extended: false }), async (req, res) => {
+    const plivoEmpty = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+
+    try {
+      // Validate Plivo signature to reject forged requests.
+      // If PLIVO_AUTH_TOKEN is not set we fail closed — reject rather than process untrusted data.
+      const authToken = process.env.PLIVO_AUTH_TOKEN;
+      if (!authToken) {
+        console.error("[SMS Inbound] No Plivo auth token available — rejecting request. Set PLIVO_AUTH_TOKEN secret.");
+        res.status(403).type("text/xml").send(plivoEmpty);
         return;
       }
-      const valid = validateTwilioSignature(req, creds.authToken);
+      const valid = validatePlivoSignature(req, authToken);
       if (!valid) {
-        console.warn("[SMS Inbound] Invalid or missing Twilio signature — rejected");
-        res.status(403).type("text/xml").send(twimlEmpty);
+        console.warn("[SMS Inbound] Invalid or missing Plivo signature — rejected");
+        res.status(403).type("text/xml").send(plivoEmpty);
         return;
       }
 
       const from: string = req.body.From || "";
-      const rawBody: string = req.body.Body || "";
-      const numMedia = parseInt(req.body.NumMedia || "0", 10);
+      const rawBody: string = req.body.Text || req.body.Body || "";
+      const numMedia = parseInt(req.body.MediaCount || req.body.NumMedia || "0", 10);
 
       if (!from) {
-        res.type("text/xml").send(twimlEmpty);
+        res.type("text/xml").send(plivoEmpty);
         return;
       }
 
@@ -2512,11 +2469,12 @@ export async function registerRoutes(
       }
 
       // Collect all image media URLs (one pending scan per image attachment)
+      // Plivo sends Media0, Media1, ... with MediaType0, MediaType1, ...
       const mediaUrls: string[] = [];
       for (let i = 0; i < numMedia; i++) {
-        const url = req.body[`MediaUrl${i}`];
-        const ct: string = (req.body[`MediaContentType${i}`] || "").toLowerCase();
-        if (url && ct.startsWith("image/")) {
+        const url = req.body[`Media${i}`] || req.body[`MediaUrl${i}`];
+        const ct: string = (req.body[`MediaType${i}`] || req.body[`MediaContentType${i}`] || "").toLowerCase();
+        if (url && (ct.startsWith("image/") || ct === "")) {
           mediaUrls.push(url);
         }
       }
@@ -2536,15 +2494,11 @@ export async function registerRoutes(
       const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! ${count === 1 ? "Your scorecard" : `${count} scorecards`} for "${match.name || match.courseName}" ${count === 1 ? "is" : "are"} being processed. The organizer will review and apply the scores shortly.</Message></Response>`;
       res.type("text/xml").send(twimlReply);
 
-      // Background: for each scan, fetch image from Twilio and run AI scan
+      // Background: for each scan, fetch image from Plivo (media URLs are public) and run AI scan
       const processScan = async (scan: { id: number }, mediaUrl: string) => {
         try {
-          // Twilio media requires accountSid:authToken Basic auth
-          const fetchHeaders: Record<string, string> = {};
-          if (creds.accountSid && creds.authToken) {
-            fetchHeaders["Authorization"] = `Basic ${Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64")}`;
-          }
-          const imgRes = await fetch(mediaUrl, { headers: fetchHeaders });
+          // Plivo media URLs are public — no auth header needed
+          const imgRes = await fetch(mediaUrl);
           if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
           const imageBuffer = Buffer.from(await imgRes.arrayBuffer());
 
@@ -2859,7 +2813,7 @@ export async function registerRoutes(
     }
   });
 
-  // Proxy Twilio-hosted image through the server (avoids exposing Twilio credentials to frontend)
+  // Proxy provider-hosted image through the server
   app.get("/api/matches/:id/pending-scans/:scanId/image", isAuthenticated, async (req, res) => {
     try {
       const matchId = parseInt(req.params.id, 10);
@@ -2883,14 +2837,8 @@ export async function registerRoutes(
       const scan = await storage.getPendingScan(scanId);
       if (!scan || scan.matchId !== matchId) return res.status(404).json({ message: "Scan not found" });
 
-      // Fetch image from Twilio — requires accountSid:authToken Basic auth
-      const imageCreds = await getTwilioRawCredentials();
-      const fetchHeaders: Record<string, string> = {};
-      if (imageCreds?.accountSid && imageCreds?.authToken) {
-        fetchHeaders["Authorization"] = `Basic ${Buffer.from(`${imageCreds.accountSid}:${imageCreds.authToken}`).toString("base64")}`;
-      }
-
-      const imgRes = await fetch(scan.mediaUrl, { headers: fetchHeaders });
+      // Plivo media URLs are public — no auth header needed
+      const imgRes = await fetch(scan.mediaUrl);
       if (!imgRes.ok) return res.status(502).json({ message: "Failed to fetch image" });
 
       const contentType = imgRes.headers.get("content-type") || "image/jpeg";
@@ -4802,9 +4750,9 @@ Transcript to parse: "${transcript}"`;
       }
       
       // Generate and store verification code
-      console.log('[SMS Route] Importing twilio module...');
-      const { generateVerificationCode, sendVerificationCode } = await import('./twilio');
-      console.log('[SMS Route] Twilio module imported');
+      console.log('[SMS Route] Importing plivo module...');
+      const { generateVerificationCode, sendVerificationCode } = await import('./plivo');
+      console.log('[SMS Route] Plivo module imported');
       const code = generateVerificationCode();
       console.log(`[SMS Route] Generated code: ${code}`);
       await storage.createVerificationCode(phone, code);
@@ -4887,7 +4835,7 @@ Transcript to parse: "${transcript}"`;
   app.post(api.sms.sendMessage.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.sms.sendMessage.input.parse(req.body);
-      const { sendSMS } = await import('./twilio');
+      const { sendSMS } = await import('./plivo');
       
       const result = await sendSMS(input.to, input.message);
       res.json({ success: result.success, sid: result.sid });
@@ -5084,7 +5032,7 @@ Transcript to parse: "${transcript}"`;
         }
       }
 
-      const { generateVerificationCode, sendVerificationCode } = await import("./twilio");
+      const { generateVerificationCode, sendVerificationCode } = await import("./plivo");
       const code = generateVerificationCode();
       await storage.createVerificationCode(phone, code);
 
