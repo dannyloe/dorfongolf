@@ -33,6 +33,7 @@ import {
   Users,
   Shuffle,
   Share2,
+  Copy,
   Flag,
   Lock,
   X,
@@ -786,6 +787,28 @@ export function PlayingGroupsSection({
     }
   };
 
+  const copyPairings = () => {
+    const filledCarts = carts.filter((c) => c.players.length > 0);
+    const text = filledCarts
+      .map((c, i) => `Cart ${i + 1}: ${c.players.join(", ")}`)
+      .join("\n");
+    const title = `${matchName} — Cart Pairings`;
+    if (navigator.share) {
+      navigator.share({ title, text }).catch(() => {});
+    } else {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => toast({ title: "Copied to clipboard!" }))
+        .catch(() =>
+          toast({
+            title: "Error",
+            description: "Could not copy to clipboard",
+            variant: "destructive",
+          }),
+        );
+    }
+  };
+
   const activePlayerName =
     activeId?.startsWith("pool::") ? activeId.slice(6)
     : activeId?.startsWith("seat::") ? activeId.split("::")[2]
@@ -893,6 +916,12 @@ export function PlayingGroupsSection({
               <Shuffle className="w-4 h-4 mr-2" />
               {preview ? "Reshuffle" : "Generate Groups"}
             </Button>
+            {carts.some((c) => c.players.length > 0) && !preview && (
+              <Button variant="outline" onClick={copyPairings} data-testid="button-copy-pairings">
+                <Copy className="w-4 h-4 mr-1" />
+                Copy Pairings
+              </Button>
+            )}
             {preview && (
               <Button variant="outline" onClick={share} data-testid="button-share-groups">
                 <Share2 className="w-4 h-4 mr-1" />
