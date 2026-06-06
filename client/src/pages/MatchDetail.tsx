@@ -735,6 +735,7 @@ export default function MatchDetail() {
   const [scanPlayerMappings, setScanPlayerMappings] = useState<Record<string, number | null>>({});
   const [scanSuggestedPresets, setScanSuggestedPresets] = useState<Record<string, string | null>>({});
   const [scanApplying, setScanApplying] = useState(false);
+  const [scanNewPlayerNames, setScanNewPlayerNames] = useState<Record<string, string>>({});
 
   // Phone setup sharing state
   const [sharingSetupLinkFor, setSharingSetupLinkFor] = useState<string | null>(null);
@@ -8631,15 +8632,20 @@ export default function MatchDetail() {
                           <span className="text-sm text-muted-foreground">Scanned:</span>
                           <span className="font-semibold">{scannedPlayer.playerName}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm text-muted-foreground">Assign to:</span>
                           <Select
-                            value={mappedPlayerId ? `id:${mappedPlayerId}` : "unassigned"}
+                            value={mappedPlayerId ? `id:${mappedPlayerId}` : (scanNewPlayerNames[scannedPlayer.playerName] !== undefined ? "add-new" : "unassigned")}
                             onValueChange={(val) => {
                               if (val === "unassigned") {
                                 setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: null }));
+                                setScanNewPlayerNames((prev) => { const n = { ...prev }; delete n[scannedPlayer.playerName]; return n; });
+                              } else if (val === "add-new") {
+                                setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: null }));
+                                setScanNewPlayerNames((prev) => ({ ...prev, [scannedPlayer.playerName]: "" }));
                               } else if (val.startsWith("id:")) {
                                 setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: parseInt(val.substring(3)) }));
+                                setScanNewPlayerNames((prev) => { const n = { ...prev }; delete n[scannedPlayer.playerName]; return n; });
                               }
                             }}
                           >
@@ -8651,9 +8657,51 @@ export default function MatchDetail() {
                               {players.map((p) => (
                                 <SelectItem key={`id:${p.id}`} value={`id:${p.id}`}>{p.name}</SelectItem>
                               ))}
+                              <SelectItem value="add-new">+ Add to match…</SelectItem>
                             </SelectContent>
                           </Select>
                           {mappedPlayerId && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                          {scanNewPlayerNames[scannedPlayer.playerName] !== undefined && (
+                            <div className="flex items-center gap-1 mt-1 w-full">
+                              <input
+                                type="text"
+                                className="h-8 text-sm border rounded px-2 flex-1 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                                placeholder="Player name…"
+                                value={scanNewPlayerNames[scannedPlayer.playerName]}
+                                onChange={(e) => setScanNewPlayerNames((prev) => ({ ...prev, [scannedPlayer.playerName]: e.target.value }))}
+                                onKeyDown={async (e) => {
+                                  if (e.key === "Enter") {
+                                    const name = scanNewPlayerNames[scannedPlayer.playerName]?.trim();
+                                    if (!name) return;
+                                    try {
+                                      const newPlayer = await addPlayer.mutateAsync({ name });
+                                      setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: newPlayer.id }));
+                                      setScanNewPlayerNames((prev) => { const n = { ...prev }; delete n[scannedPlayer.playerName]; return n; });
+                                    } catch { /* toast handled by mutation */ }
+                                  }
+                                }}
+                                data-testid={`input-scan-add-player-${scannedPlayer.playerName}`}
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                className="h-8 px-2 text-xs"
+                                disabled={!scanNewPlayerNames[scannedPlayer.playerName]?.trim() || addPlayer.isPending}
+                                onClick={async () => {
+                                  const name = scanNewPlayerNames[scannedPlayer.playerName]?.trim();
+                                  if (!name) return;
+                                  try {
+                                    const newPlayer = await addPlayer.mutateAsync({ name });
+                                    setScanPlayerMappings((prev) => ({ ...prev, [scannedPlayer.playerName]: newPlayer.id }));
+                                    setScanNewPlayerNames((prev) => { const n = { ...prev }; delete n[scannedPlayer.playerName]; return n; });
+                                  } catch { /* toast handled by mutation */ }
+                                }}
+                                data-testid={`button-scan-confirm-add-player-${scannedPlayer.playerName}`}
+                              >
+                                {addPlayer.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Add"}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -8764,19 +8812,11 @@ export default function MatchDetail() {
               <DialogFooter className="gap-2">
                 <Button
                   variant="outline"
-                  disabled={scanApplying || dismissPendingScan.isPending}
-                  onClick={async () => {
-                    try {
-                      await dismissPendingScan.mutateAsync(reviewingScan.id);
-                    } catch {
-                      // Ignore error — close modal regardless
-                    } finally {
-                      setReviewingScan(null);
-                    }
-                  }}
-                  data-testid="button-dismiss-pending-scan-review"
+                  disabled={scanApplying}
+                  onClick={() => setReviewingScan(null)}
+                  data-testid="button-close-pending-scan-review"
                 >
-                  {dismissPendingScan.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Dismissing…</> : "Dismiss Scan"}
+                  Close
                 </Button>
                 <Button
                   onClick={handleApplyScores}
