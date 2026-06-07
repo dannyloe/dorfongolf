@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot, Send, Phone, Settings } from "lucide-react";
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart2, Camera, MessageSquare, RefreshCw, CheckCircle, RotateCcw, Zap, BookOpen, Receipt, Bot, Send, Phone, Settings, SplitSquareHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -521,7 +521,14 @@ export default function AdminScanLogs() {
   const { user, isLoading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test" | "settings">("logs");
+  const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test" | "settings" | "compare">("logs");
+  const [compareImage, setCompareImage] = useState<string | null>(null);
+  const [compareImageName, setCompareImageName] = useState<string>("");
+  const [comparePlayers, setComparePlayers] = useState<string>("");
+  const [compareResult, setCompareResult] = useState<{
+    gemini: { scores: any[]; rawText: string; durationMs: number; error: string | null };
+    grok: { scores: any[]; rawText: string; durationMs: number; error: string | null };
+  } | null>(null);
   const [scanProvider, setScanProvider] = useState<"gemini" | "grok">("gemini");
   const [providerSaving, setProviderSaving] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
@@ -630,6 +637,21 @@ export default function AdminScanLogs() {
         else if (typeof data === "string") message = data;
       } catch {}
       setTestScanResult({ ok: false, message });
+    },
+  });
+
+  const compareMutation = useMutation({
+    mutationFn: async () => {
+      if (!compareImage) throw new Error("No image selected");
+      const playerNames = comparePlayers.split(",").map(s => s.trim()).filter(Boolean);
+      return apiRequest("POST", "/api/admin/scan-compare", { imageBase64: compareImage, playerNames });
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setCompareResult(data);
+    },
+    onError: (err: any) => {
+      toast({ title: "Comparison failed", description: err?.message ?? "Unknown error", variant: "destructive" });
     },
   });
 
@@ -791,6 +813,14 @@ export default function AdminScanLogs() {
         >
           <Settings className="w-4 h-4" />
           Settings
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === "compare" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("compare")}
+          data-testid="tab-compare"
+        >
+          <SplitSquareHorizontal className="w-4 h-4" />
+          Compare
         </button>
       </div>
 
@@ -1176,6 +1206,157 @@ export default function AdminScanLogs() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === "compare" && (
+        <div className="space-y-5 max-w-3xl">
+          <div>
+            <h2 className="text-base font-semibold">Gemini vs Grok Side-by-Side</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Upload a scorecard photo and run both models at once to see where they agree and differ.
+            </p>
+          </div>
+
+          <div className="bg-muted/40 border border-border/50 rounded-lg p-4 space-y-3">
+            <div className="flex flex-col gap-1">
+              <Label className="text-sm">Scorecard photo</Label>
+              <input
+                id="compare-image-input"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="input-compare-image"
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setCompareImageName(file.name);
+                  setCompareResult(null);
+                  const reader = new FileReader();
+                  reader.onload = () => setCompareImage(reader.result as string);
+                  reader.readAsDataURL(file);
+                }}
+              />
+              <label
+                htmlFor="compare-image-input"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border cursor-pointer text-sm hover:bg-muted/60 transition-colors w-fit"
+              >
+                <Camera className="w-4 h-4 text-muted-foreground" />
+                {compareImageName || "Choose image…"}
+              </label>
+              {compareImage && (
+                <img src={compareImage} alt="Preview" className="rounded border border-border max-h-[120px] w-auto object-contain mt-1" />
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="compare-players-input" className="text-sm">Player names (comma-separated, optional)</Label>
+              <Input
+                id="compare-players-input"
+                data-testid="input-compare-players"
+                placeholder="Alice, Bob, Charlie"
+                value={comparePlayers}
+                onChange={e => setComparePlayers(e.target.value)}
+                className="h-9 max-w-sm"
+              />
+            </div>
+
+            <Button
+              onClick={() => { setCompareResult(null); compareMutation.mutate(); }}
+              disabled={!compareImage || compareMutation.isPending}
+              data-testid="button-run-compare"
+              className="flex items-center gap-2"
+            >
+              <SplitSquareHorizontal className="w-4 h-4" />
+              {compareMutation.isPending ? "Running…" : "Run comparison"}
+            </Button>
+          </div>
+
+          {compareResult && (() => {
+            const { gemini, grok } = compareResult;
+
+            const allPlayerNames = Array.from(new Set([
+              ...(gemini.scores ?? []).map((p: any) => p.playerName),
+              ...(grok.scores ?? []).map((p: any) => p.playerName),
+            ]));
+
+            const geminiMs = (gemini.durationMs / 1000).toFixed(1);
+            const grokMs = (grok.durationMs / 1000).toFixed(1);
+
+            return (
+              <div className="space-y-5">
+                <p className="text-xs text-muted-foreground">
+                  Gemini {geminiMs}s · Grok {grokMs}s
+                </p>
+
+                {allPlayerNames.length === 0 && !gemini.error && !grok.error && (
+                  <p className="text-sm text-muted-foreground">No player scores found in either result.</p>
+                )}
+
+                {allPlayerNames.map(playerName => {
+                  const gPlayer = (gemini.scores ?? []).find((p: any) => p.playerName === playerName);
+                  const rPlayer = (grok.scores ?? []).find((p: any) => p.playerName === playerName);
+
+                  const holes = Array.from({ length: 18 }, (_, i) => i + 1);
+                  let matches = 0;
+                  let compared = 0;
+
+                  return (
+                    <div key={playerName} data-testid={`compare-results-${playerName}`} className="space-y-2">
+                      <h3 className="text-sm font-semibold">{playerName}</h3>
+                      <div className="overflow-x-auto rounded-md border border-border">
+                        <table className="text-xs w-full border-collapse">
+                          <thead>
+                            <tr className="bg-muted/50">
+                              <th className="px-2 py-1.5 text-left font-medium border-r border-border/50 w-10">Hole</th>
+                              <th className={`px-2 py-1.5 text-center font-medium border-r border-border/50 ${gemini.error ? "text-red-500" : ""}`}>
+                                Gemini{gemini.error ? " ✗" : ""}
+                              </th>
+                              <th className={`px-2 py-1.5 text-center font-medium border-r border-border/50 ${grok.error ? "text-red-500" : ""}`}>
+                                Grok{grok.error ? " ✗" : ""}
+                              </th>
+                              <th className="px-2 py-1.5 text-center font-medium w-10">Match</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {holes.map(h => {
+                              const gHole = gPlayer?.holes?.find((x: any) => x.holeNumber === h);
+                              const rHole = rPlayer?.holes?.find((x: any) => x.holeNumber === h);
+                              const gVal = gemini.error ? "—" : (gHole?.strokes ?? "—");
+                              const rVal = grok.error ? "—" : (rHole?.strokes ?? "—");
+                              const bothKnown = gVal !== "—" && rVal !== "—";
+                              const agree = bothKnown && String(gVal) === String(rVal);
+                              if (bothKnown) { compared++; if (agree) matches++; }
+                              return (
+                                <tr key={h} className={agree ? "bg-green-50 dark:bg-green-950/20" : bothKnown ? "bg-red-50 dark:bg-red-950/20" : ""}>
+                                  <td className="px-2 py-1 border-r border-b border-border/30 font-medium text-muted-foreground">{h}</td>
+                                  <td className="px-2 py-1 border-r border-b border-border/30 text-center">{gVal}</td>
+                                  <td className="px-2 py-1 border-r border-b border-border/30 text-center">{rVal}</td>
+                                  <td className="px-2 py-1 border-b border-border/30 text-center">
+                                    {bothKnown ? (agree ? <span className="text-green-600">✓</span> : <span className="text-red-500">✗</span>) : ""}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {compared > 0 ? `${matches}/${compared} holes match` : "No comparable holes"}
+                      </p>
+                    </div>
+                  );
+                })}
+
+                {(gemini.error || grok.error) && (
+                  <div className="space-y-1">
+                    {gemini.error && <p className="text-xs text-red-500">Gemini error: {gemini.error}</p>}
+                    {grok.error && <p className="text-xs text-red-500">Grok error: {grok.error}</p>}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

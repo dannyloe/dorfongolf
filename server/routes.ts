@@ -10,7 +10,7 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
-import { scanScorecardImage, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
+import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 import { uploadScorecardImage } from "./imageStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -5782,6 +5782,51 @@ Transcript to parse: "${transcript}"`;
   });
 
   // Admin: send a test SMS to verify Plivo is wired up
+  app.post("/api/admin/scan-compare", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const { imageBase64, playerNames } = z.object({
+        imageBase64: z.string(),
+        playerNames: z.array(z.string()).default([]),
+      }).parse(req.body);
+
+      const params = { imageBase64, playerNames };
+
+      const [geminiResult, grokResult] = await Promise.allSettled([
+        (async () => {
+          const start = Date.now();
+          const result = await scanScorecardImageWithGemini(params);
+          return { ...result, durationMs: Date.now() - start, error: null };
+        })(),
+        (async () => {
+          const start = Date.now();
+          const result = await scanScorecardImageWithGrok(params);
+          return { ...result, durationMs: Date.now() - start, error: null };
+        })(),
+      ]);
+
+      const gemini = geminiResult.status === "fulfilled"
+        ? geminiResult.value
+        : { scores: [], rawText: "", durationMs: 0, error: (geminiResult.reason as Error)?.message ?? "Unknown error" };
+
+      const grok = grokResult.status === "fulfilled"
+        ? grokResult.value
+        : { scores: [], rawText: "", durationMs: 0, error: (grokResult.reason as Error)?.message ?? "Unknown error" };
+
+      res.json({ gemini, grok });
+    } catch (err: any) {
+      console.error("[admin scan-compare error]", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: err instanceof Error ? err.message : "Failed to compare scans" });
+    }
+  });
+
   app.post("/api/admin/test-scan", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;

@@ -307,7 +307,7 @@ CRITICAL — visual decorations around scores:
 Return JSON matching this shape exactly: { "scores": [ { "playerName": string, "holes": [ { "holeNumber": number, "strokes": string, "confidence": "high"|"medium"|"low" } ] } ], "rawText": string }${extraRulesText}`;
 }
 
-async function scanScorecardImageWithGemini(params: {
+export async function scanScorecardImageWithGemini(params: {
   imageBase64: string;
   playerNames: string[];
   courseName?: string;
@@ -404,7 +404,7 @@ async function scanScorecardImageWithGemini(params: {
   };
 }
 
-async function scanScorecardImageWithGrok(params: {
+export async function scanScorecardImageWithGrok(params: {
   imageBase64: string;
   playerNames: string[];
   courseName?: string;
