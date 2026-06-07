@@ -320,6 +320,28 @@ export const scanPatterns = pgTable("scan_patterns", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Scan comparisons — persisted results from admin Gemini vs Grok comparison runs
+export const scanComparisons = pgTable("scan_comparisons", {
+  id: serial("id").primaryKey(),
+  playerNames: text("player_names").array().notNull().default([]),
+  imageThumbnail: text("image_thumbnail"), // small base64 thumbnail for history display
+  geminiResult: jsonb("gemini_result").$type<{
+    scores: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
+    rawText: string;
+    durationMs: number;
+    error: string | null;
+  }>().notNull(),
+  grokResult: jsonb("grok_result").$type<{
+    scores: Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>;
+    rawText: string;
+    durationMs: number;
+    error: string | null;
+  }>().notNull(),
+  totalHoles: integer("total_holes").notNull().default(0),
+  matchedHoles: integer("matched_holes").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // App-level settings — simple key-value store for admin-controlled config
 export const appSettings = pgTable("app_settings", {
   key:   text("key").primaryKey(),
@@ -755,6 +777,13 @@ export const insertScanPatternSchema = createInsertSchema(scanPatterns).omit({
 });
 export type ScanPattern = typeof scanPatterns.$inferSelect;
 export type InsertScanPattern = z.infer<typeof insertScanPatternSchema>;
+
+export const insertScanComparisonSchema = createInsertSchema(scanComparisons).omit({
+  id: true,
+  createdAt: true,
+});
+export type ScanComparison = typeof scanComparisons.$inferSelect;
+export type InsertScanComparison = z.infer<typeof insertScanComparisonSchema>;
 
 export type EventPlayingGroup = typeof eventPlayingGroups.$inferSelect;
 export type InsertEventPlayingGroup = z.infer<typeof insertEventPlayingGroupSchema>;

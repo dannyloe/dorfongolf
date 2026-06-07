@@ -127,6 +127,13 @@
       "when": 1780958400000,
       "tag": "0018_add_scan_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780828027339,
+      "tag": "0019_cooing_white_tiger",
+      "breakpoints": true
     }
   ]
 }

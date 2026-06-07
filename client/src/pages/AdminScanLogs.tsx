@@ -524,11 +524,16 @@ export default function AdminScanLogs() {
   const [activeTab, setActiveTab] = useState<"logs" | "patterns" | "sms-test" | "settings" | "compare">("logs");
   const [compareImage, setCompareImage] = useState<string | null>(null);
   const [compareImageName, setCompareImageName] = useState<string>("");
+  const [compareThumbnail, setCompareThumbnail] = useState<string | null>(null);
   const [comparePlayers, setComparePlayers] = useState<string>("");
   const [compareResult, setCompareResult] = useState<{
     gemini: { scores: any[]; rawText: string; durationMs: number; error: string | null };
     grok: { scores: any[]; rawText: string; durationMs: number; error: string | null };
+    comparisonId?: number;
+    totalHoles?: number;
+    matchedHoles?: number;
   } | null>(null);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null);
   const [scanProvider, setScanProvider] = useState<"gemini" | "grok">("gemini");
   const [providerSaving, setProviderSaving] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
@@ -554,6 +559,21 @@ export default function AdminScanLogs() {
   const { data: adminSettings } = useQuery<{ scanProvider: "gemini" | "grok" }>({
     queryKey: ["/api/admin/settings"],
     enabled: !!user,
+  });
+
+  type ScanComparisonRow = {
+    id: number;
+    playerNames: string[];
+    imageThumbnail: string | null;
+    geminiResult: { scores: any[]; rawText: string; durationMs: number; error: string | null };
+    grokResult: { scores: any[]; rawText: string; durationMs: number; error: string | null };
+    totalHoles: number;
+    matchedHoles: number;
+    createdAt: string | null;
+  };
+  const { data: comparisonHistory, isLoading: historyLoading } = useQuery<ScanComparisonRow[]>({
+    queryKey: ["/api/admin/scan-comparisons"],
+    enabled: !!user && activeTab === "compare",
   });
 
   const settingsMutation = useMutation({
@@ -644,11 +664,17 @@ export default function AdminScanLogs() {
     mutationFn: async () => {
       if (!compareImage) throw new Error("No image selected");
       const playerNames = comparePlayers.split(",").map(s => s.trim()).filter(Boolean);
-      return apiRequest("POST", "/api/admin/scan-compare", { imageBase64: compareImage, playerNames });
+      return apiRequest("POST", "/api/admin/scan-compare", {
+        imageBase64: compareImage,
+        playerNames,
+        imageThumbnail: compareThumbnail ?? undefined,
+      });
     },
     onSuccess: async (res) => {
       const data = await res.json();
       setCompareResult(data);
+      setSelectedHistoryId(data.comparisonId ?? null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/scan-comparisons"] });
     },
     onError: (err: any) => {
       toast({ title: "Comparison failed", description: err?.message ?? "Unknown error", variant: "destructive" });
@@ -1232,8 +1258,24 @@ export default function AdminScanLogs() {
                   if (!file) return;
                   setCompareImageName(file.name);
                   setCompareResult(null);
+                  setCompareThumbnail(null);
                   const reader = new FileReader();
-                  reader.onload = () => setCompareImage(reader.result as string);
+                  reader.onload = () => {
+                    const dataUrl = reader.result as string;
+                    setCompareImage(dataUrl);
+                    // Generate a small thumbnail (150px wide) for history display
+                    const img = new Image();
+                    img.onload = () => {
+                      const canvas = document.createElement("canvas");
+                      const maxW = 150;
+                      const scale = Math.min(1, maxW / img.width);
+                      canvas.width = Math.round(img.width * scale);
+                      canvas.height = Math.round(img.height * scale);
+                      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+                      setCompareThumbnail(canvas.toDataURL("image/jpeg", 0.7));
+                    };
+                    img.src = dataUrl;
+                  };
                   reader.readAsDataURL(file);
                 }}
               />
@@ -1357,6 +1399,68 @@ export default function AdminScanLogs() {
               </div>
             );
           })()}
+
+          {/* History section */}
+          <div className="border-t border-border/40 pt-5 space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">Past Runs</h3>
+            {historyLoading && <p className="text-xs text-muted-foreground">Loading history…</p>}
+            {!historyLoading && (!comparisonHistory || comparisonHistory.length === 0) && (
+              <p className="text-xs text-muted-foreground">No comparison runs saved yet.</p>
+            )}
+            {comparisonHistory && comparisonHistory.length > 0 && (
+              <div className="space-y-2">
+                {comparisonHistory.map(run => {
+                  const pct = run.totalHoles > 0 ? Math.round((run.matchedHoles / run.totalHoles) * 100) : null;
+                  const isSelected = selectedHistoryId === run.id;
+                  return (
+                    <button
+                      key={run.id}
+                      data-testid={`history-run-${run.id}`}
+                      onClick={() => {
+                        setSelectedHistoryId(run.id);
+                        setCompareResult({
+                          gemini: run.geminiResult,
+                          grok: run.grokResult,
+                          comparisonId: run.id,
+                          totalHoles: run.totalHoles,
+                          matchedHoles: run.matchedHoles,
+                        });
+                        setCompareImage(null);
+                        setCompareImageName("");
+                        setCompareThumbnail(null);
+                        setComparePlayers(run.playerNames.join(", "));
+                      }}
+                      className={`w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-md border text-sm transition-colors ${isSelected ? "border-primary bg-primary/5" : "border-border/50 bg-muted/30 hover:bg-muted/60"}`}
+                    >
+                      {run.imageThumbnail ? (
+                        <img src={run.imageThumbnail} alt="Scorecard" className="w-10 h-10 rounded object-cover shrink-0 border border-border/50" data-testid={`history-thumb-${run.id}`} />
+                      ) : (
+                        <div className="w-10 h-10 rounded border border-dashed border-border/50 bg-muted/30 flex items-center justify-center shrink-0">
+                          <Camera className="w-4 h-4 text-muted-foreground/50" />
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                        <span className="font-medium truncate">
+                          {run.playerNames.length > 0 ? run.playerNames.join(", ") : "No named players"}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {run.playerNames.length} {run.playerNames.length === 1 ? "player" : "players"} · {run.createdAt ? format(new Date(run.createdAt), "MMM d, yyyy h:mm a") : ""}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {pct !== null && (
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${pct >= 80 ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" : pct >= 60 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400" : "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"}`}>
+                            {pct}%
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground">{run.matchedHoles}/{run.totalHoles} holes</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

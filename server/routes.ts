@@ -5789,9 +5789,10 @@ Transcript to parse: "${transcript}"`;
       if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
         return res.status(403).json({ message: "Admin only" });
       }
-      const { imageBase64, playerNames } = z.object({
+      const { imageBase64, playerNames, imageThumbnail } = z.object({
         imageBase64: z.string(),
         playerNames: z.array(z.string()).default([]),
+        imageThumbnail: z.string().optional(),
       }).parse(req.body);
 
       const params = { imageBase64, playerNames };
@@ -5817,13 +5818,78 @@ Transcript to parse: "${transcript}"`;
         ? grokResult.value
         : { scores: [], rawText: "", durationMs: 0, error: (grokResult.reason as Error)?.message ?? "Unknown error" };
 
-      res.json({ gemini, grok });
+      // Calculate agreement stats across all players
+      let totalHoles = 0;
+      let matchedHoles = 0;
+      const allPlayerNames = Array.from(new Set([
+        ...(gemini.scores ?? []).map((p: any) => p.playerName),
+        ...(grok.scores ?? []).map((p: any) => p.playerName),
+      ]));
+      for (const playerName of allPlayerNames) {
+        const gPlayer = (gemini.scores ?? []).find((p: any) => p.playerName === playerName);
+        const rPlayer = (grok.scores ?? []).find((p: any) => p.playerName === playerName);
+        for (let h = 1; h <= 18; h++) {
+          const gVal = gPlayer?.holes?.find((x: any) => x.holeNumber === h)?.strokes;
+          const rVal = rPlayer?.holes?.find((x: any) => x.holeNumber === h)?.strokes;
+          if (gVal != null && rVal != null) {
+            totalHoles++;
+            if (gVal === rVal) matchedHoles++;
+          }
+        }
+      }
+
+      // Persist the comparison result
+      const saved = await storage.createScanComparison({
+        playerNames,
+        imageThumbnail: imageThumbnail ?? null,
+        geminiResult: gemini,
+        grokResult: grok,
+        totalHoles,
+        matchedHoles,
+      });
+
+      res.json({ gemini, grok, comparisonId: saved.id, totalHoles, matchedHoles });
     } catch (err: any) {
       console.error("[admin scan-compare error]", err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
       res.status(500).json({ message: err instanceof Error ? err.message : "Failed to compare scans" });
+    }
+  });
+
+  // Admin: list past scan comparison runs
+  app.get("/api/admin/scan-comparisons", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const rows = await storage.listScanComparisons();
+      res.json(rows);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: get a specific scan comparison run
+  app.get("/api/admin/scan-comparisons/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const id = Number(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const row = await storage.getScanComparison(id);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

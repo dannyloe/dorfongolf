@@ -12,6 +12,7 @@ import {
   smsOptIns,
   scanCorrectionLogs,
   scanPatterns,
+  scanComparisons,
   appSettings,
   eventPlayingGroups, eventPlayingGroupMembers,
   apiKeys,
@@ -38,6 +39,7 @@ import {
   type SmsOptIn,
   type ScanCorrectionLog,
   type ScanPattern,
+  type ScanComparison,
   type EventPlayingGroup, type EventPlayingGroupMember, type EventPlayingGroupWithMembers,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest,
   type ApiKey
@@ -215,6 +217,16 @@ export interface IStorage {
   }>): Promise<ScanPattern[]>;
   markPatternAddressed(id: number, addressed: boolean): Promise<ScanPattern | undefined>;
   getActiveScanPatternRules(): Promise<string[]>;
+  createScanComparison(data: {
+    playerNames: string[];
+    imageThumbnail?: string | null;
+    geminiResult: ScanComparison["geminiResult"];
+    grokResult: ScanComparison["grokResult"];
+    totalHoles: number;
+    matchedHoles: number;
+  }): Promise<ScanComparison>;
+  listScanComparisons(): Promise<ScanComparison[]>;
+  getScanComparison(id: number): Promise<ScanComparison | undefined>;
 
   // Event Playing Groups
   getEventPlayingGroups(eventId: number): Promise<EventPlayingGroupWithMembers[]>;
@@ -4995,6 +5007,27 @@ export class DatabaseStorage implements IStorage {
   async setAppSetting(key: string, value: string): Promise<void> {
     await db.insert(appSettings).values({ key, value })
       .onConflictDoUpdate({ target: appSettings.key, set: { value } });
+  }
+
+  async createScanComparison(data: {
+    playerNames: string[];
+    imageThumbnail?: string | null;
+    geminiResult: ScanComparison["geminiResult"];
+    grokResult: ScanComparison["grokResult"];
+    totalHoles: number;
+    matchedHoles: number;
+  }): Promise<ScanComparison> {
+    const [row] = await db.insert(scanComparisons).values(data).returning();
+    return row;
+  }
+
+  async listScanComparisons(): Promise<ScanComparison[]> {
+    return db.select().from(scanComparisons).orderBy(desc(scanComparisons.createdAt));
+  }
+
+  async getScanComparison(id: number): Promise<ScanComparison | undefined> {
+    const rows = await db.select().from(scanComparisons).where(eq(scanComparisons.id, id));
+    return rows[0];
   }
 }
 
