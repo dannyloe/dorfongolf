@@ -294,6 +294,7 @@ export const scanCorrectionLogs = pgTable("scan_correction_logs", {
   matchId: integer("match_id"), // nullable — bet slip scans logged before a sub-match exists
   pendingScanId: integer("pending_scan_id"), // nullable — only set for MMS scans
   source: text("source").$type<"camera" | "mms" | "bet_slip">().notNull().default("mms"),
+  scanProvider: text("scan_provider").$type<"gemini" | "grok">(), // nullable — which AI model produced the scan
   courseName: text("course_name").notNull(),
   imageUrl: text("image_url"), // Permanent Object Storage URL of the scanned image
   geminiOutput: jsonb("gemini_output").$type<Array<{ playerName: string; holes: Array<{ holeNumber: number; strokes: number | null }> }>>().notNull(),

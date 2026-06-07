@@ -188,6 +188,7 @@ export interface IStorage {
     matchId?: number | null;
     pendingScanId?: number | null;
     source: "camera" | "mms" | "bet_slip";
+    scanProvider?: "gemini" | "grok" | null;
     courseName: string;
     imageUrl?: string | null;
     geminiOutput: Array<any>;
@@ -500,6 +501,7 @@ export class DatabaseStorage implements IStorage {
     matchId?: number | null;
     pendingScanId?: number | null;
     source: "camera" | "mms" | "bet_slip";
+    scanProvider?: "gemini" | "grok" | null;
     courseName: string;
     imageUrl?: string | null;
     geminiOutput: Array<any>;
@@ -511,6 +513,7 @@ export class DatabaseStorage implements IStorage {
       matchId: data.matchId ?? null,
       pendingScanId: data.pendingScanId ?? null,
       source: data.source,
+      scanProvider: data.scanProvider ?? null,
       courseName: data.courseName,
       imageUrl: data.imageUrl ?? null,
       geminiOutput: data.geminiOutput,
@@ -547,6 +550,7 @@ export class DatabaseStorage implements IStorage {
         matchId: scanCorrectionLogs.matchId,
         pendingScanId: scanCorrectionLogs.pendingScanId,
         source: scanCorrectionLogs.source,
+        scanProvider: scanCorrectionLogs.scanProvider,
         courseName: scanCorrectionLogs.courseName,
         imageUrl: scanCorrectionLogs.imageUrl,
         geminiOutput: scanCorrectionLogs.geminiOutput,

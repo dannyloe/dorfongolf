@@ -120,6 +120,13 @@
       "when": 1780900000000,
       "tag": "0016_add_source_sms_bet_id_to_event_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780958400000,
+      "tag": "0018_add_scan_provider",
+      "breakpoints": true
     }
   ]
 }

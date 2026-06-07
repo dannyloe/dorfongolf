@@ -21,6 +21,7 @@ type ScanCorrectionLog = {
   matchId: number | null;
   pendingScanId: number | null;
   source: "camera" | "mms" | "bet_slip" | null;
+  scanProvider: "gemini" | "grok" | null;
   courseName: string;
   geminiOutput: GeminiPlayer[] | any[];
   appliedOutput: AppliedPlayer[] | any[];
@@ -218,6 +219,15 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
                 <MessageSquare className="w-3 h-3" />MMS
               </Badge>
             )}
+            {log.scanProvider === "grok" ? (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 border-purple-300 text-purple-700 dark:text-purple-400" data-testid={`badge-provider-${log.id}`}>
+                <Bot className="w-3 h-3" />Grok
+              </Badge>
+            ) : log.scanProvider === "gemini" || log.source !== "bet_slip" ? (
+              <Badge variant="outline" className="text-xs flex items-center gap-1 border-sky-300 text-sky-700 dark:text-sky-400" data-testid={`badge-provider-${log.id}`}>
+                <Bot className="w-3 h-3" />Gemini
+              </Badge>
+            ) : null}
             {hasShift && (
               <Badge className="text-xs bg-red-100 text-red-700 border-red-300 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />Shift
@@ -518,6 +528,7 @@ export default function AdminScanLogs() {
   const [dateTo, setDateTo] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "scorecard" | "bet_slip">("all");
+  const [providerFilter, setProviderFilter] = useState<"all" | "gemini" | "grok">("all");
   const [smsPhone, setSmsPhone] = useState("");
   const [smsResult, setSmsResult] = useState<{ ok: boolean; sid?: string; to?: string; error?: string } | null>(null);
 
@@ -624,12 +635,13 @@ export default function AdminScanLogs() {
     return logs.filter(log => {
       if (sourceFilter === "scorecard" && log.source === "bet_slip") return false;
       if (sourceFilter === "bet_slip" && log.source !== "bet_slip") return false;
+      if (providerFilter !== "all" && (log.scanProvider ?? "gemini") !== providerFilter) return false;
       if (courseFilter !== "all" && log.courseName !== courseFilter) return false;
       if (dateFrom && log.createdAt && new Date(log.createdAt) < new Date(dateFrom)) return false;
       if (dateTo && log.createdAt && new Date(log.createdAt) > new Date(dateTo + "T23:59:59")) return false;
       return true;
     });
-  }, [logs, courseFilter, dateFrom, dateTo, sourceFilter]);
+  }, [logs, courseFilter, dateFrom, dateTo, sourceFilter, providerFilter]);
 
   const stats = useMemo(() => {
     const scorecardLogs = filteredLogs.filter(l => l.source !== "bet_slip");
@@ -685,7 +697,7 @@ export default function AdminScanLogs() {
     );
   }
 
-  const hasActiveFilters = courseFilter !== "all" || dateFrom || dateTo || sourceFilter !== "all";
+  const hasActiveFilters = courseFilter !== "all" || dateFrom || dateTo || sourceFilter !== "all" || providerFilter !== "all";
   const activePatterns = (patterns ?? []).filter(p => !p.addressed);
   const addressedPatterns = (patterns ?? []).filter(p => p.addressed);
 
@@ -806,10 +818,23 @@ export default function AdminScanLogs() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex flex-col gap-1 min-w-[140px]">
+              <Label className="text-xs">AI Model</Label>
+              <Select value={providerFilter} onValueChange={v => setProviderFilter(v as "all" | "gemini" | "grok")}>
+                <SelectTrigger className="h-8 text-sm" data-testid="select-provider-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All models</SelectItem>
+                  <SelectItem value="gemini">Gemini</SelectItem>
+                  <SelectItem value="grok">Grok</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             {hasActiveFilters && (
               <button
                 className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors self-end pb-1"
-                onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); setSourceFilter("all"); }}
+                onClick={() => { setDateFrom(""); setDateTo(""); setCourseFilter("all"); setSourceFilter("all"); setProviderFilter("all"); }}
                 data-testid="button-clear-filters"
               >
                 Clear filters
