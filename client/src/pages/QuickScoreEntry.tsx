@@ -1150,10 +1150,27 @@ export default function QuickScoreEntry() {
                       const holeData = playerScore.holes.find(h => h.holeNumber === hole);
                       const value = editableScores[playerScore.playerName]?.[hole] || '';
                       const disputed = isDisputedHole(playerScore.playerName, hole);
+                      const scoreNum = value !== '' ? parseInt(value, 10) : null;
+                      const par = matchCourse ? getHolePar(hole) : null;
+                      const diff = scoreNum !== null && !isNaN(scoreNum) && par !== null ? scoreNum - par : null;
+                      const textColor = diff === null || diff === 0 ? '' : diff <= -2 ? 'text-yellow-500' : diff === -1 ? 'text-red-500' : 'text-blue-500';
+                      const circleColor = diff !== null && diff <= -2 ? 'border-yellow-500' : 'border-red-500';
+                      const isLowConfidence = holeData?.confidence === 'low';
                       return (
                         <div key={hole} className="text-center">
-                          <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                          <div className="text-xs text-muted-foreground mb-0.5">{hole}</div>
+                          {par !== null && <div className="text-[10px] text-muted-foreground/60 mb-0.5">p{par}</div>}
                           <div className="relative">
+                            {diff !== null && diff < 0 && Array.from({ length: Math.abs(diff) }, (_, i) => (
+                              <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                <span className={`w-6 h-6 rounded-full border-2 ${circleColor}`} />
+                              </span>
+                            ))}
+                            {diff !== null && diff > 0 && Array.from({ length: Math.min(diff, 3) }, (_, i) => (
+                              <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                <span className="w-6 h-6 border-2 border-blue-500" />
+                              </span>
+                            ))}
                             <input
                               type="text"
                               inputMode="numeric"
@@ -1168,10 +1185,10 @@ export default function QuickScoreEntry() {
                                   }
                                 }));
                               }}
-                              className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 ${disputed ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400' : ''}`}
+                              className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 transition-colors duration-200 ${disputed ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400' : isLowConfidence ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400' : 'bg-transparent'} ${textColor}`}
                               data-testid={`input-scan-${playerScore.playerName}-${hole}`}
                             />
-                            <div className="absolute -top-1 -right-1">
+                            <div className="absolute -top-1 -right-1 z-20">
                               {getConfidenceIcon(holeData?.confidence)}
                             </div>
                           </div>
@@ -1179,7 +1196,8 @@ export default function QuickScoreEntry() {
                       );
                     })}
                     <div className="text-center">
-                      <div className="text-xs text-muted-foreground mb-1">OUT</div>
+                      <div className="text-xs text-muted-foreground mb-0.5">OUT</div>
+                      {matchCourse && <div className="text-[10px] text-muted-foreground/60 mb-0.5">{[1,2,3,4,5,6,7,8,9].reduce((s, h) => s + getHolePar(h), 0)}</div>}
                       <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">
                         {totals.front9 ?? '-'}
                       </div>
@@ -1191,10 +1209,27 @@ export default function QuickScoreEntry() {
                       const holeData = playerScore.holes.find(h => h.holeNumber === hole);
                       const value = editableScores[playerScore.playerName]?.[hole] || '';
                       const disputed = isDisputedHole(playerScore.playerName, hole);
+                      const scoreNum = value !== '' ? parseInt(value, 10) : null;
+                      const par = matchCourse ? getHolePar(hole) : null;
+                      const diff = scoreNum !== null && !isNaN(scoreNum) && par !== null ? scoreNum - par : null;
+                      const textColor = diff === null || diff === 0 ? '' : diff <= -2 ? 'text-yellow-500' : diff === -1 ? 'text-red-500' : 'text-blue-500';
+                      const circleColor = diff !== null && diff <= -2 ? 'border-yellow-500' : 'border-red-500';
+                      const isLowConfidence = holeData?.confidence === 'low';
                       return (
                         <div key={hole} className="text-center">
-                          <div className="text-xs text-muted-foreground mb-1">{hole}</div>
+                          <div className="text-xs text-muted-foreground mb-0.5">{hole}</div>
+                          {par !== null && <div className="text-[10px] text-muted-foreground/60 mb-0.5">p{par}</div>}
                           <div className="relative">
+                            {diff !== null && diff < 0 && Array.from({ length: Math.abs(diff) }, (_, i) => (
+                              <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                <span className={`w-6 h-6 rounded-full border-2 ${circleColor}`} />
+                              </span>
+                            ))}
+                            {diff !== null && diff > 0 && Array.from({ length: Math.min(diff, 3) }, (_, i) => (
+                              <span key={i} className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ transform: `scale(${1 + i * 0.35})` }}>
+                                <span className="w-6 h-6 border-2 border-blue-500" />
+                              </span>
+                            ))}
                             <input
                               type="text"
                               inputMode="numeric"
@@ -1209,10 +1244,10 @@ export default function QuickScoreEntry() {
                                   }
                                 }));
                               }}
-                              className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 ${disputed ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400' : ''}`}
+                              className={`w-full h-8 text-center text-sm font-medium border rounded focus:outline-none focus:ring-2 focus:ring-primary/50 relative z-10 transition-colors duration-200 ${disputed ? 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400' : isLowConfidence ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-400' : 'bg-transparent'} ${textColor}`}
                               data-testid={`input-scan-${playerScore.playerName}-${hole}`}
                             />
-                            <div className="absolute -top-1 -right-1">
+                            <div className="absolute -top-1 -right-1 z-20">
                               {getConfidenceIcon(holeData?.confidence)}
                             </div>
                           </div>
@@ -1220,7 +1255,8 @@ export default function QuickScoreEntry() {
                       );
                     })}
                     <div className="text-center">
-                      <div className="text-xs text-muted-foreground mb-1">IN</div>
+                      <div className="text-xs text-muted-foreground mb-0.5">IN</div>
+                      {matchCourse && <div className="text-[10px] text-muted-foreground/60 mb-0.5">{[10,11,12,13,14,15,16,17,18].reduce((s, h) => s + getHolePar(h), 0)}</div>}
                       <div className="h-8 flex items-center justify-center text-sm font-bold bg-muted rounded">
                         {totals.back9 ?? '-'}
                       </div>
