@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "uBslsyOoO_cd6R3mLuL8p"
+uri = "file://scorecards.xlsx"
+type = "table"
+title = "Scorecards — Sunday May 24 & Memorial Day"
