@@ -134,6 +134,13 @@
       "when": 1780828027339,
       "tag": "0019_cooing_white_tiger",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780850627046,
+      "tag": "0020_next_malice",
+      "breakpoints": true
     }
   ]
 }

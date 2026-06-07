@@ -719,6 +719,7 @@ export const api = {
       path: '/api/courses/:id',
       input: z.object({
         name: z.string().min(1).optional(),
+        scorecardNotes: z.string().nullable().optional(),
       }),
       responses: {
         200: z.object({ id: z.number(), name: z.string() }),

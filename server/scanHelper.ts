@@ -258,16 +258,50 @@ function applyPostProcessing(players: NormalizedPlayer[]): NormalizedPlayer[] {
   return processed.filter(player => player.holes.some(h => h.strokes !== null));
 }
 
-function buildScorecardPrompt(playerNames: string[], courseName?: string, extraRules?: string[]): string {
+function buildScorecardPrompt(
+  playerNames: string[],
+  courseName?: string,
+  extraRules?: string[],
+  holePars?: { holeNumber: number; par: number }[],
+  scorecardNotes?: string | null,
+): string {
   const extraRulesText =
     extraRules && extraRules.length > 0
       ? `\n\nAdditional rules based on past scan corrections:\n${extraRules.map((r, i) => `${i + 1}. ${r}`).join("\n")}`
       : "";
 
+  const holeParsText =
+    holePars && holePars.length > 0
+      ? `\nHole par values for this course:\n${holePars
+          .sort((a, b) => a.holeNumber - b.holeNumber)
+          .map(h => `  Hole ${h.holeNumber}: par ${h.par}`)
+          .join("\n")}`
+      : "";
+
+  const scorecardNotesText =
+    scorecardNotes && scorecardNotes.trim().length > 0
+      ? `\nKnown layout notes for this course:\n${scorecardNotes.trim()}`
+      : "";
+
+  const parCrossCheckRules =
+    holePars && holePars.length > 0
+      ? `
+IMPORTANT — use known par values as cross-checks (hole pars listed above):
+- A circled score conventionally means birdie (one under par) or better; a boxed/square score conventionally means bogey (one over par) or worse.
+- When a circle or box annotation is present, use it to raise or lower confidence:
+  - Circled score agrees with par (score ≤ par−1): raise confidence to "high".
+  - Circled score disagrees with par (score > par−1): set confidence to "low" — the mark or the digit may be misread.
+  - Boxed score agrees with par (score ≥ par+1): raise confidence to "high".
+  - Boxed score disagrees with par (score < par+1): set confidence to "low" — the mark or the digit may be misread.
+- If a single-hole score is more than 5 strokes over par for that hole (e.g. a score of 11 on a par-4), set its confidence to "low" — it is likely a misread subtotal or annotation.
+- Read each player's row independently — do not copy scores from another player's row.`
+      : `
+- Read each player's row independently — do not copy scores from another player's row.`;
+
   return `You are reading a golf scorecard photo. Extract per-hole scores.
 
 Known players in this match: ${playerNames.join(", ")}
-${courseName ? `Course: ${courseName}` : ""}
+${courseName ? `Course: ${courseName}` : ""}${holeParsText}${scorecardNotesText}
 
 Rules:
 - Only include players whose scores are actually visible on the card.
@@ -300,10 +334,10 @@ CRITICAL — match play annotations:
 - Only read the integer stroke count for each hole. Ignore any +/- notation, "UP", "DN", or "AS" written adjacent to a score.
 
 CRITICAL — visual decorations around scores:
-- Scorers sometimes circle, box, or underline individual hole scores as personal notation. These marks are purely decorative — ignore them entirely.
-- Read only the numeral(s) inside the mark. Never let a surrounding border, circle outline, or underline bleed into the digit itself.
+- Scorers sometimes circle, box, or underline individual hole scores. Read only the numeral(s) inside the mark. Never let a surrounding border, circle outline, or underline bleed into the digit itself.
 - Specifically: a boxed "4" is 4, not "14" or "41". A circled "3" is 3, not "03" or "30".
-
+- When hole par values are known (see above), the presence of a circle or box is a useful confidence signal per the cross-check rules below; use it — do not discard it.
+${parCrossCheckRules}
 Return JSON matching this shape exactly: { "scores": [ { "playerName": string, "holes": [ { "holeNumber": number, "strokes": string, "confidence": "high"|"medium"|"low" } ] } ], "rawText": string }${extraRulesText}`;
 }
 
@@ -312,14 +346,16 @@ export async function scanScorecardImageWithGemini(params: {
   playerNames: string[];
   courseName?: string;
   extraRules?: string[];
+  holePars?: { holeNumber: number; par: number }[];
+  scorecardNotes?: string | null;
 }): Promise<ScanScorecardResult> {
-  const { imageBase64, playerNames, courseName, extraRules } = params;
+  const { imageBase64, playerNames, courseName, extraRules, holePars, scorecardNotes } = params;
 
   if (!ai) {
     throw new Error("AI features are currently unavailable");
   }
 
-  const prompt = buildScorecardPrompt(playerNames, courseName, extraRules);
+  const prompt = buildScorecardPrompt(playerNames, courseName, extraRules, holePars, scorecardNotes);
 
   const mimeMatch = imageBase64.match(/^data:(image\/[^;]+);base64,/);
   const mimeType = mimeMatch?.[1] || "image/jpeg";
@@ -409,13 +445,15 @@ export async function scanScorecardImageWithGrok(params: {
   playerNames: string[];
   courseName?: string;
   extraRules?: string[];
+  holePars?: { holeNumber: number; par: number }[];
+  scorecardNotes?: string | null;
 }): Promise<ScanScorecardResult> {
   if (!grok) {
     throw new Error("XAI_API_KEY is not set — add it in Secrets");
   }
 
-  const { imageBase64, playerNames, courseName, extraRules } = params;
-  const prompt = buildScorecardPrompt(playerNames, courseName, extraRules);
+  const { imageBase64, playerNames, courseName, extraRules, holePars, scorecardNotes } = params;
+  const prompt = buildScorecardPrompt(playerNames, courseName, extraRules, holePars, scorecardNotes);
 
   const completion = await grok.chat.completions.create({
     model: "grok-2-vision-1212",
@@ -463,6 +501,8 @@ export async function scanScorecardImage(params: {
   courseName?: string;
   extraRules?: string[];
   provider?: "gemini" | "grok";
+  holePars?: { holeNumber: number; par: number }[];
+  scorecardNotes?: string | null;
 }): Promise<ScanScorecardResult> {
   const { provider = "gemini", ...rest } = params;
   if (provider === "grok") {

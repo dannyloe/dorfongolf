@@ -2193,12 +2193,34 @@ export async function registerRoutes(
 
       const extraRules = await storage.getActiveScanPatternRules();
       const scanProvider = (await storage.getAppSetting("scanProvider")) as "gemini" | "grok" | null ?? "gemini";
+
+      // Fetch course-specific data for richer prompts when a matchId is provided
+      let holePars: { holeNumber: number; par: number }[] | undefined;
+      let scorecardNotes: string | null | undefined;
+      if (input.matchId) {
+        try {
+          const scanMatch = await storage.getMatch(input.matchId);
+          if (scanMatch?.courseId) {
+            const [holes, course] = await Promise.all([
+              storage.getCourseHoles(scanMatch.courseId),
+              storage.getCourse(scanMatch.courseId),
+            ]);
+            if (holes.length > 0) holePars = holes.map(h => ({ holeNumber: h.holeNumber, par: h.par }));
+            if (course?.scorecardNotes) scorecardNotes = course.scorecardNotes;
+          }
+        } catch (courseErr) {
+          console.error("[scan] Failed to fetch course data for prompt (non-fatal):", courseErr);
+        }
+      }
+
       const result = await scanScorecardImage({
         imageBase64: input.imageBase64,
         playerNames: input.playerNames,
         courseName: input.courseName,
         extraRules,
         provider: scanProvider,
+        holePars,
+        scorecardNotes,
       });
 
       // Create correction log at scan time when matchId is provided, so the record
@@ -2529,7 +2551,24 @@ export async function registerRoutes(
 
           const extraRules = await storage.getActiveScanPatternRules();
           const scanProvider = (await storage.getAppSetting("scanProvider")) as "gemini" | "grok" | null ?? "gemini";
-          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules, provider: scanProvider });
+
+          // Fetch course-specific data for richer prompts when the match has a linked course
+          let mmsHolePars: { holeNumber: number; par: number }[] | undefined;
+          let mmsScorecardNotes: string | null | undefined;
+          if (match.courseId) {
+            try {
+              const [mmsHoles, mmsCourse] = await Promise.all([
+                storage.getCourseHoles(match.courseId),
+                storage.getCourse(match.courseId),
+              ]);
+              if (mmsHoles.length > 0) mmsHolePars = mmsHoles.map((h: { holeNumber: number; par: number }) => ({ holeNumber: h.holeNumber, par: h.par }));
+              if (mmsCourse?.scorecardNotes) mmsScorecardNotes = mmsCourse.scorecardNotes;
+            } catch (courseErr) {
+              console.error("[sms-scan] Failed to fetch course data for prompt (non-fatal):", courseErr);
+            }
+          }
+
+          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules, provider: scanProvider, holePars: mmsHolePars, scorecardNotes: mmsScorecardNotes });
 
           // Create correction log at scan time — captures dismissed and failed scans too.
           // Log ALL attempts regardless of success so every scan attempt is permanently

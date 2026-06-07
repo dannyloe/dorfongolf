@@ -46,6 +46,7 @@ export const courses = pgTable("courses", {
   name: text("name").notNull().unique(),
   slopeRating: integer("slope_rating"),
   courseRating: integer("course_rating"), // Stored as tenths (e.g., 721 = 72.1)
+  scorecardNotes: text("scorecard_notes"),
 });
 
 export const courseHoles = pgTable("course_holes", {

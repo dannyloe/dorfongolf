@@ -1696,7 +1696,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async updateCourse(id: number, data: { name?: string }): Promise<Course | undefined> {
+  async updateCourse(id: number, data: { name?: string; scorecardNotes?: string | null }): Promise<Course | undefined> {
     const [updated] = await db.update(courses)
       .set(data)
       .where(eq(courses.id, id))

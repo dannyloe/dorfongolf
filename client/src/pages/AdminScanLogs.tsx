@@ -206,6 +206,17 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
             <span className="font-medium text-sm truncate">{log.matchName || `Match #${log.matchId}`}</span>
             <span className="text-xs text-muted-foreground">·</span>
             <span className="text-xs text-muted-foreground truncate">{log.courseName}</span>
+            {log.courseName && (
+              <a
+                href={`/courses?course=${encodeURIComponent(log.courseName)}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs text-primary hover:underline shrink-0"
+                title={`Edit scorecard notes for ${log.courseName}`}
+                data-testid={`link-edit-course-notes-${log.id}`}
+              >
+                Edit course notes
+              </a>
+            )}
             {log.source === "camera" ? (
               <Badge variant="secondary" className="text-xs flex items-center gap-1" data-testid={`badge-source-${log.id}`}>
                 <Camera className="w-3 h-3" />Camera

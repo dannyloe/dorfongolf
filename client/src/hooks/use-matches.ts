@@ -525,6 +525,7 @@ export interface Course {
   name: string;
   holes: CourseHole[];
   totalPar: number;
+  scorecardNotes?: string | null;
 }
 
 export function useCourses() {
@@ -607,6 +608,29 @@ export function useDeleteCourse() {
       });
       
       if (!res.ok) throw new Error("Failed to delete course");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.courses.list.path] });
+    },
+  });
+}
+
+export function useUpdateScorecardNotes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ courseId, scorecardNotes }: { courseId: number; scorecardNotes: string | null }) => {
+      const url = buildUrl(api.courses.update.path, { id: courseId });
+      const res = await fetch(url, {
+        method: api.courses.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scorecardNotes }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update scorecard notes");
+      }
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.courses.list.path] });

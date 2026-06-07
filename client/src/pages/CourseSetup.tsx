@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useCourses, useCreateCourse, useUpdateCourseHole, useDeleteCourse, useCourseTees, useCreateCourseTee, useUpdateCourseTee, useDeleteCourseTee, type Course, type CourseTee } from "@/hooks/use-matches";
+import { useState, useEffect } from "react";
+import { useCourses, useCreateCourse, useUpdateCourseHole, useDeleteCourse, useUpdateScorecardNotes, useCourseTees, useCreateCourseTee, useUpdateCourseTee, useDeleteCourseTee, type Course, type CourseTee } from "@/hooks/use-matches";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Plus, Save, Trash2, ChevronDown, ChevronUp, MapPin, X, Search, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -572,6 +573,7 @@ export default function CourseSetup() {
   const createCourse = useCreateCourse();
   const updateCourseHole = useUpdateCourseHole();
   const deleteCourse = useDeleteCourse();
+  const updateScorecardNotes = useUpdateScorecardNotes();
   const { toast } = useToast();
 
   const [expandedCourse, setExpandedCourse] = useState<number | null>(null);
@@ -581,7 +583,23 @@ export default function CourseSetup() {
     Array.from({ length: 18 }, (_, i) => ({ holeNumber: i + 1, par: 4, handicap: null }))
   );
   const [editingHoles, setEditingHoles] = useState<Record<string, { par: number; handicap: number | null }>>({});
+  const [editingNotes, setEditingNotes] = useState<Record<number, string>>({});
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!courses || courses.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetName = params.get("course");
+    if (!targetName) return;
+    const match = courses.find(c => c.name.toLowerCase() === targetName.toLowerCase());
+    if (match && expandedCourse === null) {
+      setExpandedCourse(match.id);
+      setTimeout(() => {
+        const el = document.querySelector(`[data-testid="card-course-${match.id}"]`);
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    }
+  }, [courses]);
 
   const handleCreateCourse = async () => {
     if (!newCourseName.trim()) {
@@ -1016,6 +1034,51 @@ export default function CourseSetup() {
                     </Button>
                   </div>
                 )}
+
+                <div className="border-t pt-4 space-y-2">
+                  <div>
+                    <label className="text-sm font-medium">Scorecard layout notes</label>
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Describe any quirks of this course's physical scorecard that help the AI read it correctly (e.g. "OUT column is printed in red between holes 9 and 10", "handicap row appears between player rows").
+                    </p>
+                    <Textarea
+                      value={editingNotes[course.id] ?? (course.scorecardNotes || "")}
+                      onChange={(e) => setEditingNotes(prev => ({ ...prev, [course.id]: e.target.value }))}
+                      placeholder="No notes yet — add any layout quirks specific to this course's scorecard."
+                      rows={3}
+                      className="text-sm"
+                      data-testid={`textarea-scorecard-notes-${course.id}`}
+                    />
+                  </div>
+                  {(editingNotes[course.id] !== undefined && editingNotes[course.id] !== (course.scorecardNotes || "")) && (
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await updateScorecardNotes.mutateAsync({
+                              courseId: course.id,
+                              scorecardNotes: editingNotes[course.id] || null,
+                            });
+                            setEditingNotes(prev => {
+                              const next = { ...prev };
+                              delete next[course.id];
+                              return next;
+                            });
+                            toast({ title: "Saved", description: "Scorecard notes updated" });
+                          } catch (err: any) {
+                            toast({ title: "Error", description: err.message, variant: "destructive" });
+                          }
+                        }}
+                        disabled={updateScorecardNotes.isPending}
+                        data-testid={`button-save-notes-${course.id}`}
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {updateScorecardNotes.isPending ? "Saving..." : "Save Notes"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
 
                 <TeeManagement courseId={course.id} />
               </CardContent>
