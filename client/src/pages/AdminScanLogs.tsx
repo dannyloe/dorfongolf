@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { useCourses } from "@/hooks/use-matches";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -105,7 +106,17 @@ function getLogStats(log: ScanCorrectionLog): { totalChanges: number; hasShift: 
   return { totalChanges, hasShift };
 }
 
-function PlayerDiffTable({ geminiPlayer, appliedPlayer }: { geminiPlayer: GeminiPlayer; appliedPlayer: AppliedPlayer }) {
+function getParScoreColor(score: number | null, par: number | undefined): string {
+  if (score === null || par === undefined) return "";
+  const diff = score - par;
+  if (diff <= -2) return "text-yellow-500 font-bold";
+  if (diff === -1) return "text-red-500 font-bold";
+  if (diff === 0) return "";
+  if (diff === 1) return "text-blue-500 font-bold";
+  return "text-blue-700 font-bold";
+}
+
+function PlayerDiffTable({ geminiPlayer, appliedPlayer, holePars }: { geminiPlayer: GeminiPlayer; appliedPlayer: AppliedPlayer; holePars?: Record<number, number> }) {
   const diffs = buildDiffs(geminiPlayer, appliedPlayer);
   const hasChanges = diffs.some(d => d.changed);
   const hasShift = diffs.some(d => d.shiftSuspect);
@@ -137,12 +148,22 @@ function PlayerDiffTable({ geminiPlayer, appliedPlayer }: { geminiPlayer: Gemini
                 </td>
               ))}
             </tr>
+            {holePars && (
+              <tr className="border-b border-border/30">
+                <td className="px-2 py-1 text-muted-foreground/60">Par</td>
+                {diffs.map(d => (
+                  <td key={d.hole} className="px-2 py-1 text-center text-muted-foreground/60" data-testid={`par-hole-${d.hole}`}>
+                    {holePars[d.hole] ?? "—"}
+                  </td>
+                ))}
+              </tr>
+            )}
             <tr className="border-b border-border/50">
               <td className="px-2 py-1 text-muted-foreground">Gemini</td>
               {diffs.map(d => (
                 <td
                   key={d.hole}
-                  className={`px-2 py-1 text-center ${d.changed ? (d.shiftSuspect ? "bg-red-100 dark:bg-red-900/30 text-red-700" : "bg-orange-50 dark:bg-orange-900/20 text-orange-700") : ""}`}
+                  className={`px-2 py-1 text-center ${d.changed ? (d.shiftSuspect ? "bg-red-100 dark:bg-red-900/30 text-red-700" : "bg-orange-50 dark:bg-orange-900/20 text-orange-700") : getParScoreColor(d.gemini, holePars?.[d.hole])}`}
                   data-testid={`gemini-hole-${d.hole}`}
                 >
                   {d.gemini ?? <span className="text-muted-foreground">—</span>}
@@ -154,7 +175,7 @@ function PlayerDiffTable({ geminiPlayer, appliedPlayer }: { geminiPlayer: Gemini
               {diffs.map(d => (
                 <td
                   key={d.hole}
-                  className={`px-2 py-1 text-center font-medium ${d.changed ? (d.shiftSuspect ? "bg-red-100 dark:bg-red-900/30 text-red-800" : "bg-orange-50 dark:bg-orange-900/20 text-orange-800") : ""}`}
+                  className={`px-2 py-1 text-center ${d.changed ? (d.shiftSuspect ? "bg-red-100 dark:bg-red-900/30 text-red-800" : "bg-orange-50 dark:bg-orange-900/20 text-orange-800") : getParScoreColor(d.applied, holePars?.[d.hole])}`}
                   data-testid={`saved-hole-${d.hole}`}
                 >
                   {d.applied ?? <span className="text-muted-foreground">—</span>}
@@ -190,7 +211,7 @@ function GeminiNotesSection({ rawText, logId }: { rawText: string; logId: number
   );
 }
 
-function LogRow({ log }: { log: ScanCorrectionLog }) {
+function LogRow({ log, holePars }: { log: ScanCorrectionLog; holePars?: Record<number, number> }) {
   const [expanded, setExpanded] = useState(false);
   const { totalChanges, hasShift } = getLogStats(log);
 
@@ -272,7 +293,7 @@ function LogRow({ log }: { log: ScanCorrectionLog }) {
               const gp = log.geminiOutput.find(g => g.playerName === ap.playerName);
               if (!gp) return null;
               return (
-                <PlayerDiffTable key={ap.playerId} geminiPlayer={gp} appliedPlayer={ap} />
+                <PlayerDiffTable key={ap.playerId} geminiPlayer={gp} appliedPlayer={ap} holePars={holePars} />
               );
             })
           )}
@@ -571,6 +592,17 @@ export default function AdminScanLogs() {
     queryKey: ["/api/admin/settings"],
     enabled: !!user,
   });
+
+  const { data: coursesList } = useCourses();
+  const courseParMap = useMemo(() => {
+    const map: Record<string, Record<number, number>> = {};
+    for (const course of coursesList ?? []) {
+      const pars: Record<number, number> = {};
+      for (const h of course.holes) pars[h.holeNumber] = h.par;
+      map[course.name] = pars;
+    }
+    return map;
+  }, [coursesList]);
 
   type ScanComparisonRow = {
     id: number;
@@ -981,7 +1013,7 @@ export default function AdminScanLogs() {
               {filteredLogs.map(log =>
                 log.source === "bet_slip"
                   ? <BetSlipLogRow key={log.id} log={log} />
-                  : <LogRow key={log.id} log={log} />
+                  : <LogRow key={log.id} log={log} holePars={log.courseName ? courseParMap[log.courseName] : undefined} />
               )}
             </div>
           )}
