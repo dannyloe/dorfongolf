@@ -531,6 +531,8 @@ export default function AdminScanLogs() {
   const [providerFilter, setProviderFilter] = useState<"all" | "gemini" | "grok">("all");
   const [smsPhone, setSmsPhone] = useState("");
   const [smsResult, setSmsResult] = useState<{ ok: boolean; sid?: string; to?: string; error?: string } | null>(null);
+  const [testScanFile, setTestScanFile] = useState<File | null>(null);
+  const [testScanResult, setTestScanResult] = useState<{ ok: boolean; scores?: any[]; rawText?: string; message?: string } | null>(null);
 
   const { data: logs, isLoading: logsLoading, error: logsError } = useQuery<ScanCorrectionLog[]>({
     queryKey: ["/api/admin/scan-correction-logs"],
@@ -601,6 +603,33 @@ export default function AdminScanLogs() {
     },
     onError: () => {
       toast({ title: "Update failed", description: "Could not update pattern.", variant: "destructive" });
+    },
+  });
+
+  const testScanMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      return apiRequest("POST", "/api/admin/test-scan", { imageBase64: base64, playerNames: [] });
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setTestScanResult(data);
+    },
+    onError: (err: any) => {
+      let message = "Scan failed";
+      try {
+        const text: string = err?.message ?? "";
+        const jsonPart = text.replace(/^\d+:\s*/, "");
+        const data = JSON.parse(jsonPart);
+        if (data?.message) message = data.message;
+        else if (typeof data === "string") message = data;
+      } catch {}
+      setTestScanResult({ ok: false, message });
     },
   });
 
@@ -1029,6 +1058,122 @@ export default function AdminScanLogs() {
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <RefreshCw className="w-3 h-3 animate-spin" /> Saving…
               </p>
+            )}
+          </div>
+
+          <div>
+            <h2 className="text-base font-semibold">Test Grok Scan</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Upload a scorecard photo to verify your <code className="text-xs bg-muted px-1 py-0.5 rounded">XAI_API_KEY</code> is valid and check the quality of Grok's output before switching providers.
+            </p>
+          </div>
+
+          <div className="bg-muted/40 border border-border/50 rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                id="grok-test-file"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="input-grok-test-file"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setTestScanFile(f);
+                  setTestScanResult(null);
+                }}
+              />
+              <label
+                htmlFor="grok-test-file"
+                className="cursor-pointer inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md border border-border bg-background hover:bg-muted/60 transition-colors"
+                data-testid="label-grok-test-file"
+              >
+                {testScanFile ? testScanFile.name : "Choose image…"}
+              </label>
+              <Button
+                size="sm"
+                disabled={!testScanFile || testScanMutation.isPending}
+                data-testid="button-grok-test-scan"
+                onClick={() => {
+                  if (testScanFile) {
+                    setTestScanResult(null);
+                    testScanMutation.mutate(testScanFile);
+                  }
+                }}
+                className="flex items-center gap-1.5"
+              >
+                {testScanMutation.isPending ? (
+                  <><RefreshCw className="w-3 h-3 animate-spin" />Scanning…</>
+                ) : (
+                  <><Zap className="w-3 h-3" />Test scan</>
+                )}
+              </Button>
+            </div>
+
+            {testScanResult && (
+              <div
+                className={`rounded-md border p-3 space-y-2 text-sm ${testScanResult.ok ? "border-green-300 bg-green-50 dark:bg-green-950/30" : "border-red-300 bg-red-50 dark:bg-red-950/30"}`}
+                data-testid="grok-test-scan-result"
+              >
+                {!testScanResult.ok ? (
+                  <>
+                    <p className="text-red-700 dark:text-red-400 font-medium flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      {testScanResult.message}
+                    </p>
+                    <details className="mt-1">
+                      <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground">Raw response</summary>
+                      <pre className="mt-1 text-xs bg-muted/60 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all" data-testid="grok-test-scan-raw-json">{JSON.stringify(testScanResult, null, 2)}</pre>
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-green-700 dark:text-green-400 font-medium flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 shrink-0" />
+                      Grok returned {testScanResult.scores?.length ?? 0} player{(testScanResult.scores?.length ?? 0) !== 1 ? "s" : ""}
+                    </p>
+                    {(testScanResult.scores ?? []).length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="text-xs border-collapse w-full">
+                          <thead>
+                            <tr className="border-b border-border/40">
+                              <td className="py-1 pr-3 font-medium text-muted-foreground w-24">Player</td>
+                              {Array.from({ length: 18 }, (_, i) => (
+                                <td key={i + 1} className="px-1 py-1 text-center font-medium text-muted-foreground w-7">{i + 1}</td>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(testScanResult.scores ?? []).map((player: any) => {
+                              const holeMap = new Map<number, number | null>();
+                              for (const h of (player.holes ?? [])) holeMap.set(h.holeNumber, h.strokes);
+                              return (
+                                <tr key={player.playerName} className="border-b border-border/20 last:border-0">
+                                  <td className="py-1 pr-3 font-medium truncate max-w-[6rem]" title={player.playerName}>{player.playerName || "—"}</td>
+                                  {Array.from({ length: 18 }, (_, i) => {
+                                    const v = holeMap.get(i + 1);
+                                    return (
+                                      <td key={i + 1} className="px-1 py-1 text-center">
+                                        {v != null ? v : <span className="text-muted-foreground">—</span>}
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {testScanResult.rawText && (
+                      <p className="text-xs text-muted-foreground italic border-t border-border/30 pt-2">{testScanResult.rawText}</p>
+                    )}
+                    <details className="border-t border-border/30 pt-2">
+                      <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground">Raw JSON response</summary>
+                      <pre className="mt-1 text-xs bg-muted/60 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all" data-testid="grok-test-scan-raw-json">{JSON.stringify(testScanResult, null, 2)}</pre>
+                    </details>
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>

@@ -5782,6 +5782,34 @@ Transcript to parse: "${transcript}"`;
   });
 
   // Admin: send a test SMS to verify Plivo is wired up
+  app.post("/api/admin/test-scan", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (userId !== ADMIN_USER_ID && !(await storage.isUserAdmin(userId))) {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      const { imageBase64, playerNames } = z.object({
+        imageBase64: z.string(),
+        playerNames: z.array(z.string()).default([]),
+      }).parse(req.body);
+      const result = await scanScorecardImage({
+        imageBase64,
+        playerNames,
+        provider: "grok",
+      });
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      console.error("[admin test-scan error]", err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ ok: false, message: err.errors[0].message });
+      }
+      const msg = err instanceof Error ? err.message : "Failed to scan image";
+      const status = msg.includes("XAI_API_KEY") ? 400 : 500;
+      res.status(status).json({ ok: false, message: msg });
+    }
+  });
+
   app.post("/api/admin/test-sms", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
