@@ -52,7 +52,7 @@ Round Robin rules:
 - Round Robin Nassau → betType="nassau", roundRobinSubtype="nassau"
 - Round Robin Match Play → betType="match_play", roundRobinSubtype="match_play_1_ball"
 - Split players into two groups: teamAPlayers (Group 1 / side A) and teamBPlayers (Group 2 / side B). Format like "A/B vs C/D" means teamAPlayers=[A,B] and teamBPlayers=[C,D].
-- If some players are marked as "keyed" or "wheel" (play in every pairing), put them in keyedPlayers.
+- If some players are marked as "keyed" or "wheel" (play in every pairing), put them in keyedPlayers AND also include them at the front of their respective teamAPlayers or teamBPlayers array (they belong to whichever group/side they are playing with).
 - For a Round Robin bet, leave "players" as an empty array — use teamAPlayers and teamBPlayers instead.
 - "description" should say e.g. "Nassau Round Robin $20 — A/B vs C/D".
 

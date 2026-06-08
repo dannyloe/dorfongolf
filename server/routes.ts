@@ -6368,6 +6368,25 @@ Transcript to parse: "${transcript}"`;
           const groupBIds = pb.teamBPlayers.map(resolvePlayerId).filter((id): id is number => id !== null);
           const keyedIds = (pb.keyedPlayers ?? []).map(resolvePlayerId).filter((id): id is number => id !== null);
 
+          // Defensive: if a keyed (wheel) player is absent from both groups (old parser format
+          // where the wheel was not included in teamAPlayers/teamBPlayers), infer their side
+          // from the description and prepend them to the correct group.
+          const _descVsSplit = (pb.description ?? '').split(' vs ');
+          const _descSideA = (_descVsSplit[0] ?? '').toLowerCase();
+          const _descSideB = (_descVsSplit[1] ?? '').toLowerCase();
+          for (const kId of keyedIds) {
+            if (!groupAIds.includes(kId) && !groupBIds.includes(kId)) {
+              const kName = (matchPlayers.find(p => p.id === kId)?.name ?? '').toLowerCase();
+              if (kName && _descSideA.includes(kName)) {
+                groupAIds.unshift(kId);
+              } else if (kName && _descSideB.includes(kName)) {
+                groupBIds.unshift(kId);
+              } else {
+                groupAIds.unshift(kId);
+              }
+            }
+          }
+
           // Split keyed players by which group they belong to
           const keyedAIds = keyedIds.filter(id => groupAIds.includes(id));
           const keyedBIds = keyedIds.filter(id => groupBIds.includes(id));
