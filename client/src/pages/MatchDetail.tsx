@@ -226,11 +226,15 @@ type ParsedBetDraft = {
   keyedPlayers?: string;
 };
 
-function rrPairingCount(groupA: string, groupB: string): number {
-  const aLen = groupA.split(",").map(s => s.trim()).filter(Boolean).length;
-  const bLen = groupB.split(",").map(s => s.trim()).filter(Boolean).length;
-  const aTeams = aLen >= 2 ? (aLen * (aLen - 1)) / 2 : 0;
-  const bTeams = bLen >= 2 ? (bLen * (bLen - 1)) / 2 : 0;
+function rrPairingCount(groupA: string, groupB: string, keyed?: string): number {
+  const aArr = groupA.split(",").map(s => s.trim()).filter(Boolean);
+  const bArr = groupB.split(",").map(s => s.trim()).filter(Boolean);
+  const keyedArr = (keyed ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  const c2 = (n: number) => n >= 2 ? (n * (n - 1)) / 2 : 0;
+  const keyedA = keyedArr.length > 0 ? aArr.filter(p => keyedArr.includes(p)).length : 0;
+  const keyedB = keyedArr.length > 0 ? bArr.filter(p => keyedArr.includes(p)).length : 0;
+  const aTeams = keyedA > 0 ? c2(aArr.length) - c2(aArr.length - keyedA) : c2(aArr.length);
+  const bTeams = keyedB > 0 ? c2(bArr.length) - c2(bArr.length - keyedB) : c2(bArr.length);
   return aTeams * bTeams;
 }
 
@@ -358,7 +362,7 @@ function SmsBetsPanel({
             {isEditing ? (
               <div className="space-y-2 mb-2">
                 {drafts.map((d, i) => {
-                  const pairings = d.isRoundRobin ? rrPairingCount(d.teamAPlayers ?? "", d.teamBPlayers ?? "") : 0;
+                  const pairings = d.isRoundRobin ? rrPairingCount(d.teamAPlayers ?? "", d.teamBPlayers ?? "", d.keyedPlayers ?? "") : 0;
                   return (
                   <div key={i} className="space-y-1 bg-background/80 rounded p-2 border border-border/40 relative">
                     <button
@@ -503,11 +507,14 @@ function SmsBetsPanel({
                   <div className="space-y-1 mb-1.5">
                     {(bet.parsedBets as import("@shared/schema").ParsedSmsBet[]).map((pb, i) => {
                       const isRR = pb.isRoundRobin && pb.teamAPlayers && pb.teamBPlayers;
-                      const rrGroupACount = pb.teamAPlayers?.length ?? 0;
-                      const rrGroupBCount = pb.teamBPlayers?.length ?? 0;
-                      // Estimate pairing count: C(n,2) for each group, cross-producted
-                      const rrGroupATeams = rrGroupACount >= 2 ? (rrGroupACount * (rrGroupACount - 1)) / 2 : 0;
-                      const rrGroupBTeams = rrGroupBCount >= 2 ? (rrGroupBCount * (rrGroupBCount - 1)) / 2 : 0;
+                      const rrGroupAArr = pb.teamAPlayers ?? [];
+                      const rrGroupBArr = pb.teamBPlayers ?? [];
+                      const rrKeyedArr = pb.keyedPlayers ?? [];
+                      const c2 = (n: number) => n >= 2 ? (n * (n - 1)) / 2 : 0;
+                      const rrKeyedA = rrKeyedArr.length > 0 ? rrGroupAArr.filter(p => rrKeyedArr.includes(p)).length : 0;
+                      const rrKeyedB = rrKeyedArr.length > 0 ? rrGroupBArr.filter(p => rrKeyedArr.includes(p)).length : 0;
+                      const rrGroupATeams = rrKeyedA > 0 ? c2(rrGroupAArr.length) - c2(rrGroupAArr.length - rrKeyedA) : c2(rrGroupAArr.length);
+                      const rrGroupBTeams = rrKeyedB > 0 ? c2(rrGroupBArr.length) - c2(rrGroupBArr.length - rrKeyedB) : c2(rrGroupBArr.length);
                       const rrPairingCount = rrGroupATeams * rrGroupBTeams;
                       return (
                         <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">

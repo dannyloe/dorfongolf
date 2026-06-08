@@ -761,6 +761,7 @@ export type ParsedSmsBet = {
   teamAPlayers?: string[];
   teamBPlayers?: string[];
   keyedPlayers?: string[];
+  playerStrokes?: Array<{ player: string; strokes: number }>;
 };
 export type PendingSmsBet = typeof pendingSmsBets.$inferSelect;
 export type InsertPendingSmsBet = z.infer<typeof insertPendingSmsBetSchema>;

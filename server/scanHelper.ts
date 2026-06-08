@@ -56,7 +56,14 @@ Round Robin rules:
 - For a Round Robin bet, leave "players" as an empty array — use teamAPlayers and teamBPlayers instead.
 - "description" should say e.g. "Nassau Round Robin $20 — A/B vs C/D".
 
-Return JSON array. Each element: { betType, amountCents, players, description, isRoundRobin, roundRobinSubtype, teamAPlayers, teamBPlayers, keyedPlayers }`;
+Stroke handicap rules:
+- If the message mentions how many strokes a player is getting/giving (e.g. "DLoe vs Zimm (6)", "Zimm is getting 6 strokes", "Zimm +6", "6 to Zimm"), extract this in playerStrokes.
+- playerStrokes is an array of { "player": "<name>", "strokes": <number> } where strokes is the number of strokes that player RECEIVES.
+- A number in parentheses like "PlayerA vs PlayerB (6)" typically means the higher-handicap player gets 6 strokes — use context to determine which player receives them; if unclear, assume the second-named player receives them.
+- If any stroke info is given for a bet, include ALL players in that bet in playerStrokes (use 0 for any player whose strokes are not explicitly stated).
+- If NO stroke information is mentioned, return playerStrokes as an empty array.
+
+Return JSON array. Each element: { betType, amountCents, players, description, isRoundRobin, roundRobinSubtype, teamAPlayers, teamBPlayers, keyedPlayers, playerStrokes }`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -77,6 +84,17 @@ Return JSON array. Each element: { betType, amountCents, players, description, i
             teamAPlayers: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
             teamBPlayers: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
             keyedPlayers: { type: GenAIType.ARRAY, items: { type: GenAIType.STRING } },
+            playerStrokes: {
+              type: GenAIType.ARRAY,
+              items: {
+                type: GenAIType.OBJECT,
+                properties: {
+                  player: { type: GenAIType.STRING },
+                  strokes: { type: GenAIType.INTEGER },
+                },
+                required: ["player", "strokes"],
+              },
+            },
           },
           required: ["betType", "amountCents", "players", "description"],
         },

@@ -6362,6 +6362,14 @@ Transcript to parse: "${transcript}"`;
         const matchType = betTypeMap[pb.betType] ?? "nassau";
         const unitAmount = pb.amountCents > 0 ? pb.amountCents : 0;
 
+        // Build a map of playerId → strokes for any stroke overrides in this bet
+        const playerStrokesMap = new Map<number, number>();
+        for (const ps of pb.playerStrokes ?? []) {
+          const pid = resolvePlayerId(ps.player);
+          if (pid !== null) playerStrokesMap.set(pid, ps.strokes);
+        }
+        const hasStrokes = playerStrokesMap.size > 0;
+
         if (pb.isRoundRobin && pb.teamAPlayers && pb.teamBPlayers) {
           // Round Robin: generate all cross-product 2v2 pairings between the two groups
           const groupAIds = pb.teamAPlayers.map(resolvePlayerId).filter((id): id is number => id !== null);
@@ -6416,11 +6424,23 @@ Transcript to parse: "${transcript}"`;
                   autoPressNassauFront9: true,
                   autoPressNassauBack9: true,
                   autoPressNassauOverall: true,
-                  useNetScoring: false,
+                  useNetScoring: hasStrokes,
                   startOnBack9: false,
                   isRoundRobinGenerated: true,
                   sourceSmsBetId: betId,
                 });
+                // Apply per-player stroke overrides if any were specified
+                if (hasStrokes) {
+                  for (const pid of [...teamA, ...teamB]) {
+                    if (playerStrokesMap.has(pid)) {
+                      try {
+                        await storage.upsertMatchPlayerHandicap({ eventMatchId: em.id, playerId: pid, courseHandicap: playerStrokesMap.get(pid)! });
+                      } catch (hErr) {
+                        console.warn("[apply-sms-bet] Could not set stroke override:", hErr);
+                      }
+                    }
+                  }
+                }
                 createdEventMatches.push(em);
               } catch (emErr) {
                 console.warn("[apply-sms-bet] Could not create Round Robin eventMatch:", emErr);
@@ -6451,9 +6471,21 @@ Transcript to parse: "${transcript}"`;
               autoPressNassauFront9: true,
               autoPressNassauBack9: true,
               autoPressNassauOverall: true,
-              useNetScoring: false,
+              useNetScoring: hasStrokes,
               startOnBack9: false,
             });
+            // Apply per-player stroke overrides if any were specified
+            if (hasStrokes) {
+              for (const pid of [...teamAIds, ...teamBIds]) {
+                if (playerStrokesMap.has(pid)) {
+                  try {
+                    await storage.upsertMatchPlayerHandicap({ eventMatchId: em.id, playerId: pid, courseHandicap: playerStrokesMap.get(pid)! });
+                  } catch (hErr) {
+                    console.warn("[apply-sms-bet] Could not set stroke override:", hErr);
+                  }
+                }
+              }
+            }
             createdEventMatches.push(em);
           } catch (emErr) {
             console.warn("[apply-sms-bet] Could not create eventMatch for parsed bet:", emErr);
