@@ -12,6 +12,9 @@ import type { ParsedSmsBet } from "@shared/schema";
  * Format: "{betType}:{sortedPlayers.join('|')}:{amountCents}"
  */
 export function computeBetSignature(bet: ParsedSmsBet): string {
+  if (bet.betType === 'press' && bet.pressStartHole) {
+    return `press:h${bet.pressStartHole}:0`;
+  }
   const sorted = [...bet.players].map(p => p.toLowerCase().trim()).sort().join("|");
   return `${bet.betType.toLowerCase()}:${sorted}:${bet.amountCents}`;
 }
@@ -63,7 +66,14 @@ Stroke handicap rules:
 - If any stroke info is given for a bet, include ALL players in that bet in playerStrokes (use 0 for any player whose strokes are not explicitly stated).
 - If NO stroke information is mentioned, return playerStrokes as an empty array.
 
-Return JSON array. Each element: { betType, amountCents, players, description, isRoundRobin, roundRobinSubtype, teamAPlayers, teamBPlayers, keyedPlayers, playerStrokes }`;
+Press rules:
+- If the message says "press on [N]", "press from [N]", "press at [N]", "pressing [N]", "press hole [N]", or any similar phrasing, it is requesting a press starting at hole N.
+- For a press action: set betType="press", pressStartHole=N (integer 2–17), players=[], amountCents=0.
+- description should be e.g. "Press from hole 7".
+- If the message names a specific bet to press (e.g. "press the Nassau on 7"), set targetBetName to that bet name.
+- A press action is NOT a new bet — do not add players or amounts for it.
+
+Return JSON array. Each element: { betType, amountCents, players, description, isRoundRobin, roundRobinSubtype, teamAPlayers, teamBPlayers, keyedPlayers, playerStrokes, pressStartHole, targetBetName }`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -95,6 +105,8 @@ Return JSON array. Each element: { betType, amountCents, players, description, i
                 required: ["player", "strokes"],
               },
             },
+            pressStartHole: { type: GenAIType.INTEGER },
+            targetBetName: { type: GenAIType.STRING },
           },
           required: ["betType", "amountCents", "players", "description"],
         },

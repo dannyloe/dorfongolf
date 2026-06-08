@@ -2443,10 +2443,12 @@ export async function registerRoutes(
 
           // Deterministic post-LLM sender injection:
           // Always ensure sender is listed as a player in every parsed bet.
+          // Skip press actions — they have no players.
           if (parsedBets && parsedBets.length > 0 && senderName) {
             const { resolvePlayerAlias } = await import("@shared/models/auth");
             const canonicalSender = resolvePlayerAlias(senderName);
             parsedBets = parsedBets.map(pb => {
+              if (pb.betType === 'press') return pb;
               const existing = pb.players.map(p => resolvePlayerAlias(p).toLowerCase());
               if (!existing.includes(canonicalSender.toLowerCase())) {
                 return { ...pb, players: [...pb.players, canonicalSender] };
@@ -6359,6 +6361,34 @@ Transcript to parse: "${transcript}"`;
       const createdEventMatches = [];
       const failedBets: string[] = [];
       for (const pb of parsedBets) {
+        // Press action: find the appropriate parent event match and create a press
+        if (pb.betType === "press" && pb.pressStartHole) {
+          const allEms = await storage.getEventMatchesWithTeamsBulk(matchId);
+          const rootBets = allEms.filter((em: any) => !em.parentMatchId);
+          let targetEm: any = rootBets.length > 0 ? rootBets[rootBets.length - 1] : null;
+          if (pb.targetBetName && rootBets.length > 1) {
+            const tgt = pb.targetBetName.toLowerCase();
+            const fuzzy = rootBets.find((em: any) => {
+              const n = (em.name || '').toLowerCase();
+              return n.includes(tgt) || tgt.includes(n);
+            });
+            if (fuzzy) targetEm = fuzzy;
+          }
+          if (!targetEm) {
+            console.warn("[apply-sms-bet] No root event match found to press against");
+            failedBets.push(pb.description);
+            continue;
+          }
+          try {
+            const pressMatch = await storage.createPressMatch(targetEm.id, pb.pressStartHole);
+            createdEventMatches.push(pressMatch);
+          } catch (pressErr) {
+            console.warn("[apply-sms-bet] Could not create press:", pressErr);
+            failedBets.push(pb.description);
+          }
+          continue;
+        }
+
         const matchType = betTypeMap[pb.betType] ?? "nassau";
         const unitAmount = pb.amountCents > 0 ? pb.amountCents : 0;
 

@@ -520,6 +520,11 @@ function SmsBetsPanel({
                         <div key={i} className="text-xs bg-background/80 rounded px-2 py-1 border border-border/40">
                           <div className="flex items-center gap-1 flex-wrap">
                             <span className="font-medium">{pb.description}</span>
+                            {pb.betType === "press" && (
+                              <span className="text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 rounded px-1 font-medium" data-testid={`sms-bet-press-badge-${bet.id}-${i}`}>
+                                Press
+                              </span>
+                            )}
                             {isRR && (
                               <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded px-1 font-medium" data-testid={`sms-bet-rr-badge-${bet.id}-${i}`}>
                                 Round Robin
@@ -529,7 +534,11 @@ function SmsBetsPanel({
                               <span className="text-muted-foreground">(${(pb.amountCents / 100).toFixed(0)})</span>
                             )}
                           </div>
-                          {isRR ? (
+                          {pb.betType === "press" ? (
+                            <span className="text-muted-foreground text-[10px]">
+                              Will press{pb.targetBetName ? ` "${pb.targetBetName}"` : " the active bet"} from hole {pb.pressStartHole}
+                            </span>
+                          ) : isRR ? (
                             <div className="mt-0.5 text-[10px] text-muted-foreground space-y-0.5" data-testid={`sms-bet-rr-detail-${bet.id}-${i}`}>
                               <div>Group A: {pb.teamAPlayers!.join(", ")}</div>
                               <div>Group B: {pb.teamBPlayers!.join(", ")}</div>
