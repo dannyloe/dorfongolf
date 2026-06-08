@@ -6334,6 +6334,14 @@ Transcript to parse: "${transcript}"`;
         return found ? found.id : null;
       };
 
+      // Build a human-readable team name from player IDs (e.g. "Sam / JP")
+      const makeTeamName = (playerIds: number[]): string => {
+        const names = playerIds
+          .map(id => matchPlayers.find(p => p.id === id)?.name)
+          .filter(Boolean) as string[];
+        return names.length > 0 ? names.join(" / ") : "Team";
+      };
+
       // Generate all 2-player team combos from a list of player IDs, optionally filtered by keyed IDs
       const generateTwoPlayerTeams = (playerIds: number[], keyedIds: number[] = []): [number, number][] => {
         const teams: [number, number][] = [];
@@ -6382,8 +6390,8 @@ Transcript to parse: "${transcript}"`;
                   name: pairingName,
                   matchType,
                   unitAmount,
-                  teamA: { name: "Team A", playerIds: [...teamA] },
-                  teamB: { name: "Team B", playerIds: [...teamB] },
+                  teamA: { name: makeTeamName([...teamA]), playerIds: [...teamA] },
+                  teamB: { name: makeTeamName([...teamB]), playerIds: [...teamB] },
                   autoPressOriginal: true,
                   autoPressAllPresses: false,
                   autoPressNassauFront9: true,
@@ -6417,8 +6425,8 @@ Transcript to parse: "${transcript}"`;
               name: pb.description,
               matchType,
               unitAmount,
-              teamA: { name: "Team A", playerIds: teamAIds },
-              teamB: { name: "Team B", playerIds: teamBIds },
+              teamA: { name: makeTeamName(teamAIds), playerIds: teamAIds },
+              teamB: { name: makeTeamName(teamBIds), playerIds: teamBIds },
               autoPressOriginal: true,
               autoPressAllPresses: false,
               autoPressNassauFront9: true,
