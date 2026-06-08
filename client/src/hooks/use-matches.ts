@@ -1316,6 +1316,7 @@ export function useApplyPendingSmsBet(matchId: number) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/matches", matchId, "pending-sms-bets"] });
       queryClient.invalidateQueries({ queryKey: ['/api/matches/:id', matchId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/matches', matchId, 'match-player-handicaps'] });
     },
   });
 }

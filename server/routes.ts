@@ -6429,15 +6429,13 @@ Transcript to parse: "${transcript}"`;
                   isRoundRobinGenerated: true,
                   sourceSmsBetId: betId,
                 });
-                // Apply per-player stroke overrides if any were specified
+                // Apply per-player stroke overrides — players not in the map get 0 (scratch)
                 if (hasStrokes) {
                   for (const pid of [...teamA, ...teamB]) {
-                    if (playerStrokesMap.has(pid)) {
-                      try {
-                        await storage.upsertMatchPlayerHandicap({ eventMatchId: em.id, playerId: pid, courseHandicap: playerStrokesMap.get(pid)! });
-                      } catch (hErr) {
-                        console.warn("[apply-sms-bet] Could not set stroke override:", hErr);
-                      }
+                    try {
+                      await storage.upsertMatchPlayerHandicap({ eventMatchId: em.id, playerId: pid, courseHandicap: playerStrokesMap.get(pid) ?? 0 });
+                    } catch (hErr) {
+                      console.warn("[apply-sms-bet] Could not set stroke override:", hErr);
                     }
                   }
                 }
@@ -6474,15 +6472,13 @@ Transcript to parse: "${transcript}"`;
               useNetScoring: hasStrokes,
               startOnBack9: false,
             });
-            // Apply per-player stroke overrides if any were specified
+            // Apply per-player stroke overrides — players not in the map get 0 (scratch)
             if (hasStrokes) {
               for (const pid of [...teamAIds, ...teamBIds]) {
-                if (playerStrokesMap.has(pid)) {
-                  try {
-                    await storage.upsertMatchPlayerHandicap({ eventMatchId: em.id, playerId: pid, courseHandicap: playerStrokesMap.get(pid)! });
-                  } catch (hErr) {
-                    console.warn("[apply-sms-bet] Could not set stroke override:", hErr);
-                  }
+                try {
+                  await storage.upsertMatchPlayerHandicap({ eventMatchId: em.id, playerId: pid, courseHandicap: playerStrokesMap.get(pid) ?? 0 });
+                } catch (hErr) {
+                  console.warn("[apply-sms-bet] Could not set stroke override:", hErr);
                 }
               }
             }
