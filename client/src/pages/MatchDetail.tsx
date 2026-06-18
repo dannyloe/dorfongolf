@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useRoute, useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
-import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, ChevronRight, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2, Smartphone, PhoneOff } from "lucide-react";
+import { MapPin, Calendar, UserPlus, Trophy, Plus, Trash2, Users, Swords, X, ChevronDown, ChevronUp, ChevronRight, ChevronLeft, Receipt, Camera, Filter, Copy, Pencil, Check, RotateCcw, AlertTriangle, Mic, MicOff, Loader2, MessageSquare, CheckCircle2, AlertCircle, Hash, Share2, Smartphone, PhoneOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
@@ -9104,36 +9104,36 @@ export default function MatchDetail() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between px-0.5">
-                        <span className="text-xs text-muted-foreground">Front 9 shift:</span>
-                        <div className="flex gap-1">
+                      <div className="flex items-center justify-between px-1 py-1.5 bg-muted/40 rounded-md">
+                        <span className="text-xs font-medium text-muted-foreground">Shift front 9</span>
+                        <div className="flex gap-1.5">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className="h-8 px-3 text-xs gap-1"
                             onClick={() => shiftScores(scannedPlayer.playerName, 'front', 'left')}
                             data-testid={`button-shift-front-left-${scannedPlayer.playerName}`}
                           >
-                            ← Left
+                            <ChevronLeft className="w-3.5 h-3.5" /> Left
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className="h-8 px-3 text-xs gap-1"
                             onClick={() => shiftScores(scannedPlayer.playerName, 'front', 'right')}
                             data-testid={`button-shift-front-right-${scannedPlayer.playerName}`}
                           >
-                            Right →
+                            Right <ChevronRight className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className="h-8 px-3 text-xs gap-1"
                             onClick={() => undoShift(scannedPlayer.playerName, 'front')}
                             disabled={(scanShiftHistory[scannedPlayer.playerName]?.front?.length ?? 0) === 0}
                             data-testid={`button-undo-shift-front-${scannedPlayer.playerName}`}
                           >
-                            Undo
+                            <RotateCcw className="w-3.5 h-3.5" /> Undo
                           </Button>
                         </div>
                       </div>
@@ -9188,36 +9188,36 @@ export default function MatchDetail() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between px-0.5">
-                        <span className="text-xs text-muted-foreground">Back 9 shift:</span>
-                        <div className="flex gap-1">
+                      <div className="flex items-center justify-between px-1 py-1.5 bg-muted/40 rounded-md">
+                        <span className="text-xs font-medium text-muted-foreground">Shift back 9</span>
+                        <div className="flex gap-1.5">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className="h-8 px-3 text-xs gap-1"
                             onClick={() => shiftScores(scannedPlayer.playerName, 'back', 'left')}
                             data-testid={`button-shift-back-left-${scannedPlayer.playerName}`}
                           >
-                            ← Left
+                            <ChevronLeft className="w-3.5 h-3.5" /> Left
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className="h-8 px-3 text-xs gap-1"
                             onClick={() => shiftScores(scannedPlayer.playerName, 'back', 'right')}
                             data-testid={`button-shift-back-right-${scannedPlayer.playerName}`}
                           >
-                            Right →
+                            Right <ChevronRight className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-6 px-2 text-xs"
+                            className="h-8 px-3 text-xs gap-1"
                             onClick={() => undoShift(scannedPlayer.playerName, 'back')}
                             disabled={(scanShiftHistory[scannedPlayer.playerName]?.back?.length ?? 0) === 0}
                             data-testid={`button-undo-shift-back-${scannedPlayer.playerName}`}
                           >
-                            Undo
+                            <RotateCcw className="w-3.5 h-3.5" /> Undo
                           </Button>
                         </div>
                       </div>
