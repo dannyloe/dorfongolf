@@ -3,13 +3,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users, Tag, X, Phone } from "lucide-react";
+import { Calendar, MapPin, ChevronRight, Trash2, DollarSign, Copy, Users, Tag, X, Phone, Share2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect, useMemo } from "react";
 import { ClaimPresetPlayerModal } from "@/components/ClaimPresetPlayerModal";
 import { useToast } from "@/hooks/use-toast";
+import { MATCH_TYPE_LABELS } from "@shared/schema";
 
 export default function Dashboard() {
   const { data: matches, isLoading } = useMatches();
@@ -296,9 +297,51 @@ function MatchCard({ match, isHistory = false, userId, groupsById }: { match: an
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const ADMIN_USER_ID = "52861828";
   const isAdmin = userId === ADMIN_USER_ID;
   const isCreator = userId === match.creatorId || isAdmin;
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsSharing(true);
+    try {
+      const res = await fetch(`/api/matches/${match.id}`, { credentials: "include" });
+      const data = res.ok ? await res.json() : null;
+      const eventMatches: any[] = data?.eventMatches ?? [];
+
+      const date = format(new Date(match.createdAt), "MMMM d, yyyy");
+      const title = match.name || match.courseName || date;
+      const players: string = match.players?.map((p: any) => p.name).join(", ") || "";
+
+      const rootBets = eventMatches.filter((em: any) => !em.parentMatchId);
+      const betLines = rootBets.map((em: any) => {
+        const typeLabel = MATCH_TYPE_LABELS[em.matchType as keyof typeof MATCH_TYPE_LABELS] ?? em.matchType;
+        const amount = em.unitAmount > 0 ? ` ($${(em.unitAmount / 100).toFixed(0)})` : "";
+        const name = em.customName || em.name || typeLabel;
+        return `• ${name}${amount}`;
+      });
+
+      const lines = [
+        `⛳ ${title}`,
+        `📍 ${match.courseName}  |  ${date}`,
+        players ? `👥 ${players}` : null,
+        betLines.length > 0 ? `\nBets:\n${betLines.join("\n")}` : null,
+      ].filter(Boolean).join("\n");
+
+      if (navigator.share) {
+        await navigator.share({ title, text: lines }).catch(() => {});
+      } else {
+        await navigator.clipboard.writeText(lines);
+        toast({ title: "Copied to clipboard!", description: "Share this with your group." });
+      }
+    } catch {
+      toast({ title: "Could not build summary", variant: "destructive" });
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   const handleClone = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -349,6 +392,17 @@ function MatchCard({ match, isHistory = false, userId, groupsById }: { match: an
         `}
       >
         <div className="absolute top-0 right-0 p-4 flex items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleShare}
+            disabled={isSharing}
+            className="text-muted-foreground hover:text-primary"
+            title="Share match summary"
+            data-testid={`button-share-match-${match.id}`}
+          >
+            {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+          </Button>
           {isCreator && (
             showConfirm ? (
               <div className="flex gap-2">
