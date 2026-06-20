@@ -653,7 +653,7 @@ export function calculateLedger(
       if (!fiveResult.isComplete) continue;
       
       const unitAmt = (em.unitAmount || 100) / 100;
-      const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete);
+      const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete, fiveResult.largestTeamSize);
       
       // For 5-5-5-3, we need to distribute team settlements to individual players
       // Each player on a team gets an equal share of their team's settlement
@@ -2333,6 +2333,7 @@ export interface FiveMatchResult {
   settlements: FiveSettlement[];
   isComplete: boolean;
   smallestTeamSize: number;
+  largestTeamSize: number;
 }
 
 function getBestBallCount(holeNumber: number, smallestTeamSize: number): number {
@@ -2440,19 +2441,23 @@ export function calculateFiveMatchResults(
   // Check if all teams have completed every hole in the bet's range
   const isComplete = allComplete && teamHolesCompleted.every(h => h === totalHolesInBet);
   
+  const largestTeamSize = Math.max(...teams.map(t => t.members.length));
+
   return {
     holeResults,
     teamTotals,
     settlements: [], // Settlements calculated separately with wager amount
     isComplete,
     smallestTeamSize,
+    largestTeamSize,
   };
 }
 
 export function calculateFiveSettlements(
   teamTotals: FiveTeamTotalResult[],
-  unitAmount: number, // Amount in dollars (e.g. 1 = $1)
-  isComplete: boolean
+  unitAmount: number, // Amount in dollars per player per stroke (e.g. 1 = $1/player/stroke)
+  isComplete: boolean,
+  largestTeamSize: number = 1
 ): FiveSettlement[] {
   if (!isComplete || teamTotals.length < 2) {
     return teamTotals.map(t => ({
@@ -2462,7 +2467,7 @@ export function calculateFiveSettlements(
     }));
   }
   
-  // Round-robin settlement: each team pays each other team the stroke difference × wager
+  // Round-robin settlement: each team pays each other team the stroke difference × wager × players
   const settlements: FiveSettlement[] = teamTotals.map(t => ({
     teamIndex: t.teamIndex,
     teamName: t.teamName,
@@ -2477,7 +2482,8 @@ export function calculateFiveSettlements(
       // Lower score is better in golf
       // If Team I has lower score, Team J pays Team I
       // strokeDiff < 0 means Team I wins
-      const payment = strokeDiff * unitAmount; // Negative means Team I wins
+      // Multiply by largestTeamSize: unit amount is per player
+      const payment = strokeDiff * unitAmount * largestTeamSize;
       
       settlements[i].amount -= payment; // Team I gets paid if strokeDiff < 0
       settlements[j].amount += payment; // Team J pays if strokeDiff < 0

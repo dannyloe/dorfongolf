@@ -5072,7 +5072,7 @@ export default function MatchDetail() {
                           // 5-5-5-3 Match View
                           const fiveResult = calculateFiveMatchResults(emWithCorrectBack9, scores, netContext);
                           const unitAmt = (em.unitAmount || 100) / 100; // Convert cents to dollars
-                          const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete);
+                          const fiveSettlements = calculateFiveSettlements(fiveResult.teamTotals, unitAmt, fiveResult.isComplete, fiveResult.largestTeamSize);
                           const teamColors = ['text-primary bg-primary/10', 'text-accent bg-accent/10', 'text-orange-700 bg-orange-100', 'text-purple-700 bg-purple-100'];
                           
                           return (
