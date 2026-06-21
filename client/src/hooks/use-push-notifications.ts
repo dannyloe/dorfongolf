@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 
 export function usePushNotifications() {
   const { user } = useAuth();
-  const [, navigate] = useLocation();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     if (!user) return;
@@ -37,18 +37,10 @@ export function usePushNotifications() {
           console.error("[pushNotifications] Registration error:", err);
         });
 
-        PushNotifications.addListener("notificationActionPerformed", (action) => {
-          try {
-            const data = action.notification.data as Record<string, string> | undefined;
-            if (!data) return;
-
-            if (data.matchId) {
-              navigate(`/match/${data.matchId}`);
-            } else if (data.eventId) {
-              navigate(`/ryder-cup/${data.eventId}`);
-            }
-          } catch (err) {
-            console.error("[pushNotifications] Deep-link navigation error:", err);
+        PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+          const route = action.notification?.data?.route;
+          if (route) {
+            setLocation(route);
           }
         });
       } catch (err) {

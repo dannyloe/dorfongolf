@@ -55,7 +55,7 @@ async function notifyPlayerOfMatchInvitation(
       playerUserId,
       "Match Invitation",
       `${inviterName} invited you to ${matchDisplayName}`,
-      { matchId: String(matchId) }
+      { route: `/match/${matchId}` }
     ).catch(() => {});
   } catch (error) {
     console.error('Failed to send match invitation notification:', error);
@@ -89,7 +89,7 @@ async function notifyMatchParticipantsOfScoreUpdate(
         participant.userId,
         matchName,
         `${playerName} scored on hole ${holeNumber}`,
-        { matchId: String(matchId) }
+        { route: `/match/${matchId}` }
       ).catch(() => {});
     }
   } catch (error) {
