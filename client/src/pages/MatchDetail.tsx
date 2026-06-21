@@ -847,8 +847,15 @@ export default function MatchDetail() {
   const [quickBetsSelectedIds, setQuickBetsSelectedIds] = useState<number[]>([]);
   const [quickBetsAnchorId, setQuickBetsAnchorId] = useState<number | null>(null);
   const [quickBetsOpponentIds, setQuickBetsOpponentIds] = useState<number[]>([]);
-  const [quickBetsMatchType, setQuickBetsMatchType] = useState<MatchType>(MATCH_TYPES.MATCH_PLAY_1_BALL);
-  const [quickBetsAmount, setQuickBetsAmount] = useState<number>(20);
+  const [quickBetsMatchType, setQuickBetsMatchType] = useState<MatchType>(() => {
+    const saved = localStorage.getItem('quickBets_matchType');
+    return (saved as MatchType) || MATCH_TYPES.MATCH_PLAY_1_BALL;
+  });
+  const [quickBetsAmount, setQuickBetsAmount] = useState<number>(() => {
+    const saved = localStorage.getItem('quickBets_amount');
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return isNaN(parsed) ? 20 : parsed;
+  });
   const [quickBetsAutoPress, setQuickBetsAutoPress] = useState(true);
   const [quickBetsNetScoring, setQuickBetsNetScoring] = useState(false);
   const [isCreatingQuickBets, setIsCreatingQuickBets] = useState(false);
@@ -2008,6 +2015,8 @@ export default function MatchDetail() {
           });
         });
       }
+      localStorage.setItem('quickBets_matchType', quickBetsMatchType);
+      localStorage.setItem('quickBets_amount', String(quickBetsAmount));
       toast({
         title: "Quick Bets created",
         description: skippedCount > 0
