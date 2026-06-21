@@ -174,10 +174,12 @@ function DraggableGroupChip({
   groupId,
   name,
   isLocked,
+  onRemove,
 }: {
   groupId: string;
   name: string;
   isLocked: boolean;
+  onRemove?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `gplayer::${groupId}::${name}`,
@@ -191,11 +193,66 @@ function DraggableGroupChip({
       style={style}
       {...attributes}
       {...listeners}
-      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border cursor-grab active:cursor-grabbing select-none touch-none transition-opacity ${isLocked ? "bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700" : "bg-background text-foreground border-border"} ${isDragging ? "opacity-20" : "opacity-100"}`}
+      className={`flex items-center gap-1 ${onRemove ? "pl-2.5 pr-1" : "px-2.5"} py-1 rounded-full text-xs font-medium border cursor-grab active:cursor-grabbing select-none touch-none transition-opacity ${isLocked ? "bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700" : "bg-background text-foreground border-border"} ${isDragging ? "opacity-20" : "opacity-100"}`}
       data-testid={`chip-group-${groupId}-${name}`}
     >
       {isLocked && <Lock className="w-3 h-3 shrink-0" />}
       <span>{name}</span>
+      {onRemove && (
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+          data-testid={`button-remove-group-player-${groupId}-${name}`}
+        >
+          <X className="w-2.5 h-2.5 text-muted-foreground" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DraggablePreviewPoolChip({ name }: { name: string }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `gplayer::__pool__::${name}`,
+  });
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border cursor-grab active:cursor-grabbing select-none touch-none transition-opacity bg-background text-foreground border-border hover:border-primary ${isDragging ? "opacity-20" : "opacity-100"}`}
+      data-testid={`chip-preview-pool-${name}`}
+    >
+      {name}
+    </div>
+  );
+}
+
+function PreviewUnassignedPool({ players }: { players: string[] }) {
+  const { setNodeRef, isOver } = useDroppable({ id: "preview-pool" });
+  if (players.length === 0) return null;
+  return (
+    <div
+      ref={setNodeRef}
+      className={`p-3 rounded-xl border-2 border-dashed transition-colors ${isOver ? "border-primary bg-primary/5" : "border-border bg-muted/20"}`}
+      data-testid="preview-unassigned-pool"
+    >
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        Unassigned Players
+      </p>
+      <div className="flex flex-wrap gap-1.5 min-h-8">
+        {players.map((name) => (
+          <DraggablePreviewPoolChip key={name} name={name} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -323,6 +380,7 @@ function SortableGroupCard({
   ungroupedPlayers,
   onAddPlayer,
   onDelete,
+  onRemovePlayer,
   activePlayerId,
 }: {
   group: GroupEntry;
@@ -330,6 +388,7 @@ function SortableGroupCard({
   ungroupedPlayers: string[];
   onAddPlayer: (groupId: string, playerName: string) => void;
   onDelete: (groupId: string) => void;
+  onRemovePlayer: (groupId: string, playerName: string) => void;
   activePlayerId: string | null;
 }) {
   const { setNodeRef, attributes, listeners, transform, transition, isDragging, isOver } =
@@ -420,6 +479,7 @@ function SortableGroupCard({
                 groupId={group.id}
                 name={name}
                 isLocked={lockedSet.has(name)}
+                onRemove={() => onRemovePlayer(group.id, name)}
               />
             ))}
           </div>
@@ -717,14 +777,45 @@ export function PlayingGroupsSection({
       const parts = activeStr.split("::");
       const fromGroupId = parts[1];
       const playerName = parts[2];
+
+      // Dropping a group player onto the preview-pool → remove from group
+      if (overStr === "preview-pool") {
+        if (fromGroupId === "__pool__") return;
+        setPreview((prev) => {
+          if (!prev) return prev;
+          return prev.map((g) =>
+            g.id === fromGroupId
+              ? {
+                  ...g,
+                  players: g.players.filter((p) => p !== playerName),
+                  lockedPlayerNames: g.lockedPlayerNames.filter((p) => p !== playerName),
+                }
+              : g,
+          );
+        });
+        return;
+      }
+
       const toGroupId = overStr;
       if (fromGroupId === toGroupId) return;
 
       setPreview((prev) => {
         if (!prev) return prev;
-        const fromIdx = prev.findIndex((g) => g.id === fromGroupId);
         const toIdx = prev.findIndex((g) => g.id === toGroupId);
-        if (fromIdx === -1 || toIdx === -1) return prev;
+        if (toIdx === -1) return prev;
+
+        // Dragging from pool → just add to target group (pool is auto-computed)
+        if (fromGroupId === "__pool__") {
+          const next = prev.map((g) => ({ ...g, players: [...g.players], lockedPlayerNames: [...g.lockedPlayerNames] }));
+          if (!next[toIdx].players.includes(playerName)) {
+            next[toIdx].players = [...next[toIdx].players, playerName];
+          }
+          return next;
+        }
+
+        // Dragging from one group to another
+        const fromIdx = prev.findIndex((g) => g.id === fromGroupId);
+        if (fromIdx === -1) return prev;
         const next = prev.map((g) => ({
           ...g,
           players: [...g.players],
@@ -734,7 +825,9 @@ export function PlayingGroupsSection({
         next[fromIdx].lockedPlayerNames = next[fromIdx].lockedPlayerNames.filter(
           (p) => p !== playerName,
         );
-        next[toIdx].players = [...next[toIdx].players, playerName];
+        if (!next[toIdx].players.includes(playerName)) {
+          next[toIdx].players = [...next[toIdx].players, playerName];
+        }
         return next;
       });
       return;
@@ -756,6 +849,21 @@ export function PlayingGroupsSection({
       return prev.map((g) =>
         g.id === groupId && !g.players.includes(playerName)
           ? { ...g, players: [...g.players, playerName] }
+          : g,
+      );
+    });
+  };
+
+  const removePlayerFromGroup = (groupId: string, playerName: string) => {
+    setPreview((prev) => {
+      if (!prev) return prev;
+      return prev.map((g) =>
+        g.id === groupId
+          ? {
+              ...g,
+              players: g.players.filter((p) => p !== playerName),
+              lockedPlayerNames: g.lockedPlayerNames.filter((p) => p !== playerName),
+            }
           : g,
       );
     });
@@ -951,6 +1059,7 @@ export function PlayingGroupsSection({
                 onDragStart={handleGroupDragStart}
                 onDragEnd={handleGroupDragEnd}
               >
+                <PreviewUnassignedPool players={ungroupedPlayers} />
                 <SortableContext items={groupIds} strategy={rectSortingStrategy}>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {preview.map((group, idx) => (
@@ -961,6 +1070,7 @@ export function PlayingGroupsSection({
                         ungroupedPlayers={ungroupedPlayers}
                         onAddPlayer={addPlayerToGroup}
                         onDelete={deleteGroup}
+                        onRemovePlayer={removePlayerFromGroup}
                         activePlayerId={activeId}
                       />
                     ))}
