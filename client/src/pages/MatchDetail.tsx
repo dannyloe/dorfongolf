@@ -343,8 +343,17 @@ function SmsBetsPanel({
             data-testid={`pending-sms-bet-${bet.id}`}
           >
             {/* Header row */}
-            <div className="flex items-center gap-1.5 mb-1">
+            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
               <span className="text-xs font-semibold truncate">{bet.senderName}</span>
+              {bet.resolvedByPhone && (
+                <span
+                  className="text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded px-1 py-0 leading-4 shrink-0"
+                  title="No match code was included — matched by phone number only"
+                  data-testid={`badge-resolved-by-phone-bet-${bet.id}`}
+                >
+                  no code
+                </span>
+              )}
               {bet.status === "duplicate" && (
                 <span className="text-xs text-yellow-600 font-medium" title={bet.duplicateOf ? `Possible duplicate of: "${bet.duplicateOf}"` : undefined}>
                   ⚠ Possible duplicate{bet.duplicateOf ? ` of "${bet.duplicateOf}"` : ""}
@@ -2852,7 +2861,18 @@ export default function MatchDetail() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{scan.fromPhone}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-medium truncate">{scan.fromPhone}</p>
+                          {scan.resolvedByPhone && (
+                            <span
+                              className="text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 rounded px-1 py-0 leading-4 shrink-0"
+                              title="No match code was included — matched by phone number only"
+                              data-testid={`badge-resolved-by-phone-scan-${scan.id}`}
+                            >
+                              no code
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1 mt-0.5">
                           {isPending && (
                             <>

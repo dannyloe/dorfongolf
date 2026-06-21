@@ -92,6 +92,7 @@ export const pendingSmsBets = pgTable("pending_sms_bets", {
   parsedBets: jsonb("parsed_bets").$type<Array<{ betType: string; amountCents: number; players: string[]; description: string }>>(),
   status: text("status").notNull().default("pending"), // pending | applied | dismissed | duplicate
   duplicateOf: text("duplicate_of"),
+  resolvedByPhone: boolean("resolved_by_phone").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -106,6 +107,7 @@ export const pendingScorecardScans = pgTable("pending_scorecard_scans", {
   status: text("status").notNull().default("pending"), // pending, processing, done, error
   scanResult: text("scan_result"), // JSON string of scan result
   errorMessage: text("error_message"),
+  resolvedByPhone: boolean("resolved_by_phone").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

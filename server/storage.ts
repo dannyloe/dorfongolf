@@ -167,14 +167,14 @@ export interface IStorage {
   backfillMatchCodes(): Promise<number>;
 
   // Pending scorecard scans
-  createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string }): Promise<PendingScorecardScan>;
+  createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string; resolvedByPhone?: boolean }): Promise<PendingScorecardScan>;
   updatePendingScan(id: number, data: Partial<{ status: string; scanResult: string | null; errorMessage: string | null; imageUrl: string | null; correctionLogId: number | null }>): Promise<PendingScorecardScan>;
   listPendingScans(matchId: number): Promise<PendingScorecardScan[]>;
   getPendingScan(id: number): Promise<PendingScorecardScan | undefined>;
   deletePendingScan(id: number): Promise<boolean>;
 
   // Pending SMS bets (text-based bet descriptions)
-  createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null }): Promise<PendingSmsBet>;
+  createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null; resolvedByPhone?: boolean }): Promise<PendingSmsBet>;
   getPendingSmsBet(id: number): Promise<PendingSmsBet | undefined>;
   listPendingSmsBets(matchId: number): Promise<PendingSmsBet[]>;
   updatePendingSmsBet(id: number, data: Partial<{ status: string; parsedBets: ParsedSmsBet[] | null; duplicateOf: string | null }>): Promise<PendingSmsBet>;
@@ -340,12 +340,13 @@ export class DatabaseStorage implements IStorage {
     return newMatch;
   }
 
-  async createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string }): Promise<PendingScorecardScan> {
+  async createPendingScan(data: { matchId: number; fromPhone: string; mediaUrl: string; resolvedByPhone?: boolean }): Promise<PendingScorecardScan> {
     const [scan] = await db.insert(pendingScorecardScans).values({
       matchId: data.matchId,
       fromPhone: data.fromPhone,
       mediaUrl: data.mediaUrl,
       status: 'pending',
+      resolvedByPhone: data.resolvedByPhone ?? false,
     }).returning();
     return scan;
   }
@@ -374,7 +375,7 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null }): Promise<PendingSmsBet> {
+  async createPendingSmsBet(data: { matchId: number; fromPhone: string; senderName: string; rawText: string; parsedBets: ParsedSmsBet[] | null; status?: string; duplicateOf?: string | null; resolvedByPhone?: boolean }): Promise<PendingSmsBet> {
     const [row] = await db.insert(pendingSmsBets).values({
       matchId: data.matchId,
       fromPhone: data.fromPhone,
@@ -383,6 +384,7 @@ export class DatabaseStorage implements IStorage {
       parsedBets: data.parsedBets,
       status: data.status ?? 'pending',
       duplicateOf: data.duplicateOf ?? null,
+      resolvedByPhone: data.resolvedByPhone ?? false,
     }).returning();
     return row;
   }

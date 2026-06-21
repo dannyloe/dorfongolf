@@ -2557,6 +2557,9 @@ export async function registerRoutes(
         }
       }
 
+      // Track whether match was found by phone lookup (no code provided)
+      const resolvedByPhone = !matchCode;
+
       // If no media, try to parse the text body as a bet description or scores
       if (numMedia === 0) {
         const textBody = rawBody.replace(/\b[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}\b/i, "").trim();
@@ -2580,7 +2583,7 @@ export async function registerRoutes(
           }));
           const scanResult = JSON.stringify({ success: true, scores: [{ playerName, holes }] });
           const maskedPhoneScore = `***-***-${from.slice(-4)}`;
-          const newScan = await storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhoneScore, mediaUrl: "" });
+          const newScan = await storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhoneScore, mediaUrl: "", resolvedByPhone });
           // Update the exact newly inserted record by ID (avoids race with concurrent inbound traffic)
           await storage.updatePendingScan(newScan.id, { status: "ready", scanResult });
           const twimlReply = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got your scores for "${match.name || match.courseName}"! The organizer will review and apply them shortly.</Message></Response>`;
@@ -2662,6 +2665,7 @@ export async function registerRoutes(
             parsedBets,
             status,
             duplicateOf,
+            resolvedByPhone,
           });
 
           res.type("text/xml").send(`<?xml version="1.0" encoding="UTF-8"?><Response><Message>${replyMsg}</Message></Response>`);
@@ -2692,7 +2696,7 @@ export async function registerRoutes(
 
       // Create one pending scan per image, then respond immediately
       const scans = await Promise.all(
-        mediaUrls.map((url) => storage.createPendingScan({ matchId: match.id, fromPhone: from, mediaUrl: url }))
+        mediaUrls.map((url) => storage.createPendingScan({ matchId: match.id, fromPhone: from, mediaUrl: url, resolvedByPhone }))
       );
 
       const count = mediaUrls.length;
@@ -2862,6 +2866,9 @@ export async function registerRoutes(
         }
       }
 
+      // Track whether match was found by phone lookup (no code provided)
+      const resolvedByPhone = !matchCode;
+
       // No media — try score text or bet parsing
       if (numMedia === 0) {
         const textBody = rawBody.replace(/\b[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}\b/i, "").trim();
@@ -2882,7 +2889,7 @@ export async function registerRoutes(
           }));
           const scanResult = JSON.stringify({ success: true, scores: [{ playerName, holes }] });
           const maskedPhone = `***-***-${from.slice(-4)}`;
-          const newScan = await storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhone, mediaUrl: "" });
+          const newScan = await storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhone, mediaUrl: "", resolvedByPhone });
           await storage.updatePendingScan(newScan.id, { status: "ready", scanResult });
           reply(`Got your scores for "${match.name || match.courseName}"! The organizer will review and apply them shortly.`);
           return;
@@ -2940,6 +2947,7 @@ export async function registerRoutes(
             parsedBets,
             status,
             duplicateOf,
+            resolvedByPhone,
           });
 
           let replyMsg: string;
@@ -2977,7 +2985,7 @@ export async function registerRoutes(
       // Mask phone before storing for privacy
       const maskedPhone = `***-***-${from.slice(-4)}`;
       const scans = await Promise.all(
-        mediaUrls.map((url) => storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhone, mediaUrl: url }))
+        mediaUrls.map((url) => storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhone, mediaUrl: url, resolvedByPhone }))
       );
 
       const count = mediaUrls.length;
