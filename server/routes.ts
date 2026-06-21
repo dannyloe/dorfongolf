@@ -9,8 +9,8 @@ import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as 
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
-import { sendSMS, sendMatchInvitation, sendScoreUpdate, getPlivoFromPhoneNumber } from "./plivo";
-import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
+import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
+import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, sendBetResultWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
 import { sendPushNotification } from "./pushNotifications";
 import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
@@ -92,6 +92,28 @@ async function notifyMatchParticipantsOfScoreUpdate(
     }
   } catch (error) {
     console.error('Failed to send score update notifications:', error);
+  }
+}
+
+// Helper to notify players of a bet result — uses WhatsApp when configured, Plivo SMS fallback
+async function notifyPlayersOfBetResult(
+  playerUserIds: string[],
+  matchName: string,
+  result: string,
+  amount: string
+) {
+  for (const userId of playerUserIds) {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user?.phone) continue;
+      if (isWhatsappConfigured()) {
+        await sendBetResultWhatsApp(user.phone, matchName, result, amount);
+      } else {
+        await sendBetResult(user.phone, matchName, result, amount);
+      }
+    } catch (err) {
+      console.error(`Failed to send bet result notification to user ${userId}:`, err);
+    }
   }
 }
 
