@@ -3,7 +3,7 @@ import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   groupMemberships, groupJoinRequests, groupPlayers,
-  verificationCodes, notificationPreferences, messages, devicePushTokens,
+  verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
   settlements, settlementPayments,
@@ -28,7 +28,7 @@ import {
   type PresetPlayer, type InsertPresetPlayer,
   type PlayerAlias, type InsertPlayerAlias,
   type MatchRole, type InsertMatchRole,
-  type VerificationCode, type NotificationPreferences, type Message,
+  type VerificationCode, type NotificationPreferences, type Message, type Notification,
   type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
   type RyderCupTransaction, type RyderCupTransactionSplit, type RyderCupClosestToHole,
@@ -253,6 +253,12 @@ export interface IStorage {
   registerDevicePushToken(userId: string, token: string, platform: string): Promise<DevicePushToken>;
   unregisterDevicePushToken(token: string, userId?: string): Promise<boolean>;
   getDevicePushTokensForUser(userId: string): Promise<DevicePushToken[]>;
+
+  // In-app notification feed
+  createNotification(userId: string, title: string, body: string, route?: string | null): Promise<Notification>;
+  getNotificationsForUser(userId: string, limit?: number): Promise<Notification[]>;
+  markNotificationRead(id: number, userId: string): Promise<void>;
+  markAllNotificationsRead(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5055,6 +5061,37 @@ export class DatabaseStorage implements IStorage {
 
   async getDevicePushTokensForUser(userId: string): Promise<DevicePushToken[]> {
     return db.select().from(devicePushTokens).where(eq(devicePushTokens.userId, userId));
+  }
+
+  async createNotification(userId: string, title: string, body: string, route?: string | null): Promise<Notification> {
+    const [row] = await db
+      .insert(notifications)
+      .values({ userId, title, body, route: route ?? null })
+      .returning();
+    return row;
+  }
+
+  async getNotificationsForUser(userId: string, limit = 50): Promise<Notification[]> {
+    return db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  }
+
+  async markNotificationRead(id: number, userId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ readAt: new Date() })
+      .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
   }
 }
 

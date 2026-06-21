@@ -148,6 +148,13 @@
       "when": 1782003600000,
       "tag": "0021_add_device_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1750514400000,
+      "tag": "0022_add_notifications",
+      "breakpoints": true
     }
   ]
 }

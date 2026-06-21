@@ -1,9 +1,8 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users, Menu, Key } from "lucide-react";
+import { LogOut, User, Trophy, Plus, BookOpen, MapPin, Users, Menu, Key, Bell } from "lucide-react";
 import { CreateMatchModal } from "./CreateMatchModal";
-import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,13 +11,114 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import type { Notification } from "@shared/schema";
+import { formatDistanceToNow } from "date-fns";
+
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+
+  const { data: items = [] } = useQuery<Notification[]>({
+    queryKey: ["/api/notifications"],
+    refetchInterval: 30000,
+  });
+
+  const unreadCount = items.filter((n) => !n.readAt).length;
+
+  const markRead = useMutation({
+    mutationFn: (id: number) => apiRequest("PATCH", `/api/notifications/${id}/read`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+  });
+
+  const markAllRead = useMutation({
+    mutationFn: () => apiRequest("PATCH", "/api/notifications/read-all"),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+  });
+
+  const [, setLocation] = useLocation();
+
+  function handleNotificationClick(n: Notification) {
+    if (!n.readAt) {
+      markRead.mutate(n.id);
+    }
+    setOpen(false);
+    if (n.route) {
+      setLocation(n.route);
+    }
+  }
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          data-testid="button-notifications"
+        >
+          <Bell className="w-5 h-5" />
+          {unreadCount > 0 && (
+            <span
+              className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold"
+              data-testid="badge-unread-count"
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80 max-h-[480px] overflow-y-auto p-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <span className="font-semibold text-sm">Notifications</span>
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllRead.mutate()}
+              className="text-xs text-primary hover:underline"
+              data-testid="button-mark-all-read"
+            >
+              Mark all read
+            </button>
+          )}
+        </div>
+        {items.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            No notifications yet
+          </div>
+        ) : (
+          items.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => handleNotificationClick(n)}
+              className={`w-full text-left px-4 py-3 border-b last:border-b-0 hover:bg-muted/50 transition-colors ${!n.readAt ? "bg-primary/5" : ""}`}
+              data-testid={`notification-item-${n.id}`}
+            >
+              <div className="flex items-start gap-2">
+                {!n.readAt && (
+                  <span className="mt-1.5 flex-shrink-0 w-2 h-2 rounded-full bg-primary" />
+                )}
+                <div className={!n.readAt ? "" : "ml-4"}>
+                  <p className="text-sm font-medium leading-snug">{n.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.body}</p>
+                  <p className="text-[11px] text-muted-foreground/70 mt-1">
+                    {formatDistanceToNow(new Date(n.createdAt!), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  // Simple active link helper
   const isActive = (path: string) => location === path;
 
   return (
@@ -162,10 +262,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
               <div className="h-6 w-px bg-border mx-2 hidden md:block" />
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <NotificationBell />
+
                 <Link 
                   href="/profile" 
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity ml-1"
                   data-testid="link-profile"
                 >
                   <span className="hidden sm:inline text-sm font-medium text-foreground">

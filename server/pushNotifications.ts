@@ -2,6 +2,7 @@ import admin from 'firebase-admin';
 import { db } from './db';
 import { devicePushTokens } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
+import { storage } from './storage';
 
 let initialized = false;
 
@@ -32,6 +33,13 @@ export async function sendPushNotification(
   body: string,
   data?: Record<string, string>
 ): Promise<void> {
+  // Persist notification for the in-app feed regardless of FCM availability
+  try {
+    await storage.createNotification(userId, title, body, data?.route ?? null);
+  } catch (err) {
+    console.error('[pushNotifications] Failed to persist notification:', err);
+  }
+
   const app = getFirebaseApp();
   if (!app) {
     return;
