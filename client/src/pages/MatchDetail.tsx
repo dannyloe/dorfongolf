@@ -744,11 +744,12 @@ export default function MatchDetail() {
     queryKey: ["/api/users/match-type-frequency"],
   });
 
-  const { data: appConfig } = useQuery<{ phoneNumber: string | null }>({
+  const { data: appConfig } = useQuery<{ phoneNumber: string | null; twilioWhatsappNumber: string | null }>({
     queryKey: ["/api/config"],
     staleTime: 1000 * 60 * 60,
   });
   const smsPhoneNumber = appConfig?.phoneNumber ?? null;
+  const whatsappNumber = appConfig?.twilioWhatsappNumber ?? (import.meta.env.VITE_TWILIO_WHATSAPP_NUMBER || null);
 
   const sortedMatchOptions = (() => {
     if (!matchTypeFrequency) return ALL_MATCH_OPTIONS;
@@ -2490,10 +2491,25 @@ export default function MatchDetail() {
           </div>
           <div className="px-4 py-3 space-y-2">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Anyone can text a photo of their scorecard to{" "}
-              <span className="font-medium text-foreground">
-                {smsPhoneNumber || import.meta.env.VITE_PLIVO_PHONE_NUMBER || "your Plivo number"}
-              </span>{" "}
+              {whatsappNumber ? (
+                <>
+                  Anyone can WhatsApp a photo of their scorecard to{" "}
+                  <span className="font-medium text-foreground">{whatsappNumber}</span>
+                  <span className="ml-1 inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 rounded px-1 py-0.5">WhatsApp</span>
+                  {(smsPhoneNumber || import.meta.env.VITE_PLIVO_PHONE_NUMBER) && (
+                    <> or SMS to{" "}
+                      <span className="font-medium text-foreground">{smsPhoneNumber || import.meta.env.VITE_PLIVO_PHONE_NUMBER}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  Anyone can text a photo of their scorecard to{" "}
+                  <span className="font-medium text-foreground">
+                    {smsPhoneNumber || import.meta.env.VITE_PLIVO_PHONE_NUMBER || "your configured number"}
+                  </span>
+                </>
+              )}{" "}
               with the code{" "}
               {match.matchCode ? (
                 <span className="font-mono font-bold text-primary">{match.matchCode}</span>
@@ -2508,8 +2524,9 @@ export default function MatchDetail() {
                   className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
                   data-testid="button-share-scorecard-instructions"
                   onClick={() => {
-                    const phone = smsPhoneNumber || import.meta.env.VITE_PLIVO_PHONE_NUMBER || "your Plivo number";
-                    const text = `Text a photo of your scorecard or your bets to ${phone} with the code ${match.matchCode} in the message body to submit your scores or bets.`;
+                    const phone = whatsappNumber || smsPhoneNumber || import.meta.env.VITE_PLIVO_PHONE_NUMBER || "our number";
+                    const channel = whatsappNumber ? "WhatsApp" : "text";
+                    const text = `${channel === "WhatsApp" ? "WhatsApp" : "Text"} a photo of your scorecard or your bets to ${phone} with the code ${match.matchCode} in the message body to submit your scores or bets.`;
                     if (navigator.share) {
                       navigator.share({ text }).catch(() => {});
                     } else {

@@ -10,6 +10,7 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
+import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, validateTwilioSignature, stripWhatsappPrefix, formatWhatsappNumber, sendWhatsAppMessage } from "./twilio";
 import { sendPushNotification } from "./pushNotifications";
 import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
@@ -40,9 +41,13 @@ async function notifyPlayerOfMatchInvitation(
     
     const matchDisplayName = matchName || "a match";
 
-    // Send SMS if the user has a phone
+    // Send WhatsApp if configured, otherwise fall back to Plivo SMS
     if (user?.phone) {
-      await sendMatchInvitation(user.phone, matchDisplayName, inviterName);
+      if (isWhatsappConfigured()) {
+        await sendMatchInvitationWhatsApp(user.phone, matchDisplayName, inviterName);
+      } else {
+        await sendMatchInvitation(user.phone, matchDisplayName, inviterName);
+      }
     }
 
     // Send push notification (fire-and-forget)
@@ -2334,9 +2339,15 @@ export async function registerRoutes(
       } catch {
         phoneNumber = null;
       }
-      res.json({ phoneNumber });
+      let twilioWhatsappNumber: string | null = null;
+      try {
+        if (isWhatsappConfigured()) twilioWhatsappNumber = getTwilioWhatsappNumber();
+      } catch {
+        twilioWhatsappNumber = null;
+      }
+      res.json({ phoneNumber, twilioWhatsappNumber });
     } catch (err) {
-      res.json({ phoneNumber: null });
+      res.json({ phoneNumber: null, twilioWhatsappNumber: null });
     }
   });
 
@@ -2678,6 +2689,279 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Inbound SMS webhook error:", err);
       res.type("text/xml").send(twimlEmpty);
+    }
+  });
+
+  // Inbound WhatsApp webhook — Twilio posts here when a WhatsApp message arrives.
+  // NOTE: Intentionally public (no isAuthenticated) so Twilio can reach it.
+  // Twilio signature validation is performed to reject forgeries.
+  app.post("/api/whatsapp/inbound", express.urlencoded({ extended: false }), async (req, res) => {
+    const twimlEmpty = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+
+    try {
+      const authToken = process.env.TWILIO_AUTH_TOKEN;
+      if (!authToken) {
+        console.error("[WhatsApp Inbound] No Twilio auth token — rejecting. Set TWILIO_AUTH_TOKEN secret.");
+        res.status(403).type("text/xml").send(twimlEmpty);
+        return;
+      }
+
+      const signature = req.headers["x-twilio-signature"] as string || "";
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "";
+      const webhookUrl = `${protocol}://${host}/api/whatsapp/inbound`;
+
+      if (!validateTwilioSignature(authToken, signature, webhookUrl, req.body as Record<string, string>)) {
+        console.warn("[WhatsApp Inbound] Invalid or missing Twilio signature — rejected");
+        res.status(403).type("text/xml").send(twimlEmpty);
+        return;
+      }
+
+      // Twilio sends From as "whatsapp:+12025551234" — strip prefix for storage/lookups
+      const rawFrom: string = req.body.From || "";
+      const from: string = stripWhatsappPrefix(rawFrom);
+      const rawBody: string = req.body.Body || "";
+      const numMedia = parseInt(req.body.NumMedia || "0", 10);
+
+      if (!from) {
+        res.type("text/xml").send(twimlEmpty);
+        return;
+      }
+
+      const reply = (msg: string) => {
+        res.type("text/xml").send(
+          `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${msg}</Message></Response>`
+        );
+      };
+
+      // Extract 4-char match code from message body
+      const codeMatch = rawBody.toUpperCase().match(/\b([ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4})\b/);
+      const matchCode = codeMatch?.[1];
+
+      let match: Awaited<ReturnType<typeof storage.getMatchByCode>> | undefined;
+
+      if (!matchCode) {
+        const activeMatches = await storage.getActiveMatchesByPhone(from);
+        if (activeMatches.length === 1) {
+          match = activeMatches[0];
+          console.log(`[WhatsApp Inbound] Resolved match ${match.id} by phone for ${from.replace(/\d(?=\d{4})/g, "*")}`);
+        } else if (activeMatches.length > 1) {
+          reply("You're in multiple active matches. Please include your 4-character match code in the message.");
+          return;
+        } else {
+          reply("Please include your 4-character match code in the message along with a photo of your scorecard.");
+          return;
+        }
+      } else {
+        match = await storage.getMatchByCode(matchCode);
+        if (!match) {
+          reply(`Sorry, we couldn't find a match with code "${matchCode}". Check the code and try again.`);
+          return;
+        }
+      }
+
+      // No media — try score text or bet parsing
+      if (numMedia === 0) {
+        const textBody = rawBody.replace(/\b[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}\b/i, "").trim();
+
+        const scoreNums = detectScoreText(textBody);
+        if (scoreNums && scoreNums.length >= 9) {
+          const matchPlayers = await storage.getMatchPlayers(match.id);
+          const senderUser = await storage.getUserByPhone(from);
+          const senderName = senderUser?.presetPlayerName || senderUser?.firstName || from.slice(-4);
+          const senderPlayer = matchPlayers.find(p =>
+            senderUser?.presetPlayerName && p.name.toLowerCase() === senderUser.presetPlayerName.toLowerCase()
+          );
+          const playerName = senderPlayer?.name || senderName || "Unknown";
+          const holes = scoreNums.slice(0, 18).map((strokes, i) => ({
+            holeNumber: i + 1,
+            strokes: String(strokes),
+            confidence: "high" as const,
+          }));
+          const scanResult = JSON.stringify({ success: true, scores: [{ playerName, holes }] });
+          const maskedPhone = `***-***-${from.slice(-4)}`;
+          const newScan = await storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhone, mediaUrl: "" });
+          await storage.updatePendingScan(newScan.id, { status: "ready", scanResult });
+          reply(`Got your scores for "${match.name || match.courseName}"! The organizer will review and apply them shortly.`);
+          return;
+        }
+
+        if (textBody.length >= 5) {
+          const matchPlayers = await storage.getMatchPlayers(match.id);
+          const playerNames = matchPlayers.map((p: { name: string }) => p.name);
+          const senderUser = await storage.getUserByPhone(from);
+          const senderName = senderUser?.presetPlayerName || senderUser?.firstName || `…${from.slice(-4)}`;
+          const matchName = match.name || match.courseName;
+
+          let parsedBets: import("@shared/schema").ParsedSmsBet[] | null = null;
+          try {
+            const parsePromise = parseSmsBetText({ rawText: textBody, playerNames, matchName, senderName });
+            const timeoutPromise = new Promise<null>(r => setTimeout(() => r(null), 12000));
+            parsedBets = await Promise.race([parsePromise, timeoutPromise]);
+          } catch (parseErr) {
+            console.error("[WhatsApp Inbound] Bet parse error:", parseErr);
+          }
+
+          if (parsedBets && parsedBets.length > 0 && senderName) {
+            const { resolvePlayerAlias } = await import("@shared/models/auth");
+            const canonicalSender = resolvePlayerAlias(senderName);
+            parsedBets = parsedBets.map(pb => {
+              if (pb.betType === 'press') return pb;
+              const existing = pb.players.map(p => resolvePlayerAlias(p).toLowerCase());
+              if (!existing.includes(canonicalSender.toLowerCase())) {
+                return { ...pb, players: [...pb.players, canonicalSender] };
+              }
+              return pb;
+            });
+          }
+
+          let status = "pending";
+          let duplicateOf: string | null = null;
+          if (parsedBets && parsedBets.length > 0) {
+            const [existingSmsBets, existingEmsWithTeams] = await Promise.all([
+              storage.listPendingSmsBets(match.id),
+              storage.getEventMatchesWithTeamsBulk(match.id),
+            ]);
+            const dupResult = checkBetDuplicate(parsedBets, existingSmsBets, existingEmsWithTeams);
+            if (dupResult.isDuplicate) {
+              status = "duplicate";
+              duplicateOf = dupResult.duplicateOf;
+            }
+          }
+
+          const maskedPhone = `***-***-${from.slice(-4)}`;
+          await storage.createPendingSmsBet({
+            matchId: match.id,
+            fromPhone: maskedPhone,
+            senderName,
+            rawText: textBody,
+            parsedBets,
+            status,
+            duplicateOf,
+          });
+
+          let replyMsg: string;
+          if (parsedBets && parsedBets.length > 0) {
+            const betSummaries = parsedBets.map(pb => pb.description).join("; ");
+            replyMsg = status === "duplicate"
+              ? `Got it (flagged as possible duplicate of: "${duplicateOf}"). Bets: ${betSummaries}. The organizer will review.`
+              : `Got your bet for "${matchName}": ${betSummaries}. The organizer will review shortly.`;
+          } else {
+            replyMsg = `Got your message for "${matchName}"! Couldn't parse specific bets — the organizer will review your text.`;
+          }
+          reply(replyMsg);
+          return;
+        }
+
+        reply(`No photo received. Please attach a photo of your scorecard and include code ${match.matchCode} in the message.`);
+        return;
+      }
+
+      // Collect image media URLs
+      const mediaUrls: string[] = [];
+      for (let i = 0; i < numMedia; i++) {
+        const url = req.body[`MediaUrl${i}`];
+        const ct: string = (req.body[`MediaContentType${i}`] || "").toLowerCase();
+        if (url && (ct.startsWith("image/") || ct === "")) {
+          mediaUrls.push(url);
+        }
+      }
+
+      if (mediaUrls.length === 0) {
+        reply("No image found. Please attach a JPG or PNG of your scorecard.");
+        return;
+      }
+
+      // Mask phone before storing for privacy
+      const maskedPhone = `***-***-${from.slice(-4)}`;
+      const scans = await Promise.all(
+        mediaUrls.map((url) => storage.createPendingScan({ matchId: match.id, fromPhone: maskedPhone, mediaUrl: url }))
+      );
+
+      const count = mediaUrls.length;
+      reply(`Got it! ${count === 1 ? "Your scorecard" : `${count} scorecards`} for "${match.name || match.courseName}" ${count === 1 ? "is" : "are"} being processed. The organizer will review and apply the scores shortly.`);
+
+      // Background: download each image (requires Twilio Basic Auth) and run Gemini scan
+      const accountSid = process.env.TWILIO_ACCOUNT_SID || "";
+      const authBasic = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+      const processWaScan = async (scan: { id: number }, mediaUrl: string) => {
+        try {
+          const imgRes = await fetch(mediaUrl, {
+            headers: { Authorization: `Basic ${authBasic}` },
+          });
+          if (!imgRes.ok) throw new Error(`Failed to fetch image: ${imgRes.status}`);
+          const imageBuffer = Buffer.from(await imgRes.arrayBuffer());
+          const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+          const imageBase64 = `data:${contentType};base64,${imageBuffer.toString("base64")}`;
+
+          const imageUrl = await uploadScorecardImage(imageBuffer, contentType).catch(() => null);
+
+          const matchPlayers = await storage.getMatchPlayers(match.id);
+          const playerNames = matchPlayers.map((p: { name: string }) => p.name);
+          const extraRules = await storage.getActiveScanPatternRules();
+          const scanProvider = (await storage.getAppSetting("scanProvider")) as "gemini" | "grok" | null ?? "gemini";
+
+          let holePars: { holeNumber: number; par: number }[] | undefined;
+          let scorecardNotes: string | null | undefined;
+          if (match.courseId) {
+            try {
+              const [holes, course] = await Promise.all([
+                storage.getCourseHoles(match.courseId),
+                storage.getCourse(match.courseId),
+              ]);
+              if (holes.length > 0) holePars = holes.map((h: { holeNumber: number; par: number }) => ({ holeNumber: h.holeNumber, par: h.par }));
+              if (course?.scorecardNotes) scorecardNotes = course.scorecardNotes;
+            } catch { /* non-fatal */ }
+          }
+
+          const result = await scanScorecardImage({ imageBase64, playerNames, courseName: match.courseName, extraRules, provider: scanProvider, holePars, scorecardNotes });
+
+          let correctionLogId: number | null = null;
+          try {
+            const geminiOutput = (result.scores ?? []).map((p: any) => ({
+              playerName: p.playerName,
+              holes: (p.holes ?? [])
+                .filter((h: any) => h.holeNumber >= 1 && h.holeNumber <= 18)
+                .map((h: any) => ({ holeNumber: h.holeNumber, strokes: h.strokes != null ? Math.round(h.strokes) : null })),
+            }));
+            const log = await storage.createScanCorrectionLog({
+              matchId: match.id,
+              pendingScanId: scan.id,
+              source: "mms",
+              scanProvider,
+              courseName: match.courseName,
+              imageUrl,
+              geminiOutput,
+              appliedOutput: [],
+              playerNames: [],
+              geminiRawText: result.rawText || null,
+            });
+            correctionLogId = log.id;
+          } catch { /* non-fatal */ }
+
+          await storage.updatePendingScan(scan.id, {
+            status: "ready",
+            scanResult: JSON.stringify(result),
+            imageUrl: imageUrl ?? null,
+            correctionLogId,
+          });
+        } catch (err) {
+          console.error(`[WhatsApp] Background scan error (scan ${scan.id}):`, err);
+          await storage.updatePendingScan(scan.id, {
+            status: "error",
+            errorMessage: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      };
+
+      Promise.all(scans.map((scan, i) => processWaScan(scan, mediaUrls[i]))).catch((err) => {
+        console.error("[WhatsApp] Background scan processing error:", err);
+      });
+
+    } catch (err) {
+      console.error("[WhatsApp Inbound] Webhook error:", err);
+      res.status(500).type("text/xml").send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
   });
 
