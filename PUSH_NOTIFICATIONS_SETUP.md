@@ -120,7 +120,7 @@ Copy the `google-services.json` file you downloaded in Step 3 into the Android a
 android/app/google-services.json
 ```
 
-This file must be placed here before building. Do **not** commit it to version control — add `android/app/google-services.json` to your `.gitignore`.
+This file must be placed here before building. Do **not** commit it to version control — `android/app/google-services.json` is already listed in `.gitignore` to prevent accidental commits.
 
 ### Step 6 (Android): Open in Android Studio
 
