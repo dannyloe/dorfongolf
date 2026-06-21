@@ -81,6 +81,11 @@ function loadPersistedGroups(matchId: number, players: Player[]): PersistedGroup
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${matchId}`);
     if (!raw) return null;
     const parsed: PersistedGroups = JSON.parse(raw);
+    // Persistence contract: we guard the restore with a strict player-ID set
+    // comparison. If the roster changes (player added or removed from the match),
+    // the stored state is discarded and the section resets to a clean slate.
+    // This is intentional — a changed roster would make the stored group
+    // assignments stale (e.g. referencing a player who is no longer in the match).
     const currentIds = [...players.map((p) => p.id)].sort((a, b) => a - b);
     const storedIds = [...(parsed.playerIds ?? [])].sort((a, b) => a - b);
     if (JSON.stringify(currentIds) !== JSON.stringify(storedIds)) return null;
@@ -869,6 +874,17 @@ export function PlayingGroupsSection({
     });
   };
 
+  // Unassigned-pool persistence contract:
+  // The unassigned pool is intentionally NOT stored as a separate field in
+  // localStorage. Instead it is derived at render time as the set of all match
+  // players whose names do not appear in any `preview` group. Because `preview`
+  // IS persisted, the pool is implicitly preserved across page reloads:
+  //   1. User removes player X from a group  → X disappears from preview groups
+  //   2. State saved  → preview (without X in any group) written to localStorage
+  //   3. User refreshes → preview restored → ungroupedPlayers includes X again ✓
+  // The playerIds guard in loadPersistedGroups ensures this derivation is only
+  // applied when the roster matches, so there is no silent re-appearance risk
+  // caused by a stale preview referencing a different roster.
   const ungroupedPlayers = preview
     ? players
         .map((p) => p.name)
