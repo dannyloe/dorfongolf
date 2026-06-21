@@ -119,6 +119,32 @@ async function notifyPlayersOfBetResult(
   }
 }
 
+// Helper to send push notifications to all group members of an event (non-blocking)
+async function notifyEventGroupMembers(
+  eventId: number,
+  title: string,
+  body: string,
+  excludeUserId?: string
+) {
+  try {
+    const event = await storage.getRyderCupEvent(eventId);
+    if (!event?.groupId) return;
+
+    const members = await storage.getGroupMembers(event.groupId);
+    for (const member of members) {
+      if (!member.userId || member.userId === excludeUserId) continue;
+      sendPushNotification(
+        member.userId,
+        title,
+        body,
+        { route: `/ryder-cup/${eventId}` }
+      ).catch(() => {});
+    }
+  } catch (error) {
+    console.error('Failed to send event group notifications:', error);
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -4194,6 +4220,18 @@ Transcript to parse: "${transcript}"`;
       
       const updated = await storage.updateRyderCupEventStatus(id, input.status);
       res.json(updated);
+
+      // Notify event group members when event becomes active
+      if (input.status === 'active' && event.groupId) {
+        const user = req.user as any;
+        const requestingUserId = user?.claims?.sub;
+        notifyEventGroupMembers(
+          id,
+          event.name,
+          'The event has started!',
+          requestingUserId
+        );
+      }
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
