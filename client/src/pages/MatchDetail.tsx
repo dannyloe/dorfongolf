@@ -8266,6 +8266,18 @@ export default function MatchDetail() {
                       );
                     }
 
+                    // Build RR group info for ledger (parallel to match history section)
+                    const ledgerRrGroupSize = new Map<number, number>();
+                    const ledgerRrGroupFirstId = new Map<number, number>();
+                    for (const mid of filteredMatchIds) {
+                      const em = eventMatches.find(e => e.id === mid);
+                      if (em?.isRoundRobinGenerated && em.sourceSmsBetId != null) {
+                        const sid = em.sourceSmsBetId;
+                        ledgerRrGroupSize.set(sid, (ledgerRrGroupSize.get(sid) ?? 0) + 1);
+                        if (!ledgerRrGroupFirstId.has(sid)) ledgerRrGroupFirstId.set(sid, mid);
+                      }
+                    }
+
                     // Capture outer route-param matchId before the map lambda shadows it
                     const parentMatchIdForPanel = matchId;
                     
@@ -8276,6 +8288,10 @@ export default function MatchDetail() {
                       const teamB = eventMatch?.teams[1];
                       const matchType = eventMatch?.matchType ? (MATCH_TYPE_LABELS[eventMatch.matchType as MatchType] || eventMatch.matchType) : '';
                       const isSkins = eventMatch?.matchType === 'skins';
+                      const isRrMatch = !!(eventMatch?.isRoundRobinGenerated && eventMatch?.sourceSmsBetId != null);
+                      const rrSid = eventMatch?.sourceSmsBetId ?? null;
+                      const isLedgerRrGroupFirst = isRrMatch && rrSid != null && ledgerRrGroupFirstId.get(rrSid) === matchId;
+                      const ledgerRrCount = rrSid != null ? (ledgerRrGroupSize.get(rrSid) ?? 0) : 0;
                       
                       // Build player ID to team mapping
                       const playerTeamIndex = new Map<number, number>();
@@ -8509,8 +8525,26 @@ export default function MatchDetail() {
                       };
 
                       return (
-                        <div key={matchId} className="bg-muted/50 rounded-lg p-3" data-testid={`ledger-match-${matchId}`}>
-                          <div className="text-xs font-semibold text-muted-foreground mb-2">{matchTitle}</div>
+                        <Fragment key={matchId}>
+                          {isLedgerRrGroupFirst && (
+                            <div className="flex items-center gap-2 pt-1 pb-0.5" data-testid={`label-ledger-rr-group-${rrSid}`}>
+                              <MessageSquare className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400 shrink-0" />
+                              <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                                SMS Round Robin · {ledgerRrCount} {ledgerRrCount === 1 ? 'pairing' : 'pairings'}
+                              </span>
+                              <div className="flex-1 h-px bg-blue-200 dark:bg-blue-800" />
+                            </div>
+                          )}
+                        <div className={`bg-muted/50 rounded-lg p-3 ${isRrMatch ? 'border border-blue-200 dark:border-blue-800' : ''}`} data-testid={`ledger-match-${matchId}`}>
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <span className="text-xs font-semibold text-muted-foreground">{matchTitle}</span>
+                            {isRrMatch && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-[10px] font-medium" data-testid={`badge-rr-ledger-${matchId}`}>
+                                <MessageSquare className="w-2.5 h-2.5" />
+                                SMS RR
+                              </span>
+                            )}
+                          </div>
                           <div className="space-y-2">
                             {betGroups.map((group, gIdx) => {
                               const teamAWon = group.teamATotal > 0;
@@ -8682,6 +8716,7 @@ export default function MatchDetail() {
                             })}
                           </div>
                         </div>
+                        </Fragment>
                       );
                     });
                   })()}
