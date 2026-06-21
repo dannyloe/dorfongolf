@@ -95,6 +95,16 @@ export async function sendBetResultWhatsApp(
   return sendWhatsAppMessage(to, body);
 }
 
+export async function sendScoreUpdateWhatsApp(
+  to: string,
+  matchName: string,
+  playerName: string,
+  holeNumber: number
+): Promise<{ success: boolean; sid?: string; error?: string }> {
+  const body = `Score update in "${matchName}": ${playerName} finished hole ${holeNumber}.`;
+  return sendWhatsAppMessage(to, body);
+}
+
 export function validateTwilioSignature(
   authToken: string,
   signature: string,

@@ -9,8 +9,8 @@ import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as 
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
-import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
-import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, validateTwilioSignature, stripWhatsappPrefix, formatWhatsappNumber, sendWhatsAppMessage } from "./twilio";
+import { sendSMS, sendMatchInvitation, sendScoreUpdate, getPlivoFromPhoneNumber } from "./plivo";
+import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
 import { sendPushNotification } from "./pushNotifications";
 import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
@@ -77,12 +77,11 @@ async function notifyMatchParticipantsOfScoreUpdate(
       const prefs = await storage.getNotificationPreferences(participant.userId);
       if (prefs && prefs.scoreUpdates === false) continue;
       
-      await sendScoreUpdate(
-        participant.phone,
-        matchName,
-        playerName,
-        holeNumber
-      );
+      if (isWhatsappConfigured()) {
+        await sendScoreUpdateWhatsApp(participant.phone, matchName, playerName, holeNumber);
+      } else {
+        await sendScoreUpdate(participant.phone, matchName, playerName, holeNumber);
+      }
 
       // Send push notification alongside SMS (fire-and-forget)
       sendPushNotification(
