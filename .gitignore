@@ -4,3 +4,7 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Firebase credential files — contain sensitive keys, never commit
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
