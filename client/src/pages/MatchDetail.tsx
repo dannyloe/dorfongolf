@@ -958,6 +958,7 @@ export default function MatchDetail() {
   const [reviewingScan, setReviewingScan] = useState<PendingScorecardScan | null>(null);
   const [scanEditableScores, setScanEditableScores] = useState<Record<string, Record<number, string>>>({});
   const [scanShiftHistory, setScanShiftHistory] = useState<Record<string, { front: Record<number, string>[]; back: Record<number, string>[] }>>({});
+  const [scanUndoVisible, setScanUndoVisible] = useState<Record<string, { front: boolean; back: boolean }>>({});
   const [scanPlayerMappings, setScanPlayerMappings] = useState<Record<string, number | null>>({});
   const [scanSuggestedPresets, setScanSuggestedPresets] = useState<Record<string, string | null>>({});
   const [scanApplying, setScanApplying] = useState(false);
@@ -9268,6 +9269,10 @@ export default function MatchDetail() {
           });
           setScanShiftDirection((prev) => ({ ...prev, [playerName]: direction }));
           setScanShiftedHoles((prev) => ({ ...prev, [playerName]: holes }));
+          setScanUndoVisible((prev) => ({
+            ...prev,
+            [playerName]: { ...(prev[playerName] ?? { front: false, back: false }), [range]: true },
+          }));
           setTimeout(() => {
             setScanShiftedHoles((prev) => {
               const next = { ...prev };
@@ -9280,6 +9285,12 @@ export default function MatchDetail() {
               return next;
             });
           }, 400);
+          setTimeout(() => {
+            setScanUndoVisible((prev) => ({
+              ...prev,
+              [playerName]: { ...(prev[playerName] ?? { front: false, back: false }), [range]: false },
+            }));
+          }, 5000);
         };
 
         const undoShift = (playerName: string, range: 'front' | 'back') => {
@@ -9297,6 +9308,10 @@ export default function MatchDetail() {
               },
             };
           });
+          setScanUndoVisible((prev) => ({
+            ...prev,
+            [playerName]: { ...(prev[playerName] ?? { front: false, back: false }), [range]: false },
+          }));
         };
 
         const calculateTotals = (playerName: string) => {
@@ -9522,16 +9537,17 @@ export default function MatchDetail() {
                           >
                             Right <ChevronRight className="w-3.5 h-3.5" />
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-3 text-xs gap-1"
-                            onClick={() => undoShift(scannedPlayer.playerName, 'front')}
-                            disabled={(scanShiftHistory[scannedPlayer.playerName]?.front?.length ?? 0) === 0}
-                            data-testid={`button-undo-shift-front-${scannedPlayer.playerName}`}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" /> Undo
-                          </Button>
+                          {scanUndoVisible[scannedPlayer.playerName]?.front && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-3 text-xs gap-1 animate-in fade-in duration-200"
+                              onClick={() => undoShift(scannedPlayer.playerName, 'front')}
+                              data-testid={`button-undo-shift-front-${scannedPlayer.playerName}`}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Undo
+                            </Button>
+                          )}
                         </div>
                       </div>
 
@@ -9606,16 +9622,17 @@ export default function MatchDetail() {
                           >
                             Right <ChevronRight className="w-3.5 h-3.5" />
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-3 text-xs gap-1"
-                            onClick={() => undoShift(scannedPlayer.playerName, 'back')}
-                            disabled={(scanShiftHistory[scannedPlayer.playerName]?.back?.length ?? 0) === 0}
-                            data-testid={`button-undo-shift-back-${scannedPlayer.playerName}`}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" /> Undo
-                          </Button>
+                          {scanUndoVisible[scannedPlayer.playerName]?.back && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-3 text-xs gap-1 animate-in fade-in duration-200"
+                              onClick={() => undoShift(scannedPlayer.playerName, 'back')}
+                              data-testid={`button-undo-shift-back-${scannedPlayer.playerName}`}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> Undo
+                            </Button>
+                          )}
                         </div>
                       </div>
 
