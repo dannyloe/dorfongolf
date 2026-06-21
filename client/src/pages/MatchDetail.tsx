@@ -862,6 +862,7 @@ export default function MatchDetail() {
   const [quickBetsAutoPress, setQuickBetsAutoPress] = useState(true);
   const [quickBetsNetScoring, setQuickBetsNetScoring] = useState(false);
   const [isCreatingQuickBets, setIsCreatingQuickBets] = useState(false);
+  const [quickBets2v2DeselectedIndices, setQuickBets2v2DeselectedIndices] = useState<Set<number>>(new Set());
   
   // Skins match state
   const [skinsPlayerIds, setSkinsPlayerIds] = useState<number[]>([]);
@@ -2018,6 +2019,7 @@ export default function MatchDetail() {
     setQuickBetsOpponentIds([]);
     setQuickBetsTeamPlayerIds([]);
     setQuickBetsTeamSize(2);
+    setQuickBets2v2DeselectedIndices(new Set());
   };
 
   const handleCreateQuickBets = async () => {
@@ -2091,8 +2093,9 @@ export default function MatchDetail() {
     const isMatchPlay = quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL;
     const isNassau = quickBetsMatchType === MATCH_TYPES.NASSAU;
 
-    const matchupsToCreate = matchups.filter(m =>
-      !findDuplicateMatch(quickBetsMatchType, m.teamA, m.teamB, currentNetScoring)
+    const matchupsToCreate = matchups.filter((m, idx) =>
+      !findDuplicateMatch(quickBetsMatchType, m.teamA, m.teamB, currentNetScoring) &&
+      !quickBets2v2DeselectedIndices.has(idx)
     );
     const skippedCount = matchups.length - matchupsToCreate.length;
 
@@ -3381,7 +3384,7 @@ export default function MatchDetail() {
             isDuplicate: !!findDuplicateMatch(quickBetsMatchType, m.teamA, m.teamB, currentNetScoring),
           }));
           const newCount = is2v2Mode
-            ? matchups2v2WithDupFlag.filter(m => !m.isDuplicate).length
+            ? matchups2v2WithDupFlag.filter((m, idx) => !m.isDuplicate && !quickBets2v2DeselectedIndices.has(idx)).length
             : pairingsWithDupFlag.filter(p => !p.isDuplicate).length;
           const totalCount = is2v2Mode ? all2v2Matchups.length : allPairings.length;
           const everyoneCount = quickBetsSelectedIds.length;
@@ -3718,22 +3721,42 @@ export default function MatchDetail() {
               {quickBetsStep === 'preview' && (
                 <div className="space-y-4">
                   <div className="max-h-64 overflow-y-auto space-y-1.5">
-                    {is2v2Mode ? matchups2v2WithDupFlag.map((m, idx) => (
-                      <div
-                        key={idx}
-                        className={`flex items-center justify-between p-2 rounded-lg border ${m.isDuplicate ? 'border-border/40 bg-muted/30 opacity-60' : 'border-border/60 bg-background'}`}
-                        data-testid={`qb-preview-pairing-${idx}`}
-                      >
-                        <div className={`text-sm flex items-center gap-2 ${m.isDuplicate ? 'line-through text-muted-foreground' : 'font-medium'}`}>
-                          <span>{m.teamA.map(id => getPlayerNameById(id)).join('/')}</span>
-                          <span className="text-xs text-muted-foreground">vs</span>
-                          <span>{m.teamB.map(id => getPlayerNameById(id)).join('/')}</span>
+                    {is2v2Mode ? matchups2v2WithDupFlag.map((m, idx) => {
+                      const isDeselected = quickBets2v2DeselectedIndices.has(idx);
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between p-2 rounded-lg border ${m.isDuplicate ? 'border-border/40 bg-muted/30 opacity-60' : isDeselected ? 'border-border/40 bg-muted/20 opacity-50' : 'border-border/60 bg-background'}`}
+                          data-testid={`qb-preview-pairing-${idx}`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {!m.isDuplicate && (
+                              <input
+                                type="checkbox"
+                                checked={!isDeselected}
+                                onChange={() => {
+                                  setQuickBets2v2DeselectedIndices(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(idx)) next.delete(idx); else next.add(idx);
+                                    return next;
+                                  });
+                                }}
+                                className="shrink-0 accent-primary w-4 h-4"
+                                data-testid={`qb-2v2-checkbox-${idx}`}
+                              />
+                            )}
+                            <div className={`text-sm flex items-center gap-2 ${m.isDuplicate || isDeselected ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                              <span>{m.teamA.map(id => getPlayerNameById(id)).join('/')}</span>
+                              <span className="text-xs text-muted-foreground">vs</span>
+                              <span>{m.teamB.map(id => getPlayerNameById(id)).join('/')}</span>
+                            </div>
+                          </div>
+                          {m.isDuplicate && (
+                            <span className="text-xs text-muted-foreground ml-2 shrink-0">Duplicate – will be skipped</span>
+                          )}
                         </div>
-                        {m.isDuplicate && (
-                          <span className="text-xs text-muted-foreground ml-2 shrink-0">Duplicate – will be skipped</span>
-                        )}
-                      </div>
-                    )) : pairingsWithDupFlag.map((p, idx) => (
+                      );
+                    }) : pairingsWithDupFlag.map((p, idx) => (
                       <div
                         key={idx}
                         className={`flex items-center justify-between p-2 rounded-lg border ${p.isDuplicate ? 'border-border/40 bg-muted/30 opacity-60' : 'border-border/60 bg-background'}`}
