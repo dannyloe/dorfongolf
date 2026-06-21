@@ -9,6 +9,12 @@ const config: CapacitorConfig = {
       presentationOptions: ['badge', 'sound', 'alert'],
     },
   },
+  android: {
+    allowMixedContent: true,
+  },
+  ios: {
+    contentInset: 'automatic',
+  },
 };
 
 export default config;
