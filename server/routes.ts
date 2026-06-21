@@ -10,6 +10,7 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
 import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
+import { sendPushNotification } from "./pushNotifications";
 import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 import { uploadScorecardImage } from "./imageStorage";
@@ -28,7 +29,6 @@ async function notifyPlayerOfMatchInvitation(
   
   try {
     const user = await storage.getUser(playerUserId);
-    if (!user?.phone) return;
     
     // Check notification preferences
     const prefs = await storage.getNotificationPreferences(playerUserId);
@@ -39,7 +39,18 @@ async function notifyPlayerOfMatchInvitation(
     const inviterName = inviter?.presetPlayerName || inviter?.firstName || "Someone";
     
     const matchDisplayName = matchName || "a match";
-    await sendMatchInvitation(user.phone, matchDisplayName, inviterName);
+
+    // Send SMS if the user has a phone
+    if (user?.phone) {
+      await sendMatchInvitation(user.phone, matchDisplayName, inviterName);
+    }
+
+    // Send push notification (fire-and-forget)
+    sendPushNotification(
+      playerUserId,
+      "Match Invitation",
+      `${inviterName} invited you to ${matchDisplayName}`
+    ).catch(() => {});
   } catch (error) {
     console.error('Failed to send match invitation notification:', error);
   }
@@ -67,6 +78,13 @@ async function notifyMatchParticipantsOfScoreUpdate(
         playerName,
         holeNumber
       );
+
+      // Send push notification alongside SMS (fire-and-forget)
+      sendPushNotification(
+        participant.userId,
+        matchName,
+        `${playerName} scored on hole ${holeNumber}`
+      ).catch(() => {});
     }
   } catch (error) {
     console.error('Failed to send score update notifications:', error);
@@ -82,6 +100,40 @@ export async function registerRoutes(
   registerObjectStorageRoutes(app);
 
   const ADMIN_USER_ID = "52861828";
+
+  // Device push token endpoints for native iOS app
+  app.post("/api/notifications/device-token", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const schema = z.object({
+        token: z.string().min(1),
+        platform: z.string().default("ios"),
+      });
+      const { token, platform } = schema.parse(req.body);
+      const result = await storage.registerDevicePushToken(userId, token, platform);
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/notifications/device-token/:token", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const token = req.params.token;
+      await storage.unregisterDevicePushToken(token, userId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   app.get(api.matches.list.path, isAuthenticated, async (req, res) => {
     const matches = await storage.getMatchesWithPlayers();

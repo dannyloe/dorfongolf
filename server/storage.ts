@@ -3,7 +3,7 @@ import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   groupMemberships, groupJoinRequests, groupPlayers,
-  verificationCodes, notificationPreferences, messages,
+  verificationCodes, notificationPreferences, messages, devicePushTokens,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
   settlements, settlementPayments,
@@ -42,7 +42,8 @@ import {
   type ScanComparison,
   type EventPlayingGroup, type EventPlayingGroupMember, type EventPlayingGroupWithMembers,
   type CreateRyderCupEventRequest, type RyderCupEventResponse, type AddSideMatchRequest, type RecordPairingResultRequest,
-  type ApiKey
+  type ApiKey,
+  type DevicePushToken
 } from "@shared/schema";
 import { eq, and, lt, lte, inArray, or, isNull, isNotNull, desc, gte, sql } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -247,6 +248,11 @@ export interface IStorage {
   // App settings
   getAppSetting(key: string): Promise<string | null>;
   setAppSetting(key: string, value: string): Promise<void>;
+
+  // Device push tokens
+  registerDevicePushToken(userId: string, token: string, platform: string): Promise<DevicePushToken>;
+  unregisterDevicePushToken(token: string, userId?: string): Promise<boolean>;
+  getDevicePushTokensForUser(userId: string): Promise<DevicePushToken[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5028,6 +5034,27 @@ export class DatabaseStorage implements IStorage {
   async getScanComparison(id: number): Promise<ScanComparison | undefined> {
     const rows = await db.select().from(scanComparisons).where(eq(scanComparisons.id, id));
     return rows[0];
+  }
+
+  async registerDevicePushToken(userId: string, token: string, platform: string): Promise<DevicePushToken> {
+    const [row] = await db
+      .insert(devicePushTokens)
+      .values({ userId, token, platform })
+      .onConflictDoUpdate({ target: devicePushTokens.token, set: { userId, platform } })
+      .returning();
+    return row;
+  }
+
+  async unregisterDevicePushToken(token: string, userId?: string): Promise<boolean> {
+    const condition = userId
+      ? and(eq(devicePushTokens.token, token), eq(devicePushTokens.userId, userId))
+      : eq(devicePushTokens.token, token);
+    const result = await db.delete(devicePushTokens).where(condition).returning();
+    return result.length > 0;
+  }
+
+  async getDevicePushTokensForUser(userId: string): Promise<DevicePushToken[]> {
+    return db.select().from(devicePushTokens).where(eq(devicePushTokens.userId, userId));
   }
 }
 

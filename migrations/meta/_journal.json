@@ -141,6 +141,13 @@
       "when": 1780850627046,
       "tag": "0020_next_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1782003600000,
+      "tag": "0021_add_device_push_tokens",
+      "breakpoints": true
     }
   ]
 }

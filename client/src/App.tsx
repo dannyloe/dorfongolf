@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/Layout";
 import { Loader2 } from "lucide-react";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 
 // Pages
 import Landing from "@/pages/Landing";
@@ -136,11 +137,20 @@ function Router() {
   );
 }
 
+function AppInner() {
+  usePushNotifications();
+  return (
+    <>
+      <Router />
+      <Toaster />
+    </>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router />
-      <Toaster />
+      <AppInner />
     </QueryClientProvider>
   );
 }

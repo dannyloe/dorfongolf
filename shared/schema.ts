@@ -380,6 +380,19 @@ export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true, c
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 
+// Device push tokens for native app push notifications
+export const devicePushTokens = pgTable("device_push_tokens", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  platform: text("platform").notNull().default("ios"), // ios or android
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDevicePushTokenSchema = createInsertSchema(devicePushTokens).omit({ id: true, createdAt: true });
+export type DevicePushToken = typeof devicePushTokens.$inferSelect;
+export type InsertDevicePushToken = z.infer<typeof insertDevicePushTokenSchema>;
+
 // In-app messages between users
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
