@@ -1162,6 +1162,20 @@ export async function registerRoutes(
       
       const saved = await storage.saveEventMatchResults(eventMatchId, resultsWithId);
       res.json(saved);
+
+      // Fire-and-forget: notify match participants that bet results were recorded
+      const recipientIds = matchPlayers
+        .map(p => p.userId)
+        .filter((id): id is string => !!id && id !== userId);
+      if (recipientIds.length > 0) {
+        const matchDisplayName = match.name || match.courseName || "your match";
+        notifyPlayersOfBetResult(
+          recipientIds,
+          matchDisplayName,
+          "Bet results have been recorded",
+          "Open the app to see your settlement"
+        ).catch(() => {});
+      }
     } catch (err) {
       console.error("Error saving event match results:", err);
       if (err instanceof z.ZodError) {
