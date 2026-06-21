@@ -848,6 +848,7 @@ export default function MatchDetail() {
   const [quickBetsAnchorId, setQuickBetsAnchorId] = useState<number | null>(null);
   const [quickBetsOpponentIds, setQuickBetsOpponentIds] = useState<number[]>([]);
   const [quickBetsTeamPlayerIds, setQuickBetsTeamPlayerIds] = useState<number[]>([]);
+  const [quickBetsTeamSize, setQuickBetsTeamSize] = useState<2 | 3>(2);
   const [quickBetsMatchType, setQuickBetsMatchType] = useState<MatchType>(() => {
     const saved = localStorage.getItem('quickBets_matchType');
     return (saved as MatchType) || MATCH_TYPES.MATCH_PLAY_1_BALL;
@@ -1989,6 +1990,25 @@ export default function MatchDetail() {
     return matchups;
   };
 
+  const generateQuickBet3v3Matchups = (): { teamA: number[]; teamB: number[] }[] => {
+    const ids = quickBetsTeamPlayerIds;
+    const teams: number[][] = [];
+    for (let i = 0; i < ids.length; i++)
+      for (let j = i + 1; j < ids.length; j++)
+        for (let k = j + 1; k < ids.length; k++)
+          teams.push([ids[i], ids[j], ids[k]]);
+    const matchups: { teamA: number[]; teamB: number[] }[] = [];
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        const setA = new Set(teams[i]);
+        if (!teams[j].some(id => setA.has(id))) {
+          matchups.push({ teamA: teams[i], teamB: teams[j] });
+        }
+      }
+    }
+    return matchups;
+  };
+
   const resetQuickBetsWizard = () => {
     setShowQuickBets(false);
     setQuickBetsMode(null);
@@ -1997,6 +2017,7 @@ export default function MatchDetail() {
     setQuickBetsAnchorId(null);
     setQuickBetsOpponentIds([]);
     setQuickBetsTeamPlayerIds([]);
+    setQuickBetsTeamSize(2);
   };
 
   const handleCreateQuickBets = async () => {
@@ -2060,7 +2081,10 @@ export default function MatchDetail() {
   };
 
   const handleCreateQuickBets2v2 = async () => {
-    const matchups = generateQuickBet2v2Matchups();
+    const rawMatchups = quickBetsTeamSize === 3
+      ? generateQuickBet3v3Matchups()
+      : generateQuickBet2v2Matchups().map(m => ({ teamA: [...m.teamA] as number[], teamB: [...m.teamB] as number[] }));
+    const matchups: { teamA: number[]; teamB: number[] }[] = rawMatchups;
     if (matchups.length === 0) return;
     const currentNetScoring = match.isHandicapped ? quickBetsNetScoring : false;
     const isDeathMatch = quickBetsMatchType === MATCH_TYPES.DEATH_MATCH;
@@ -2068,7 +2092,7 @@ export default function MatchDetail() {
     const isNassau = quickBetsMatchType === MATCH_TYPES.NASSAU;
 
     const matchupsToCreate = matchups.filter(m =>
-      !findDuplicateMatch(quickBetsMatchType, [...m.teamA], [...m.teamB], currentNetScoring)
+      !findDuplicateMatch(quickBetsMatchType, m.teamA, m.teamB, currentNetScoring)
     );
     const skippedCount = matchups.length - matchupsToCreate.length;
 
@@ -3340,8 +3364,13 @@ export default function MatchDetail() {
         {/* Quick Bets Wizard */}
         {!matchesCollapsed && showQuickBets && (() => {
           const is2v2Mode = quickBetsMode === '2v2roundrobin';
+          const is3v3Mode = is2v2Mode && quickBetsTeamSize === 3;
           const allPairings = is2v2Mode ? [] : generateQuickBetPairings();
-          const all2v2Matchups = is2v2Mode ? generateQuickBet2v2Matchups() : [];
+          const all2v2Matchups: { teamA: number[]; teamB: number[] }[] = is2v2Mode
+            ? (is3v3Mode
+                ? generateQuickBet3v3Matchups()
+                : generateQuickBet2v2Matchups().map(m => ({ teamA: [...m.teamA] as number[], teamB: [...m.teamB] as number[] })))
+            : [];
           const currentNetScoring = match.isHandicapped ? quickBetsNetScoring : false;
           const pairingsWithDupFlag = allPairings.map(p => ({
             ...p,
@@ -3349,7 +3378,7 @@ export default function MatchDetail() {
           }));
           const matchups2v2WithDupFlag = all2v2Matchups.map(m => ({
             ...m,
-            isDuplicate: !!findDuplicateMatch(quickBetsMatchType, [...m.teamA], [...m.teamB], currentNetScoring),
+            isDuplicate: !!findDuplicateMatch(quickBetsMatchType, m.teamA, m.teamB, currentNetScoring),
           }));
           const newCount = is2v2Mode
             ? matchups2v2WithDupFlag.filter(m => !m.isDuplicate).length
@@ -3361,6 +3390,18 @@ export default function MatchDetail() {
           const teamPoolCount = quickBetsTeamPlayerIds.length;
           const teamCount2v2 = teamPoolCount >= 2 ? (teamPoolCount * (teamPoolCount - 1)) / 2 : 0;
           const matchupCount2v2 = (() => {
+            if (is3v3Mode) {
+              if (teamPoolCount < 6) return 0;
+              const ids = quickBetsTeamPlayerIds;
+              const teams: number[][] = [];
+              for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) for (let k = j + 1; k < ids.length; k++) teams.push([ids[i], ids[j], ids[k]]);
+              let count = 0;
+              for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) {
+                const setA = new Set(teams[i]);
+                if (!teams[j].some(id => setA.has(id))) count++;
+              }
+              return count;
+            }
             if (teamPoolCount < 4) return 0;
             const ids = quickBetsTeamPlayerIds;
             const teams: [number, number][] = [];
@@ -3373,7 +3414,7 @@ export default function MatchDetail() {
             return count;
           })();
           const isMatchPlayOrNassau = quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL || quickBetsMatchType === MATCH_TYPES.NASSAU;
-          const is2v2DeathMatch = is2v2Mode && quickBetsMatchType === MATCH_TYPES.DEATH_MATCH;
+          const is2v2DeathMatch = is2v2Mode && !is3v3Mode && quickBetsMatchType === MATCH_TYPES.DEATH_MATCH;
 
           return (
             <motion.div
@@ -3416,13 +3457,32 @@ export default function MatchDetail() {
                       className={`text-left p-4 rounded-lg border-2 transition-colors ${quickBetsMode === '2v2roundrobin' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 bg-background'}`}
                       onClick={() => {
                         setQuickBetsMode('2v2roundrobin');
+                        setQuickBetsTeamSize(2);
                         setQuickBetsMatchType(MATCH_TYPES.DEATH_MATCH);
                       }}
                       data-testid="button-qb-mode-2v2"
                     >
-                      <div className="font-semibold text-sm mb-1">2v2 Round Robin</div>
-                      <div className="text-xs text-muted-foreground">Pick 4+ players — all possible 2-man team matchups are generated automatically. Supports Death Match and team formats.</div>
+                      <div className="font-semibold text-sm mb-1">Team Round Robin</div>
+                      <div className="text-xs text-muted-foreground">All valid team matchups generated automatically. 2-player teams for Death Match; 3-player teams for 2 Ball/3rd Ball.</div>
                     </button>
+                    {quickBetsMode === '2v2roundrobin' && (
+                      <div className="flex gap-2 ml-2">
+                        <button
+                          className={`flex-1 py-2 px-3 rounded-lg border-2 text-sm font-medium transition-colors ${quickBetsTeamSize === 2 ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/50'}`}
+                          onClick={() => { setQuickBetsTeamSize(2); setQuickBetsMatchType(MATCH_TYPES.DEATH_MATCH); setQuickBetsTeamPlayerIds([]); }}
+                          data-testid="button-qb-team-size-2"
+                        >
+                          2-player teams
+                        </button>
+                        <button
+                          className={`flex-1 py-2 px-3 rounded-lg border-2 text-sm font-medium transition-colors ${quickBetsTeamSize === 3 ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-background text-muted-foreground hover:border-primary/50'}`}
+                          onClick={() => { setQuickBetsTeamSize(3); setQuickBetsMatchType(MATCH_TYPES.TWO_THREE_BALL); setQuickBetsTeamPlayerIds([]); }}
+                          data-testid="button-qb-team-size-3"
+                        >
+                          3-player teams
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <Button
                     className="w-full"
@@ -3514,7 +3574,9 @@ export default function MatchDetail() {
                   ) : (
                     <>
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Select players (4 minimum)</span>
+                        <span className="text-sm font-medium">
+                          {is3v3Mode ? 'Select players (6 minimum)' : 'Select players (4 minimum)'}
+                        </span>
                         <span className="text-sm text-muted-foreground" data-testid="text-qb-2v2-count">
                           {teamPoolCount} players → {matchupCount2v2} matchup{matchupCount2v2 !== 1 ? 's' : ''}
                         </span>
@@ -3534,9 +3596,12 @@ export default function MatchDetail() {
                           );
                         })}
                       </div>
-                      {teamPoolCount >= 4 && (
+                      {((is3v3Mode && teamPoolCount >= 6) || (!is3v3Mode && teamPoolCount >= 4)) && (
                         <p className="text-xs text-muted-foreground">
-                          {teamCount2v2} possible team{teamCount2v2 !== 1 ? 's' : ''} → {matchupCount2v2} matchup{matchupCount2v2 !== 1 ? 's' : ''} (no shared players per match)
+                          {is3v3Mode
+                            ? `${matchupCount2v2} matchup${matchupCount2v2 !== 1 ? 's' : ''} (no shared players per match)`
+                            : `${teamCount2v2} possible team${teamCount2v2 !== 1 ? 's' : ''} → ${matchupCount2v2} matchup${matchupCount2v2 !== 1 ? 's' : ''} (no shared players per match)`
+                          }
                         </p>
                       )}
                     </>
@@ -3548,7 +3613,7 @@ export default function MatchDetail() {
                       disabled={
                         quickBetsMode === 'everyone' ? quickBetsSelectedIds.length < 2 :
                         quickBetsMode === 'onevmany' ? (quickBetsAnchorId === null || quickBetsOpponentIds.length === 0) :
-                        quickBetsTeamPlayerIds.length < 4
+                        quickBetsTeamPlayerIds.length < (is3v3Mode ? 6 : 4)
                       }
                       onClick={() => setQuickBetsStep('settings')}
                       data-testid="button-qb-players-next"
@@ -3571,6 +3636,9 @@ export default function MatchDetail() {
                         </SelectTrigger>
                         <SelectContent>
                           {sortedMatchOptions.filter(o => {
+                            if (is3v3Mode) {
+                              return [MATCH_TYPES.TWO_THREE_BALL, MATCH_TYPES.ONE_TWO_THREE_BALL].includes(o.value as any);
+                            }
                             if (is2v2Mode) {
                               return ![MATCH_TYPES.SKINS, MATCH_TYPES.FIVE_FIVE_FIVE_THREE, MATCH_TYPES.TWO_THREE_BALL, MATCH_TYPES.ONE_TWO_THREE_BALL].includes(o.value as any);
                             }
