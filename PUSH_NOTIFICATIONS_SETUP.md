@@ -60,8 +60,10 @@ This creates an `ios/` directory containing the Xcode project.
 
 ### Step 6 (iOS): Add the GoogleService-Info.plist to Xcode
 
-1. Drag the `GoogleService-Info.plist` file you downloaded in Step 3 into the `App` group in Xcode.
+1. Drag the `GoogleService-Info.plist` file you downloaded in Step 3 into the `App` group in Xcode, placing it at `ios/App/App/GoogleService-Info.plist`.
 2. Make sure **Copy items if needed** is checked and the file is added to the `App` target.
+
+> **Note:** `ios/App/App/GoogleService-Info.plist` is already listed in `.gitignore`, so it will never be accidentally committed to version control. If the file doesn't appear in `git status` after adding it, that is expected and correct. Do not place the file at a different path (e.g. `ios/App/GoogleService-Info.plist`) — that path is not covered by the gitignore rule.
 
 ### Step 7 (iOS): Configure APNs in Firebase
 
