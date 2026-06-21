@@ -967,6 +967,8 @@ export default function MatchDetail() {
   const [scanNewPlayerNames, setScanNewPlayerNames] = useState<Record<string, string>>({});
   const [scanShiftedHoles, setScanShiftedHoles] = useState<Record<string, number[]>>({});
   const [scanShiftDirection, setScanShiftDirection] = useState<Record<string, 'left' | 'right'>>({});
+  const [scanUndoVisible, setScanUndoVisible] = useState<Record<string, { front: boolean; back: boolean }>>({});
+  const scanUndoTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Phone setup sharing state
   const [sharingSetupLinkFor, setSharingSetupLinkFor] = useState<string | null>(null);
@@ -9533,7 +9535,10 @@ export default function MatchDetail() {
               return next;
             });
           }, 400);
-          setTimeout(() => {
+          // Show undo button for 5 seconds (cancellable if shifted again)
+          const timerKey = `${playerName}:${range}`;
+          if (scanUndoTimers.current[timerKey]) clearTimeout(scanUndoTimers.current[timerKey]);
+          scanUndoTimers.current[timerKey] = setTimeout(() => {
             setScanUndoVisible((prev) => ({
               ...prev,
               [playerName]: { ...(prev[playerName] ?? { front: false, back: false }), [range]: false },
@@ -9556,6 +9561,9 @@ export default function MatchDetail() {
               },
             };
           });
+          // Hide the undo button immediately and cancel any pending timer
+          const timerKey = `${playerName}:${range}`;
+          if (scanUndoTimers.current[timerKey]) clearTimeout(scanUndoTimers.current[timerKey]);
           setScanUndoVisible((prev) => ({
             ...prev,
             [playerName]: { ...(prev[playerName] ?? { front: false, back: false }), [range]: false },
