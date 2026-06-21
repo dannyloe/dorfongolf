@@ -842,11 +842,12 @@ export default function MatchDetail() {
 
   // Quick Bets wizard state
   const [showQuickBets, setShowQuickBets] = useState(false);
-  const [quickBetsMode, setQuickBetsMode] = useState<'everyone' | 'onevmany' | null>(null);
+  const [quickBetsMode, setQuickBetsMode] = useState<'everyone' | 'onevmany' | '2v2roundrobin' | null>(null);
   const [quickBetsStep, setQuickBetsStep] = useState<'mode' | 'players' | 'settings' | 'preview'>('mode');
   const [quickBetsSelectedIds, setQuickBetsSelectedIds] = useState<number[]>([]);
   const [quickBetsAnchorId, setQuickBetsAnchorId] = useState<number | null>(null);
   const [quickBetsOpponentIds, setQuickBetsOpponentIds] = useState<number[]>([]);
+  const [quickBetsTeamPlayerIds, setQuickBetsTeamPlayerIds] = useState<number[]>([]);
   const [quickBetsMatchType, setQuickBetsMatchType] = useState<MatchType>(() => {
     const saved = localStorage.getItem('quickBets_matchType');
     return (saved as MatchType) || MATCH_TYPES.MATCH_PLAY_1_BALL;
@@ -856,6 +857,7 @@ export default function MatchDetail() {
     const parsed = saved ? parseInt(saved, 10) : NaN;
     return isNaN(parsed) ? 20 : parsed;
   });
+  const [quickBetsDeathMatchBaseBet, setQuickBetsDeathMatchBaseBet] = useState<number>(50);
   const [quickBetsAutoPress, setQuickBetsAutoPress] = useState(true);
   const [quickBetsNetScoring, setQuickBetsNetScoring] = useState(false);
   const [isCreatingQuickBets, setIsCreatingQuickBets] = useState(false);
@@ -1964,6 +1966,27 @@ export default function MatchDetail() {
     return [];
   };
 
+  const generateQuickBet2v2Matchups = (): { teamA: [number, number]; teamB: [number, number] }[] => {
+    const ids = quickBetsTeamPlayerIds;
+    const teams: [number, number][] = [];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        teams.push([ids[i], ids[j]]);
+      }
+    }
+    const matchups: { teamA: [number, number]; teamB: [number, number] }[] = [];
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = i + 1; j < teams.length; j++) {
+        const [a1, a2] = teams[i];
+        const [b1, b2] = teams[j];
+        if (a1 !== b1 && a1 !== b2 && a2 !== b1 && a2 !== b2) {
+          matchups.push({ teamA: teams[i], teamB: teams[j] });
+        }
+      }
+    }
+    return matchups;
+  };
+
   const resetQuickBetsWizard = () => {
     setShowQuickBets(false);
     setQuickBetsMode(null);
@@ -1971,6 +1994,7 @@ export default function MatchDetail() {
     setQuickBetsSelectedIds([]);
     setQuickBetsAnchorId(null);
     setQuickBetsOpponentIds([]);
+    setQuickBetsTeamPlayerIds([]);
   };
 
   const handleCreateQuickBets = async () => {
@@ -2027,6 +2051,80 @@ export default function MatchDetail() {
       resetQuickBetsWizard();
     } catch (error) {
       console.error('Error creating quick bets:', error);
+      toast({ title: "Error creating bets", variant: "destructive" });
+    } finally {
+      setIsCreatingQuickBets(false);
+    }
+  };
+
+  const handleCreateQuickBets2v2 = async () => {
+    const matchups = generateQuickBet2v2Matchups();
+    if (matchups.length === 0) return;
+    const currentNetScoring = match.isHandicapped ? quickBetsNetScoring : false;
+    const isDeathMatch = quickBetsMatchType === MATCH_TYPES.DEATH_MATCH;
+    const isMatchPlay = quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL;
+    const isNassau = quickBetsMatchType === MATCH_TYPES.NASSAU;
+
+    const matchupsToCreate = matchups.filter(m =>
+      !findDuplicateMatch(quickBetsMatchType, [...m.teamA], [...m.teamB], currentNetScoring)
+    );
+    const skippedCount = matchups.length - matchupsToCreate.length;
+
+    if (matchupsToCreate.length === 0) {
+      toast({ title: "No new bets to create", description: "All proposed bets already exist." });
+      return;
+    }
+
+    setIsCreatingQuickBets(true);
+    try {
+      for (const matchup of matchupsToCreate) {
+        const teamAName = matchup.teamA.map(id => getPlayerNameById(id)).join('/');
+        const teamBName = matchup.teamB.map(id => getPlayerNameById(id)).join('/');
+        const matchName = isDeathMatch
+          ? `Death Match: ${teamAName} vs ${teamBName}`
+          : `${teamAName} vs ${teamBName}`;
+
+        const baseCents = isDeathMatch ? quickBetsDeathMatchBaseBet * 100 : quickBetsAmount * 100;
+        const roundTo5Cents = (n: number) => Math.round(n / 500) * 500;
+
+        await new Promise<void>((resolve, reject) => {
+          createEventMatch.mutate({
+            name: matchName,
+            matchType: quickBetsMatchType,
+            unitAmount: baseCents,
+            teamA: { name: teamAName, playerIds: [...matchup.teamA] },
+            teamB: { name: teamBName, playerIds: [...matchup.teamB] },
+            autoPressOriginal: (isMatchPlay || isNassau) ? quickBetsAutoPress : false,
+            autoPressAllPresses: false,
+            autoPressNassauFront9: true,
+            autoPressNassauBack9: true,
+            autoPressNassauOverall: true,
+            useNetScoring: currentNetScoring,
+            startOnBack9: dayStartOnBack9,
+            ...(isDeathMatch ? {
+              deathMatchBaseBet: baseCents,
+              deathMatchBestBallBet: baseCents,
+              deathMatchSecondBallBet: roundTo5Cents(baseCents / 2),
+              deathMatchFirstPressBet: roundTo5Cents(baseCents / 2),
+              deathMatchSubsequentPressBet: roundTo5Cents(baseCents / 4),
+              deathMatchSecondBallPressBet: roundTo5Cents(baseCents / 4),
+            } : {}),
+            isRoundRobinGenerated: false,
+          }, {
+            onSuccess: (created) => { applyStrokesToEventMatch(created); resolve(); },
+            onError: (err) => reject(err),
+          });
+        });
+      }
+      toast({
+        title: "Quick Bets created",
+        description: skippedCount > 0
+          ? `Created ${matchupsToCreate.length} bet(s). ${skippedCount} duplicate(s) skipped.`
+          : `Created ${matchupsToCreate.length} bet(s).`,
+      });
+      resetQuickBetsWizard();
+    } catch (error) {
+      console.error('Error creating 2v2 quick bets:', error);
       toast({ title: "Error creating bets", variant: "destructive" });
     } finally {
       setIsCreatingQuickBets(false);
@@ -3239,17 +3337,41 @@ export default function MatchDetail() {
 
         {/* Quick Bets Wizard */}
         {!matchesCollapsed && showQuickBets && (() => {
-          const allPairings = generateQuickBetPairings();
+          const is2v2Mode = quickBetsMode === '2v2roundrobin';
+          const allPairings = is2v2Mode ? [] : generateQuickBetPairings();
+          const all2v2Matchups = is2v2Mode ? generateQuickBet2v2Matchups() : [];
           const currentNetScoring = match.isHandicapped ? quickBetsNetScoring : false;
           const pairingsWithDupFlag = allPairings.map(p => ({
             ...p,
             isDuplicate: !!findDuplicateMatch(quickBetsMatchType, [p.playerAId], [p.playerBId], currentNetScoring),
           }));
-          const newCount = pairingsWithDupFlag.filter(p => !p.isDuplicate).length;
+          const matchups2v2WithDupFlag = all2v2Matchups.map(m => ({
+            ...m,
+            isDuplicate: !!findDuplicateMatch(quickBetsMatchType, [...m.teamA], [...m.teamB], currentNetScoring),
+          }));
+          const newCount = is2v2Mode
+            ? matchups2v2WithDupFlag.filter(m => !m.isDuplicate).length
+            : pairingsWithDupFlag.filter(p => !p.isDuplicate).length;
+          const totalCount = is2v2Mode ? all2v2Matchups.length : allPairings.length;
           const everyoneCount = quickBetsSelectedIds.length;
           const everyoneBetCount = everyoneCount >= 2 ? (everyoneCount * (everyoneCount - 1)) / 2 : 0;
           const onevmanyCount = quickBetsOpponentIds.length;
+          const teamPoolCount = quickBetsTeamPlayerIds.length;
+          const teamCount2v2 = teamPoolCount >= 2 ? (teamPoolCount * (teamPoolCount - 1)) / 2 : 0;
+          const matchupCount2v2 = (() => {
+            if (teamPoolCount < 4) return 0;
+            const ids = quickBetsTeamPlayerIds;
+            const teams: [number, number][] = [];
+            for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) teams.push([ids[i], ids[j]]);
+            let count = 0;
+            for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) {
+              const [a1, a2] = teams[i]; const [b1, b2] = teams[j];
+              if (a1 !== b1 && a1 !== b2 && a2 !== b1 && a2 !== b2) count++;
+            }
+            return count;
+          })();
           const isMatchPlayOrNassau = quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL || quickBetsMatchType === MATCH_TYPES.NASSAU;
+          const is2v2DeathMatch = is2v2Mode && quickBetsMatchType === MATCH_TYPES.DEATH_MATCH;
 
           return (
             <motion.div
@@ -3270,7 +3392,7 @@ export default function MatchDetail() {
               {/* Step: Mode selection */}
               {quickBetsStep === 'mode' && (
                 <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">Pick a mode to generate 1v1 bets quickly.</p>
+                  <p className="text-sm text-muted-foreground">Pick a mode to generate bets quickly.</p>
                   <div className="grid grid-cols-1 gap-3">
                     <button
                       className={`text-left p-4 rounded-lg border-2 transition-colors ${quickBetsMode === 'everyone' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 bg-background'}`}
@@ -3278,7 +3400,7 @@ export default function MatchDetail() {
                       data-testid="button-qb-mode-everyone"
                     >
                       <div className="font-semibold text-sm mb-1">Everyone vs Everyone</div>
-                      <div className="text-xs text-muted-foreground">Select any subset of players — every pair gets their own bet. 5 players = 10 bets.</div>
+                      <div className="text-xs text-muted-foreground">Select any subset of players — every pair gets their own 1v1 bet. 5 players = 10 bets.</div>
                     </button>
                     <button
                       className={`text-left p-4 rounded-lg border-2 transition-colors ${quickBetsMode === 'onevmany' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 bg-background'}`}
@@ -3287,6 +3409,17 @@ export default function MatchDetail() {
                     >
                       <div className="font-semibold text-sm mb-1">One vs Many</div>
                       <div className="text-xs text-muted-foreground">Pick one anchor player, then pick their opponents. 1 anchor vs 4 others = 4 bets.</div>
+                    </button>
+                    <button
+                      className={`text-left p-4 rounded-lg border-2 transition-colors ${quickBetsMode === '2v2roundrobin' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 bg-background'}`}
+                      onClick={() => {
+                        setQuickBetsMode('2v2roundrobin');
+                        setQuickBetsMatchType(MATCH_TYPES.DEATH_MATCH);
+                      }}
+                      data-testid="button-qb-mode-2v2"
+                    >
+                      <div className="font-semibold text-sm mb-1">2v2 Round Robin</div>
+                      <div className="text-xs text-muted-foreground">Pick 4+ players — all possible 2-man team matchups are generated automatically. Supports Death Match and team formats.</div>
                     </button>
                   </div>
                   <Button
@@ -3327,7 +3460,7 @@ export default function MatchDetail() {
                         })}
                       </div>
                     </>
-                  ) : (
+                  ) : quickBetsMode === 'onevmany' ? (
                     <>
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -3376,12 +3509,45 @@ export default function MatchDetail() {
                         </div>
                       </div>
                     </>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Select players (4 minimum)</span>
+                        <span className="text-sm text-muted-foreground" data-testid="text-qb-2v2-count">
+                          {teamPoolCount} players → {matchupCount2v2} matchup{matchupCount2v2 !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {players.map(p => {
+                          const selected = quickBetsTeamPlayerIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setQuickBetsTeamPlayerIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${selected ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'}`}
+                              data-testid={`button-qb-team-player-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {teamPoolCount >= 4 && (
+                        <p className="text-xs text-muted-foreground">
+                          {teamCount2v2} possible team{teamCount2v2 !== 1 ? 's' : ''} → {matchupCount2v2} matchup{matchupCount2v2 !== 1 ? 's' : ''} (no shared players per match)
+                        </p>
+                      )}
+                    </>
                   )}
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={() => setQuickBetsStep('mode')} data-testid="button-qb-players-back">Back</Button>
                     <Button
                       className="flex-1"
-                      disabled={quickBetsMode === 'everyone' ? quickBetsSelectedIds.length < 2 : (quickBetsAnchorId === null || quickBetsOpponentIds.length === 0)}
+                      disabled={
+                        quickBetsMode === 'everyone' ? quickBetsSelectedIds.length < 2 :
+                        quickBetsMode === 'onevmany' ? (quickBetsAnchorId === null || quickBetsOpponentIds.length === 0) :
+                        quickBetsTeamPlayerIds.length < 4
+                      }
                       onClick={() => setQuickBetsStep('settings')}
                       data-testid="button-qb-players-next"
                     >
@@ -3402,25 +3568,53 @@ export default function MatchDetail() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {sortedMatchOptions.filter(o => ![MATCH_TYPES.SKINS, MATCH_TYPES.FIVE_FIVE_FIVE_THREE, MATCH_TYPES.DEATH_MATCH, MATCH_TYPES.TWO_THREE_BALL, MATCH_TYPES.ONE_TWO_THREE_BALL].includes(o.value as any)).map(opt => (
+                          {sortedMatchOptions.filter(o => {
+                            if (is2v2Mode) {
+                              return ![MATCH_TYPES.SKINS, MATCH_TYPES.FIVE_FIVE_FIVE_THREE, MATCH_TYPES.TWO_THREE_BALL, MATCH_TYPES.ONE_TWO_THREE_BALL].includes(o.value as any);
+                            }
+                            return ![MATCH_TYPES.SKINS, MATCH_TYPES.FIVE_FIVE_FIVE_THREE, MATCH_TYPES.DEATH_MATCH, MATCH_TYPES.TWO_THREE_BALL, MATCH_TYPES.ONE_TWO_THREE_BALL].includes(o.value as any);
+                          }).map(opt => (
                             <SelectItem key={opt.value} value={opt.value} data-testid={`qb-option-${opt.value}`}>{opt.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
-                      <BetAmountInput
-                        min="0"
-                        step="1"
-                        placeholder="20"
-                        value={quickBetsAmount}
-                        onChange={setQuickBetsAmount}
-                        className="mt-1"
-                        data-testid="input-qb-amount"
-                      />
+                      {is2v2DeathMatch ? (
+                        <>
+                          <label className="text-sm font-medium text-muted-foreground">Base Bet ($)</label>
+                          <BetAmountInput
+                            min="0"
+                            step="5"
+                            placeholder="50"
+                            value={quickBetsDeathMatchBaseBet}
+                            onChange={setQuickBetsDeathMatchBaseBet}
+                            className="mt-1"
+                            data-testid="input-qb-death-match-base"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
+                          <BetAmountInput
+                            min="0"
+                            step="1"
+                            placeholder="20"
+                            value={quickBetsAmount}
+                            onChange={setQuickBetsAmount}
+                            className="mt-1"
+                            data-testid="input-qb-amount"
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
+                  {is2v2DeathMatch && (
+                    <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground space-y-0.5">
+                      <p>Best Ball: ${quickBetsDeathMatchBaseBet} · Second Ball: ${Math.round(quickBetsDeathMatchBaseBet / 2 / 5) * 5}</p>
+                      <p>1st Press: ${Math.round(quickBetsDeathMatchBaseBet / 2 / 5) * 5} · Subsequent: ${Math.round(quickBetsDeathMatchBaseBet / 4 / 5) * 5}</p>
+                    </div>
+                  )}
                   {isMatchPlayOrNassau && (
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -3454,7 +3648,22 @@ export default function MatchDetail() {
               {quickBetsStep === 'preview' && (
                 <div className="space-y-4">
                   <div className="max-h-64 overflow-y-auto space-y-1.5">
-                    {pairingsWithDupFlag.map((p, idx) => (
+                    {is2v2Mode ? matchups2v2WithDupFlag.map((m, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center justify-between p-2 rounded-lg border ${m.isDuplicate ? 'border-border/40 bg-muted/30 opacity-60' : 'border-border/60 bg-background'}`}
+                        data-testid={`qb-preview-pairing-${idx}`}
+                      >
+                        <div className={`text-sm flex items-center gap-2 ${m.isDuplicate ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                          <span>{m.teamA.map(id => getPlayerNameById(id)).join('/')}</span>
+                          <span className="text-xs text-muted-foreground">vs</span>
+                          <span>{m.teamB.map(id => getPlayerNameById(id)).join('/')}</span>
+                        </div>
+                        {m.isDuplicate && (
+                          <span className="text-xs text-muted-foreground ml-2 shrink-0">Duplicate – will be skipped</span>
+                        )}
+                      </div>
+                    )) : pairingsWithDupFlag.map((p, idx) => (
                       <div
                         key={idx}
                         className={`flex items-center justify-between p-2 rounded-lg border ${p.isDuplicate ? 'border-border/40 bg-muted/30 opacity-60' : 'border-border/60 bg-background'}`}
@@ -3473,15 +3682,19 @@ export default function MatchDetail() {
                   </div>
                   <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-0.5">
                     <p><strong>Match Type:</strong> {MATCH_TYPE_LABELS[quickBetsMatchType]}</p>
-                    <p><strong>Wager:</strong> ${quickBetsAmount} per player</p>
-                    <p><strong>Total:</strong> {allPairings.length} pairing{allPairings.length !== 1 ? 's' : ''} ({newCount} new, {allPairings.length - newCount} duplicate{allPairings.length - newCount !== 1 ? 's' : ''})</p>
+                    {is2v2DeathMatch ? (
+                      <p><strong>Base Bet:</strong> ${quickBetsDeathMatchBaseBet}</p>
+                    ) : (
+                      <p><strong>Wager:</strong> ${quickBetsAmount} per player</p>
+                    )}
+                    <p><strong>Total:</strong> {totalCount} matchup{totalCount !== 1 ? 's' : ''} ({newCount} new, {totalCount - newCount} duplicate{totalCount - newCount !== 1 ? 's' : ''})</p>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" className="flex-1" onClick={() => setQuickBetsStep('settings')} disabled={isCreatingQuickBets} data-testid="button-qb-preview-back">Back</Button>
                     <Button
                       className="flex-1"
                       disabled={newCount === 0 || isCreatingQuickBets}
-                      onClick={handleCreateQuickBets}
+                      onClick={is2v2Mode ? handleCreateQuickBets2v2 : handleCreateQuickBets}
                       data-testid="button-qb-create"
                     >
                       {isCreatingQuickBets ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
