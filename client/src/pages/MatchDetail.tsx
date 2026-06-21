@@ -839,6 +839,19 @@ export default function MatchDetail() {
   const [roundRobinKeyedBIds, setRoundRobinKeyedBIds] = useState<number[]>([]);
   const [roundRobinStep, setRoundRobinStep] = useState<'select' | 'preview'>('select');
   const [isCreatingRoundRobin, setIsCreatingRoundRobin] = useState(false);
+
+  // Quick Bets wizard state
+  const [showQuickBets, setShowQuickBets] = useState(false);
+  const [quickBetsMode, setQuickBetsMode] = useState<'everyone' | 'onevmany' | null>(null);
+  const [quickBetsStep, setQuickBetsStep] = useState<'mode' | 'players' | 'settings' | 'preview'>('mode');
+  const [quickBetsSelectedIds, setQuickBetsSelectedIds] = useState<number[]>([]);
+  const [quickBetsAnchorId, setQuickBetsAnchorId] = useState<number | null>(null);
+  const [quickBetsOpponentIds, setQuickBetsOpponentIds] = useState<number[]>([]);
+  const [quickBetsMatchType, setQuickBetsMatchType] = useState<MatchType>(MATCH_TYPES.MATCH_PLAY_1_BALL);
+  const [quickBetsAmount, setQuickBetsAmount] = useState<number>(20);
+  const [quickBetsAutoPress, setQuickBetsAutoPress] = useState(true);
+  const [quickBetsNetScoring, setQuickBetsNetScoring] = useState(false);
+  const [isCreatingQuickBets, setIsCreatingQuickBets] = useState(false);
   
   // Skins match state
   const [skinsPlayerIds, setSkinsPlayerIds] = useState<number[]>([]);
@@ -1923,6 +1936,90 @@ export default function MatchDetail() {
       console.error('Error creating round robin matches:', error);
     } finally {
       setIsCreatingRoundRobin(false);
+    }
+  };
+
+  // Quick Bets helpers
+  const generateQuickBetPairings = (): { playerAId: number; playerBId: number }[] => {
+    if (quickBetsMode === 'everyone') {
+      const ids = quickBetsSelectedIds;
+      const pairs: { playerAId: number; playerBId: number }[] = [];
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          pairs.push({ playerAId: ids[i], playerBId: ids[j] });
+        }
+      }
+      return pairs;
+    } else if (quickBetsMode === 'onevmany' && quickBetsAnchorId !== null) {
+      return quickBetsOpponentIds.map(oppId => ({ playerAId: quickBetsAnchorId!, playerBId: oppId }));
+    }
+    return [];
+  };
+
+  const resetQuickBetsWizard = () => {
+    setShowQuickBets(false);
+    setQuickBetsMode(null);
+    setQuickBetsStep('mode');
+    setQuickBetsSelectedIds([]);
+    setQuickBetsAnchorId(null);
+    setQuickBetsOpponentIds([]);
+  };
+
+  const handleCreateQuickBets = async () => {
+    const pairings = generateQuickBetPairings();
+    if (pairings.length === 0) return;
+    const currentNetScoring = match.isHandicapped ? quickBetsNetScoring : false;
+    const isMatchPlay = quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL;
+    const isNassau = quickBetsMatchType === MATCH_TYPES.NASSAU;
+
+    const pairingsToCreate = pairings.filter(p =>
+      !findDuplicateMatch(quickBetsMatchType, [p.playerAId], [p.playerBId], currentNetScoring)
+    );
+    const skippedCount = pairings.length - pairingsToCreate.length;
+
+    if (pairingsToCreate.length === 0) {
+      toast({ title: "No new bets to create", description: "All proposed bets already exist." });
+      return;
+    }
+
+    setIsCreatingQuickBets(true);
+    try {
+      for (const pairing of pairingsToCreate) {
+        const nameA = getPlayerNameById(pairing.playerAId);
+        const nameB = getPlayerNameById(pairing.playerBId);
+        await new Promise<void>((resolve, reject) => {
+          createEventMatch.mutate({
+            name: `${nameA} vs ${nameB}`,
+            matchType: quickBetsMatchType,
+            unitAmount: quickBetsAmount * 100,
+            teamA: { name: nameA, playerIds: [pairing.playerAId] },
+            teamB: { name: nameB, playerIds: [pairing.playerBId] },
+            autoPressOriginal: (isMatchPlay || isNassau) ? quickBetsAutoPress : false,
+            autoPressAllPresses: false,
+            autoPressNassauFront9: true,
+            autoPressNassauBack9: true,
+            autoPressNassauOverall: true,
+            useNetScoring: currentNetScoring,
+            startOnBack9: dayStartOnBack9,
+            isRoundRobinGenerated: false,
+          }, {
+            onSuccess: (created) => { applyStrokesToEventMatch(created); resolve(); },
+            onError: (err) => reject(err),
+          });
+        });
+      }
+      toast({
+        title: "Quick Bets created",
+        description: skippedCount > 0
+          ? `Created ${pairingsToCreate.length} bet(s). ${skippedCount} duplicate(s) skipped.`
+          : `Created ${pairingsToCreate.length} bet(s).`,
+      });
+      resetQuickBetsWizard();
+    } catch (error) {
+      console.error('Error creating quick bets:', error);
+      toast({ title: "Error creating bets", variant: "destructive" });
+    } finally {
+      setIsCreatingQuickBets(false);
     }
   };
 
@@ -3013,7 +3110,24 @@ export default function MatchDetail() {
                 )}
                 <Button
                   size="sm"
-                  onClick={() => setShowCreateMatch(true)}
+                  variant="outline"
+                  onClick={() => {
+                    setShowQuickBets(true);
+                    setShowCreateMatch(false);
+                    setQuickBetsStep('mode');
+                    setQuickBetsMode(null);
+                    setQuickBetsSelectedIds([]);
+                    setQuickBetsAnchorId(null);
+                    setQuickBetsOpponentIds([]);
+                  }}
+                  data-testid="button-quick-bets"
+                >
+                  <Swords className="w-4 h-4 mr-2" />
+                  Quick Bets
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => { setShowCreateMatch(true); setShowQuickBets(false); }}
                   data-testid="button-create-match"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -3112,6 +3226,263 @@ export default function MatchDetail() {
             )}
           </div>
         )}
+
+        {/* Quick Bets Wizard */}
+        {!matchesCollapsed && showQuickBets && (() => {
+          const allPairings = generateQuickBetPairings();
+          const currentNetScoring = match.isHandicapped ? quickBetsNetScoring : false;
+          const pairingsWithDupFlag = allPairings.map(p => ({
+            ...p,
+            isDuplicate: !!findDuplicateMatch(quickBetsMatchType, [p.playerAId], [p.playerBId], currentNetScoring),
+          }));
+          const newCount = pairingsWithDupFlag.filter(p => !p.isDuplicate).length;
+          const everyoneCount = quickBetsSelectedIds.length;
+          const everyoneBetCount = everyoneCount >= 2 ? (everyoneCount * (everyoneCount - 1)) / 2 : 0;
+          const onevmanyCount = quickBetsOpponentIds.length;
+          const isMatchPlayOrNassau = quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_1_BALL || quickBetsMatchType === MATCH_TYPES.MATCH_PLAY_2_BALL || quickBetsMatchType === MATCH_TYPES.NASSAU;
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="mb-6 p-4 bg-muted/30 rounded-xl border border-border"
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <Swords className="w-4 h-4 text-primary" />
+                  Quick Bets
+                </h4>
+                <Button size="icon" variant="ghost" onClick={resetQuickBetsWizard} data-testid="button-quick-bets-close">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* Step: Mode selection */}
+              {quickBetsStep === 'mode' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Pick a mode to generate 1v1 bets quickly.</p>
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      className={`text-left p-4 rounded-lg border-2 transition-colors ${quickBetsMode === 'everyone' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 bg-background'}`}
+                      onClick={() => setQuickBetsMode('everyone')}
+                      data-testid="button-qb-mode-everyone"
+                    >
+                      <div className="font-semibold text-sm mb-1">Everyone vs Everyone</div>
+                      <div className="text-xs text-muted-foreground">Select any subset of players — every pair gets their own bet. 5 players = 10 bets.</div>
+                    </button>
+                    <button
+                      className={`text-left p-4 rounded-lg border-2 transition-colors ${quickBetsMode === 'onevmany' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50 bg-background'}`}
+                      onClick={() => setQuickBetsMode('onevmany')}
+                      data-testid="button-qb-mode-onevmany"
+                    >
+                      <div className="font-semibold text-sm mb-1">One vs Many</div>
+                      <div className="text-xs text-muted-foreground">Pick one anchor player, then pick their opponents. 1 anchor vs 4 others = 4 bets.</div>
+                    </button>
+                  </div>
+                  <Button
+                    className="w-full"
+                    disabled={quickBetsMode === null}
+                    onClick={() => setQuickBetsStep('players')}
+                    data-testid="button-qb-mode-next"
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+
+              {/* Step: Player selection */}
+              {quickBetsStep === 'players' && (
+                <div className="space-y-4">
+                  {quickBetsMode === 'everyone' ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Select players</span>
+                        <span className="text-sm text-muted-foreground" data-testid="text-qb-everyone-count">
+                          {everyoneCount} player{everyoneCount !== 1 ? 's' : ''} → {everyoneBetCount} bet{everyoneBetCount !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {players.map(p => {
+                          const selected = quickBetsSelectedIds.includes(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setQuickBetsSelectedIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${selected ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'}`}
+                              data-testid={`button-qb-player-${p.id}`}
+                            >
+                              {p.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Pick the anchor player</span>
+                          <span className="text-sm text-muted-foreground" data-testid="text-qb-onevmany-count">
+                            1 vs {onevmanyCount} → {onevmanyCount} bet{onevmanyCount !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {players.map(p => {
+                            const isAnchor = quickBetsAnchorId === p.id;
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => {
+                                  if (isAnchor) {
+                                    setQuickBetsAnchorId(null);
+                                  } else {
+                                    setQuickBetsAnchorId(p.id);
+                                    setQuickBetsOpponentIds(prev => prev.filter(id => id !== p.id));
+                                  }
+                                }}
+                                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${isAnchor ? 'bg-amber-500 text-white border-amber-500' : 'bg-background border-border text-foreground hover:border-primary/50'}`}
+                                data-testid={`button-qb-anchor-${p.id}`}
+                              >
+                                {p.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <span className="text-sm font-medium">Pick opponents</span>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {players.filter(p => p.id !== quickBetsAnchorId).map(p => {
+                            const selected = quickBetsOpponentIds.includes(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => setQuickBetsOpponentIds(prev => selected ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${selected ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-border text-foreground hover:border-primary/50'}`}
+                                data-testid={`button-qb-opponent-${p.id}`}
+                              >
+                                {p.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setQuickBetsStep('mode')} data-testid="button-qb-players-back">Back</Button>
+                    <Button
+                      className="flex-1"
+                      disabled={quickBetsMode === 'everyone' ? quickBetsSelectedIds.length < 2 : (quickBetsAnchorId === null || quickBetsOpponentIds.length === 0)}
+                      onClick={() => setQuickBetsStep('settings')}
+                      data-testid="button-qb-players-next"
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step: Bet settings */}
+              {quickBetsStep === 'settings' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Match Type</label>
+                      <Select value={quickBetsMatchType} onValueChange={(v) => setQuickBetsMatchType(v as MatchType)}>
+                        <SelectTrigger className="mt-1" data-testid="select-qb-match-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sortedMatchOptions.filter(o => ![MATCH_TYPES.SKINS, MATCH_TYPES.FIVE_FIVE_FIVE_THREE, MATCH_TYPES.DEATH_MATCH, MATCH_TYPES.TWO_THREE_BALL, MATCH_TYPES.ONE_TWO_THREE_BALL].includes(o.value as any)).map(opt => (
+                            <SelectItem key={opt.value} value={opt.value} data-testid={`qb-option-${opt.value}`}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Wager ($ per player)</label>
+                      <BetAmountInput
+                        min="0"
+                        step="1"
+                        placeholder="20"
+                        value={quickBetsAmount}
+                        onChange={setQuickBetsAmount}
+                        className="mt-1"
+                        data-testid="input-qb-amount"
+                      />
+                    </div>
+                  </div>
+                  {isMatchPlayOrNassau && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={quickBetsAutoPress}
+                        onChange={e => setQuickBetsAutoPress(e.target.checked)}
+                        className="w-4 h-4 rounded border-border"
+                        data-testid="checkbox-qb-auto-press"
+                      />
+                      <span className="text-sm font-medium">Auto Press</span>
+                    </label>
+                  )}
+                  {match.isHandicapped && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={quickBetsNetScoring}
+                        onCheckedChange={v => setQuickBetsNetScoring(!!v)}
+                        data-testid="checkbox-qb-net-scoring"
+                      />
+                      <span className="text-sm font-medium">Use Net Scoring</span>
+                    </label>
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setQuickBetsStep('players')} data-testid="button-qb-settings-back">Back</Button>
+                    <Button className="flex-1" onClick={() => setQuickBetsStep('preview')} data-testid="button-qb-settings-next">Preview</Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step: Preview */}
+              {quickBetsStep === 'preview' && (
+                <div className="space-y-4">
+                  <div className="max-h-64 overflow-y-auto space-y-1.5">
+                    {pairingsWithDupFlag.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center justify-between p-2 rounded-lg border ${p.isDuplicate ? 'border-border/40 bg-muted/30 opacity-60' : 'border-border/60 bg-background'}`}
+                        data-testid={`qb-preview-pairing-${idx}`}
+                      >
+                        <div className={`text-sm flex items-center gap-2 ${p.isDuplicate ? 'line-through text-muted-foreground' : 'font-medium'}`}>
+                          <span>{getPlayerNameById(p.playerAId)}</span>
+                          <span className="text-xs text-muted-foreground">vs</span>
+                          <span>{getPlayerNameById(p.playerBId)}</span>
+                        </div>
+                        {p.isDuplicate && (
+                          <span className="text-xs text-muted-foreground ml-2 shrink-0">Duplicate – will be skipped</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-3 bg-muted/50 rounded-lg text-sm space-y-0.5">
+                    <p><strong>Match Type:</strong> {MATCH_TYPE_LABELS[quickBetsMatchType]}</p>
+                    <p><strong>Wager:</strong> ${quickBetsAmount} per player</p>
+                    <p><strong>Total:</strong> {allPairings.length} pairing{allPairings.length !== 1 ? 's' : ''} ({newCount} new, {allPairings.length - newCount} duplicate{allPairings.length - newCount !== 1 ? 's' : ''})</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => setQuickBetsStep('settings')} disabled={isCreatingQuickBets} data-testid="button-qb-preview-back">Back</Button>
+                    <Button
+                      className="flex-1"
+                      disabled={newCount === 0 || isCreatingQuickBets}
+                      onClick={handleCreateQuickBets}
+                      data-testid="button-qb-create"
+                    >
+                      {isCreatingQuickBets ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                      {isCreatingQuickBets ? 'Creating…' : `Create ${newCount} bet${newCount !== 1 ? 's' : ''}`}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          );
+        })()}
 
         {/* Create Match Form */}
         {!matchesCollapsed && showCreateMatch && (
