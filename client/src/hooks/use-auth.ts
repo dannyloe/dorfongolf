@@ -1,12 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, storeSessionId, clearSessionId } from "@/lib/queryClient";
 import type { User } from "@shared/models/auth";
 
+function getSessionHeader(): Record<string, string> {
+  try {
+    const sid = localStorage.getItem("cap_sid");
+    return sid ? { "X-Session-Id": sid } : {};
+  } catch {
+    return {};
+  }
+}
+
 async function fetchUser(): Promise<User | null> {
-  const isCapacitor = typeof window !== "undefined" && window.location.protocol === "capacitor:";
-  const base = import.meta.env.VITE_API_BASE_URL || (isCapacitor ? "https://dorfongolf.com" : "");
+  const base = import.meta.env.VITE_API_BASE_URL || (!import.meta.env.DEV ? "https://dorfongolf.com" : "");
   const response = await fetch(`${base}/api/auth/user`, {
     credentials: "include",
+    headers: getSessionHeader(),
   });
 
   if (response.status === 401) {
@@ -34,6 +43,7 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
+      clearSessionId();
       queryClient.setQueryData(["/api/auth/user"], null);
       queryClient.clear();
       window.location.href = "/";
@@ -42,7 +52,9 @@ export function useAuth() {
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
-      await apiRequest("POST", "/api/auth/login", credentials);
+      const res = await apiRequest("POST", "/api/auth/login", credentials);
+      const data = await res.json();
+      if (data.sessionId) storeSessionId(data.sessionId);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });

@@ -10,10 +10,12 @@ declare module "express-session" {
   }
 }
 
+let sessionStore: InstanceType<ReturnType<typeof connectPg>>;
+
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
+  sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: false,
     ttl: sessionTtl,
@@ -27,14 +29,30 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: sessionTtl,
     },
   });
 }
 
+// Middleware for Capacitor iOS: when no cookie session exists, try X-Session-Id header
+export function capacitorSessionMiddleware(): RequestHandler {
+  return (req, res, next) => {
+    if (req.session.userId) return next();
+    const sid = req.headers["x-session-id"] as string | undefined;
+    if (!sid || !sessionStore) return next();
+    sessionStore.get(sid, (err: any, sessionData: any) => {
+      if (err || !sessionData || !sessionData.userId) return next();
+      req.session.userId = sessionData.userId;
+      next();
+    });
+  };
+}
+
 export async function initializeAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
+  app.use(capacitorSessionMiddleware());
 
   // POST /api/auth/login
   app.post("/api/auth/login", async (req, res) => {
@@ -52,7 +70,13 @@ export async function initializeAuth(app: Express) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
       req.session.userId = user.id;
-      res.json({ ok: true });
+      req.session.save((err) => {
+        if (err) {
+          console.error("[login session save error]", err);
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.json({ ok: true, sessionId: req.sessionID });
+      });
     } catch (err) {
       console.error("[login error]", err);
       res.status(500).json({ message: "Login failed" });
@@ -86,7 +110,13 @@ export async function initializeAuth(app: Express) {
         lastName: lastName || null,
       });
       req.session.userId = user.id;
-      res.status(201).json({ ok: true });
+      req.session.save((err) => {
+        if (err) {
+          console.error("[register session save error]", err);
+          return res.status(500).json({ message: "Registration failed" });
+        }
+        res.status(201).json({ ok: true, sessionId: req.sessionID });
+      });
     } catch (err) {
       console.error("[register error]", err);
       res.status(500).json({ message: "Registration failed" });
@@ -108,12 +138,11 @@ export async function initializeAuth(app: Express) {
   });
 }
 
-export const isAuthenticated: RequestHandler = async (req, res, next) => {
+export const isAuthenticated: RequestHandler = (req, res, next) => {
   const userId = (req.session as any)?.userId;
   if (!userId) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  // Populate req.user with the same shape used throughout all existing routes
   (req as any).user = { claims: { sub: userId } };
-  return next();
+  next();
 };

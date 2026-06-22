@@ -1,11 +1,28 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+const SESSION_ID_KEY = "cap_sid";
+
+export function storeSessionId(id: string) {
+  try { localStorage.setItem(SESSION_ID_KEY, id); } catch {}
+}
+export function clearSessionId() {
+  try { localStorage.removeItem(SESSION_ID_KEY); } catch {}
+}
+function getSessionId(): string | null {
+  try { return localStorage.getItem(SESSION_ID_KEY); } catch { return null; }
+}
+
 function resolveUrl(url: string): string {
   const base = import.meta.env.VITE_API_BASE_URL || (!import.meta.env.DEV ? "https://dorfongolf.com" : "");
   if (base && url.startsWith("/")) {
     return `${base}${url}`;
   }
   return url;
+}
+
+function sessionHeaders(): Record<string, string> {
+  const sid = getSessionId();
+  return sid ? { "X-Session-Id": sid } : {};
 }
 
 async function throwIfResNotOk(res: Response) {
@@ -28,7 +45,10 @@ export async function apiRequest(
 ): Promise<Response> {
   const res = await fetch(resolveUrl(url), {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...sessionHeaders(),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -46,6 +66,7 @@ export const getQueryFn: <T>(options: {
     const rawUrl = queryKey.join("/") as string;
     const res = await fetch(resolveUrl(rawUrl), {
       credentials: "include",
+      headers: sessionHeaders(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
