@@ -978,7 +978,6 @@ export default function MatchDetail() {
   const [scanNewPlayerNames, setScanNewPlayerNames] = useState<Record<string, string>>({});
   const [scanShiftedHoles, setScanShiftedHoles] = useState<Record<string, number[]>>({});
   const [scanShiftDirection, setScanShiftDirection] = useState<Record<string, 'left' | 'right'>>({});
-  const [scanUndoVisible, setScanUndoVisible] = useState<Record<string, { front: boolean; back: boolean }>>({});
   const scanUndoTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Phone setup sharing state
