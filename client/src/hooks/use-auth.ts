@@ -3,7 +3,9 @@ import { apiRequest } from "@/lib/queryClient";
 import type { User } from "@shared/models/auth";
 
 async function fetchUser(): Promise<User | null> {
-  const response = await fetch("/api/auth/user", {
+  const isCapacitor = typeof window !== "undefined" && window.location.protocol === "capacitor:";
+  const base = import.meta.env.VITE_API_BASE_URL || (isCapacitor ? "https://dorfongolf.com" : "");
+  const response = await fetch(`${base}/api/auth/user`, {
     credentials: "include",
   });
 
