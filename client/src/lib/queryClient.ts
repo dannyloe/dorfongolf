@@ -1,14 +1,22 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+const isCapacitor = typeof window !== "undefined" && window.location.protocol === "capacitor:";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isCapacitor ? "https://dorfongolf.com" : "");
+
+function resolveUrl(url: string): string {
+  if (API_BASE_URL && url.startsWith("/")) {
+    return `${API_BASE_URL}${url}`;
+  }
+  return url;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     if (res.status === 401) {
-      // Redirect to login page — but not if we're already there
       const p = window.location.pathname;
       if (p !== "/" && p !== "/register") {
         window.location.href = "/";
       }
-      // Always throw so callers (e.g. login form) receive the error
     }
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
@@ -20,7 +28,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  const res = await fetch(resolveUrl(url), {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -37,7 +45,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const rawUrl = queryKey.join("/") as string;
+    const res = await fetch(resolveUrl(rawUrl), {
       credentials: "include",
     });
 
