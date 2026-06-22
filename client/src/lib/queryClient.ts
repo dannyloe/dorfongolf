@@ -1,11 +1,10 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-const isCapacitor = typeof window !== "undefined" && window.location.protocol === "capacitor:";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (isCapacitor ? "https://dorfongolf.com" : "");
-
 function resolveUrl(url: string): string {
-  if (API_BASE_URL && url.startsWith("/")) {
-    return `${API_BASE_URL}${url}`;
+  const isCapacitor = typeof window !== "undefined" && window.location.protocol === "capacitor:";
+  const base = import.meta.env.VITE_API_BASE_URL || (isCapacitor ? "https://dorfongolf.com" : "");
+  if (base && url.startsWith("/")) {
+    return `${base}${url}`;
   }
   return url;
 }
