@@ -1,8 +1,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 function resolveUrl(url: string): string {
-  const isCapacitor = typeof window !== "undefined" && window.location.protocol === "capacitor:";
-  const base = import.meta.env.VITE_API_BASE_URL || (isCapacitor ? "https://dorfongolf.com" : "");
+  const base = import.meta.env.VITE_API_BASE_URL || (!import.meta.env.DEV ? "https://dorfongolf.com" : "");
   if (base && url.startsWith("/")) {
     return `${base}${url}`;
   }
