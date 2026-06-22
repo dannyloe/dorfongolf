@@ -57,7 +57,7 @@ export function useAuth() {
       if (data.sessionId) storeSessionId(data.sessionId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries();
     },
   });
 
