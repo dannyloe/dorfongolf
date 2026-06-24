@@ -9,15 +9,15 @@ import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as 
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { ai } from "./replit_integrations/image/client";
 import { Type as GenAIType } from "@google/genai";
-import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
-import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, sendBetResultWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
-import { sendPushNotification } from "./pushNotifications";
+// import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
+// import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, sendBetResultWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
+// import { sendPushNotification } from "./pushNotifications";
 import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
-import { uploadScorecardImage } from "./imageStorage";
+// import { uploadScorecardImage } from "./imageStorage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import express from "express";
-import plivoLib from "plivo";
+// import plivoLib from "plivo";
 
 // Helper to send match invitation notification to a player (non-blocking)
 async function notifyPlayerOfMatchInvitation(
