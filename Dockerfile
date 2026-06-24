@@ -1,11 +1,11 @@
-FROM node:22-slim
+FROM node:20-slim
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@8
 
 WORKDIR /app
 
 COPY package.json ./
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --no-frozen-lockfile --shamefully-hoist
 
 COPY . .
 RUN npm run build
