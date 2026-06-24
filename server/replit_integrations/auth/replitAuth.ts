@@ -113,6 +113,12 @@ export async function initializeAuth(app: Express) {
       req.session.save((err) => {
         if (err) {
           console.error("[register session save error]", err);
+          if ((error as any)?.code === '23505') {
+            const c = (error as any)?.constraint ?? '';
+            if (c.includes('email')) return res.status(409).json({ message: "An account with that email already exists." });
+            if (c.includes('username')) return res.status(409).json({ message: "That username is already taken." });
+            return res.status(409).json({ message: "An account with those details already exists." });
+          }
           return res.status(500).json({ message: "Registration failed" });
         }
         res.status(201).json({ ok: true, sessionId: req.sessionID });
