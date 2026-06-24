@@ -18,6 +18,34 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 // import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import express from "express";
 // import plivoLib from "plivo";
+// Stubs for disabled services — remove when env vars are configured
+const registerObjectStorageRoutes = (_app: any) => {};
+const sendSMS = async (..._args: any[]) => {};
+const sendMatchInvitation = async (..._args: any[]) => {};
+const sendScoreUpdate = async (..._args: any[]) => {};
+const sendBetResult = async (..._args: any[]) => {};
+const getPlivoFromPhoneNumber = (..._args: any[]) => null;
+const isWhatsappConfigured = () => false;
+const getTwilioWhatsappNumber = () => null;
+const sendMatchInvitationWhatsApp = async (..._args: any[]) => {};
+const sendScoreUpdateWhatsApp = async (..._args: any[]) => {};
+const sendBetResultWhatsApp = async (..._args: any[]) => {};
+const validateTwilioSignature = (..._args: any[]) => false;
+const stripWhatsappPrefix = (s: string) => s;
+const sendPushNotification = async (..._args: any[]) => {};
+const uploadScorecardImage = async (..._args: any[]) => null;
+const scanScorecardImage = async (..._args: any[]) => null;
+const scanScorecardImageWithGemini = async (..._args: any[]) => null;
+const scanScorecardImageWithGrok = async (..._args: any[]) => null;
+const parseSmsBetText = async (..._args: any[]) => null;
+const detectScoreText = (..._args: any[]) => null;
+const computeBetSignature = (..._args: any[]) => null;
+const checkBetDuplicate = async (..._args: any[]) => false;
+const scanBetSlip = async (..._args: any[]) => null;
+const analyzeCorrectionLogs = async (..._args: any[]) => null;
+const analyzeByCourseName = async (..._args: any[]) => null;
+const plivoLib: any = {};
+const ai: any = null;
 
 // Helper to send match invitation notification to a player (non-blocking)
 async function notifyPlayerOfMatchInvitation(
