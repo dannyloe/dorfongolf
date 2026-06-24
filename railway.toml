@@ -2,4 +2,4 @@
 buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "timeout 10 npm run db:push; NODE_ENV=production node dist/index.cjs 2>&1"
+startCommand = "node dist/index.cjs 2>&1"
