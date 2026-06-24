@@ -2,4 +2,4 @@
 buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "npm run db:push && ls -la dist/ && NODE_ENV=production node dist/index.cjs 2>&1"
+startCommand = "npm run db:push; NODE_ENV=production node dist/index.cjs 2>&1"
