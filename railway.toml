@@ -2,4 +2,4 @@
 buildCommand = "npm install && npm run build"
 
 [deploy]
-startCommand = "npm run db:push && npx tsx server/index.ts 2>&1 || echo "CRASHED EXIT: $?""
+startCommand = "npm run db:push && npx tsx server/index.ts"
