@@ -1,10 +1,11 @@
 FROM node:22-slim
 
+RUN npm install -g pnpm
+
 WORKDIR /app
 
-COPY package*.json ./
-ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN npm install
+COPY package.json ./
+RUN pnpm install --no-frozen-lockfile
 
 COPY . .
 RUN npm run build
