@@ -12,4 +12,4 @@ RUN npm run build
 
 EXPOSE 5000
 
-CMD sh -c "npm run db:push && npm start"
+CMD sh -c "echo 'Starting...' && ls dist/ && npm run db:push && node dist/index.cjs 2>&1"
