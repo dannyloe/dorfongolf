@@ -18,11 +18,11 @@ import {
   apiKeys,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
-  type Course, type CourseHole, type InsertCourse, type InsertCourseHole
+  type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
   type PlayerHandicap, type InsertPlayerHandicap,
   type CourseTee, type InsertCourseTee,
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
-  type PlayerCourseDefault, type InsertPlayerCourseDefault
+  type PlayerCourseDefault, type InsertPlayerCourseDefault,
   type Group, type InsertGroup,
   type GroupMembership, type GroupJoinRequest, type GroupPlayer, type GroupWithDetails,
   type PresetPlayer, type InsertPresetPlayer,
