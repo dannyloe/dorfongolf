@@ -123,6 +123,10 @@ export async function initializeAuth(app: Express) {
       });
     } catch (err) {
       console.error("[register error]", err);
+      const _c = (error as any)?.constraint ?? (error as any)?.message ?? '';
+      if (_c.includes('email')) return res.status(409).json({ message: "An account with that email already exists." });
+      if (_c.includes('username')) return res.status(409).json({ message: "That username is already taken." });
+      if ((error as any)?.constraint) return res.status(409).json({ message: "An account with those details already exists." });
       res.status(500).json({ message: "Registration failed" });
     }
   });
