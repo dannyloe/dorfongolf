@@ -570,6 +570,22 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/matches/:id/calculate
+  // Returns bet standings / settlement amounts for every bet on this match.
+  app.get("/api/matches/:id/calculate", isAuthenticated, async (req, res) => {
+    try {
+      const matchId = parseInt(req.params.id, 10);
+      if (isNaN(matchId)) {
+        return res.status(400).json({ error: "Invalid match ID" });
+      }
+      const results = await calculateMatchBets(matchId);
+      return res.json({ matchId, results });
+    } catch (err) {
+      console.error("[/api/matches/:id/calculate]", err);
+      return res.status(500).json({ error: "Calculation failed" });
+    }
+  });
+  
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
