@@ -18,11 +18,11 @@ import {
   apiKeys,
   type InsertMatch, type Match, type Player, type Score, type InsertScore, type InsertPlayer,
   type EventMatch, type EventMatchResult, type InsertEventMatchResult, type Team, type TeamMember, type CreateEventMatchRequest,
-  type Course, type CourseHole, type InsertCourse, type InsertCourseHole,
+  type Course, type CourseHole, type InsertCourse, type InsertCourseHole
   type PlayerHandicap, type InsertPlayerHandicap,
   type CourseTee, type InsertCourseTee,
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
-  type PlayerCourseDefault, type InsertPlayerCourseDefault,
+  type PlayerCourseDefault, type InsertPlayerCourseDefault
   type Group, type InsertGroup,
   type GroupMembership, type GroupJoinRequest, type GroupPlayer, type GroupWithDetails,
   type PresetPlayer, type InsertPresetPlayer,
@@ -819,23 +819,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async submitScore(score: InsertScore): Promise<Score> {
-    const [existing] = await db.select().from(scores)
-      .where(and(
-        eq(scores.matchId, score.matchId),
-        eq(scores.playerId, score.playerId),
-        eq(scores.holeNumber, score.holeNumber)
-      ));
-
-    if (existing) {
-      const [updated] = await db.update(scores)
-        .set({ strokes: score.strokes })
-        .where(eq(scores.id, existing.id))
-        .returning();
-      return updated;
-    }
-
-    const [newScore] = await db.insert(scores).values(score).returning();
-    return newScore;
+    const [result] = await db.insert(scores).values(score)
+      .onConflictDoUpdate({
+        target: [scores.matchId, scores.playerId, scores.holeNumber],
+        set: { strokes: sql`excluded.strokes` },
+      })
+      .returning();
+    return result;
   }
 
   async submitScoresBulk(matchId: number, entries: Array<{ playerId: number; holeNumber: number; strokes: number }>): Promise<Score[]> {
@@ -845,51 +835,20 @@ export class DatabaseStorage implements IStorage {
     for (const e of entries) dedup.set(`${e.playerId}-${e.holeNumber}`, e);
     const deduped = Array.from(dedup.values());
 
-    const playerIds = Array.from(new Set(deduped.map(e => e.playerId)));
-    const holes = Array.from(new Set(deduped.map(e => e.holeNumber)));
+    const vals: InsertScore[] = deduped.map(e => ({
+      matchId,
+      playerId: e.playerId,
+      holeNumber: e.holeNumber,
+      strokes: e.strokes,
+    }));
 
-    const existingRows = await db.select().from(scores).where(and(
-      eq(scores.matchId, matchId),
-      inArray(scores.playerId, playerIds),
-      inArray(scores.holeNumber, holes),
-    ));
-    const existingMap = new Map<string, Score>();
-    for (const r of existingRows) existingMap.set(`${r.playerId}-${r.holeNumber}`, r);
-
-    const toInsert: InsertScore[] = [];
-    const toUpdate: Array<{ id: number; strokes: number }> = [];
-    const unchanged: Score[] = [];
-
-    for (const e of deduped) {
-      const ex = existingMap.get(`${e.playerId}-${e.holeNumber}`);
-      if (ex) {
-        if (ex.strokes !== e.strokes) {
-          toUpdate.push({ id: ex.id, strokes: e.strokes });
-        } else {
-          unchanged.push(ex);
-        }
-      } else {
-        toInsert.push({ matchId, playerId: e.playerId, holeNumber: e.holeNumber, strokes: e.strokes });
-      }
-    }
-
-    const results: Score[] = [...unchanged];
-
-    if (toInsert.length > 0) {
-      const inserted = await db.insert(scores).values(toInsert).returning();
-      results.push(...inserted);
-    }
-
-    if (toUpdate.length > 0) {
-      const updated = await Promise.all(toUpdate.map(u =>
-        db.update(scores).set({ strokes: u.strokes }).where(eq(scores.id, u.id)).returning().then(r => r[0])
-      ));
-      results.push(...updated);
-    }
-
-    return results;
+    return db.insert(scores).values(vals)
+      .onConflictDoUpdate({
+        target: [scores.matchId, scores.playerId, scores.holeNumber],
+        set: { strokes: sql`excluded.strokes` },
+      })
+      .returning();
   }
-
   async getAllMatchPlayerHandicapsForMatch(matchId: number): Promise<MatchPlayerHandicap[]> {
     const eventMatchRows = await db.select({ id: eventMatches.id }).from(eventMatches).where(eq(eventMatches.eventId, matchId));
     const ids = eventMatchRows.map(r => r.id);
