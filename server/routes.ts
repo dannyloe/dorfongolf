@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable, users as usersTable, smsOptIns } from "@shared/schema";
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
+import { calculateMatchBets } from "./betting/calculate";
 // import { ai } from "./replit_integrations/image/client";
 // import { Type as GenAIType } from "@google/genai";
 // import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
