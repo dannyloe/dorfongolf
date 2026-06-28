@@ -1566,3 +1566,11 @@ export const ALL_MATCH_OPTIONS = [
   { value: MATCH_TYPES.TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.TWO_THREE_BALL] },
   { value: MATCH_TYPES.ONE_TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.ONE_TWO_THREE_BALL] },
 ];
+
+export const deviceTokens = pgTable("device_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  platform: text("platform").notNull().default("ios"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
