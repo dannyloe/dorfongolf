@@ -100,7 +100,9 @@
     "ws": "^8.18.0",
     "xlsx": "^0.18.5",
     "zod": "^3.25.76",
-    "zod-validation-error": "^3.5.4"
+    "zod-validation-error": "^3.5.4",
+    "@anthropic-ai/sdk": "^0.24.0",
+    "apn": "^3.0.0",
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.4.4",
