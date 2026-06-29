@@ -221,7 +221,32 @@ export async function registerRoutes(
       res.status(500).json({ message: "Internal server error" });
     }
   });
+// Native iOS APNs device token registration
+  app.post("/api/notifications/register", isAuthenticated, async (req, res) => {
+    const { token, platform } = req.body as { token: string; platform: string };
+    const userId = parseInt((req.user as any).claims.sub, 10);
+    if (!token) return res.status(400).json({ error: "token required" });
+    try {
+      await db
+        .insert(deviceTokens)
+        .values({ userId, token, platform: platform ?? "ios" })
+        .onConflictDoUpdate({ target: deviceTokens.token, set: { userId, platform: platform ?? "ios" } });
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("[notifications/register]", err);
+      return res.status(500).json({ error: "Failed to register token" });
+    }
+  });
 
+  app.delete("/api/notifications/register", isAuthenticated, async (req, res) => {
+    const userId = parseInt((req.user as any).claims.sub, 10);
+    try {
+      await db.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
+      return res.json({ ok: true });
+    } catch (err) {
+      return res.status(500).json({ error: "Failed to unregister token" });
+    }
+  });
   // In-app notification feed endpoints
   app.get("/api/notifications", isAuthenticated, async (req, res) => {
     try {
