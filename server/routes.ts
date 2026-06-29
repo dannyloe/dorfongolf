@@ -614,7 +614,32 @@ export async function registerRoutes(
       return res.status(500).json({ error: "Calculation failed" });
     }
   });
-  
+  // Native iOS scorecard scan — device OCR, server parses with Claude
+  app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id, 10);
+    const { ocrText, players } = req.body as {
+      ocrText: string;
+      players: { id: number; name: string }[];
+    };
+    if (!ocrText || !players?.length) {
+      return res.status(400).json({ error: "ocrText and players required" });
+    }
+    const playerList = players.map((p) => `- ID ${p.id}: ${p.name}`).join("\n");
+    const prompt = `You are parsing a golf scorecard from OCR output.\n\nOCR text from the scorecard:\n${ocrText}\n\nPlayers in this match:\n${playerList}\n\nReturn a JSON object with this exact shape — no markdown, no extra text:\n{\n  "holeCount": <number of holes played, 9 or 18>,\n  "scores": [\n    {\n      "playerId": <player ID from the list above>,\n      "playerName": "<player name>",\n      "holes": [<score for hole 1>, <score for hole 2>, ...]\n    }\n  ]\n}\n\nRules:\n- holes array length must equal holeCount\n- Use null for any hole score that is unreadable or missing\n- Only include players from the list above\n- If you cannot match a column to a player, omit that player\n- Scores are integers (gross strokes, typically 1–12)`;
+    try {
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      });
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      const parsed = JSON.parse(text);
+      return res.json(parsed);
+    } catch (err) {
+      console.error("[/scan]", err);
+      return res.status(500).json({ error: "Failed to parse scorecard" });
+    }
+  });
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
