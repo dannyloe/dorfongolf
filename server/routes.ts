@@ -10,8 +10,6 @@ import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { calculateMatchBets } from "./betting/calculate";
 import { sendPushToUsers } from "./notifications/apns";
 import { sendPushNotification } from "./pushNotifications";
-import OpenAI from "openai";
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 import { deviceTokens } from "../shared/schema";
 // import { ai } from "./replit_integrations/image/client";
 // import { Type as GenAIType } from "@google/genai";
@@ -616,7 +614,6 @@ export async function registerRoutes(
   });
   // Native iOS scorecard scan — device OCR, server parses with Claude
   app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
-  const matchId = parseInt(req.params.id, 10);
   const { imageData, players } = req.body as {
     imageData: string;
     players: { id: number; name: string }[];
@@ -625,43 +622,42 @@ export async function registerRoutes(
     return res.status(400).json({ error: "imageData and players required" });
   }
   try {
-    const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
-    const prompt = `This is a photo of a golf scorecard. Extract the stroke scores for each player listed below.
-Players (id: name):
-${playerList}
-
-Return ONLY valid JSON in this exact format, with no extra text or markdown:
-{"holeCount": 9, "scores": [{"playerId": <id>, "playerName": "<name>", "holes": [<score_or_null>, ...]}]}
-
-Rules:
-- holeCount is 9 or 18 depending on how many holes are filled in
-- The holes array length must equal holeCount  
-- Each hole value is an integer stroke count, or null if unreadable
-- Player names may be abbreviated on the card — match by closest name
-- Ignore printed yardages, pars, handicaps — only extract handwritten player scores`;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageData}` } },
-          { type: "text", text: prompt }
-        ]
-      }],
-      max_tokens: 1000,
+    const result = await scanScorecardImageWithGemini({
+      imageBase64: imageData,
+      playerNames: players.map((p: { id: number; name: string }) => p.name),
     });
 
-    const raw = response.choices[0]?.message?.content ?? "";
-    console.log("[/scan] GPT response:", raw.slice(0, 300));
-    const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-    const parsed = JSON.parse(jsonStr);
-    return res.json(parsed);
+    // Match scanned player names back to the player IDs the iOS app passed in
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const scoreResults = result.scores
+      .map((scanned: { playerName: string; holes: { holeNumber: number; strokes: number | null }[] }) => {
+        const sn = norm(scanned.playerName);
+        const matched = players.find((p: { id: number; name: string }) => {
+          const pn = norm(p.name);
+          return pn === sn || pn.includes(sn) || sn.includes(pn) ||
+            p.name.toLowerCase().split(/\s+/).some((part: string) => part.length > 2 && sn.includes(norm(part)));
+        });
+        if (!matched) return null;
+
+        const maxHole = Math.max(...scanned.holes.map((h: { holeNumber: number }) => h.holeNumber), 0);
+        const hc = maxHole > 9 ? 18 : 9;
+        const holes: (number | null)[] = Array(hc).fill(null);
+        for (const h of scanned.holes) {
+          if (h.holeNumber >= 1 && h.holeNumber <= hc && h.strokes !== null) {
+            holes[h.holeNumber - 1] = h.strokes;
+          }
+        }
+        return { playerId: matched.id, playerName: matched.name, holes };
+      })
+      .filter(Boolean);
+
+    const holeCount = scoreResults.some((s: any) => s.holes.length > 9) ? 18 : 9;
+    return res.json({ holeCount, scores: scoreResults });
   } catch (err) {
     console.error("[/scan]", err);
     return res.status(500).json({ error: String(err) });
   }
-});;
+});;;
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
