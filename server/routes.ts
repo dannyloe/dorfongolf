@@ -606,22 +606,46 @@ export async function registerRoutes(
     if (!imageData || !players?.length) {
       return res.status(400).json({ error: "imageData and players required" });
     }
-    console.log("[/scan] ai available:", !!ai);
-    if (!ai) {
+    // Read env var at request time using bracket notation to prevent esbuild tree-shaking
+    const geminiKey = (process as any)["env"]["GEMINI_API_KEY"];
+    if (!geminiKey) {
+      console.error("[/scan] GEMINI_API_KEY not set in environment");
       return res.status(503).json({ error: "AI not configured" });
     }
     try {
+      // Inline require at runtime — avoids module-level tree-shaking issues
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { GoogleGenAI } = require("@google/genai") as typeof import("@google/genai");
+      const scanAi = new GoogleGenAI({ apiKey: geminiKey });
+
       const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
-      const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player.\n\nPlayers (id: name):\n${playerList}\n\nReturn ONLY a JSON object with no markdown or explanation:\n{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}\n\nRules:\n- holeCount is 9 or 18 depending on how many holes are filled in\n- holes array length must equal holeCount; use null for blank or unreadable holes\n- Match player names approximately — nicknames and abbreviations are fine\n- Ignore printed yardages, pars, and course info — only extract handwritten stroke scores`;
+      const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player.
+
+Players (id: name):
+${playerList}
+
+Return ONLY a JSON object with no markdown or explanation:
+{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}
+
+Rules:
+- holeCount is 9 or 18 depending on how many holes are filled in
+- holes array length must equal holeCount; use null for blank or unreadable holes
+- Match player names approximately — nicknames and abbreviations are fine
+- Ignore printed yardages, pars, and course info — only extract handwritten stroke scores`;
+
       const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
-      const mimeType = imageData.startsWith("data:image/") ? (imageData.match(/data:(image\/[^;]+)/)?.[1] ?? "image/jpeg") : "image/jpeg";
-      const response = await ai.models.generateContent({
+      const mimeType = imageData.startsWith("data:image/")
+        ? (imageData.match(/data:(image\/[^;]+)/)?.[1] ?? "image/jpeg")
+        : "image/jpeg";
+
+      const response = await scanAi.models.generateContent({
         model: "gemini-1.5-flash",
         contents: [{ role: "user", parts: [
           { text: prompt },
           { inlineData: { mimeType, data: base64Data } },
         ]}],
       });
+
       const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
       console.log("[/scan] Gemini raw:", raw.slice(0, 400));
       const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
