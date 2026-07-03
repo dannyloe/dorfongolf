@@ -16,6 +16,7 @@ import { deviceTokens } from "../shared/schema";
 // import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
 // import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, sendBetResultWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
 // import { sendPushNotification } from "./pushNotifications";
+import { ai } from "./replit_integrations/image/client";
 // import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 // import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 // import { uploadScorecardImage } from "./imageStorage";
@@ -621,25 +622,27 @@ export async function registerRoutes(
   if (!imageData || !players?.length) {
     return res.status(400).json({ error: "imageData and players required" });
   }
+
+  console.log("[/scan] ai available:", !!ai);
+  if (!ai) {
+    return res.status(503).json({ error: "AI not configured — GEMINI_API_KEY missing from environment" });
+  }
+
   try {
-    const { ai } = await import("./replit_integrations/image/client");
-    if (!ai) {
-      return res.status(503).json({ error: "AI not configured — GEMINI_API_KEY missing" });
-    }
     const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
-    const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player listed below.
+    const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player.
 
 Players (id: name):
 ${playerList}
 
-Return ONLY a JSON object — no markdown, no explanation:
+Return ONLY a JSON object with no markdown or explanation:
 {"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}
 
 Rules:
 - holeCount is 9 or 18 depending on how many holes are filled in
-- holes is an array of integers (stroke count per hole). Use null for any hole that is blank or unreadable.
-- Match player names approximately — nicknames and abbreviations are fine.
-- Ignore printed yardages, pars, course info — only extract the handwritten stroke scores.`;
+- holes array length must equal holeCount; use null for blank or unreadable holes
+- Match player names approximately — nicknames and abbreviations are fine
+- Ignore printed yardages, pars, and course info — only extract handwritten stroke scores`;
 
     const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
     const mimeType = imageData.startsWith("data:image/")
@@ -660,10 +663,10 @@ Rules:
     const parsed = JSON.parse(jsonStr);
     return res.json(parsed);
   } catch (err) {
-    console.error("[/scan]", err);
+    console.error("[/scan] error:", err);
     return res.status(500).json({ error: String(err) });
   }
-});;;;
+});;;;;
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
