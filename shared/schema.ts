@@ -1569,7 +1569,7 @@ export const ALL_MATCH_OPTIONS = [
 
 export const deviceTokens = pgTable("device_tokens", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
   platform: text("platform").notNull().default("ios"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
