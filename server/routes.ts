@@ -597,6 +597,42 @@ export async function registerRoutes(
       res.status(500).json({ message: "Internal server error" });
     }
   });
+  // Scorecard image scan — iOS app sends base64 image, server calls Gemini
+  app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
+    const { imageData, players } = req.body as {
+      imageData: string;
+      players: { id: number; name: string }[];
+    };
+    if (!imageData || !players?.length) {
+      return res.status(400).json({ error: "imageData and players required" });
+    }
+    console.log("[/scan] ai available:", !!ai);
+    if (!ai) {
+      return res.status(503).json({ error: "AI not configured" });
+    }
+    try {
+      const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
+      const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player.\n\nPlayers (id: name):\n${playerList}\n\nReturn ONLY a JSON object with no markdown or explanation:\n{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}\n\nRules:\n- holeCount is 9 or 18 depending on how many holes are filled in\n- holes array length must equal holeCount; use null for blank or unreadable holes\n- Match player names approximately — nicknames and abbreviations are fine\n- Ignore printed yardages, pars, and course info — only extract handwritten stroke scores`;
+      const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
+      const mimeType = imageData.startsWith("data:image/") ? (imageData.match(/data:(image\/[^;]+)/)?.[1] ?? "image/jpeg") : "image/jpeg";
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{ role: "user", parts: [
+          { text: prompt },
+          { inlineData: { mimeType, data: base64Data } },
+        ]}],
+      });
+      const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+      console.log("[/scan] Gemini raw:", raw.slice(0, 400));
+      const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+      const parsed = JSON.parse(jsonStr);
+      return res.json(parsed);
+    } catch (err) {
+      console.error("[/scan] error:", err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
 
   // GET /api/matches/:id/calculate
   // Returns bet standings / settlement amounts for every bet on this match.
