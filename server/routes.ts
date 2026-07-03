@@ -7283,6 +7283,12 @@ Transcript to parse: "${transcript}"`;
   return httpServer;
 }
 
+app.post("/api/notifications/test", isAuthenticated, async (req, res) => {
+  const userId = (req.user as any).claims.sub as string;
+  await sendPushToUsers([userId], "Test Push", "Push notifications are working!", {}, db, deviceTokens);
+  return res.json({ ok: true });
+});
+
 // Helper function to calculate optimal payments to settle all balances
 function calculateSettlementPayments(
   balances: { playerName: string; presetPlayerId?: number | null; balance: number }[]
