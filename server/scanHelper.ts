@@ -334,7 +334,8 @@ Known players in this match: ${playerNames.join(", ")}
 ${courseName ? `Course: ${courseName}` : ""}${holeParsText}${scorecardNotesText}
 
 Rules:
-- Only include players whose scores are actually visible on the card.
+- ONLY include players whose handwritten scores you can physically see in a dedicated column on the card. The "Known players" list is provided solely to help you match names — it is NOT a list of players to include. If you cannot see a score column for a player, do NOT include them, even if their name appears in the known players list.
+- If a player's column on the card is empty or absent, exclude them entirely.
 - For each included player, include all 18 holes (holeNumber 1..18).
 - "strokes" must be a STRING. Use the digits for a numeric score (e.g. "4", "10").
   - If a hole shows an "X", "X-out", "pickup", "NF", or "DNF" mark, return "X" (the player did not finish that hole).
