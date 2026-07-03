@@ -619,19 +619,23 @@ export async function registerRoutes(
       const scanAi = new GoogleGenAI({ apiKey: geminiKey });
 
       const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
-      const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player.
+      const prompt = `You are reading a golf scorecard photo. Your job is to extract handwritten stroke scores only.
 
-Players (id: name):
+Players you are looking for (id: name):
 ${playerList}
 
-Return ONLY a JSON object with no markdown or explanation:
-{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}
+CRITICAL RULES — follow these exactly:
+1. ONLY return scores for players in the list above. NEVER invent, add, or guess players not in the list.
+2. For each player in the list, scan the scorecard for their name (or a recognizable abbreviation/nickname) and read their row of scores.
+3. If you cannot find a player from the list on the card, omit them from the output — do not make up scores.
+4. holeCount is 9 or 18 depending on how many holes have scores filled in.
+5. holes array length must exactly equal holeCount.
+6. Use null for any hole that is blank, crossed out, or illegible.
+7. Ignore all printed text: yardages, par values, course name, handicap rows. Only read handwritten stroke numbers.
+8. Stroke scores per hole are almost always a single digit (3–8). Two-digit scores (10+) are rare — if unsure, prefer the single digit reading.
 
-Rules:
-- holeCount is 9 or 18 depending on how many holes are filled in
-- holes array length must equal holeCount; use null for blank or unreadable holes
-- Match player names approximately — nicknames and abbreviations are fine
-- Ignore printed yardages, pars, and course info — only extract handwritten stroke scores`;
+Return ONLY valid JSON with no markdown, no code fences, no explanation:
+{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}`;
 
       const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
       const mimeType = imageData.startsWith("data:image/")
