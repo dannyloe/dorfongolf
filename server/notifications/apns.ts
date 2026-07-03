@@ -10,7 +10,7 @@ const provider = new apn.Provider({
     keyId: process.env.APNS_KEY_ID ?? "",
     teamId: process.env.APNS_TEAM_ID ?? "",
   },
-  production: process.env.NODE_ENV === "production",
+  production: false,
 });
 
 const bundleId = process.env.APNS_BUNDLE_ID ?? "com.yourcompany.Press";
