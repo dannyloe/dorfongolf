@@ -627,29 +627,52 @@ export async function registerRoutes(
     const playerList = players.map((p) => `- ID ${p.id}: ${p.name}`).join("\n");
     const prompt = `You are parsing a golf scorecard from OCR output.\n\nOCR text from the scorecard:\n${ocrText}\n\nPlayers in this match:\n${playerList}\n\nReturn a JSON object with this exact shape — no markdown, no extra text:\n{\n  "holeCount": <number of holes played, 9 or 18>,\n  "scores": [\n    {\n      "playerId": <player ID from the list above>,\n      "playerName": "<player name>",\n      "holes": [<score for hole 1>, <score for hole 2>, ...]\n    }\n  ]\n}\n\nRules:\n- holes array length must equal holeCount\n- Use null for any hole score that is unreadable or missing\n- Only include players from the list above\n- If you cannot match a column to a player, omit that player\n- Scores are integers (gross strokes, typically 1–12)`;
     try {
-      // Heuristic OCR scorecard parser — no AI API needed
-      const ocrLines = ocrText.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
-      const scoreResults: { playerId: number; playerName: string; holes: (number | null)[] }[] = [];
+      // Improved OCR scorecard parser — handles both row-per-player and grid (name + scores on separate lines)
+          const ocrLines = ocrText.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
+          const extractNums = (text: string): number[] =>
+            (text.match(/\b(1[0-5]|[1-9])\b/g) ?? []).map(Number);
 
-      for (const player of players) {
-        const nameParts = player.name.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2);
-        const playerLine = ocrLines.find((line: string) => {
-          const lower = line.toLowerCase();
-          return nameParts.some((part: string) => lower.includes(part));
-        });
-        if (!playerLine) continue;
+          const scoreResults: { playerId: number; playerName: string; holes: (number | null)[] }[] = [];
 
-        // Extract numbers in golf score range (1–15)
-        const nums = (playerLine.match(/\b(1[0-5]|[1-9])\b/g) ?? []).map(Number);
-        const take = nums.length >= 18 ? 18 : 9;
-        const holes: (number | null)[] = nums.slice(0, take);
-        while (holes.length < take) holes.push(null);
+          // Build a map of player → line index in OCR
+          const playerLineIdxMap = new Map<number, number>();
+          for (const player of players) {
+            const nameParts = player.name.toLowerCase().split(/\s+/).filter((p: string) => p.length > 1);
+            const idx = ocrLines.findIndex((line: string) => {
+              const lower = line.toLowerCase();
+              return nameParts.some((part: string) => lower.includes(part));
+            });
+            if (idx >= 0) playerLineIdxMap.set(player.id, idx);
+          }
 
-        scoreResults.push({ playerId: player.id, playerName: player.name, holes });
-      }
+          // All player line indices sorted — used to bound each player's score region
+          const allNameIndices = Array.from(playerLineIdxMap.values()).sort((a, b) => a - b);
 
-      const holeCount = scoreResults.some(s => s.holes.filter(Boolean).length > 9) ? 18 : 9;
-      return res.json({ holeCount, scores: scoreResults });
+          for (const player of players) {
+            const nameIdx = playerLineIdxMap.get(player.id);
+            if (nameIdx === undefined) continue;
+
+            // Find where the NEXT player's name appears (upper bound for this player's scores)
+            const nextNameIdx = allNameIndices.find(i => i > nameIdx) ?? ocrLines.length;
+
+            // Collect score numbers: start with any on the name line, then scan subsequent lines
+            let nums: number[] = extractNums(ocrLines[nameIdx]);
+            for (let i = nameIdx + 1; i < nextNameIdx && nums.length < 18; i++) {
+              nums = nums.concat(extractNums(ocrLines[i]));
+            }
+
+            const take = nums.length >= 14 ? 18 : 9;
+            const holes: (number | null)[] = nums.slice(0, take);
+            while (holes.length < take) holes.push(null);
+
+            scoreResults.push({ playerId: player.id, playerName: player.name, holes });
+          }
+
+          // Log raw OCR lines to Railway console for debugging
+          console.log('[/scan] ocrLines:', JSON.stringify(ocrLines));
+
+          const holeCount = scoreResults.some(s => s.holes.filter(Boolean).length > 9) ? 18 : 9;
+          return res.json({ holeCount, scores: scoreResults });
     } catch (err) {
       console.error("[/scan]", err);
       return res.status(500).json({ error: String(err) });
