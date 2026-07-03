@@ -665,7 +665,7 @@ export async function registerRoutes(
       return res.json(parsed);
     } catch (err) {
       console.error("[/scan]", err);
-      return res.status(500).json({ error: "Failed to parse scorecard" });
+      return res.status(500).json({ error: String(err) });
     }
   });
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
