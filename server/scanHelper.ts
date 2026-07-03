@@ -381,9 +381,12 @@ export async function scanScorecardImageWithGemini(params: {
 }): Promise<ScanScorecardResult> {
   const { imageBase64, playerNames, courseName, extraRules, holePars, scorecardNotes } = params;
 
-  if (!ai) {
+  const _geminiKey = (process as any)["env"]["GEMINI_API_KEY"];
+  if (!_geminiKey) {
     throw new Error("AI features are currently unavailable");
   }
+  const { GoogleGenAI: _GGAI } = require("@google/genai") as typeof import("@google/genai");
+  const _scanAi = new _GGAI({ apiKey: _geminiKey });
 
   const prompt = buildScorecardPrompt(playerNames, courseName, extraRules, holePars, scorecardNotes);
 
@@ -395,7 +398,7 @@ export async function scanScorecardImageWithGemini(params: {
     throw new Error("Invalid image data");
   }
 
-  const response = await ai.models.generateContent({
+  const response = await _scanAi.models.generateContent({
     model: "gemini-2.5-flash",
     config: {
       thinkingConfig: { thinkingBudget: 0 },
