@@ -2,7 +2,11 @@ import apn from "apn";
 
 const provider = new apn.Provider({
   token: {
-    key: (process.env.APNS_KEY_P8 ?? "").replace(/\\n/g, "\n"),
+    key: (() => {
+  const raw = (process.env.APNS_KEY_P8 ?? "").replace(/\\n/g, "\n").trim();
+  if (raw.includes("-----BEGIN")) return raw;
+  return `-----BEGIN PRIVATE KEY-----\n${raw}\n-----END PRIVATE KEY-----`;
+})(),
     keyId: process.env.APNS_KEY_ID ?? "",
     teamId: process.env.APNS_TEAM_ID ?? "",
   },
