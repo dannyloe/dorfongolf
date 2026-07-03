@@ -622,42 +622,48 @@ export async function registerRoutes(
     return res.status(400).json({ error: "imageData and players required" });
   }
   try {
-    const result = await scanScorecardImageWithGemini({
-      imageBase64: imageData,
-      playerNames: players.map((p: { id: number; name: string }) => p.name),
+    const { ai } = await import("./replit_integrations/image/client");
+    if (!ai) {
+      return res.status(503).json({ error: "AI not configured — GEMINI_API_KEY missing" });
+    }
+    const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
+    const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player listed below.
+
+Players (id: name):
+${playerList}
+
+Return ONLY a JSON object — no markdown, no explanation:
+{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}
+
+Rules:
+- holeCount is 9 or 18 depending on how many holes are filled in
+- holes is an array of integers (stroke count per hole). Use null for any hole that is blank or unreadable.
+- Match player names approximately — nicknames and abbreviations are fine.
+- Ignore printed yardages, pars, course info — only extract the handwritten stroke scores.`;
+
+    const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
+    const mimeType = imageData.startsWith("data:image/")
+      ? (imageData.match(/data:(image\/[^;]+)/)?.[1] ?? "image/jpeg")
+      : "image/jpeg";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-1.5-flash",
+      contents: [{ role: "user", parts: [
+        { text: prompt },
+        { inlineData: { mimeType, data: base64Data } },
+      ]}],
     });
 
-    // Match scanned player names back to the player IDs the iOS app passed in
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const scoreResults = result.scores
-      .map((scanned: { playerName: string; holes: { holeNumber: number; strokes: number | null }[] }) => {
-        const sn = norm(scanned.playerName);
-        const matched = players.find((p: { id: number; name: string }) => {
-          const pn = norm(p.name);
-          return pn === sn || pn.includes(sn) || sn.includes(pn) ||
-            p.name.toLowerCase().split(/\s+/).some((part: string) => part.length > 2 && sn.includes(norm(part)));
-        });
-        if (!matched) return null;
-
-        const maxHole = Math.max(...scanned.holes.map((h: { holeNumber: number }) => h.holeNumber), 0);
-        const hc = maxHole > 9 ? 18 : 9;
-        const holes: (number | null)[] = Array(hc).fill(null);
-        for (const h of scanned.holes) {
-          if (h.holeNumber >= 1 && h.holeNumber <= hc && h.strokes !== null) {
-            holes[h.holeNumber - 1] = h.strokes;
-          }
-        }
-        return { playerId: matched.id, playerName: matched.name, holes };
-      })
-      .filter(Boolean);
-
-    const holeCount = scoreResults.some((s: any) => s.holes.length > 9) ? 18 : 9;
-    return res.json({ holeCount, scores: scoreResults });
+    const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    console.log("[/scan] Gemini raw:", raw.slice(0, 400));
+    const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    const parsed = JSON.parse(jsonStr);
+    return res.json(parsed);
   } catch (err) {
     console.error("[/scan]", err);
     return res.status(500).json({ error: String(err) });
   }
-});;;
+});;;;
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
