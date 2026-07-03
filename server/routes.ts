@@ -2533,6 +2533,47 @@ Rules:
   });
 
   // Scorecard OCR Scanning
+  // iOS scorecard scan — wraps scanScorecardImageWithGemini for the mobile app
+  app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
+    const { imageData, players } = req.body as {
+      imageData: string;
+      players: { id: number; name: string }[];
+    };
+    if (!imageData || !players?.length) {
+      return res.status(400).json({ error: "imageData and players required" });
+    }
+    try {
+      const result = await scanScorecardImageWithGemini({
+        imageBase64: imageData,
+        playerNames: players.map((p: { id: number; name: string }) => p.name),
+      });
+
+      // Determine holeCount from the highest hole number returned
+      const maxHole = result.scores.reduce((max, player) =>
+        player.holes.reduce((m, h) => Math.max(m, h.holeNumber), max), 0);
+      const holeCount = maxHole > 9 ? 18 : 9;
+
+      // Normalise player names to IDs and build flat holes array
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const scores = result.scores.map(player => {
+        const matched = players.find((p: { id: number; name: string }) => {
+          const pn = norm(p.name); const sn = norm(player.playerName);
+          return pn === sn || pn.startsWith(sn) || sn.startsWith(pn) || pn.includes(sn) || sn.includes(pn);
+        });
+        const holes: (number | null)[] = Array(holeCount).fill(null);
+        for (const h of player.holes) {
+          if (h.holeNumber >= 1 && h.holeNumber <= holeCount) holes[h.holeNumber - 1] = h.strokes;
+        }
+        return { playerId: matched?.id ?? -1, playerName: matched?.name ?? player.playerName, holes };
+      }).filter(s => s.playerId !== -1);
+
+      return res.json({ holeCount, scores });
+    } catch (err) {
+      console.error("[/scan] error:", err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.scorecard.scan.input.parse(req.body);
