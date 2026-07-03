@@ -7281,8 +7281,8 @@ Transcript to parse: "${transcript}"`;
   });
 
   return httpServer;
-  app.post("/api/notifications/test", isAuthenticated, async (req, res) => {
-  const userId = (req.user as any).claims.sub as string;
+  app.post("/api/notifications/test", async (req, res) => {
+  const userId = "17830907224825942";
   await sendPushToUsers([userId], "Test Push", "Push notifications are working!", {}, db, deviceTokens);
   return res.json({ ok: true });
 });
