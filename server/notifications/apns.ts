@@ -33,7 +33,7 @@ export async function sendPush(
 }
 
 export async function sendPushToUsers(
-  userIds: number[],
+  userIds: string[],
   title: string,
   body: string,
   data: Record<string, string>,
