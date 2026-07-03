@@ -3610,6 +3610,79 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+
+    // ── Scorecard OCR scan: accepts on-device Vision text, returns structured scores via Claude
+    app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
+          try {
+                  const matchId = parseInt(req.params.id, 10);
+                  if (isNaN(matchId)) return res.status(400).json({ message: "Invalid match ID" });
+
+                  const match = await storage.getMatch(matchId);
+                  if (!match) return res.status(404).json({ message: "Match not found" });
+
+                  const { ocrText, players } = req.body as {
+                            ocrText: string;
+                            players: { id: number; name: string }[];
+                  };
+
+                  if (!ocrText || !Array.isArray(players) || players.length === 0) {
+                            return res.status(400).json({ message: "ocrText and players are required" });
+                  }
+
+                  const playerList = players.map(p => `- id ${p.id}: ${p.name}`).join("\n");
+
+                  const prompt = `You are parsing raw OCR text extracted from a golf scorecard photo.
+                  Your job is to identify each player's hole-by-hole stroke counts and return structured JSON.
+
+                  Players in this match (use these exact IDs):
+                  ${playerList}
+
+                  Rules:
+                  - Match player names from the OCR text to the list above using fuzzy matching (nicknames, partial names, initials are common)
+                  - Hole numbers run 1-18 (or 1-9 for a 9-hole round)
+                  - Stroke values must be integers between 1 and 15; ignore totals/out/in columns
+                  - If a hole score is illegible or missing, use null
+                  - Determine holeCount from the data (9 or 18)
+                  - Only include players you can confidently identify
+
+                  Return ONLY valid JSON in this exact shape, no explanation:
+                  {
+                    "holeCount": 18,
+                      "scores": [
+                          {
+                                "playerId": 123,
+                                      "playerName": "Danny",
+                                            "holes": [4, 5, 3, null, 4, 3, 5, 4, 4, 5, 4, 3, 4, 5, 4, 3, 5, 4]
+                                                }
+                                                  ]
+                                                  }
+
+                                                  OCR text:
+                                                  ${ocrText}`;
+
+                  const message = await anthropic.messages.create({
+                            model: "claude-haiku-4-5-20251001",
+                            max_tokens: 1024,
+                            messages: [{ role: "user", content: prompt }],
+                  });
+
+                  const raw = message.content[0].type === "text" ? message.content[0].text : "";
+                  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                  if (!jsonMatch) {
+                            return res.status(422).json({ message: "Could not parse scorecard. Try a clearer photo." });
+                  }
+
+                  const parsed = JSON.parse(jsonMatch[0]) as {
+                            holeCount: number;
+                            scores: { playerId: number; playerName: string; holes: (number | null)[] }[];
+                  };
+
+                  res.json(parsed);
+          } catch (err) {
+                  console.error("[scan-scorecard error]", err);
+                  res.status(500).json({ message: "Internal server error" });
+          }
+    });
   // Bet slip photo scan endpoint (match-specific — kept for backward compat)
   app.post("/api/matches/:id/scan-bet-slip", isAuthenticated, async (req, res) => {
     try {
