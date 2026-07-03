@@ -344,35 +344,29 @@ Rules:
 - Try to match visible names to the known players list; otherwise use the name as written.
 - "rawText" is optional free-form notes about the card.
 
-CRITICAL — step 1: identify which columns contain player scores:
-- Before reading any numbers, scan the HEADER AREA of the card to find player name labels above columns.
-- Player score columns are narrow columns with a handwritten player name above them (often written at an angle, vertically, or diagonally in the header row).
-- Non-score columns have pre-printed labels such as: "Hole", "Tour", "Blue", "White", "Gold", "Red", "Green", "Hdcp" (or "Handicap"), "Par", "Out", "In", "+/-".
-- IGNORE all non-score columns entirely, even if they contain single-digit numbers. In particular:
-  - Par column (values 3, 4, 5) — NOT scores.
-  - Handicap/Hdcp column (values 1–18) — NOT scores.
-  - Yardage columns with 3-digit numbers (e.g. 373, 200, 488) — NOT scores.
-  - +/- running total columns — NOT scores.
-  - Red/Green yardage columns on the right side of the card — NOT scores.
-- Only read from the player score columns you identified by their header names.
+CRITICAL — row isolation (read this first, before reading any scores):
+- A golf scorecard is a grid. Each player occupies exactly one horizontal row. The player's name appears at the left edge of that row; their 18 (or 9) hole scores extend to the right across that same row.
+- STEP 1 — Identify all player rows: scan the left side of the card for player names. For each name found, draw an imaginary horizontal band across the card at that vertical position. That band is exclusively that player's row.
+- STEP 2 — Read scores inside each band: for player N, only read cells that fall within player N's horizontal band. Never read a cell that sits above or below that band, even if it appears visually close.
+- STEP 3 — When a cell is ambiguous (a digit sits between two rows): assign it to the row whose name label is vertically closest to that cell. If still uncertain, return "" for that hole and set confidence "low".
+- NEVER copy a score from one player's row into another player's output. Each player's scores must come only from their own row, read left-to-right in a straight line.
+- If the scorecard orientation is portrait (players listed across the top, holes listed down the side), apply the same principle to columns instead of rows: each player occupies one vertical column; read only cells within that column, top-to-bottom.
 
-CRITICAL — step 2: which ROWS to read vs. skip:
-- Only read scores from rows where the leftmost "Hole" column shows a hole number 1 through 18.
-- COMPLETELY SKIP any row whose hole column shows a summary label: "Out", "Back", "In", "Total", "Tot", "Hcp", "Hdcp", "Net", or any similar word.
-- The "Out" row (front-9 subtotal) appears between holes 9 and 10 — skip the ENTIRE row.
-- The "Back"/"In" row (back-9 subtotal) appears after hole 18 — skip the ENTIRE row.
-- The "Total"/"Tot" row is the full-round total — skip it.
-- Any "Hcp" and "Net" rows at the bottom — skip them.
-- Do NOT use cell-position counting (e.g. "10th cell = Out") — different scorecards have different numbers of columns. Skip rows by their label, not by counting.
+CRITICAL — subtotal columns must be completely ignored (column-position rule):
+- A standard 18-hole scorecard row contains exactly 20 cells: 9 hole scores (holes 1–9), then the "Out" subtotal cell, then 9 hole scores (holes 10–18), then the "In"/"Total" subtotal cell.
+- The 10th cell by position in any player row is ALWAYS the "Out" subtotal — skip it regardless of whether a label ("Out", "Total", or nothing) is visible above it. The 20th cell is always the "In"/"Total" — skip it too.
+- Count cells positionally from left to right: cell 1 = hole 1, cell 2 = hole 2, …, cell 9 = hole 9, cell 10 = OUT (SKIP), cell 11 = hole 10, …, cell 19 = hole 18, cell 20 = IN/Total (SKIP).
+- Do NOT map either of those positional subtotals to any hole number. They are running totals and must be discarded entirely.
+- Even if the subtotal value looks like a plausible single-hole score (e.g. "4" or "5"), it must still be skipped — judge by position, not by value.
 
 CRITICAL — count sanity check (MANDATORY before returning):
-- After reading all scores, you must have exactly 9 entries for holes 1–9 and exactly 9 entries for holes 10–18 (entries that are "" or "X" still count toward the 9).
-- If either half has more than 9 entries, you accidentally included a summary row — remove those extra entries.
+- After reading all scores, count: you must have exactly 9 entries for holes 1–9 and exactly 9 entries for holes 10–18 (entries that are "" or "X" still count toward the 9).
+- If either half has more than 9 entries, you accidentally included a subtotal column — remove the extra positional entry (the one at cell 10 or cell 20) before returning.
 - If either half has fewer than 9 entries, a hole score is missing — fill it as "" rather than shifting other scores.
-- NEVER shift real hole scores to fill a gap. Each hole number must map to the row with that hole number.
+- NEVER shift real hole scores to fill a gap left by removing a subtotal. Each hole number must map to its correct positional cell.
 
-CRITICAL — large values in score cells:
-- Any value of 20 or higher in a player score column is almost certainly a subtotal that leaked through. Skip it.
+CRITICAL — large values in score rows:
+- Any value of 20 or higher appearing anywhere in a player's score row is almost certainly a subtotal (e.g. front-9 total = 37), not a hole score. Skip it.
 
 CRITICAL — match play annotations:
 - Some scorecards have running match play totals written next to or near hole scores (e.g. "+2", "-1", "AS", "1UP"). These are NOT hole scores.
@@ -396,12 +390,9 @@ export async function scanScorecardImageWithGemini(params: {
 }): Promise<ScanScorecardResult> {
   const { imageBase64, playerNames, courseName, extraRules, holePars, scorecardNotes } = params;
 
-  const _geminiKey = (process as any)["env"]["GEMINI_API_KEY"];
-  if (!_geminiKey) {
+  if (!ai) {
     throw new Error("AI features are currently unavailable");
   }
-  const { GoogleGenAI: _GGAI } = require("@google/genai") as typeof import("@google/genai");
-  const _scanAi = new _GGAI({ apiKey: _geminiKey });
 
   const prompt = buildScorecardPrompt(playerNames, courseName, extraRules, holePars, scorecardNotes);
 
@@ -413,7 +404,7 @@ export async function scanScorecardImageWithGemini(params: {
     throw new Error("Invalid image data");
   }
 
-  const response = await _scanAi.models.generateContent({
+  const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
     config: {
       thinkingConfig: { thinkingBudget: 0 },
