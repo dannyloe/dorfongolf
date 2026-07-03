@@ -131,33 +131,7 @@ async function notifyMatchParticipantsOfScoreUpdate(
 }
 
 // Helper to notify players of a bet result — uses WhatsApp when configured, Plivo SMS fallback
-async function async function notifyPlayersOfBetCreated
-  post.*bets
-  createBet
-    
-    
-    storage.createBet
-      
-      
-      
-      /api/bets
-      
-      createEventMatch(eventId, input)
-              // Fire-and-forget: notify bet participants
-              (async () => {
-                        try {
-                                    const matchPlayers = await storage.getMatchPlayers(eventId);
-                                    const allPlayerIds = [...(input.teamA?.playerIds ?? []), ...(input.teamB?.playerIds ?? [])];
-                                    const betName = (input as any).name || "New bet";
-                                    for (const pid of allPlayerIds) {
-                                                  const mp = matchPlayers.find((p: any) => p.id === pid);
-                                                  if (mp?.userId && mp.userId !== userId) {
-                                                                  sendPushNotification(mp.userId, betName, `You've been added to a bet`).catch(() => {});
-                                                  }
-                                    }
-                        } catch {}
-              })();
-        (
+async function notifyPlayersOfBetResult(
   playerUserIds: string[],
   matchName: string,
   result: string,
@@ -172,8 +146,6 @@ async function async function notifyPlayersOfBetCreated
       } else {
         await sendBetResult(user.phone, matchName, result, amount);
       }
-            // Send push notification
-            sendPushNotification(userId, matchName, `Bet result: ${result} — ${amount}`).catch(() => {});
     } catch (err) {
       console.error(`Failed to send bet result notification to user ${userId}:`, err);
     }
