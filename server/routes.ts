@@ -9,6 +9,7 @@ import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as 
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { calculateMatchBets } from "./betting/calculate";
 import { sendPushToUsers } from "./notifications/apns";
+import { sendPushNotification } from "./pushNotifications";
 import Anthropic from "@anthropic-ai/sdk";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 import { deviceTokens } from "../shared/schema";
@@ -37,7 +38,6 @@ const sendScoreUpdateWhatsApp = async (..._args: any[]) => {};
 const sendBetResultWhatsApp = async (..._args: any[]) => {};
 const validateTwilioSignature = (..._args: any[]) => false;
 const stripWhatsappPrefix = (s: string) => s;
-const sendPushNotification = async (..._args: any[]) => {};
 const uploadScorecardImage = async (..._args: any[]) => null;
 const scanScorecardImage = async (..._args: any[]) => null;
 const scanScorecardImageWithGemini = async (..._args: any[]) => null;
@@ -131,7 +131,33 @@ async function notifyMatchParticipantsOfScoreUpdate(
 }
 
 // Helper to notify players of a bet result — uses WhatsApp when configured, Plivo SMS fallback
-async function notifyPlayersOfBetResult(
+async function async function notifyPlayersOfBetCreated
+  post.*bets
+  createBet
+    
+    
+    storage.createBet
+      
+      
+      
+      /api/bets
+      
+      createEventMatch(eventId, input)
+              // Fire-and-forget: notify bet participants
+              (async () => {
+                        try {
+                                    const matchPlayers = await storage.getMatchPlayers(eventId);
+                                    const allPlayerIds = [...(input.teamA?.playerIds ?? []), ...(input.teamB?.playerIds ?? [])];
+                                    const betName = (input as any).name || "New bet";
+                                    for (const pid of allPlayerIds) {
+                                                  const mp = matchPlayers.find((p: any) => p.id === pid);
+                                                  if (mp?.userId && mp.userId !== userId) {
+                                                                  sendPushNotification(mp.userId, betName, `You've been added to a bet`).catch(() => {});
+                                                  }
+                                    }
+                        } catch {}
+              })();
+        (
   playerUserIds: string[],
   matchName: string,
   result: string,
@@ -146,6 +172,8 @@ async function notifyPlayersOfBetResult(
       } else {
         await sendBetResult(user.phone, matchName, result, amount);
       }
+            // Send push notification
+            sendPushNotification(userId, matchName, `Bet result: ${result} — ${amount}`).catch(() => {});
     } catch (err) {
       console.error(`Failed to send bet result notification to user ${userId}:`, err);
     }
@@ -1335,7 +1363,8 @@ export async function registerRoutes(
         .filter((id): id is string => !!id && id !== userId);
       if (recipientIds.length > 0) {
         const matchDisplayName = match.name || match.courseName || "your match";
-        notifyPlayersOfBetResult(
+        notifyPlayersOfBetCreated
+          (
           recipientIds,
           matchDisplayName,
           "Bet results have been recorded",
