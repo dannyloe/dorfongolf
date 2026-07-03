@@ -627,14 +627,29 @@ export async function registerRoutes(
     const playerList = players.map((p) => `- ID ${p.id}: ${p.name}`).join("\n");
     const prompt = `You are parsing a golf scorecard from OCR output.\n\nOCR text from the scorecard:\n${ocrText}\n\nPlayers in this match:\n${playerList}\n\nReturn a JSON object with this exact shape — no markdown, no extra text:\n{\n  "holeCount": <number of holes played, 9 or 18>,\n  "scores": [\n    {\n      "playerId": <player ID from the list above>,\n      "playerName": "<player name>",\n      "holes": [<score for hole 1>, <score for hole 2>, ...]\n    }\n  ]\n}\n\nRules:\n- holes array length must equal holeCount\n- Use null for any hole score that is unreadable or missing\n- Only include players from the list above\n- If you cannot match a column to a player, omit that player\n- Scores are integers (gross strokes, typically 1–12)`;
     try {
-      const message = await anthropic.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
-      });
-      const text = message.content[0].type === "text" ? message.content[0].text : "";
-      const parsed = JSON.parse(text);
-      return res.json(parsed);
+      // Heuristic OCR scorecard parser — no AI API needed
+      const ocrLines = ocrText.split(/\r?\n/).map((l: string) => l.trim()).filter(Boolean);
+      const scoreResults: { playerId: number; playerName: string; holes: (number | null)[] }[] = [];
+
+      for (const player of players) {
+        const nameParts = player.name.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2);
+        const playerLine = ocrLines.find((line: string) => {
+          const lower = line.toLowerCase();
+          return nameParts.some((part: string) => lower.includes(part));
+        });
+        if (!playerLine) continue;
+
+        // Extract numbers in golf score range (1–15)
+        const nums = (playerLine.match(/\b(1[0-5]|[1-9])\b/g) ?? []).map(Number);
+        const take = nums.length >= 18 ? 18 : 9;
+        const holes: (number | null)[] = nums.slice(0, take);
+        while (holes.length < take) holes.push(null);
+
+        scoreResults.push({ playerId: player.id, playerName: player.name, holes });
+      }
+
+      const holeCount = scoreResults.some(s => s.holes.filter(Boolean).length > 9) ? 18 : 9;
+      return res.json({ holeCount, scores: scoreResults });
     } catch (err) {
       console.error("[/scan]", err);
       return res.status(500).json({ error: String(err) });
