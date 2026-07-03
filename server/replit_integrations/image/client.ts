@@ -1,20 +1,25 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-// This is using Replit's AI Integrations service, which provides Gemini-compatible API access without requiring your own Gemini API key.
+// Supports both Replit AI Integrations (AI_INTEGRATIONS_GEMINI_API_KEY + AI_INTEGRATIONS_GEMINI_BASE_URL)
+// and a standard Gemini API key (GEMINI_API_KEY) for Railway / other hosts.
 function createAIClient() {
-  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  if (!apiKey || !baseUrl) {
-    console.warn("AI Integrations environment variables not set. AI features will be unavailable.");
-    return null;
+  const replitKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const replitBase = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
+  const geminiKey = process.env.GEMINI_API_KEY;
+
+  if (replitKey && replitBase) {
+    return new GoogleGenAI({
+      apiKey: replitKey,
+      httpOptions: { apiVersion: "", baseUrl: replitBase },
+    });
   }
-  return new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      apiVersion: "",
-      baseUrl,
-    },
-  });
+
+  if (geminiKey) {
+    return new GoogleGenAI({ apiKey: geminiKey });
+  }
+
+  console.warn("No Gemini API key found (GEMINI_API_KEY or AI_INTEGRATIONS_GEMINI_API_KEY). AI features will be unavailable.");
+  return null;
 }
 
 export const ai = createAIClient();
@@ -47,4 +52,3 @@ export async function generateImage(prompt: string): Promise<string> {
   const mimeType = imagePart.inlineData.mimeType || "image/png";
   return `data:${mimeType};base64,${imagePart.inlineData.data}`;
 }
-
