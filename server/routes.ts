@@ -224,7 +224,7 @@ export async function registerRoutes(
 // Native iOS APNs device token registration
   app.post("/api/notifications/register", isAuthenticated, async (req, res) => {
     const { token, platform } = req.body as { token: string; platform: string };
-    const userId = parseInt((req.user as any).claims.sub, 10);
+    const userId = (req.user as any).claims.sub as string;
     if (!token) return res.status(400).json({ error: "token required" });
     try {
       await db
@@ -239,7 +239,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/notifications/register", isAuthenticated, async (req, res) => {
-    const userId = parseInt((req.user as any).claims.sub, 10);
+    const userId = (req.user as any).claims.sub as string;
     try {
       await db.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
       return res.json({ ok: true });
