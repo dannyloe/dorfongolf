@@ -337,16 +337,19 @@ export async function registerRoutes(
       
       const currentUser = await storage.getUser(user.claims.sub);
       // Use presetPlayerName if claimed, otherwise fall back to firstName/lastName or email
-      const name = currentUser?.presetPlayerName 
-        || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '') 
-        || user.claims.email 
-        || "Creator";
+// Do NOT fall back to "Creator" — skip auto-adding the creator if name can't be resolved
+const name = currentUser?.presetPlayerName 
+  || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '') 
+  || user.claims.email 
+  || null;
 
-      await storage.addPlayer({
-        matchId: match.id,
-        userId: user.claims.sub,
-        name: name,
-      }, match.courseId ?? undefined);
+if (name) {
+  await storage.addPlayer({
+    matchId: match.id,
+    userId: user.claims.sub,
+    name: name,
+  }, match.courseId ?? undefined);
+}
 
       res.status(201).json(match);
     } catch (err) {
