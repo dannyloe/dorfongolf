@@ -30,6 +30,7 @@ export const users = pgTable("users", {
   authProvider: text("auth_provider").default("local"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export type UpsertUser = typeof users.$inferInsert;
