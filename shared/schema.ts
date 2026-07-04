@@ -119,6 +119,7 @@ export const players = pgTable("players", {
   presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name updates
   handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4), copied from player_handicaps on add
   teeId: integer("tee_id"), // References courseTees for handicap calculations
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const scores = pgTable("scores", {
@@ -1566,11 +1567,3 @@ export const ALL_MATCH_OPTIONS = [
   { value: MATCH_TYPES.TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.TWO_THREE_BALL] },
   { value: MATCH_TYPES.ONE_TWO_THREE_BALL as MatchType, label: MATCH_TYPE_LABELS[MATCH_TYPES.ONE_TWO_THREE_BALL] },
 ];
-
-export const deviceTokens = pgTable("device_tokens", {
-  id: serial("id").primaryKey(),
-  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
-  platform: text("platform").notNull().default("ios"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
