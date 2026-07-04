@@ -8,15 +8,11 @@ import { db } from "./db";
 import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable, users as usersTable, smsOptIns } from "@shared/schema";
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
 import { calculateMatchBets } from "./betting/calculate";
-import { sendPushToUsers } from "./notifications/apns";
-import { sendPushNotification } from "./pushNotifications";
-import { deviceTokens } from "../shared/schema";
 // import { ai } from "./replit_integrations/image/client";
 // import { Type as GenAIType } from "@google/genai";
 // import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
 // import { isWhatsappConfigured, getTwilioWhatsappNumber, sendMatchInvitationWhatsApp, sendScoreUpdateWhatsApp, sendBetResultWhatsApp, validateTwilioSignature, stripWhatsappPrefix } from "./twilio";
 // import { sendPushNotification } from "./pushNotifications";
-import { ai } from "./replit_integrations/image/client";
 // import { scanScorecardImage, scanScorecardImageWithGemini, scanScorecardImageWithGrok, parseSmsBetText, detectScoreText, computeBetSignature, checkBetDuplicate, scanBetSlip } from "./scanHelper";
 // import { analyzeCorrectionLogs, analyzeByCourseName } from "./scanAnalysis";
 // import { uploadScorecardImage } from "./imageStorage";
@@ -37,6 +33,7 @@ const sendScoreUpdateWhatsApp = async (..._args: any[]) => {};
 const sendBetResultWhatsApp = async (..._args: any[]) => {};
 const validateTwilioSignature = (..._args: any[]) => false;
 const stripWhatsappPrefix = (s: string) => s;
+const sendPushNotification = async (..._args: any[]) => {};
 const uploadScorecardImage = async (..._args: any[]) => null;
 const scanScorecardImage = async (..._args: any[]) => null;
 const scanScorecardImageWithGemini = async (..._args: any[]) => null;
@@ -220,32 +217,7 @@ export async function registerRoutes(
       res.status(500).json({ message: "Internal server error" });
     }
   });
-// Native iOS APNs device token registration
-  app.post("/api/notifications/register", isAuthenticated, async (req, res) => {
-    const { token, platform } = req.body as { token: string; platform: string };
-    const userId = (req.user as any).claims.sub as string;
-    if (!token) return res.status(400).json({ error: "token required" });
-    try {
-      await db
-        .insert(deviceTokens)
-        .values({ userId, token, platform: platform ?? "ios" })
-        .onConflictDoUpdate({ target: deviceTokens.token, set: { userId, platform: platform ?? "ios" } });
-      return res.json({ ok: true });
-    } catch (err) {
-      console.error("[notifications/register]", err);
-      return res.status(500).json({ error: "Failed to register token" });
-    }
-  });
 
-  app.delete("/api/notifications/register", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub as string;
-    try {
-      await db.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
-      return res.json({ ok: true });
-    } catch (err) {
-      return res.status(500).json({ error: "Failed to unregister token" });
-    }
-  });
   // In-app notification feed endpoints
   app.get("/api/notifications", isAuthenticated, async (req, res) => {
     try {
@@ -337,19 +309,16 @@ export async function registerRoutes(
       
       const currentUser = await storage.getUser(user.claims.sub);
       // Use presetPlayerName if claimed, otherwise fall back to firstName/lastName or email
-// Do NOT fall back to "Creator" — skip auto-adding the creator if name can't be resolved
-const name = currentUser?.presetPlayerName 
-  || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '') 
-  || user.claims.email 
-  || null;
+      const name = currentUser?.presetPlayerName 
+        || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '') 
+        || user.claims.email 
+        || "Creator";
 
-if (name) {
-  await storage.addPlayer({
-    matchId: match.id,
-    userId: user.claims.sub,
-    name: name,
-  }, match.courseId ?? undefined);
-}
+      await storage.addPlayer({
+        matchId: match.id,
+        userId: user.claims.sub,
+        name: name,
+      }, match.courseId ?? undefined);
 
       res.status(201).json(match);
     } catch (err) {
@@ -600,70 +569,6 @@ if (name) {
       res.status(500).json({ message: "Internal server error" });
     }
   });
-  // Scorecard image scan — iOS app sends base64 image, server calls Gemini
-  app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
-    const { imageData, players } = req.body as {
-      imageData: string;
-      players: { id: number; name: string }[];
-    };
-    if (!imageData || !players?.length) {
-      return res.status(400).json({ error: "imageData and players required" });
-    }
-    // Read env var at request time using bracket notation to prevent esbuild tree-shaking
-    const geminiKey = (process as any)["env"]["GEMINI_API_KEY"];
-    if (!geminiKey) {
-      console.error("[/scan] GEMINI_API_KEY not set in environment");
-      return res.status(503).json({ error: "AI not configured" });
-    }
-    try {
-      // Inline require at runtime — avoids module-level tree-shaking issues
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { GoogleGenAI } = require("@google/genai") as typeof import("@google/genai");
-      const scanAi = new GoogleGenAI({ apiKey: geminiKey });
-
-      const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
-      const prompt = `You are reading a golf scorecard photo. Your job is to extract handwritten stroke scores only.
-
-Players you are looking for (id: name):
-${playerList}
-
-CRITICAL RULES — follow these exactly:
-1. ONLY return scores for players in the list above. NEVER invent, add, or guess players not in the list.
-2. For each player in the list, scan the scorecard for their name (or a recognizable abbreviation/nickname) and read their row of scores.
-3. If you cannot find a player from the list on the card, omit them from the output — do not make up scores.
-4. holeCount is 9 or 18 depending on how many holes have scores filled in.
-5. holes array length must exactly equal holeCount.
-6. Use null for any hole that is blank, crossed out, or illegible.
-7. Ignore all printed text: yardages, par values, course name, handicap rows. Only read handwritten stroke numbers.
-8. Stroke scores per hole are almost always a single digit (3–8). Two-digit scores (10+) are rare — if unsure, prefer the single digit reading.
-
-Return ONLY valid JSON with no markdown, no code fences, no explanation:
-{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}`;
-
-      const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
-      const mimeType = imageData.startsWith("data:image/")
-        ? (imageData.match(/data:(image\/[^;]+)/)?.[1] ?? "image/jpeg")
-        : "image/jpeg";
-
-      const response = await scanAi.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts: [
-          { text: prompt },
-          { inlineData: { mimeType, data: base64Data } },
-        ]}],
-      });
-
-      const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-      console.log("[/scan] Gemini raw:", raw.slice(0, 400));
-      const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-      const parsed = JSON.parse(jsonStr);
-      return res.json(parsed);
-    } catch (err) {
-      console.error("[/scan] error:", err);
-      return res.status(500).json({ error: String(err) });
-    }
-  });
-
 
   // GET /api/matches/:id/calculate
   // Returns bet standings / settlement amounts for every bet on this match.
@@ -680,60 +585,7 @@ Return ONLY valid JSON with no markdown, no code fences, no explanation:
       return res.status(500).json({ error: "Calculation failed" });
     }
   });
-  // Native iOS scorecard scan — device OCR, server parses with Claude
-  app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
-  const { imageData, players } = req.body as {
-    imageData: string;
-    players: { id: number; name: string }[];
-  };
-  if (!imageData || !players?.length) {
-    return res.status(400).json({ error: "imageData and players required" });
-  }
 
-  console.log("[/scan] ai available:", !!ai);
-  if (!ai) {
-    return res.status(503).json({ error: "AI not configured — GEMINI_API_KEY missing from environment" });
-  }
-
-  try {
-    const playerList = players.map((p: { id: number; name: string }) => `${p.id}: ${p.name}`).join("\n");
-    const prompt = `Look at this golf scorecard photo and extract the stroke scores for each player.
-
-Players (id: name):
-${playerList}
-
-Return ONLY a JSON object with no markdown or explanation:
-{"holeCount":9,"scores":[{"playerId":17,"playerName":"Doc Roberts","holes":[4,3,5,4,4,3,5,4,4]}]}
-
-Rules:
-- holeCount is 9 or 18 depending on how many holes are filled in
-- holes array length must equal holeCount; use null for blank or unreadable holes
-- Match player names approximately — nicknames and abbreviations are fine
-- Ignore printed yardages, pars, and course info — only extract handwritten stroke scores`;
-
-    const base64Data = imageData.replace(/^data:image\/[^;]+;base64,/, "");
-    const mimeType = imageData.startsWith("data:image/")
-      ? (imageData.match(/data:(image\/[^;]+)/)?.[1] ?? "image/jpeg")
-      : "image/jpeg";
-
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [{ role: "user", parts: [
-        { text: prompt },
-        { inlineData: { mimeType, data: base64Data } },
-      ]}],
-    });
-
-    const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    console.log("[/scan] Gemini raw:", raw.slice(0, 400));
-    const jsonStr = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
-    const parsed = JSON.parse(jsonStr);
-    return res.json(parsed);
-  } catch (err) {
-    console.error("[/scan] error:", err);
-    return res.status(500).json({ error: String(err) });
-  }
-});;;;;
   app.delete(api.matches.delete.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const user = req.user as any;
@@ -1429,8 +1281,7 @@ Rules:
         .filter((id): id is string => !!id && id !== userId);
       if (recipientIds.length > 0) {
         const matchDisplayName = match.name || match.courseName || "your match";
-        notifyPlayersOfBetCreated
-          (
+        notifyPlayersOfBetResult(
           recipientIds,
           matchDisplayName,
           "Bet results have been recorded",
@@ -2536,47 +2387,6 @@ Rules:
   });
 
   // Scorecard OCR Scanning
-  // iOS scorecard scan — wraps scanScorecardImageWithGemini for the mobile app
-  app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
-    const { imageData, players } = req.body as {
-      imageData: string;
-      players: { id: number; name: string }[];
-    };
-    if (!imageData || !players?.length) {
-      return res.status(400).json({ error: "imageData and players required" });
-    }
-    try {
-      const result = await scanScorecardImageWithGemini({
-        imageBase64: imageData,
-        playerNames: players.map((p: { id: number; name: string }) => p.name),
-      });
-
-      // Determine holeCount from the highest hole number returned
-      const maxHole = result.scores.reduce((max, player) =>
-        player.holes.reduce((m, h) => Math.max(m, h.holeNumber), max), 0);
-      const holeCount = maxHole > 9 ? 18 : 9;
-
-      // Normalise player names to IDs and build flat holes array
-      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-      const scores = result.scores.map(player => {
-        const matched = players.find((p: { id: number; name: string }) => {
-          const pn = norm(p.name); const sn = norm(player.playerName);
-          return pn === sn || pn.startsWith(sn) || sn.startsWith(pn) || pn.includes(sn) || sn.includes(pn);
-        });
-        const holes: (number | null)[] = Array(holeCount).fill(null);
-        for (const h of player.holes) {
-          if (h.holeNumber >= 1 && h.holeNumber <= holeCount) holes[h.holeNumber - 1] = h.strokes;
-        }
-        return { playerId: matched?.id ?? -1, playerName: matched?.name ?? player.playerName, holes };
-      }).filter(s => s.playerId !== -1);
-
-      return res.json({ holeCount, scores });
-    } catch (err) {
-      console.error("[/scan] error:", err);
-      return res.status(500).json({ error: String(err) });
-    }
-  });
-
   app.post(api.scorecard.scan.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.scorecard.scan.input.parse(req.body);
@@ -3717,79 +3527,6 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
-
-    // ── Scorecard OCR scan: accepts on-device Vision text, returns structured scores via Claude
-    app.post("/api/matches/:id/scan", isAuthenticated, async (req, res) => {
-          try {
-                  const matchId = parseInt(req.params.id, 10);
-                  if (isNaN(matchId)) return res.status(400).json({ message: "Invalid match ID" });
-
-                  const match = await storage.getMatch(matchId);
-                  if (!match) return res.status(404).json({ message: "Match not found" });
-
-                  const { ocrText, players } = req.body as {
-                            ocrText: string;
-                            players: { id: number; name: string }[];
-                  };
-
-                  if (!ocrText || !Array.isArray(players) || players.length === 0) {
-                            return res.status(400).json({ message: "ocrText and players are required" });
-                  }
-
-                  const playerList = players.map(p => `- id ${p.id}: ${p.name}`).join("\n");
-
-                  const prompt = `You are parsing raw OCR text extracted from a golf scorecard photo.
-                  Your job is to identify each player's hole-by-hole stroke counts and return structured JSON.
-
-                  Players in this match (use these exact IDs):
-                  ${playerList}
-
-                  Rules:
-                  - Match player names from the OCR text to the list above using fuzzy matching (nicknames, partial names, initials are common)
-                  - Hole numbers run 1-18 (or 1-9 for a 9-hole round)
-                  - Stroke values must be integers between 1 and 15; ignore totals/out/in columns
-                  - If a hole score is illegible or missing, use null
-                  - Determine holeCount from the data (9 or 18)
-                  - Only include players you can confidently identify
-
-                  Return ONLY valid JSON in this exact shape, no explanation:
-                  {
-                    "holeCount": 18,
-                      "scores": [
-                          {
-                                "playerId": 123,
-                                      "playerName": "Danny",
-                                            "holes": [4, 5, 3, null, 4, 3, 5, 4, 4, 5, 4, 3, 4, 5, 4, 3, 5, 4]
-                                                }
-                                                  ]
-                                                  }
-
-                                                  OCR text:
-                                                  ${ocrText}`;
-
-                  const message = await anthropic.messages.create({
-                            model: "claude-haiku-4-5-20251001",
-                            max_tokens: 1024,
-                            messages: [{ role: "user", content: prompt }],
-                  });
-
-                  const raw = message.content[0].type === "text" ? message.content[0].text : "";
-                  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-                  if (!jsonMatch) {
-                            return res.status(422).json({ message: "Could not parse scorecard. Try a clearer photo." });
-                  }
-
-                  const parsed = JSON.parse(jsonMatch[0]) as {
-                            holeCount: number;
-                            scores: { playerId: number; playerName: string; holes: (number | null)[] }[];
-                  };
-
-                  res.json(parsed);
-          } catch (err) {
-                  console.error("[scan-scorecard error]", err);
-                  res.status(500).json({ message: "Internal server error" });
-          }
-    });
   // Bet slip photo scan endpoint (match-specific — kept for backward compat)
   app.post("/api/matches/:id/scan-bet-slip", isAuthenticated, async (req, res) => {
     try {
@@ -5540,6 +5277,18 @@ Transcript to parse: "${transcript}"`;
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
       }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // DELETE /api/account — soft-delete and anonymize the current user's account
+  app.delete("/api/account", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      await storage.deleteUserAccount(user.claims.sub);
+      res.json({ ok: true });
+    } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
     }
@@ -7488,11 +7237,9 @@ Transcript to parse: "${transcript}"`;
       res.status(500).json({ message: "Internal server error" });
     }
   });
-    return httpServer;
-  
+
+  return httpServer;
 }
-
-
 
 // Helper function to calculate optimal payments to settle all balances
 function calculateSettlementPayments(

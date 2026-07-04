@@ -55,6 +55,7 @@ export interface IStorage {
   claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect>;
   claimPresetPlayerWithName(userId: string, presetPlayerName: string, firstName: string, lastName: string): Promise<typeof users.$inferSelect>;
   updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean }): Promise<typeof users.$inferSelect>;
+  deleteUserAccount(userId: string): Promise<void>;
 
   // App methods
   createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match>;
@@ -723,7 +724,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMatchPlayers(matchId: number): Promise<Player[]> {
-    return db.select().from(players).where(eq(players.matchId, matchId));
+    return db.select().from(players).where(
+      and(eq(players.matchId, matchId), isNull(players.deletedAt))
+    );
   }
 
   async addPlayer(player: InsertPlayer, courseId?: number): Promise<Player> {
@@ -935,26 +938,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async removePlayerFromMatch(matchId: number, playerId: number): Promise<void> {
-    const existingScores = await db.select().from(scores)
-      .where(and(eq(scores.matchId, matchId), eq(scores.playerId, playerId)));
-    if (existingScores.length > 0) {
-      throw new Error("Cannot remove player with recorded scores. Delete their scores first.");
-    }
-
-    const eventMatchesList = await db.select().from(eventMatches).where(eq(eventMatches.eventId, matchId));
-    for (const em of eventMatchesList) {
-      const teamsList = await db.select().from(teams).where(eq(teams.eventMatchId, em.id));
-      for (const team of teamsList) {
-        await db.delete(teamMembers).where(
-          and(eq(teamMembers.teamId, team.id), eq(teamMembers.playerId, playerId))
-        );
-      }
-      await db.delete(matchPlayerHandicaps).where(
-        and(eq(matchPlayerHandicaps.eventMatchId, em.id), eq(matchPlayerHandicaps.playerId, playerId))
-      );
-    }
-
-    await db.delete(players).where(and(eq(players.matchId, matchId), eq(players.id, playerId)));
+    // Soft-delete: stamp deleted_at so the player is hidden from active queries
+    // but scores and bet history remain intact for historical records.
+    await db.update(players)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(players.id, playerId), eq(players.matchId, matchId)));
   }
 
   async deleteMatch(matchId: number): Promise<void> {
@@ -1370,6 +1358,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return updated;
+  }
+
+  async deleteUserAccount(userId: string): Promise<void> {
+    // Anonymize PII and soft-delete. Scores and match history remain
+    // under the player rows but the user identity is scrubbed.
+    await db.update(users).set({
+      deletedAt: new Date(),
+      firstName: null,
+      lastName: null,
+      email: null,
+      phone: null,
+      phoneVerified: false,
+      presetPlayerName: null,
+    }).where(eq(users.id, userId));
   }
 
   async getLedgerData(startDate?: Date, endDate?: Date) {
