@@ -738,7 +738,10 @@ export async function registerRoutes(
       }
       
       const input = api.eventMatches.createPress.input.parse(req.body);
-      const pressMatch = await storage.createPressMatch(parentMatchId, input.startHole, input.customName ?? null);
+      // pressSegment ("f9" | "b9" | "overall") is not yet in the shared zod schema,
+      // so read it directly from the raw body. Null is fine for legacy / non-Nassau presses.
+      const pressSegment: string | null = (req.body as any).pressSegment ?? null;
+      const pressMatch = await storage.createPressMatch(parentMatchId, input.startHole, input.customName ?? null, pressSegment);
       const withTeams = await storage.getEventMatchWithTeams(pressMatch.id);
       res.status(201).json(withTeams);
     } catch (err) {

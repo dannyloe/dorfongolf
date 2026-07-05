@@ -1144,7 +1144,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async createPressMatch(parentMatchId: number, startHole: number, customName?: string | null): Promise<EventMatch> {
+  async createPressMatch(parentMatchId: number, startHole: number, customName?: string | null, pressSegment?: string | null): Promise<EventMatch> {
     // Manual-press semantics by bet type:
     //   - Match Play (1 / 2 ball): a fresh match-play bet starting at `startHole`.
     //   - Stroke Play: a fresh stroke-play bet over holes startHole..18.
@@ -1188,6 +1188,7 @@ export class DatabaseStorage implements IStorage {
       unitAmount: pressUnitAmount,
       parentMatchId: parentMatchId,
       startHole: startHole,
+      pressSegment: pressSegment ?? null,
       autoPressOriginal: parentMatch.autoPressOriginal,
       autoPressAllPresses: false,
       // Inherit Nassau auto-press toggles so a Nassau press follows parent settings.
