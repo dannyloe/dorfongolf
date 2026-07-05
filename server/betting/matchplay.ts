@@ -1780,7 +1780,10 @@ export function calculateNassauResults(
   // somehow has a non-1 startHole is not misclassified.
   const isPress = !!eventMatch.parentMatchId && matchStartHole > 1;
   if (isPress) {
-    const pressLeg: 'front9' | 'back9' = matchStartHole <= 9 ? 'front9' : 'back9';
+      // Use stored pressSegment when available (reliable); fall back to startHole
+      // heuristic only for legacy records that predate the field.
+      const effectivePressSegment = eventMatch.pressSegment ?? (matchStartHole <= 9 ? 'f9' : 'b9');
+      const pressLeg: 'front9' | 'back9' = effectivePressSegment === 'f9' ? 'front9' : 'back9';
     return {
       front9: pressLeg === 'front9' ? calculateRange(matchStartHole, 9) : [],
       back9: pressLeg === 'back9' ? calculateRange(matchStartHole, 18) : [],
