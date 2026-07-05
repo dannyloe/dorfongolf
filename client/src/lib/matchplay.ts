@@ -135,6 +135,7 @@ interface EventMatch {
   matchType: string;
   startHole?: number;
   parentMatchId?: number | null;
+  pressSegment?: string | null; // "f9" | "b9" | "overall" — stored on manual presses; null for base bets and auto-presses
   autoPressOriginal?: boolean;
   autoPressAllPresses?: boolean;
   autoPressNassauFront9?: boolean;
