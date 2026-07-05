@@ -183,6 +183,7 @@ export async function calculateMatchBets(
       matchType: em.matchType,
       unitAmount: em.unitAmount,
       startHole: em.startHole,
+      pressSegment: (em as any).pressSegment ?? null,
       parentMatchId: em.parentMatchId ?? null,
       autoPressOriginal: em.autoPressOriginal,
       autoPressAllPresses: em.autoPressAllPresses,
