@@ -135,6 +135,7 @@ export const eventMatches = pgTable("event_matches", {
   eventId: integer("event_id").notNull(),
   name: text("name").notNull(),
   customName: text("custom_name"), // Optional user-supplied label for manual presses
+  pressSegment: text("press_segment"), // "f9" | "b9" | "overall" — set on manual press creation; null for base bets and auto-presses
   matchType: text("match_type").notNull().default("match_play"),
   unitAmount: integer("unit_amount").notNull().default(0),
   parentMatchId: integer("parent_match_id"),
