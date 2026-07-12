@@ -14,6 +14,9 @@ export const groups = pgTable("groups", {
   inviteCode: text("invite_code").unique(),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  parentGroupId: integer("parent_group_id"),
+  billingUserId: text("billing_user_id"),
+  planTier: text("plan_tier").notNull().default('free'),
 });
 
 export const groupMemberships = pgTable("group_memberships", {
@@ -36,9 +39,16 @@ export const groupJoinRequests = pgTable("group_join_requests", {
 export const groupPlayers = pgTable("group_players", {
   id: serial("id").primaryKey(),
   groupId: integer("group_id").notNull(),
-  presetPlayerId: integer("preset_player_id").notNull(),
+  presetPlayerId: integer("preset_player_id"),
   addedBy: text("added_by"),
   createdAt: timestamp("created_at").defaultNow(),
+  linkedUserId: text("linked_user_id"),
+  displayName: text("display_name"),
+  teePreference: text("tee_preference"),
+  handicapIndex: integer("handicap_index"),
+  handicapOverridden: boolean("handicap_overridden").notNull().default(false),
+  handicapPendingValue: integer("handicap_pending_value"),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const courses = pgTable("courses", {
