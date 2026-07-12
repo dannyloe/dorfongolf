@@ -86,7 +86,7 @@ export async function initializeAuth(app: Express) {
   // POST /api/auth/register
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { username, password, email, firstName, lastName } = req.body;
+      const { username, password, email, firstName, lastName, displayName } = req.body;
       if (!username || !password) {
         return res.status(400).json({ message: "Username and password required" });
       }
@@ -108,6 +108,7 @@ export async function initializeAuth(app: Express) {
         email: email || null,
         firstName: firstName || null,
         lastName: lastName || null,
+        displayName: displayName || null,
       });
       req.session.userId = user.id;
       req.session.save((err) => {
