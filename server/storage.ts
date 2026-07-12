@@ -45,7 +45,7 @@ import {
   type ApiKey,
   type DevicePushToken
 } from "@shared/schema";
-import { eq, and, lt, lte, inArray, or, isNull, isNotNull, desc, gte, sql } from "drizzle-orm";
+import { eq, and, lt, lte, inArray, or, isNull, isNotNull, desc, gte, sql, ilike } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -2441,20 +2441,24 @@ export class DatabaseStorage implements IStorage {
       username: users.username,
       email: users.email,
     }).from(users)
-      // NOTE: this must be ONE raw sql`` fragment, not and(eq(...), sql`...`).
-      // Mixing a query-builder helper (eq/and) with a separate raw sql chunk in
-      // the same .where() garbled Drizzle's bind-parameter numbering here and
-      // produced a Postgres syntax error at runtime (caught 2026-07-12 — the
-      // query worked fine run directly in psql, only broke through Drizzle).
-      .where(sql`
-        ${users.discoverable} = true
-        AND (
-          LOWER(COALESCE(${users.presetPlayerName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
-          OR LOWER(COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
-          OR LOWER(COALESCE(${users.username}, '')) LIKE LOWER(${'%' + trimmed + '%'})
-          OR LOWER(COALESCE(${users.email}, '')) LIKE LOWER(${'%' + trimmed + '%'})
+      // Switched from hand-written raw sql`` to Drizzle's own ilike()/or()/and()
+      // helpers — two earlier attempts at a raw SQL fragment here both threw a
+      // Postgres syntax error at runtime despite the equivalent SQL working fine
+      // run directly in psql (caught + reproduced 2026-07-12). Using the tested
+      // query-builder operators instead of debugging Drizzle's raw-sql templating
+      // further. Loses the "first + last name concatenated" match (can't express
+      // that without raw SQL), but firstName/lastName are still each matched
+      // individually, which covers the practical case.
+      .where(and(
+        eq(users.discoverable, true),
+        or(
+          ilike(users.presetPlayerName, `%${trimmed}%`),
+          ilike(users.firstName, `%${trimmed}%`),
+          ilike(users.lastName, `%${trimmed}%`),
+          ilike(users.username, `%${trimmed}%`),
+          ilike(users.email, `%${trimmed}%`),
         )
-      `);
+      ));
     return rows
       .filter(r => r.id !== excludeUserId)
       .map(r => ({
