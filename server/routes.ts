@@ -308,11 +308,13 @@ export async function registerRoutes(
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
-      // Use presetPlayerName if claimed, otherwise fall back to firstName/lastName or email
-      const name = currentUser?.presetPlayerName 
-        || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '') 
-        || user.claims.email 
-        || "Creator";
+      // Use presetPlayerName if claimed, otherwise fall back to firstName/lastName, DB email, username, or JWT email
+      const name = currentUser?.presetPlayerName
+        || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '')
+        || currentUser?.email
+        || currentUser?.username
+        || user.claims.email
+        || "Player";
 
       await storage.addPlayer({
         matchId: match.id,
@@ -710,15 +712,45 @@ export async function registerRoutes(
     const match = await storage.getMatch(eventMatch.eventId);
     if (!match) return res.status(404).json({ message: "Match not found" });
     
-    const isAdmin = userId === ADMIN_USER_ID;
-    const isCreator = match.creatorId === userId;
-    
-    if (!isAdmin && !isCreator) {
-      return res.status(403).json({ message: "Only the creator can delete bets" });
+    const allowed = await canWriteScores(eventMatch.eventId, userId, match);
+    if (!allowed) {
+      return res.status(403).json({ message: "Only match participants can delete bets" });
     }
-    
+
     await storage.deleteEventMatch(eventMatchId);
     res.status(204).send();
+  });
+
+  // Update wager amount for an event match
+  app.patch('/api/event-matches/:id/wager', isAuthenticated, async (req, res) => {
+    const eventMatchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const eventMatch = await storage.getEventMatch(eventMatchId);
+      if (!eventMatch) return res.status(404).json({ message: "Event match not found" });
+
+      const match = await storage.getMatch(eventMatch.eventId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      const allowed = await canWriteScores(eventMatch.eventId, userId, match);
+      if (!allowed) return res.status(403).json({ message: "Only match participants can update bets" });
+
+      const schema = z.object({ unitAmount: z.number().int().min(0) });
+      const { unitAmount } = schema.parse(req.body);
+
+      await db.update(eventMatchesTable)
+        .set({ unitAmount })
+        .where(eq(eventMatchesTable.id, eventMatchId));
+
+      const updated = await storage.getEventMatchWithTeams(eventMatchId);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.post(api.eventMatches.createPress.path, isAuthenticated, async (req, res) => {
