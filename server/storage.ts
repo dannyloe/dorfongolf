@@ -2421,6 +2421,13 @@ export class DatabaseStorage implements IStorage {
 
   // Phase 4 — global player search. Discoverable users only, name only,
   // no group affiliation or private data in the result.
+  //
+  // Matches preset_player_name / first+last name first, but falls back to
+  // username and email — most accounts right now (test signups, early real
+  // accounts) have never had a name set, so name-only matching found nobody.
+  // Email/username are still only used to MATCH the search query; the
+  // returned displayName never exposes them unless there's truly nothing
+  // else to show (same fallback chain used at match-creation time).
   async searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string }>> {
     const trimmed = query.trim();
     if (trimmed.length < 3) return [];
@@ -2429,6 +2436,7 @@ export class DatabaseStorage implements IStorage {
       firstName: users.firstName,
       lastName: users.lastName,
       presetPlayerName: users.presetPlayerName,
+      username: users.username,
       email: users.email,
     }).from(users)
       .where(and(
@@ -2436,13 +2444,19 @@ export class DatabaseStorage implements IStorage {
         sql`(
           LOWER(COALESCE(${users.presetPlayerName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
           OR LOWER(COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
+          OR LOWER(COALESCE(${users.username}, '')) LIKE LOWER(${'%' + trimmed + '%'})
+          OR LOWER(COALESCE(${users.email}, '')) LIKE LOWER(${'%' + trimmed + '%'})
         )`
       ));
     return rows
       .filter(r => r.id !== excludeUserId)
       .map(r => ({
         id: r.id,
-        displayName: r.presetPlayerName || `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email || 'Player',
+        displayName: r.presetPlayerName
+          || `${r.firstName || ''} ${r.lastName || ''}`.trim()
+          || r.username
+          || r.email
+          || 'Player',
       }));
   }
 
