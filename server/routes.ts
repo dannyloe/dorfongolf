@@ -4349,12 +4349,14 @@ Transcript to parse: "${transcript}"`;
         handicapIndex: z.number().int().nullable().optional(),
         teePreference: z.string().nullable().optional(),
         discoverable: z.boolean().optional(),
+        displayName: z.string().trim().min(1).max(60).nullable().optional(),
       });
       const input = schema.parse(req.body);
-      const updateData: { handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean } = {};
+      const updateData: { handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean; displayName?: string | null } = {};
       if (input.handicapIndex !== undefined) updateData.handicapIndex = input.handicapIndex;
       if (input.teePreference !== undefined) updateData.teePreference = input.teePreference;
       if (input.discoverable !== undefined) updateData.discoverable = input.discoverable;
+      if (input.displayName !== undefined) updateData.displayName = input.displayName;
 
       const updated = await storage.updateUserProfile(userId, updateData);
       res.json({
@@ -4362,6 +4364,8 @@ Transcript to parse: "${transcript}"`;
         handicapIndex: updated.handicapIndex,
         teePreference: updated.teePreference,
         discoverable: updated.discoverable,
+        displayName: updated.displayName,
+      });
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
