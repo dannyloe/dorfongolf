@@ -721,7 +721,7 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
-  // Update wager amount for an event match
+  // Update wager amount and/or match type for an event match
   app.patch('/api/event-matches/:id/wager', isAuthenticated, async (req, res) => {
     const eventMatchId = parseInt(req.params.id);
     const user = req.user as any;
@@ -737,12 +737,21 @@ export async function registerRoutes(
       const allowed = await canWriteScores(eventMatch.eventId, userId, match);
       if (!allowed) return res.status(403).json({ message: "Only match participants can update bets" });
 
-      const schema = z.object({ unitAmount: z.number().int().min(0) });
-      const { unitAmount } = schema.parse(req.body);
+      const schema = z.object({
+        unitAmount: z.number().int().min(0).optional(),
+        matchType: z.string().optional(),
+      });
+      const updates = schema.parse(req.body);
 
-      await db.update(eventMatchesTable)
-        .set({ unitAmount })
-        .where(eq(eventMatchesTable.id, eventMatchId));
+      const setFields: Record<string, any> = {};
+      if (updates.unitAmount !== undefined) setFields.unitAmount = updates.unitAmount;
+      if (updates.matchType !== undefined) setFields.matchType = updates.matchType;
+
+      if (Object.keys(setFields).length > 0) {
+        await db.update(eventMatchesTable)
+          .set(setFields)
+          .where(eq(eventMatchesTable.id, eventMatchId));
+      }
 
       const updated = await storage.getEventMatchWithTeams(eventMatchId);
       res.json(updated);
@@ -4188,6 +4197,179 @@ Transcript to parse: "${transcript}"`;
     }
     await storage.removeGroupPlayer(groupId, presetPlayerId);
     res.status(204).send();
+  });
+
+  // === PHASE 4: GROUP-SCOPED ROSTER — THREE ADD-PLAYER PATHS ===
+
+  // Global player search — name only, discoverable users only, no group
+  // affiliation or private data in the response. 3-character minimum.
+  app.get('/api/users/search', isAuthenticated, async (req, res) => {
+    try {
+      const q = typeof req.query.q === 'string' ? req.query.q : '';
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (q.trim().length < 3) {
+        return res.json([]);
+      }
+      const results = await storage.searchDiscoverableUsers(q, userId);
+      res.json(results);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Path 1: Add guest — name + optional handicap/tee, no account required.
+  app.post('/api/groups/:id/players/guest', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const schema = z.object({
+        name: z.string().min(1),
+        handicapIndex: z.number().int().nullable().optional(),
+        teePreference: z.string().nullable().optional(),
+      });
+      const input = schema.parse(req.body);
+      const gp = await storage.addGroupPlayerGuest(groupId, input.name, {
+        handicapIndex: input.handicapIndex ?? null,
+        teePreference: input.teePreference ?? null,
+        addedBy: userId,
+      });
+      res.status(201).json(gp);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Path 2: Add from global search result — links a real account, pre-populates
+  // from that user's canonical profile.
+  app.post('/api/groups/:id/players/from-user', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const schema = z.object({ userId: z.string().min(1) });
+      const input = schema.parse(req.body);
+      const gp = await storage.addGroupPlayerFromUser(groupId, input.userId, userId);
+      res.status(201).json(gp);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(400).json({ message: err instanceof Error ? err.message : "Could not add player" });
+    }
+  });
+
+  // Path 3: Copy from my groups — roster of people already in a group this
+  // admin manages, excluding this group and anyone already in it.
+  app.get('/api/groups/:id/players/copy-candidates', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const candidates = await storage.getCopyFromMyGroupsCandidates(userId, groupId);
+      res.json(candidates);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Copy a specific candidate (from Path 3) into this group. Re-inserts a new
+  // group_players row here — same person, independent record per group,
+  // consistent with "each group gets its own copy" from the identity model.
+  app.post('/api/groups/:id/players/copy/:groupPlayerId', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const sourceGroupPlayerId = parseInt(req.params.groupPlayerId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const candidates = await storage.getCopyFromMyGroupsCandidates(userId, groupId);
+      const source = candidates.find(c => c.id === sourceGroupPlayerId);
+      if (!source) return res.status(404).json({ message: "Candidate not found" });
+
+      const gp = source.linkedUserId
+        ? await storage.addGroupPlayerFromUser(groupId, source.linkedUserId, userId)
+        : await storage.addGroupPlayerGuest(groupId, source.displayName || "Player", {
+            handicapIndex: source.handicapIndex,
+            teePreference: source.teePreference,
+            addedBy: userId,
+          });
+      res.status(201).json(gp);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Remove any group_players row by its own id — works regardless of which
+  // add-path created it (guest, user-search, or legacy preset-player link).
+  app.delete('/api/groups/:id/players/roster/:groupPlayerId', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const groupPlayerId = parseInt(req.params.groupPlayerId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can remove players" });
+    }
+    await storage.removeGroupPlayerById(groupId, groupPlayerId);
+    res.status(204).send();
+  });
+
+  // Canonical profile fields used for push-down (Phase 4). Separate from the
+  // legacy /api/users/profile route to avoid touching existing behavior there.
+  app.patch('/api/users/canonical-profile', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const schema = z.object({
+        handicapIndex: z.number().int().nullable().optional(),
+        teePreference: z.string().nullable().optional(),
+        discoverable: z.boolean().optional(),
+      });
+      const input = schema.parse(req.body);
+      const updateData: { handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean } = {};
+      if (input.handicapIndex !== undefined) updateData.handicapIndex = input.handicapIndex;
+      if (input.teePreference !== undefined) updateData.teePreference = input.teePreference;
+      if (input.discoverable !== undefined) updateData.discoverable = input.discoverable;
+
+      const updated = await storage.updateUserProfile(userId, updateData);
+      res.json({
+        id: updated.id,
+        handicapIndex: updated.handicapIndex,
+        teePreference: updated.teePreference,
+        discoverable: updated.discoverable,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   // === PAIRING ENDPOINTS ===

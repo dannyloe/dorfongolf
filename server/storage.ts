@@ -54,7 +54,7 @@ export interface IStorage {
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
   claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect>;
   claimPresetPlayerWithName(userId: string, presetPlayerName: string, firstName: string, lastName: string): Promise<typeof users.$inferSelect>;
-  updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean }): Promise<typeof users.$inferSelect>;
+  updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean; handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean }): Promise<typeof users.$inferSelect>;
   deleteUserAccount(userId: string): Promise<void>;
 
   // App methods
@@ -141,6 +141,12 @@ export interface IStorage {
   addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer>;
   removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean>;
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
+  // Phase 4 — group-scoped roster: three add-player paths + search + removal by row id
+  addGroupPlayerGuest(groupId: number, name: string, opts?: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string }): Promise<GroupPlayer>;
+  addGroupPlayerFromUser(groupId: number, targetUserId: string, addedBy?: string): Promise<GroupPlayer>;
+  getCopyFromMyGroupsCandidates(adminUserId: string, targetGroupId: number): Promise<GroupPlayer[]>;
+  searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string }>>;
+  removeGroupPlayerById(groupId: number, groupPlayerId: number): Promise<boolean>;
   getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
 
   // Hidden / auto-created player management
@@ -1346,13 +1352,16 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean }): Promise<typeof users.$inferSelect> {
+  async updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean; handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean }): Promise<typeof users.$inferSelect> {
     const updateData: Partial<typeof users.$inferInsert> = {};
     if (data.firstName !== undefined) updateData.firstName = data.firstName;
     if (data.lastName !== undefined) updateData.lastName = data.lastName;
     if (data.email !== undefined) updateData.email = data.email;
     if (data.phone !== undefined) updateData.phone = data.phone;
     if (data.phoneVerified !== undefined) updateData.phoneVerified = data.phoneVerified;
+    if (data.handicapIndex !== undefined) updateData.handicapIndex = data.handicapIndex;
+    if (data.teePreference !== undefined) updateData.teePreference = data.teePreference;
+    if (data.discoverable !== undefined) updateData.discoverable = data.discoverable;
 
     const [updated] = await db.update(users)
       .set(updateData)
@@ -2309,8 +2318,13 @@ export class DatabaseStorage implements IStorage {
     const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
     const result = [];
     for (const gp of gps) {
-      const [pp] = await db.select({ id: presetPlayers.id, name: presetPlayers.name })
-        .from(presetPlayers).where(eq(presetPlayers.id, gp.presetPlayerId));
+      // presetPlayerId is optional now (Phase 4) — guests and user-search adds
+      // may not have one, so skip the lookup rather than querying with null.
+      let pp: { id: number; name: string } | undefined;
+      if (gp.presetPlayerId != null) {
+        [pp] = await db.select({ id: presetPlayers.id, name: presetPlayers.name })
+          .from(presetPlayers).where(eq(presetPlayers.id, gp.presetPlayerId));
+      }
       result.push({ ...gp, presetPlayer: pp || undefined });
     }
     return result;
@@ -2323,6 +2337,122 @@ export class DatabaseStorage implements IStorage {
       addedBy: addedBy || null,
     }).returning();
     return gp;
+  }
+
+  // Phase 4 — Path 1: "Add guest". No account, no preset player row. The
+  // group_players row IS the record; displayName/handicapIndex/teePreference
+  // live directly on it.
+  async addGroupPlayerGuest(
+    groupId: number,
+    name: string,
+    opts: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string } = {}
+  ): Promise<GroupPlayer> {
+    const [gp] = await db.insert(groupPlayers).values({
+      groupId,
+      displayName: name,
+      handicapIndex: opts.handicapIndex ?? null,
+      teePreference: opts.teePreference ?? null,
+      addedBy: opts.addedBy || null,
+    }).returning();
+    return gp;
+  }
+
+  // Phase 4 — Path 2: "Search globally". Adds a real user account to the
+  // group's roster, pre-populated from their canonical profile and linked
+  // by linkedUserId (not a name-string guess).
+  async addGroupPlayerFromUser(
+    groupId: number,
+    targetUserId: string,
+    addedBy?: string
+  ): Promise<GroupPlayer> {
+    const existing = await db.select().from(groupPlayers)
+      .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.linkedUserId, targetUserId)));
+    if (existing.length > 0) return existing[0];
+
+    const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+    if (!targetUser) throw new Error("User not found");
+
+    const displayName = targetUser.presetPlayerName
+      || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim()
+      || targetUser.email
+      || targetUser.username
+      || "Player";
+
+    const [gp] = await db.insert(groupPlayers).values({
+      groupId,
+      linkedUserId: targetUserId,
+      displayName,
+      handicapIndex: targetUser.handicapIndex ?? null,
+      teePreference: targetUser.teePreference ?? null,
+      addedBy: addedBy || null,
+    }).returning();
+    return gp;
+  }
+
+  // Phase 4 — Path 3: "Copy from my groups". Roster of everyone already in a
+  // group this admin manages, excluding the target group and anyone already
+  // in it — so the client can offer "add someone you already know" without
+  // re-searching or re-typing them.
+  async getCopyFromMyGroupsCandidates(adminUserId: string, targetGroupId: number) {
+    const myMemberships = await db.select().from(groupMemberships)
+      .where(and(eq(groupMemberships.userId, adminUserId), eq(groupMemberships.role, 'admin')));
+    const otherGroupIds = myMemberships.map(m => m.groupId).filter(id => id !== targetGroupId);
+    if (otherGroupIds.length === 0) return [];
+
+    const alreadyInTarget = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, targetGroupId));
+    const alreadyLinkedUserIds = new Set(alreadyInTarget.map(gp => gp.linkedUserId).filter(Boolean));
+    const alreadyDisplayNames = new Set(alreadyInTarget.map(gp => gp.displayName?.toLowerCase()).filter(Boolean));
+
+    const candidates = await db.select().from(groupPlayers).where(inArray(groupPlayers.groupId, otherGroupIds));
+
+    // Dedup by linkedUserId first (reliable), then by display name (best-effort for guests)
+    const seen = new Set<string>();
+    const result: GroupPlayer[] = [];
+    for (const c of candidates) {
+      if (c.linkedUserId && alreadyLinkedUserIds.has(c.linkedUserId)) continue;
+      if (!c.linkedUserId && c.displayName && alreadyDisplayNames.has(c.displayName.toLowerCase())) continue;
+      const dedupeKey = c.linkedUserId || c.displayName?.toLowerCase() || `gp-${c.id}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      result.push(c);
+    }
+    return result;
+  }
+
+  // Phase 4 — global player search. Discoverable users only, name only,
+  // no group affiliation or private data in the result.
+  async searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string }>> {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) return [];
+    const rows = await db.select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      presetPlayerName: users.presetPlayerName,
+      email: users.email,
+    }).from(users)
+      .where(and(
+        eq(users.discoverable, true),
+        sql`(
+          LOWER(COALESCE(${users.presetPlayerName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
+          OR LOWER(COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
+        )`
+      ));
+    return rows
+      .filter(r => r.id !== excludeUserId)
+      .map(r => ({
+        id: r.id,
+        displayName: r.presetPlayerName || `${r.firstName || ''} ${r.lastName || ''}`.trim() || r.email || 'Player',
+      }));
+  }
+
+  // Preferred going forward — works for every group_players row (guest,
+  // user-search, or legacy preset-player-linked) since it keys off the
+  // roster row's own id rather than assuming a presetPlayerId exists.
+  async removeGroupPlayerById(groupId: number, groupPlayerId: number): Promise<boolean> {
+    await db.delete(groupPlayers)
+      .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.id, groupPlayerId)));
+    return true;
   }
 
   async removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean> {
