@@ -54,7 +54,7 @@ export interface IStorage {
   upsertUser(user: typeof users.$inferInsert): Promise<typeof users.$inferSelect>;
   claimPresetPlayer(userId: string, presetPlayerName: string | null): Promise<typeof users.$inferSelect>;
   claimPresetPlayerWithName(userId: string, presetPlayerName: string, firstName: string, lastName: string): Promise<typeof users.$inferSelect>;
-  updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean; handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean }): Promise<typeof users.$inferSelect>;
+  updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean; handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean; displayName?: string | null }): Promise<typeof users.$inferSelect>;
   deleteUserAccount(userId: string): Promise<void>;
 
   // App methods
@@ -121,7 +121,7 @@ export interface IStorage {
   deleteGroup(groupId: number): Promise<boolean>;
   
   // Group membership
-  getGroupMembers(groupId: number): Promise<(GroupMembership & { user?: { id: string; firstName: string | null; lastName: string | null; presetPlayerName: string | null; profileImageUrl: string | null } })[]>;
+  getGroupMembers(groupId: number): Promise<(GroupMembership & { user?: { id: string; displayName: string | null; firstName: string | null; lastName: string | null; presetPlayerName: string | null; profileImageUrl: string | null } })[]>;
   addGroupMember(groupId: number, userId: string, role: string): Promise<GroupMembership>;
   removeGroupMember(groupId: number, userId: string): Promise<boolean>;
   updateGroupMemberRole(groupId: number, userId: string, role: string): Promise<GroupMembership | null>;
@@ -1352,7 +1352,7 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean; handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean }): Promise<typeof users.$inferSelect> {
+  async updateUserProfile(userId: string, data: { firstName?: string; lastName?: string; email?: string; phone?: string; phoneVerified?: boolean; handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean; displayName?: string | null }): Promise<typeof users.$inferSelect> {
     const updateData: Partial<typeof users.$inferInsert> = {};
     if (data.firstName !== undefined) updateData.firstName = data.firstName;
     if (data.lastName !== undefined) updateData.lastName = data.lastName;
@@ -1362,6 +1362,7 @@ export class DatabaseStorage implements IStorage {
     if (data.handicapIndex !== undefined) updateData.handicapIndex = data.handicapIndex;
     if (data.teePreference !== undefined) updateData.teePreference = data.teePreference;
     if (data.discoverable !== undefined) updateData.discoverable = data.discoverable;
+    if (data.displayName !== undefined) updateData.displayName = data.displayName;
 
     const [updated] = await db.update(users)
       .set(updateData)
@@ -2229,6 +2230,7 @@ export class DatabaseStorage implements IStorage {
     for (const member of members) {
       const [user] = await db.select({
         id: users.id,
+        displayName: users.displayName,
         firstName: users.firstName,
         lastName: users.lastName,
         presetPlayerName: users.presetPlayerName,
@@ -2435,6 +2437,7 @@ export class DatabaseStorage implements IStorage {
     if (trimmed.length < 3) return [];
     const rows = await db.select({
       id: users.id,
+      displayName: users.displayName,
       firstName: users.firstName,
       lastName: users.lastName,
       presetPlayerName: users.presetPlayerName,
@@ -2449,9 +2452,15 @@ export class DatabaseStorage implements IStorage {
       // further. Loses the "first + last name concatenated" match (can't express
       // that without raw SQL), but firstName/lastName are still each matched
       // individually, which covers the practical case.
+      //
+      // We still search email (people know each other's emails), but email is
+      // never shown — the displayName fallback below stops at username, never
+      // falls through to the email address. 2026-07-12: added displayName as
+      // the primary match/display field now that registration actually sets it.
       .where(and(
         eq(users.discoverable, true),
         or(
+          ilike(users.displayName, `%${trimmed}%`),
           ilike(users.presetPlayerName, `%${trimmed}%`),
           ilike(users.firstName, `%${trimmed}%`),
           ilike(users.lastName, `%${trimmed}%`),
@@ -2463,10 +2472,10 @@ export class DatabaseStorage implements IStorage {
       .filter(r => r.id !== excludeUserId)
       .map(r => ({
         id: r.id,
-        displayName: r.presetPlayerName
+        displayName: r.displayName
+          || r.presetPlayerName
           || `${r.firstName || ''} ${r.lastName || ''}`.trim()
           || r.username
-          || r.email
           || 'Player',
       }));
   }
