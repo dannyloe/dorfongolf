@@ -4366,7 +4366,6 @@ Transcript to parse: "${transcript}"`;
         discoverable: updated.discoverable,
         displayName: updated.displayName,
       });
-      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
