@@ -23,6 +23,7 @@ export const users = pgTable("users", {
   phoneVerified: boolean("phone_verified").default(false),
   profileImageUrl: varchar("profile_image_url"),
   presetPlayerName: varchar("preset_player_name"),
+  displayName: varchar("display_name"),
   isAdmin: boolean("is_admin").default(false),
   // Local auth fields
   username: text("username").unique(),
