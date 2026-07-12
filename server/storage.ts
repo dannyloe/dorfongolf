@@ -2376,10 +2376,12 @@ export class DatabaseStorage implements IStorage {
     const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
     if (!targetUser) throw new Error("User not found");
 
-    const displayName = targetUser.presetPlayerName
+    // Never falls back to email — this is what shows in the roster.
+    const displayName = targetUser.displayName
+      || targetUser.presetPlayerName
       || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim()
-      || targetUser.email
       || targetUser.username
+      || "Player";
       || "Player";
 
     const [gp] = await db.insert(groupPlayers).values({
