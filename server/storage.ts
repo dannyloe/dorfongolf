@@ -2232,6 +2232,8 @@ export class DatabaseStorage implements IStorage {
         firstName: users.firstName,
         lastName: users.lastName,
         presetPlayerName: users.presetPlayerName,
+        username: users.username,
+        email: users.email,
         profileImageUrl: users.profileImageUrl,
         phone: users.phone,
         phoneVerified: users.phoneVerified,
@@ -2439,15 +2441,20 @@ export class DatabaseStorage implements IStorage {
       username: users.username,
       email: users.email,
     }).from(users)
-      .where(and(
-        eq(users.discoverable, true),
-        sql`(
+      // NOTE: this must be ONE raw sql`` fragment, not and(eq(...), sql`...`).
+      // Mixing a query-builder helper (eq/and) with a separate raw sql chunk in
+      // the same .where() garbled Drizzle's bind-parameter numbering here and
+      // produced a Postgres syntax error at runtime (caught 2026-07-12 — the
+      // query worked fine run directly in psql, only broke through Drizzle).
+      .where(sql`
+        ${users.discoverable} = true
+        AND (
           LOWER(COALESCE(${users.presetPlayerName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
           OR LOWER(COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')) LIKE LOWER(${'%' + trimmed + '%'})
           OR LOWER(COALESCE(${users.username}, '')) LIKE LOWER(${'%' + trimmed + '%'})
           OR LOWER(COALESCE(${users.email}, '')) LIKE LOWER(${'%' + trimmed + '%'})
-        )`
-      ));
+        )
+      `);
     return rows
       .filter(r => r.id !== excludeUserId)
       .map(r => ({
