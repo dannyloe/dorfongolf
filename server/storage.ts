@@ -2329,7 +2329,20 @@ export class DatabaseStorage implements IStorage {
         [pp] = await db.select({ id: presetPlayers.id, name: presetPlayers.name })
           .from(presetPlayers).where(eq(presetPlayers.id, gp.presetPlayerId));
       }
-      result.push({ ...gp, presetPlayer: pp || undefined });
+      // Linked real accounts: resolve the LIVE users.displayName rather than
+      // trusting whatever was copied into this row when they were added.
+      // group_players.displayName was a point-in-time snapshot, so it goes
+      // stale the moment someone updates their profile (or the fallback logic
+      // itself changes, as happened 2026-07-12 with the email-in-roster bug).
+      // Guests have no linkedUserId, so they keep using the stored value —
+      // it's their only source of truth.
+      let displayName = gp.displayName;
+      if (gp.linkedUserId) {
+        const [u] = await db.select({ displayName: users.displayName })
+          .from(users).where(eq(users.id, gp.linkedUserId));
+        if (u?.displayName) displayName = u.displayName;
+      }
+      result.push({ ...gp, displayName, presetPlayer: pp || undefined });
     }
     return result;
   }
