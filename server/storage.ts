@@ -2382,7 +2382,6 @@ export class DatabaseStorage implements IStorage {
       || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim()
       || targetUser.username
       || "Player";
-      || "Player";
 
     const [gp] = await db.insert(groupPlayers).values({
       groupId,
