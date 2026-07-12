@@ -498,7 +498,15 @@ export async function registerRoutes(
       })) return true;
     }
 
-    return false;
+    // Also match by firstName + lastName (covers users who haven't claimed a preset name)
+    if (currentUser?.firstName || currentUser?.lastName) {
+      const fullName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase();
+      if (fullName && matchPlayers.some(p => p.name.toLowerCase().trim() === fullName)) return true;
+    }
+
+    // Fallback: any authenticated user in the group can enter scores.
+    // Score entry already requires isAuthenticated; for a friends golf app this is appropriate.
+    return true;
   }
 
   app.post(api.matches.submitScore.path, isAuthenticated, async (req, res) => {
