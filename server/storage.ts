@@ -3,7 +3,7 @@ import { db } from "./db";
 import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
-  groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals,
+  groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
@@ -125,6 +125,11 @@ export interface IStorage {
   claimGroupAdmin(groupId: number, userId: string): Promise<Group>;
   dismissGroupDeletionWarning(groupId: number, userId: string): Promise<void>;
   getPendingDeletionWarningsForUser(userId: string): Promise<Array<{ group: Group; requestedByDisplayName: string }>>;
+  // Membership invites — see groupMembershipInvites comment in shared/schema.ts
+  createMembershipInviteIfNeeded(groupId: number, userId: string): Promise<void>;
+  getPendingMembershipInvitesForUser(userId: string): Promise<Group[]>;
+  acceptMembershipInvite(groupId: number, userId: string): Promise<void>;
+  dismissMembershipInvite(groupId: number, userId: string): Promise<void>;
 
   // Group membership
   getGroupMembers(groupId: number): Promise<(GroupMembership & { user?: { id: string; displayName: string | null; firstName: string | null; lastName: string | null; presetPlayerName: string | null; profileImageUrl: string | null } })[]>;
@@ -2353,6 +2358,63 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // Queues a "join as a member?" prompt for an admin-initiated roster link
+  // (search / copy / bulk-import). No-op if the user is already a member,
+  // or already has a pending invite for this group — safe to call every
+  // time addGroupPlayerFromUser runs, including for the group's own creator
+  // (who is already a member by the time this would ever fire for them).
+  async createMembershipInviteIfNeeded(groupId: number, userId: string): Promise<void> {
+    const existingMembership = await this.getGroupMembership(groupId, userId);
+    if (existingMembership) return;
+
+    const existingInvite = await db.select().from(groupMembershipInvites)
+      .where(and(
+        eq(groupMembershipInvites.groupId, groupId),
+        eq(groupMembershipInvites.userId, userId),
+        eq(groupMembershipInvites.status, 'pending'),
+      ));
+    if (existingInvite.length > 0) return;
+
+    await db.insert(groupMembershipInvites).values({ groupId, userId });
+  }
+
+  // Powers an app-open banner, parallel to getPendingDeletionWarningsForUser.
+  async getPendingMembershipInvitesForUser(userId: string): Promise<Group[]> {
+    const invites = await db.select().from(groupMembershipInvites)
+      .where(and(eq(groupMembershipInvites.userId, userId), eq(groupMembershipInvites.status, 'pending')));
+    if (invites.length === 0) return [];
+
+    const groupIds = invites.map(i => i.groupId);
+    let candidateGroups = await db.select().from(groups).where(inArray(groups.id, groupIds));
+    // Skip groups that got soft-deleted or are mid-deletion since the invite was queued.
+    candidateGroups = await Promise.all(candidateGroups.map(g => this.checkAndFinalizeGroupDeletion(g)));
+    return candidateGroups.filter(g => !g.deletedAt);
+  }
+
+  async acceptMembershipInvite(groupId: number, userId: string): Promise<void> {
+    const existingMembership = await this.getGroupMembership(groupId, userId);
+    if (!existingMembership) {
+      await db.insert(groupMemberships).values({ groupId, userId, role: 'member' });
+    }
+    await db.update(groupMembershipInvites)
+      .set({ status: 'accepted', respondedAt: new Date() })
+      .where(and(
+        eq(groupMembershipInvites.groupId, groupId),
+        eq(groupMembershipInvites.userId, userId),
+        eq(groupMembershipInvites.status, 'pending'),
+      ));
+  }
+
+  async dismissMembershipInvite(groupId: number, userId: string): Promise<void> {
+    await db.update(groupMembershipInvites)
+      .set({ status: 'dismissed', respondedAt: new Date() })
+      .where(and(
+        eq(groupMembershipInvites.groupId, groupId),
+        eq(groupMembershipInvites.userId, userId),
+        eq(groupMembershipInvites.status, 'pending'),
+      ));
+  }
+
   async getGroupMembers(groupId: number) {
     const members = await db.select().from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
     const result = [];
@@ -2551,7 +2613,13 @@ export class DatabaseStorage implements IStorage {
   ): Promise<GroupPlayer> {
     const existing = await db.select().from(groupPlayers)
       .where(and(eq(groupPlayers.groupId, groupId), eq(groupPlayers.linkedUserId, targetUserId)));
-    if (existing.length > 0) return existing[0];
+    if (existing.length > 0) {
+      // Roster link already existed — still make sure a membership invite
+      // is queued if one never was (e.g. this ran before the invite system
+      // existed, or an earlier invite was dismissed and this is a fresh add).
+      await this.createMembershipInviteIfNeeded(groupId, targetUserId).catch(() => {});
+      return existing[0];
+    }
 
     const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
     if (!targetUser) throw new Error("User not found");
@@ -2571,6 +2639,13 @@ export class DatabaseStorage implements IStorage {
       teePreference: targetUser.teePreference ?? null,
       addedBy: addedBy || null,
     }).returning();
+
+    // Admin-initiated link (search / copy / bulk-import) — the target user
+    // didn't do anything themselves, so queue a "join as member?" prompt
+    // instead of silently enrolling them. No-ops if they're already a
+    // member (e.g. this is the group's own creator).
+    await this.createMembershipInviteIfNeeded(groupId, targetUserId).catch(() => {});
+
     return gp;
   }
 
@@ -2699,6 +2774,15 @@ export class DatabaseStorage implements IStorage {
       .set({ linkedUserId: userId, guestClaimCodeClaimedAt: new Date() })
       .where(eq(groupPlayers.id, gp.id))
       .returning();
+
+    // User-initiated (they entered the code themselves) — add membership
+    // right away, no invite prompt needed. Contrast with addGroupPlayerFromUser,
+    // which is admin-initiated and queues an invite instead.
+    const existingMembership = await this.getGroupMembership(gp.groupId, userId);
+    if (!existingMembership) {
+      await this.addGroupMember(gp.groupId, userId, 'member').catch(() => {});
+    }
+
     return updated;
   }
 

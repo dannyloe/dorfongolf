@@ -4081,7 +4081,7 @@ Transcript to parse: "${transcript}"`;
     const userId = user.claims.sub;
     try {
       await storage.dismissGroupDeletionWarning(groupId, userId);
-      res.status(204).send();
+      res.json({ ok: true });
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
@@ -4096,6 +4096,47 @@ Transcript to parse: "${transcript}"`;
     try {
       const warnings = await storage.getPendingDeletionWarningsForUser(userId);
       res.json(warnings);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Membership invites (2026-07-13) — see groupMembershipInvites comment in
+  // shared/schema.ts. Queued when an admin links a real account to the
+  // roster (search/copy/bulk-import) rather than the user joining themselves.
+  app.get('/api/me/membership-invites', isAuthenticated, async (req, res) => {
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      const groupsAwaiting = await storage.getPendingMembershipInvitesForUser(userId);
+      res.json(groupsAwaiting);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post('/api/groups/:id/accept-membership-invite', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      await storage.acceptMembershipInvite(groupId, userId);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post('/api/groups/:id/dismiss-membership-invite', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      await storage.dismissMembershipInvite(groupId, userId);
+      res.json({ ok: true });
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
