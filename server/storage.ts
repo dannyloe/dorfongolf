@@ -3,7 +3,7 @@ import { db } from "./db";
 import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
-  groupMemberships, groupJoinRequests, groupPlayers,
+  groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
   ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
@@ -120,7 +120,12 @@ export interface IStorage {
   getGroupById(id: number): Promise<Group | undefined>;
   updateGroup(groupId: number, data: { name?: string; description?: string | null }): Promise<Group>;
   deleteGroup(groupId: number): Promise<boolean>;
-  
+  // Group deletion (soft-delete + 14-day claim-admin window for non-solo groups)
+  requestGroupDeletion(groupId: number, requestedBy: string): Promise<{ group: Group; immediatelyDeleted: boolean }>;
+  claimGroupAdmin(groupId: number, userId: string): Promise<Group>;
+  dismissGroupDeletionWarning(groupId: number, userId: string): Promise<void>;
+  getPendingDeletionWarningsForUser(userId: string): Promise<Array<{ group: Group; requestedByDisplayName: string }>>;
+
   // Group membership
   getGroupMembers(groupId: number): Promise<(GroupMembership & { user?: { id: string; displayName: string | null; firstName: string | null; lastName: string | null; presetPlayerName: string | null; profileImageUrl: string | null } })[]>;
   addGroupMember(groupId: number, userId: string, role: string): Promise<GroupMembership>;
@@ -2150,7 +2155,8 @@ export class DatabaseStorage implements IStorage {
 
   async getGroupById(id: number): Promise<Group | undefined> {
     const [group] = await db.select().from(groups).where(eq(groups.id, id));
-    return group;
+    if (!group) return group;
+    return this.checkAndFinalizeGroupDeletion(group);
   }
 
   async updateMatchGroup(matchId: number, groupId: number | null): Promise<Match> {
@@ -2164,10 +2170,16 @@ export class DatabaseStorage implements IStorage {
   async getGroupsForUser(userId: string): Promise<GroupWithDetails[]> {
     const memberships = await db.select().from(groupMemberships).where(eq(groupMemberships.userId, userId));
     if (memberships.length === 0) return [];
-    
+
     const groupIds = memberships.map(m => m.groupId);
-    const userGroups = await db.select().from(groups).where(inArray(groups.id, groupIds));
-    
+    let userGroups = await db.select().from(groups).where(inArray(groups.id, groupIds));
+
+    // Lazy enforcement: a group whose 14-day claim-admin window has expired
+    // with nobody claiming admin gets soft-deleted right here, on read,
+    // rather than via a background job (no cron infra in this app yet).
+    userGroups = await Promise.all(userGroups.map(g => this.checkAndFinalizeGroupDeletion(g)));
+    userGroups = userGroups.filter(g => !g.deletedAt);
+
     const result: GroupWithDetails[] = [];
     for (const group of userGroups) {
       const membership = memberships.find(m => m.groupId === group.id);
@@ -2234,6 +2246,111 @@ export class DatabaseStorage implements IStorage {
     await db.delete(groupPlayers).where(eq(groupPlayers.groupId, groupId));
     await db.delete(groups).where(eq(groups.id, groupId));
     return true;
+  }
+
+  // How long a non-solo group waits, after an admin requests deletion, for
+  // some other member to claim admin before it's soft-deleted for real.
+  private static readonly GROUP_DELETION_WAIT_DAYS = 14;
+  // (referenced below as DatabaseStorage.GROUP_DELETION_WAIT_DAYS)
+
+  // If a group has a pending deletion request older than the wait window,
+  // finalize it (soft-delete) right now and return the updated row. Called
+  // from every read path (getGroupById, getGroupsForUser) instead of a
+  // background job — this app has no cron infra, and groups are read often
+  // enough that "checked on next read" is good enough for a 2-week window.
+  private async checkAndFinalizeGroupDeletion(group: Group): Promise<Group> {
+    if (!group.deletionRequestedAt || group.deletedAt) return group;
+    const ageMs = Date.now() - new Date(group.deletionRequestedAt).getTime();
+    const waitMs = DatabaseStorage.GROUP_DELETION_WAIT_DAYS * 24 * 60 * 60 * 1000;
+    if (ageMs < waitMs) return group;
+
+    const [finalized] = await db.update(groups)
+      .set({ deletedAt: new Date() })
+      .where(eq(groups.id, group.id))
+      .returning();
+    return finalized;
+  }
+
+  // Admin requests deletion. Solo groups (creator is the only member) delete
+  // immediately — there's no one else who'd want a heads-up. Non-solo groups
+  // start the 14-day claim-admin window instead of deleting right away.
+  async requestGroupDeletion(groupId: number, requestedBy: string): Promise<{ group: Group; immediatelyDeleted: boolean }> {
+    const members = await db.select().from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
+    const [group] = await db.select().from(groups).where(eq(groups.id, groupId));
+    if (!group) throw new Error("Group not found");
+
+    if (members.length <= 1) {
+      const [finalized] = await db.update(groups)
+        .set({ deletedAt: new Date(), deletionRequestedAt: null, deletionRequestedBy: null })
+        .where(eq(groups.id, groupId))
+        .returning();
+      return { group: finalized, immediatelyDeleted: true };
+    }
+
+    const [updated] = await db.update(groups)
+      .set({ deletionRequestedAt: new Date(), deletionRequestedBy: requestedBy })
+      .where(eq(groups.id, groupId))
+      .returning();
+    // Clear old dismissals — this is a new deletion request, so anyone who
+    // dismissed a *previous* request should see the new warning.
+    await db.delete(groupDeletionDismissals).where(eq(groupDeletionDismissals.groupId, groupId));
+    return { group: updated, immediatelyDeleted: false };
+  }
+
+  // Any member can claim admin while a deletion request is pending — that's
+  // the whole point of the window. Claiming cancels the pending deletion.
+  async claimGroupAdmin(groupId: number, userId: string): Promise<Group> {
+    const [group] = await db.select().from(groups).where(eq(groups.id, groupId));
+    if (!group) throw new Error("Group not found");
+    if (!group.deletionRequestedAt) throw new Error("No pending deletion request on this group");
+
+    const membership = await this.getGroupMembership(groupId, userId);
+    if (!membership) throw new Error("Not a member of this group");
+
+    await db.update(groupMemberships)
+      .set({ role: 'admin' })
+      .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)));
+
+    const [updated] = await db.update(groups)
+      .set({ deletionRequestedAt: null, deletionRequestedBy: null })
+      .where(eq(groups.id, groupId))
+      .returning();
+    await db.delete(groupDeletionDismissals).where(eq(groupDeletionDismissals.groupId, groupId));
+    return updated;
+  }
+
+  async dismissGroupDeletionWarning(groupId: number, userId: string): Promise<void> {
+    const existing = await db.select().from(groupDeletionDismissals)
+      .where(and(eq(groupDeletionDismissals.groupId, groupId), eq(groupDeletionDismissals.userId, userId)));
+    if (existing.length > 0) return;
+    await db.insert(groupDeletionDismissals).values({ groupId, userId });
+  }
+
+  // Powers an app-open / login banner: every group this user belongs to
+  // that has a live (non-expired, non-dismissed-by-them) deletion request.
+  async getPendingDeletionWarningsForUser(userId: string): Promise<Array<{ group: Group; requestedByDisplayName: string }>> {
+    const memberships = await db.select().from(groupMemberships).where(eq(groupMemberships.userId, userId));
+    if (memberships.length === 0) return [];
+    const groupIds = memberships.map(m => m.groupId);
+
+    let candidateGroups = await db.select().from(groups)
+      .where(and(inArray(groups.id, groupIds), isNotNull(groups.deletionRequestedAt)));
+    candidateGroups = await Promise.all(candidateGroups.map(g => this.checkAndFinalizeGroupDeletion(g)));
+    candidateGroups = candidateGroups.filter(g => g.deletionRequestedAt && !g.deletedAt);
+    if (candidateGroups.length === 0) return [];
+
+    const dismissals = await db.select().from(groupDeletionDismissals)
+      .where(and(inArray(groupDeletionDismissals.groupId, candidateGroups.map(g => g.id)), eq(groupDeletionDismissals.userId, userId)));
+    const dismissedGroupIds = new Set(dismissals.map(d => d.groupId));
+
+    const result: Array<{ group: Group; requestedByDisplayName: string }> = [];
+    for (const group of candidateGroups) {
+      if (dismissedGroupIds.has(group.id)) continue;
+      const [requester] = await db.select().from(users).where(eq(users.id, group.deletionRequestedBy!));
+      const requestedByDisplayName = requester?.displayName || requester?.presetPlayerName || [requester?.firstName, requester?.lastName].filter(Boolean).join(' ') || "A group admin";
+      result.push({ group, requestedByDisplayName });
+    }
+    return result;
   }
 
   async getGroupMembers(groupId: number) {

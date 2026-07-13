@@ -4015,6 +4015,11 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // Group deletion (2026-07-13): this used to hard-delete immediately for
+  // any admin. Now it's a *request* — solo groups (creator is the only
+  // member) still delete right away, but groups with other members start a
+  // 14-day window during which anyone can claim admin to cancel it. Either
+  // way it's a soft-delete: matches/bets/scores stay intact and queryable.
   app.delete(api.groups.delete.path, isAuthenticated, async (req, res) => {
     const groupId = parseInt(req.params.id);
     const user = req.user as any;
@@ -4023,8 +4028,78 @@ Transcript to parse: "${transcript}"`;
     if (!membership || membership.role !== 'admin') {
       return res.status(403).json({ message: "Only group admins can delete groups" });
     }
-    await storage.deleteGroup(groupId);
-    res.status(204).send();
+    try {
+      const { group, immediatelyDeleted } = await storage.requestGroupDeletion(groupId, userId);
+      if (immediatelyDeleted) {
+        return res.status(204).send();
+      }
+
+      // Push every other member — the whole point of the window is that
+      // they get a heads-up and a chance to claim admin.
+      const requester = await storage.getUser(userId);
+      const requesterName = requester?.displayName || requester?.presetPlayerName || "A group admin";
+      const members = await storage.getGroupMembers(groupId);
+      for (const member of members) {
+        if (member.userId === userId) continue;
+        sendPushNotification(
+          member.userId,
+          `"${group.name}" deletion requested`,
+          `${requesterName} requested to delete this group. Claim admin within 14 days to keep it.`,
+          { route: `/groups/${groupId}` }
+        ).catch(() => {});
+      }
+
+      res.status(202).json({
+        message: "Deletion requested. Other members have 14 days to claim admin before the group is removed.",
+        group,
+      });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Any member can claim admin while a deletion request is pending — that's
+  // the escape hatch that cancels the pending deletion.
+  app.post('/api/groups/:id/claim-admin', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      const group = await storage.claimGroupAdmin(groupId, userId);
+      res.json(group);
+    } catch (err: any) {
+      console.error("[route error]", err);
+      res.status(400).json({ message: err?.message || "Could not claim admin" });
+    }
+  });
+
+  // "Don't show this again" for a specific group's pending-deletion warning.
+  app.post('/api/groups/:id/dismiss-deletion-warning', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      await storage.dismissGroupDeletionWarning(groupId, userId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Surfaced on app open/login: any group this user belongs to with a live,
+  // not-yet-dismissed-by-them deletion request.
+  app.get('/api/me/group-deletion-warnings', isAuthenticated, async (req, res) => {
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      const warnings = await storage.getPendingDeletionWarningsForUser(userId);
+      res.json(warnings);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.get(api.groups.members.path, isAuthenticated, async (req, res) => {
