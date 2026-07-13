@@ -1,6 +1,6 @@
 import admin from 'firebase-admin';
 import { db } from './db';
-import { devicePushTokens, deviceTokens } from '@shared/schema';
+import { devicePushTokens } from '@shared/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { storage } from './storage';
 import { sendPushToUsers } from './notifications/apns';
@@ -42,7 +42,7 @@ export async function sendPushNotification(
   }
 
   // Send via APNs (fire-and-forget)
-  sendPushToUsers([userId], title, body, {}, db, deviceTokens).catch(() => {});
+  sendPushToUsers([userId], title, body, {}, db, devicePushTokens).catch(() => {});
 
   const app = getFirebaseApp();
     if (!app) {
