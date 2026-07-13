@@ -139,12 +139,19 @@ export const pendingScorecardScans = pgTable("pending_scorecard_scans", {
 export const players = pgTable("players", {
   id: serial("id").primaryKey(),
   matchId: integer("match_id").notNull(),
-  userId: text("user_id"), 
+  userId: text("user_id"),
   name: text("name").notNull(),
   presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name updates
   handicapIndex: integer("handicap_index"), // Stored as tenths (e.g., 124 = 12.4), copied from player_handicaps on add
   teeId: integer("tee_id"), // References courseTees for handicap calculations
   deletedAt: timestamp("deleted_at"),
+  // Phase 4 (2026-07-13): set when this match player was added from a
+  // group's roster (the /api/matches/:id/players/from-roster path). Null for
+  // legacy preset-player / custom-name / search adds. Lets us count how many
+  // times a given roster row has actually played, for "most used" sorting —
+  // added ahead of building that UI so counts start accumulating now instead
+  // of needing a backfill later.
+  groupPlayerId: integer("group_player_id"),
 });
 
 export const scores = pgTable("scores", {
