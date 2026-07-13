@@ -60,6 +60,24 @@ export const groupDeletionDismissals = pgTable("group_deletion_dismissals", {
   dismissedAt: timestamp("dismissed_at").defaultNow(),
 });
 
+// Membership invites (2026-07-13): roster (group_players) and membership
+// (group_memberships) are deliberately separate — a roster row can be a
+// guest with no account at all. But when an ADMIN links a real account to
+// the roster (search / copy-from-my-groups / bulk-import of a claimed
+// preset player), that person never did anything themselves, so we don't
+// silently make them a group member. Instead we queue a dismissible
+// "join as a member?" prompt here. Contrast with join-by-code and the
+// guest-claim-code flow, both user-initiated — those add membership
+// immediately, no invite row needed.
+export const groupMembershipInvites = pgTable("group_membership_invites", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  userId: text("user_id").notNull(),
+  status: text("status").notNull().default("pending"), // pending | accepted | dismissed
+  createdAt: timestamp("created_at").defaultNow(),
+  respondedAt: timestamp("responded_at"),
+});
+
 // Phase 4: the group-scoped player roster. One row per person per group —
 // the durable identity that matches will eventually reference, replacing
 // today's match-scoped `players` rows. Additive for now; nothing reads from
