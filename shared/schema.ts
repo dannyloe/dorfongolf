@@ -18,6 +18,17 @@ export const groups = pgTable("groups", {
   parentGroupId: integer("parent_group_id"), // null = top-level org; populated = child group
   billingUserId: text("billing_user_id"), // the organizer who pays for this org
   planTier: text("plan_tier").notNull().default("free"), // free | pro | club
+  // Group deletion (2026-07-13): soft-delete only — matches/bets/scores under
+  // a deleted group stay fully queryable, they just stop showing up as an
+  // active group (roster picks, "my groups" list, new match creation).
+  deletedAt: timestamp("deleted_at"),
+  // Set when an admin requests deletion of a group with other members still
+  // in it. Solo groups (creator is the only member) skip this and delete
+  // immediately. Non-solo groups wait out groupDeletionWaitDays (14) so any
+  // other member can claim admin and cancel the request. Enforced lazily —
+  // checked whenever the group is read, not via a background job.
+  deletionRequestedAt: timestamp("deletion_requested_at"),
+  deletionRequestedBy: text("deletion_requested_by"),
 });
 
 export const groupMemberships = pgTable("group_memberships", {
@@ -35,6 +46,18 @@ export const groupJoinRequests = pgTable("group_join_requests", {
   status: text("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
   resolvedAt: timestamp("resolved_at"),
+});
+
+// Per-user "don't show this again" for a group's pending-deletion warning.
+// One row = this user has dismissed the warning for this specific deletion
+// request. If the request is cancelled (someone claims admin) and later a
+// new deletion request is made, dismissals from the old request no longer
+// apply — they're cleared whenever a deletion request is cancelled.
+export const groupDeletionDismissals = pgTable("group_deletion_dismissals", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id").notNull(),
+  userId: text("user_id").notNull(),
+  dismissedAt: timestamp("dismissed_at").defaultNow(),
 });
 
 // Phase 4: the group-scoped player roster. One row per person per group —
