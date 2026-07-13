@@ -435,6 +435,71 @@ export async function registerRoutes(
     }
   });
 
+  // Phase 4 Option 3 (2026-07-13): add a match player sourced from the
+  // match's group roster instead of typed-fresh free text. Deliberately a
+  // plain route, not routed through the shared `api.matches.addPlayer`
+  // typed contract — that contract lives in shared/routes.ts on GitHub,
+  // which isn't available to edit from this working copy. Same pattern
+  // already used for the other Phase 4 group-player routes below.
+  //
+  // Only works for matches that belong to a group; the existing free-text
+  // addPlayer route above is untouched and remains the path for matches
+  // with no group. Copies displayName + handicapIndex from the roster row
+  // at add time — same "snapshot into players table" behavior the old
+  // preset-player path already had, just sourced from group_players now.
+  // NOTE: does not resolve teePreference (a name string like "Blue") to a
+  // courseTees.teeId — no existing lookup for that in this codebase yet.
+  // teeId is left unset here; can be added as a follow-up if needed.
+  app.post('/api/matches/:id/players/from-roster', isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const { groupPlayerId } = req.body as { groupPlayerId?: number };
+
+    if (!groupPlayerId) return res.status(400).json({ message: "groupPlayerId is required" });
+
+    try {
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+      if (!match.groupId) return res.status(400).json({ message: "This match isn't part of a group" });
+
+      const roster = await storage.getGroupPlayers(match.groupId);
+      const gp = roster.find(r => r.id === groupPlayerId);
+      if (!gp) return res.status(404).json({ message: "Roster player not found in this group" });
+
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const isAddingSelf = gp.linkedUserId === userId;
+      if (!isAdmin && !isCreator && !isAddingSelf) {
+        return res.status(403).json({ message: "Only the creator can add other players" });
+      }
+
+      const existingPlayers = await storage.getMatchPlayers(matchId);
+      const name = gp.displayName || "Player";
+      const alreadyByUser = gp.linkedUserId && existingPlayers.find(p => p.userId === gp.linkedUserId);
+      const alreadyByName = existingPlayers.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (alreadyByUser) return res.status(200).json(alreadyByUser);
+      if (alreadyByName) return res.status(200).json(alreadyByName);
+
+      const player = await storage.addPlayer({
+        matchId,
+        name,
+        userId: gp.linkedUserId ?? undefined,
+        teeId: null,
+        handicapIndex: gp.handicapIndex ?? null,
+      }, match?.courseId ?? undefined);
+
+      if (gp.linkedUserId) {
+        notifyPlayerOfMatchInvitation(matchId, gp.linkedUserId, match.name, userId).catch(() => {});
+      }
+
+      res.status(201).json(player);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.delete(api.matches.removePlayer.path, isAuthenticated, async (req, res) => {
     const matchId = parseInt(req.params.id);
     const playerId = parseInt(req.params.playerId);
@@ -4336,6 +4401,43 @@ Transcript to parse: "${transcript}"`;
     }
     await storage.removeGroupPlayerById(groupId, groupPlayerId);
     res.status(204).send();
+  });
+
+  // Phase 4 guest claim flow (2026-07-13). Generating a code is admin-only
+  // (same permission as adding/removing roster players); claiming a code is
+  // open to any authenticated user, since the whole point is that the person
+  // claiming it may not have been the one who invited them.
+  //
+  // Delivery is manual for now (copy/share the link yourself) — no SMS
+  // sending wired up here. If that changes, this is the seam to hook into.
+  app.post('/api/groups/:id/players/roster/:groupPlayerId/claim-code', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const groupPlayerId = parseInt(req.params.groupPlayerId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can generate an invite for a roster player" });
+    }
+    try {
+      const code = await storage.generateGuestClaimCode(groupId, groupPlayerId);
+      res.status(201).json({ code });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Could not generate invite code" });
+    }
+  });
+
+  app.post('/api/group-players/claim', isAuthenticated, async (req, res) => {
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const { code } = req.body as { code?: string };
+    if (!code) return res.status(400).json({ message: "code is required" });
+    try {
+      const gp = await storage.claimGuestPlayer(code, userId);
+      res.json(gp);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Could not claim invite code" });
+    }
   });
 
   // Canonical profile fields used for push-down (Phase 4). Separate from the

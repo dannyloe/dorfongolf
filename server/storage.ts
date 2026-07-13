@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { db } from "./db";
 import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
@@ -148,6 +149,9 @@ export interface IStorage {
   searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string }>>;
   removeGroupPlayerById(groupId: number, groupPlayerId: number): Promise<boolean>;
   getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
+  // Phase 4 — guest claim flow: single-use personal code per guest roster row
+  generateGuestClaimCode(groupId: number, groupPlayerId: number): Promise<string>;
+  claimGuestPlayer(code: string, userId: string): Promise<GroupPlayer>;
 
   // Hidden / auto-created player management
   getHiddenPlayers(): Promise<Array<PresetPlayer & { matchCount: number }>>;
@@ -2492,6 +2496,47 @@ export class DatabaseStorage implements IStorage {
           || r.username
           || 'Player',
       }));
+  }
+
+  // Phase 4 guest claim flow (2026-07-13) — a single-use personal invite
+  // code for ONE guest roster row. Separate concept from groups.inviteCode
+  // (the broad "anyone can join this group" code): this one identifies a
+  // specific already-tracked guest, so claiming it auto-links linkedUserId
+  // instead of the new signer having to search-and-pick their own row.
+  //
+  // Uses crypto.randomBytes rather than the shorter Math.random-based codes
+  // used for match codes / group invite codes — this token gets embedded in
+  // a shareable link rather than typed by hand, so collision-resistance and
+  // unguessability matter more than brevity here.
+  async generateGuestClaimCode(groupId: number, groupPlayerId: number): Promise<string> {
+    const [gp] = await db.select().from(groupPlayers)
+      .where(and(eq(groupPlayers.id, groupPlayerId), eq(groupPlayers.groupId, groupId)));
+    if (!gp) throw new Error("Group player not found");
+    if (gp.linkedUserId) throw new Error("This roster entry is already linked to an account");
+
+    const code = randomBytes(16).toString("hex");
+    await db.update(groupPlayers)
+      .set({ guestClaimCode: code, guestClaimCodeClaimedAt: null })
+      .where(eq(groupPlayers.id, groupPlayerId));
+    return code;
+  }
+
+  // Consuming a code: single-use (rejects if already claimed), and links the
+  // CALLING user's account — never forces a new signup, and never overwrites
+  // an already-linked row. If the calling account happens to already be
+  // linked to a different roster row in this same group, that's allowed;
+  // linkedUserId is scoped per group_players row, not globally unique.
+  async claimGuestPlayer(code: string, userId: string): Promise<GroupPlayer> {
+    const [gp] = await db.select().from(groupPlayers).where(eq(groupPlayers.guestClaimCode, code));
+    if (!gp) throw new Error("Invite code not found");
+    if (gp.guestClaimCodeClaimedAt) throw new Error("This invite code has already been used");
+    if (gp.linkedUserId) throw new Error("This roster entry is already linked to an account");
+
+    const [updated] = await db.update(groupPlayers)
+      .set({ linkedUserId: userId, guestClaimCodeClaimedAt: new Date() })
+      .where(eq(groupPlayers.id, gp.id))
+      .returning();
+    return updated;
   }
 
   // Preferred going forward — works for every group_players row (guest,
