@@ -138,7 +138,7 @@ export interface IStorage {
   regenerateInviteCode(groupId: number): Promise<Group>;
   
   // Group players (preset players linked to groups)
-  getGroupPlayers(groupId: number): Promise<(GroupPlayer & { presetPlayer?: { id: number; name: string } })[]>;
+  getGroupPlayers(groupId: number): Promise<(GroupPlayer & { presetPlayer?: { id: number; name: string }; timesPlayed: number })[]>;
   addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer>;
   removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean>;
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
@@ -2324,6 +2324,27 @@ export class DatabaseStorage implements IStorage {
 
   async getGroupPlayers(groupId: number) {
     const gps = await db.select().from(groupPlayers).where(eq(groupPlayers.groupId, groupId));
+
+    // "Most used" support (2026-07-13): one grouped query counting how many
+    // match-player rows point back at each roster row via groupPlayerId
+    // (only populated for players added through the from-roster path going
+    // forward — pre-existing matches won't retroactively count, no backfill
+    // attempted). Computed once here rather than per-row to avoid N+1s on
+    // top of the existing presetPlayer/displayName lookups below.
+    const rosterIds = gps.map(g => g.id);
+    const playCounts = new Map<number, number>();
+    if (rosterIds.length > 0) {
+      const counts = await db.select({
+        groupPlayerId: players.groupPlayerId,
+        count: sql<number>`count(*)`.mapWith(Number),
+      }).from(players)
+        .where(inArray(players.groupPlayerId, rosterIds))
+        .groupBy(players.groupPlayerId);
+      for (const c of counts) {
+        if (c.groupPlayerId != null) playCounts.set(c.groupPlayerId, c.count);
+      }
+    }
+
     const result = [];
     for (const gp of gps) {
       // presetPlayerId is optional now (Phase 4) — guests and user-search adds
@@ -2346,7 +2367,7 @@ export class DatabaseStorage implements IStorage {
           .from(users).where(eq(users.id, gp.linkedUserId));
         if (u?.displayName) displayName = u.displayName;
       }
-      result.push({ ...gp, displayName, presetPlayer: pp || undefined });
+      result.push({ ...gp, displayName, presetPlayer: pp || undefined, timesPlayed: playCounts.get(gp.id) ?? 0 });
     }
     return result;
   }

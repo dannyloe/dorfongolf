@@ -487,6 +487,7 @@ export async function registerRoutes(
         userId: gp.linkedUserId ?? undefined,
         teeId: null,
         handicapIndex: gp.handicapIndex ?? null,
+        groupPlayerId: gp.id,
       }, match?.courseId ?? undefined);
 
       if (gp.linkedUserId) {
