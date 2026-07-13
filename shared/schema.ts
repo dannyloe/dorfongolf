@@ -14,9 +14,10 @@ export const groups = pgTable("groups", {
   inviteCode: text("invite_code").unique(),
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-  parentGroupId: integer("parent_group_id"),
-  billingUserId: text("billing_user_id"),
-  planTier: text("plan_tier").notNull().default('free'),
+  // Phase 4: group hierarchy + billing hooks (schema only — Stripe wiring comes later)
+  parentGroupId: integer("parent_group_id"), // null = top-level org; populated = child group
+  billingUserId: text("billing_user_id"), // the organizer who pays for this org
+  planTier: text("plan_tier").notNull().default("free"), // free | pro | club
 });
 
 export const groupMemberships = pgTable("group_memberships", {
@@ -36,19 +37,33 @@ export const groupJoinRequests = pgTable("group_join_requests", {
   resolvedAt: timestamp("resolved_at"),
 });
 
+// Phase 4: the group-scoped player roster. One row per person per group —
+// the durable identity that matches will eventually reference, replacing
+// today's match-scoped `players` rows. Additive for now; nothing reads from
+// this yet until match creation is rewired (Phase 4 step 3).
 export const groupPlayers = pgTable("group_players", {
   id: serial("id").primaryKey(),
   groupId: integer("group_id").notNull(),
-  presetPlayerId: integer("preset_player_id"),
+  presetPlayerId: integer("preset_player_id"), // legacy link, nullable during transition — was notNull
+  linkedUserId: text("linked_user_id"), // FK to users.id; null for guests with no account
+  // Nullable for now: legacy addGroupPlayer() rows (preset-player-linked) don't
+  // set this at insert time. Backfilled from preset_players.name via the
+  // Phase 4 migration script. New rows (guest / from-user paths) always set it.
+  displayName: text("display_name"),
+  teePreference: text("tee_preference"), // e.g., "Blue", "White" — group's active value
+  handicapIndex: integer("handicap_index"), // stored as tenths (e.g., 124 = 12.4) — group's active value
+  handicapOverridden: boolean("handicap_overridden").notNull().default(false), // true if group admin set a custom value
+  handicapPendingValue: integer("handicap_pending_value"), // user's proposed new index, awaiting admin review (only relevant when overridden = true)
   addedBy: text("added_by"),
   createdAt: timestamp("created_at").defaultNow(),
-  linkedUserId: text("linked_user_id"),
-  displayName: text("display_name"),
-  teePreference: text("tee_preference"),
-  handicapIndex: integer("handicap_index"),
-  handicapOverridden: boolean("handicap_overridden").notNull().default(false),
-  handicapPendingValue: integer("handicap_pending_value"),
-  deletedAt: timestamp("deleted_at"),
+  deletedAt: timestamp("deleted_at"), // soft-delete, same convention as match-scoped players
+  // Phase 4 guest claim flow (2026-07-13): single-use personal invite code for
+  // a guest row with no linkedUserId yet. Separate from groups.inviteCode,
+  // which is the broad "anyone can join this group" code — this one identifies
+  // ONE specific guest roster row, so claiming it auto-links linkedUserId
+  // instead of the new signer having to search-and-pick themselves.
+  guestClaimCode: text("guest_claim_code").unique(), // null once there's no outstanding invite (never issued, or already claimed)
+  guestClaimCodeClaimedAt: timestamp("guest_claim_code_claimed_at"), // set when consumed; code is single-use, checked in claim logic
 });
 
 export const courses = pgTable("courses", {
