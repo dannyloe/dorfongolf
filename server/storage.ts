@@ -140,6 +140,7 @@ export interface IStorage {
   // Group players (preset players linked to groups)
   getGroupPlayers(groupId: number): Promise<(GroupPlayer & { presetPlayer?: { id: number; name: string }; timesPlayed: number })[]>;
   addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer>;
+  addGroupPlayerFromPreset(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer>;
   removeGroupPlayer(groupId: number, presetPlayerId: number): Promise<boolean>;
   getPresetPlayersForGroups(groupIds: number[]): Promise<{ id: number; name: string; groupId: number }[]>;
   // Phase 4 — group-scoped roster: three add-player paths + search + removal by row id
@@ -2198,7 +2199,14 @@ export class DatabaseStorage implements IStorage {
       userId: createdBy,
       role: 'admin',
     });
-    
+
+    // The creator is a group admin (can manage the group) but that is a
+    // separate concept from being on the roster (group_players — who can
+    // actually be picked as a player in a match). Without this, the creator
+    // is never pickable in their own group. Added 2026-07-13 after finding
+    // 0 group_players rows existed for any group creator in production.
+    await this.addGroupPlayerFromUser(newGroup.id, createdBy, createdBy).catch(() => {});
+
     return newGroup;
   }
 
@@ -2370,6 +2378,23 @@ export class DatabaseStorage implements IStorage {
       result.push({ ...gp, displayName, presetPlayer: pp || undefined, timesPlayed: playCounts.get(gp.id) ?? 0 });
     }
     return result;
+  }
+
+  // Phase 4 (2026-07-13): the legacy addGroupPlayer() below only ever sets
+  // presetPlayerId, never linkedUserId — so a preset player already claimed
+  // by a real account would still show up as a "Guest" in the roster
+  // (isGuest checks linkedUserId, not presetPlayerId). This wrapper checks
+  // claim status first: if the preset player has a claiming user, route
+  // through addGroupPlayerFromUser so the roster row is properly linked;
+  // otherwise fall back to the legacy guest-shaped insert. Used by the
+  // bulk preset-player import path (AddGroupPlayerSheet's "Import" tab).
+  async addGroupPlayerFromPreset(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer> {
+    const [preset] = await db.select({ userId: presetPlayers.userId })
+      .from(presetPlayers).where(eq(presetPlayers.id, presetPlayerId));
+    if (preset?.userId) {
+      return this.addGroupPlayerFromUser(groupId, preset.userId, addedBy);
+    }
+    return this.addGroupPlayer(groupId, presetPlayerId, addedBy);
   }
 
   async addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer> {

@@ -3936,7 +3936,15 @@ Transcript to parse: "${transcript}"`;
         return res.status(400).json({ message: "You are already a member of this group" });
       }
       await storage.addGroupMember(group.id, userId, 'member');
-      await storage.tryAutoLinkUserToGroupPlayer(group.id, userId).catch(() => {});
+      // First try to match the joiner to an existing unlinked guest row on the
+      // roster by name (e.g. someone the group already tracks as a guest).
+      // If that doesn't find a match, still put them on the roster as a
+      // proper linked player — otherwise, like group creators before this
+      // fix, they'd be a group member who can never be picked as a player.
+      const autoLinked = await storage.tryAutoLinkUserToGroupPlayer(group.id, userId).catch(() => false);
+      if (!autoLinked) {
+        await storage.addGroupPlayerFromUser(group.id, userId, userId).catch(() => {});
+      }
       res.json(group);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4200,7 +4208,12 @@ Transcript to parse: "${transcript}"`;
       const results = [];
       for (const presetPlayerId of input.presetPlayerIds) {
         try {
-          const gp = await storage.addGroupPlayer(groupId, presetPlayerId, userId);
+          // addGroupPlayerFromPreset checks claim status: a preset player
+          // already claimed by a real account gets properly linked
+          // (linkedUserId set) instead of inserted as an unlinked "guest"
+          // row. tryAutoLinkGroupPlayerToMembers is still worth calling for
+          // the unclaimed case — it no-ops harmlessly if already claimed.
+          const gp = await storage.addGroupPlayerFromPreset(groupId, presetPlayerId, userId);
           results.push(gp);
           await storage.tryAutoLinkGroupPlayerToMembers(groupId, presetPlayerId).catch(() => {});
         } catch (err) {
