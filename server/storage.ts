@@ -72,11 +72,14 @@ export interface IStorage {
   updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
   updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
+  getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]>;
   createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
   deleteRyderCupTeam(teamId: number): Promise<void>;
   addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember>;
   removeRyderCupTeamMember(memberId: number): Promise<void>;
 
+  getRyderCupEventsForUser(userId: string): Promise<RyderCupEvent[]>;
+  userCanAccessRyderCupEvent(eventId: number, userId: string): Promise<boolean>;
   updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent>;
   
   // Ryder Cup Payout methods
@@ -3401,6 +3404,49 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(events).orderBy(events.createdAt);
   }
 
+  // Scoped list: a trip is visible to whoever created it, or whoever is linked
+  // (via presetPlayerId -> presetPlayers.userId) to a team member on it — same
+  // participation model as a Match player (name, optionally linked to a real
+  // account). No separate "event participant" concept; being rostered IS being
+  // a participant. Was previously unscoped (every trip visible to every user) —
+  // same class of bug already fixed on /api/groups/my.
+  async getRyderCupEventsForUser(userId: string): Promise<RyderCupEvent[]> {
+    const created = await db.select().from(events).where(eq(events.creatorId, userId));
+
+    const linkedRows = await db.select({ eventId: ryderCupTeams.eventId })
+      .from(ryderCupTeamMembers)
+      .innerJoin(presetPlayers, eq(ryderCupTeamMembers.presetPlayerId, presetPlayers.id))
+      .innerJoin(ryderCupTeams, eq(ryderCupTeamMembers.teamId, ryderCupTeams.id))
+      .where(eq(presetPlayers.userId, userId));
+
+    const linkedEventIds = Array.from(new Set(linkedRows.map((r) => r.eventId)));
+    const linkedEvents = linkedEventIds.length > 0
+      ? await db.select().from(events).where(inArray(events.id, linkedEventIds))
+      : [];
+
+    const merged = new Map<number, RyderCupEvent>();
+    for (const e of [...created, ...linkedEvents]) merged.set(e.id, e);
+    return Array.from(merged.values()).sort((a, b) => {
+      const at = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return at - bt;
+    });
+  }
+
+  // Whether a given user is allowed to see a specific event: creator, or linked
+  // via presetPlayerId -> presetPlayers.userId to any team member on it.
+  async userCanAccessRyderCupEvent(eventId: number, userId: string): Promise<boolean> {
+    const [event] = await db.select().from(events).where(eq(events.id, eventId));
+    if (!event) return false;
+    if (event.creatorId === userId) return true;
+    const [linked] = await db.select({ id: ryderCupTeamMembers.id })
+      .from(ryderCupTeamMembers)
+      .innerJoin(presetPlayers, eq(ryderCupTeamMembers.presetPlayerId, presetPlayers.id))
+      .innerJoin(ryderCupTeams, eq(ryderCupTeamMembers.teamId, ryderCupTeams.id))
+      .where(and(eq(ryderCupTeams.eventId, eventId), eq(presetPlayers.userId, userId)));
+    return !!linked;
+  }
+
   async getRyderCupEvent(id: number): Promise<RyderCupEvent | undefined> {
     const [event] = await db.select().from(events).where(eq(events.id, id));
     return event;
@@ -4623,10 +4669,20 @@ export class DatabaseStorage implements IStorage {
   // Buddy Trip/Tournament events can have any number of teams of any size. These
   // teams are a default/pre-fill only — bet creation still allows any subset of
   // players, so nothing here restricts match/bet participant selection.
+  async getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]> {
+    return db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+  }
+
   async createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam> {
+    const trimmedName = name.trim();
+    const existingTeams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    const duplicate = existingTeams.some((t) => t.name.trim().toLowerCase() === trimmedName.toLowerCase());
+    if (duplicate) {
+      throw new Error(`DUPLICATE_TEAM_NAME: A team named "${trimmedName}" already exists in this trip.`);
+    }
     const [team] = await db.insert(ryderCupTeams).values({
       eventId,
-      name,
+      name: trimmedName,
       color: color ?? null,
     }).returning();
     return team;

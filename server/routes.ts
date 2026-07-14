@@ -4706,12 +4706,20 @@ Transcript to parse: "${transcript}"`;
   // === RYDER CUP ROUTES ===
 
   app.get(api.ryderCup.list.path, isAuthenticated, async (req, res) => {
-    const events = await storage.getRyderCupEvents();
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    // Scoped to trips the user created or is rostered on (was previously every
+    // trip in the system — same class of bug fixed on /api/groups/my).
+    const events = await storage.getRyderCupEventsForUser(userId);
     res.json(events);
   });
 
   app.get(api.ryderCup.get.path, isAuthenticated, async (req, res) => {
     const id = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const canAccess = await storage.userCanAccessRyderCupEvent(id, userId);
+    if (!canAccess) return res.status(404).json({ message: "Event not found" });
     const event = await storage.getRyderCupEventFull(id);
     if (!event) return res.status(404).json({ message: "Event not found" });
     res.json(event);
@@ -4940,6 +4948,9 @@ Transcript to parse: "${transcript}"`;
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof Error && err.message.startsWith("DUPLICATE_TEAM_NAME:")) {
+        return res.status(400).json({ message: err.message.replace("DUPLICATE_TEAM_NAME: ", "") });
       }
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
