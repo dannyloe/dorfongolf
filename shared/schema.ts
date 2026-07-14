@@ -29,6 +29,15 @@ export const groups = pgTable("groups", {
   // checked whenever the group is read, not via a background job.
   deletionRequestedAt: timestamp("deletion_requested_at"),
   deletionRequestedBy: text("deletion_requested_by"),
+  // Captured from the requester at the moment they request deletion (2026-07-13):
+  // if another member claims admin before the 14-day window closes, should the
+  // requester remain in the group as a regular member? Nullable — null (e.g. a
+  // request made before this field existed) is treated as "yes, stay as admin",
+  // i.e. today's original behavior (claimGroupAdmin leaves the requester untouched).
+  // true  -> requester is demoted from admin to member when claimed.
+  // false -> requester's group_memberships row is removed entirely when claimed
+  //          (group_players roster row is untouched — history/pickability stays).
+  deletionRequesterStaysAsMember: boolean("deletion_requester_stays_as_member"),
 });
 
 export const groupMemberships = pgTable("group_memberships", {
