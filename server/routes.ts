@@ -4924,6 +4924,77 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // Event-level teams (Phase 2 of the multi-day event wrapper): add/remove teams
+  // and members independent of the rigid 6-per-side Ryder Cup setup flow, so
+  // Buddy Trip/Tournament events can build teams of any size, any time. These are
+  // a default/pre-fill only — creating a match/bet still allows any subset of
+  // event players, never restricted by team assignment.
+  app.post(api.ryderCup.createTeam.path, isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.createTeam.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      const team = await storage.createRyderCupTeam(eventId, input.name, input.color);
+      res.status(201).json(team);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.ryderCup.deleteTeam.path, isAuthenticated, async (req, res) => {
+    const teamId = parseInt(req.params.teamId);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    try {
+      const team = await storage.getRyderCupTeam(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      const event = await storage.getRyderCupEvent(team.eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      const currentUser = await storage.getUser(userId);
+      if (event.creatorId !== userId && !currentUser?.isAdmin) {
+        return res.status(403).json({ message: "Only the creator or admin can delete a team" });
+      }
+      await storage.deleteRyderCupTeam(teamId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.ryderCup.addTeamMember.path, isAuthenticated, async (req, res) => {
+    const teamId = parseInt(req.params.teamId);
+    try {
+      const input = api.ryderCup.addTeamMember.input.parse(req.body);
+      const team = await storage.getRyderCupTeam(teamId);
+      if (!team) return res.status(404).json({ message: "Team not found" });
+      const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex);
+      res.status(201).json(member);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.ryderCup.removeTeamMember.path, isAuthenticated, async (req, res) => {
+    const memberId = parseInt(req.params.memberId);
+    try {
+      await storage.removeRyderCupTeamMember(memberId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post(api.ryderCup.replacePlayer.path, isAuthenticated, async (req, res) => {
     const eventId = parseInt(req.params.id);
     console.log("Replace player request body:", JSON.stringify(req.body));

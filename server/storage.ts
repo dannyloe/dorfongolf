@@ -72,7 +72,11 @@ export interface IStorage {
   updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
   updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
-  
+  createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
+  deleteRyderCupTeam(teamId: number): Promise<void>;
+  addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember>;
+  removeRyderCupTeamMember(memberId: number): Promise<void>;
+
   updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent>;
   
   // Ryder Cup Payout methods
@@ -4612,6 +4616,45 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ryderCupTeamMembers.id, memberId))
       .returning();
     return updated || null;
+  }
+
+  // Event-level teams (Phase 2 of the multi-day event wrapper): create/add/remove
+  // teams and members independent of the rigid 6-per-side Ryder Cup setup flow, so
+  // Buddy Trip/Tournament events can have any number of teams of any size. These
+  // teams are a default/pre-fill only — bet creation still allows any subset of
+  // players, so nothing here restricts match/bet participant selection.
+  async createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam> {
+    const [team] = await db.insert(ryderCupTeams).values({
+      eventId,
+      name,
+      color: color ?? null,
+    }).returning();
+    return team;
+  }
+
+  async deleteRyderCupTeam(teamId: number): Promise<void> {
+    await db.delete(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, teamId));
+    await db.delete(ryderCupTeams).where(eq(ryderCupTeams.id, teamId));
+  }
+
+  async addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember> {
+    const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, playerName));
+    let resolvedHandicap = handicapIndex ?? null;
+    if (resolvedHandicap === null) {
+      const [ph] = await db.select().from(playerHandicaps).where(eq(playerHandicaps.presetPlayerName, playerName));
+      resolvedHandicap = ph?.handicapIndex ?? null;
+    }
+    const [member] = await db.insert(ryderCupTeamMembers).values({
+      teamId,
+      playerName,
+      presetPlayerId: preset?.id ?? null,
+      handicapIndex: resolvedHandicap,
+    }).returning();
+    return member;
+  }
+
+  async removeRyderCupTeamMember(memberId: number): Promise<void> {
+    await db.delete(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, memberId));
   }
 
   async deleteRyderCupEvent(eventId: number): Promise<void> {
