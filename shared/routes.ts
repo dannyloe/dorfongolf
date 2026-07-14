@@ -1447,6 +1447,49 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    createTeam: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/:id/teams',
+      input: z.object({
+        name: z.string().min(1),
+        color: z.string().optional(),
+      }),
+      responses: {
+        201: z.custom<typeof ryderCupTeams.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    deleteTeam: {
+      method: 'DELETE' as const,
+      path: '/api/ryder-cup/teams/:teamId',
+      responses: {
+        204: z.void(),
+        403: z.object({ message: z.string() }),
+        404: errorSchemas.notFound,
+      },
+    },
+    addTeamMember: {
+      method: 'POST' as const,
+      path: '/api/ryder-cup/teams/:teamId/members',
+      input: z.object({
+        playerName: z.string().min(1),
+        handicapIndex: z.number().nullable().optional(),
+      }),
+      responses: {
+        201: z.custom<typeof ryderCupTeamMembers.$inferSelect>(),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    removeTeamMember: {
+      method: 'DELETE' as const,
+      path: '/api/ryder-cup/members/:memberId',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
     addSideMatch: {
       method: 'POST' as const,
       path: '/api/ryder-cup/:id/side-matches',
