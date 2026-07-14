@@ -300,8 +300,8 @@ export async function registerRoutes(
         courseName: input.courseName,
         creatorId: user.claims.sub,
         groupId: input.groupId ?? null,
-        ryderCupEventId: input.ryderCupEventId ?? null,
-        ryderCupDayNumber: input.ryderCupDayNumber ?? null,
+        eventId: input.ryderCupEventId ?? null,
+        eventDayNumber: input.ryderCupDayNumber ?? null,
         courseId: input.courseId ?? null,
         isHandicapped: input.isHandicapped ?? false,
       });
@@ -347,10 +347,10 @@ export async function registerRoutes(
     let scores = initialScores;
 
     // For side matches (linked to Ryder Cup events), fetch scores from Ryder Cup pairings
-    if (match.ryderCupEventId && match.ryderCupDayNumber && scores.length === 0) {
+    if (match.eventId && match.eventDayNumber && scores.length === 0) {
       const ryderCupScores = await storage.getRyderCupScoresForSideMatch(
-        match.ryderCupEventId,
-        match.ryderCupDayNumber,
+        match.eventId,
+        match.eventDayNumber,
         players
       );
       scores = ryderCupScores;
@@ -1172,7 +1172,7 @@ export async function registerRoutes(
       }
       
       // Check if this is a Ryder Cup side match
-      if (!sourceMatch.ryderCupEventId || !sourceMatch.ryderCupDayNumber) {
+      if (!sourceMatch.eventId || !sourceMatch.eventDayNumber) {
         return res.status(400).json({ message: "This match is not part of a Ryder Cup event" });
       }
       
@@ -1187,10 +1187,10 @@ export async function registerRoutes(
       }
       
       // Get all sibling side match containers for this Ryder Cup event
-      const siblingMatches = await storage.getMatchesByRyderCupEvent(sourceMatch.ryderCupEventId);
-      
+      const siblingMatches = await storage.getMatchesByRyderCupEvent(sourceMatch.eventId);
+
       // Get the Ryder Cup event to check day dates
-      const ryderCupEvent = await storage.getRyderCupEventFull(sourceMatch.ryderCupEventId);
+      const ryderCupEvent = await storage.getRyderCupEventFull(sourceMatch.eventId);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -1200,8 +1200,8 @@ export async function registerRoutes(
         if (!m.name?.includes("Side Matches")) return false;
         
         // Check if the day is today or in the future
-        if (ryderCupEvent && m.ryderCupDayNumber) {
-          const dayData = ryderCupEvent.days?.find((d: any) => d.dayNumber === m.ryderCupDayNumber);
+        if (ryderCupEvent && m.eventDayNumber) {
+          const dayData = ryderCupEvent.days?.find((d: any) => d.dayNumber === m.eventDayNumber);
           if (dayData?.date) {
             const dayDate = new Date(dayData.date);
             dayDate.setHours(0, 0, 0, 0);

@@ -5,7 +5,7 @@ import {
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
-  ryderCupEvents, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
+  events, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
   settlements, settlementPayments,
   pendingScorecardScans,
@@ -59,7 +59,7 @@ export interface IStorage {
   deleteUserAccount(userId: string): Promise<void>;
 
   // App methods
-  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match>;
+  createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; eventId?: number | null; eventDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match>;
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
   getMatchPlayers(matchId: number): Promise<Player[]>;
@@ -95,8 +95,8 @@ export interface IStorage {
   getAllClosestToHoleWinners(eventId: number): Promise<RyderCupClosestToHole[]>;
   
   // Manual Bet methods
-  getManualBets(ryderCupEventId?: number): Promise<ManualBetWithEntries[]>;
-  createManualBet(description: string, entries: { playerName: string; presetPlayerId?: number; amount: number }[], creatorId?: number, ryderCupEventId?: number): Promise<ManualBetWithEntries>;
+  getManualBets(eventId?: number): Promise<ManualBetWithEntries[]>;
+  createManualBet(description: string, entries: { playerName: string; presetPlayerId?: number; amount: number }[], creatorId?: number, eventId?: number): Promise<ManualBetWithEntries>;
   deleteManualBet(betId: number): Promise<boolean>;
   
   // Event Match Results methods (stored/cached bet results)
@@ -329,7 +329,7 @@ export class DatabaseStorage implements IStorage {
     return uncodedMatches.length;
   }
 
-  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; ryderCupEventId?: number | null; ryderCupDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match> {
+  async createMatch(match: { name: string | null; courseName: string; creatorId: string; groupId?: number | null; eventId?: number | null; eventDayNumber?: number | null; courseId?: number | null; isHandicapped?: boolean }): Promise<Match> {
     // Look up courseId from courseName if not already provided
     let courseId: number | null = match.courseId ?? null;
     if (!courseId && match.courseName) {
@@ -354,8 +354,8 @@ export class DatabaseStorage implements IStorage {
       creatorId: match.creatorId,
       courseId,
       groupId: match.groupId ?? null,
-      ryderCupEventId: match.ryderCupEventId ?? null,
-      ryderCupDayNumber: match.ryderCupDayNumber ?? null,
+      eventId: match.eventId ?? null,
+      eventDayNumber: match.eventDayNumber ?? null,
       isHandicapped: match.isHandicapped ?? false,
       matchCode,
     }).returning();
@@ -1486,7 +1486,7 @@ export class DatabaseStorage implements IStorage {
 
     // ── Step 3: Bulk-fetch Ryder Cup structural data ──
 
-    const ryderCupEventIds = Array.from(new Set(allMatches.filter(m => m.ryderCupEventId).map(m => m.ryderCupEventId!)));
+    const ryderCupEventIds = Array.from(new Set(allMatches.filter(m => m.eventId).map(m => m.eventId!)));
     const ryderCupPlayerDataByEventAndDay: Record<number, Record<number, Record<string, { handicapIndex: number | null; teeId: number | null }>>> = {};
     const ryderCupScoresByEventAndDay: Record<number, Record<number, Record<string, Record<number, number>>>> = {};
 
@@ -3394,11 +3394,11 @@ export class DatabaseStorage implements IStorage {
   // === RYDER CUP EVENT METHODS ===
 
   async getRyderCupEvents(): Promise<RyderCupEvent[]> {
-    return db.select().from(ryderCupEvents).orderBy(ryderCupEvents.createdAt);
+    return db.select().from(events).orderBy(events.createdAt);
   }
 
   async getRyderCupEvent(id: number): Promise<RyderCupEvent | undefined> {
-    const [event] = await db.select().from(ryderCupEvents).where(eq(ryderCupEvents.id, id));
+    const [event] = await db.select().from(events).where(eq(events.id, id));
     return event;
   }
 
@@ -3566,7 +3566,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Update players in side matches linked to this Ryder Cup event using presetPlayerId (primary)
-    const sideMatchContainers = await db.select().from(matches).where(eq(matches.ryderCupEventId, eventId));
+    const sideMatchContainers = await db.select().from(matches).where(eq(matches.eventId, eventId));
     const sideMatchIds = sideMatchContainers.map(m => m.id);
     
     if (sideMatchIds.length > 0) {
@@ -3600,8 +3600,8 @@ export class DatabaseStorage implements IStorage {
       await db.update(matches)
         .set({ courseId, courseName })
         .where(and(
-          eq(matches.ryderCupEventId, updated.eventId),
-          eq(matches.ryderCupDayNumber, updated.dayNumber)
+          eq(matches.eventId, updated.eventId),
+          eq(matches.eventDayNumber, updated.dayNumber)
         ));
     }
     
@@ -3877,7 +3877,7 @@ export class DatabaseStorage implements IStorage {
 
     const eventType = data.eventType ?? 'ryder_cup';
     
-    const [event] = await db.insert(ryderCupEvents).values({
+    const [event] = await db.insert(events).values({
       name: data.name,
       eventType,
       groupId: data.groupId ?? null,
@@ -4033,7 +4033,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     // Update event status to active
-    await db.update(ryderCupEvents).set({ status: "active" }).where(eq(ryderCupEvents.id, eventId));
+    await db.update(events).set({ status: "active" }).where(eq(events.id, eventId));
   }
 
   private generateRotationSchedule(teamAPlayers: string[], teamBPlayers: string[]): { teamA: string[]; teamB: string[] }[] {
@@ -4209,9 +4209,9 @@ export class DatabaseStorage implements IStorage {
 
     for (const team of teams) {
       if (teamPoints[team.id] >= event.targetPoints) {
-        await db.update(ryderCupEvents)
+        await db.update(events)
           .set({ status: "completed", winningTeamId: team.id })
-          .where(eq(ryderCupEvents.id, day.eventId));
+          .where(eq(events.id, day.eventId));
         break;
       }
     }
@@ -4308,13 +4308,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMatchesByRyderCupEvent(eventId: number): Promise<Match[]> {
-    return db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt);
+    return db.select().from(matches).where(eq(matches.eventId, eventId)).orderBy(matches.createdAt);
   }
 
   async getSideMatchLedgerData(eventId: number) {
     // Fetch matches and days in parallel — both are independent of each other
     const [allMatches, days] = await Promise.all([
-      db.select().from(matches).where(eq(matches.ryderCupEventId, eventId)).orderBy(matches.createdAt),
+      db.select().from(matches).where(eq(matches.eventId, eventId)).orderBy(matches.createdAt),
       db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId)),
     ]);
 
@@ -4545,25 +4545,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateRyderCupEventHandicaps(eventId: number, useHandicaps: boolean): Promise<RyderCupEvent> {
-    const [updated] = await db.update(ryderCupEvents)
+    const [updated] = await db.update(events)
       .set({ useHandicaps })
-      .where(eq(ryderCupEvents.id, eventId))
+      .where(eq(events.id, eventId))
       .returning();
     return updated;
   }
 
   async updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent> {
-    const [updated] = await db.update(ryderCupEvents)
+    const [updated] = await db.update(events)
       .set({ status })
-      .where(eq(ryderCupEvents.id, eventId))
+      .where(eq(events.id, eventId))
       .returning();
     return updated;
   }
 
   async updateRyderCupEventClosestToHolePayout(eventId: number, closestToHolePayout: number): Promise<RyderCupEvent> {
-    const [updated] = await db.update(ryderCupEvents)
+    const [updated] = await db.update(events)
       .set({ closestToHolePayout })
-      .where(eq(ryderCupEvents.id, eventId))
+      .where(eq(events.id, eventId))
       .returning();
     return updated;
   }
@@ -4577,9 +4577,9 @@ export class DatabaseStorage implements IStorage {
     closestToHolePayout?: number;
     includeBuyInInLedger?: boolean;
   }): Promise<RyderCupEvent> {
-    const [updated] = await db.update(ryderCupEvents)
+    const [updated] = await db.update(events)
       .set(payouts)
-      .where(eq(ryderCupEvents.id, eventId))
+      .where(eq(events.id, eventId))
       .returning();
     return updated;
   }
@@ -4634,7 +4634,7 @@ export class DatabaseStorage implements IStorage {
     }
     await db.delete(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
 
-    await db.delete(ryderCupEvents).where(eq(ryderCupEvents.id, eventId));
+    await db.delete(events).where(eq(events.id, eventId));
   }
 
   // === MATCH ROLE METHODS ===
@@ -4987,11 +4987,11 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Manual Bet methods
-  async getManualBets(ryderCupEventId?: number): Promise<ManualBetWithEntries[]> {
+  async getManualBets(eventId?: number): Promise<ManualBetWithEntries[]> {
     let bets;
-    if (ryderCupEventId !== undefined) {
+    if (eventId !== undefined) {
       bets = await db.select().from(manualBets)
-        .where(eq(manualBets.ryderCupEventId, ryderCupEventId))
+        .where(eq(manualBets.eventId, eventId))
         .orderBy(desc(manualBets.createdAt));
     } else {
       bets = await db.select().from(manualBets).orderBy(desc(manualBets.createdAt));
@@ -5024,13 +5024,13 @@ export class DatabaseStorage implements IStorage {
     description: string, 
     entries: { playerName: string; presetPlayerId?: number; amount: number }[], 
     creatorId?: number,
-    ryderCupEventId?: number
+    eventId?: number
   ): Promise<ManualBetWithEntries> {
     // Create the bet
     const [bet] = await db.insert(manualBets).values({
       description,
       creatorId: creatorId ?? null,
-      ryderCupEventId: ryderCupEventId ?? null,
+      eventId: eventId ?? null,
     }).returning();
     
     // Create entries, looking up presetPlayerId if not provided
