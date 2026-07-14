@@ -127,7 +127,7 @@ export interface IStorage {
   getPendingDeletionWarningsForUser(userId: string): Promise<Array<{ group: Group; requestedByDisplayName: string }>>;
   // Membership invites — see groupMembershipInvites comment in shared/schema.ts
   createMembershipInviteIfNeeded(groupId: number, userId: string): Promise<void>;
-  getPendingMembershipInvitesForUser(userId: string): Promise<Group[]>;
+  getPendingMembershipInvitesForUser(userId: string): Promise<Array<{ group: Group; addedByDisplayName: string }>>;
   acceptMembershipInvite(groupId: number, userId: string): Promise<void>;
   dismissMembershipInvite(groupId: number, userId: string): Promise<void>;
 
@@ -2379,7 +2379,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Powers an app-open banner, parallel to getPendingDeletionWarningsForUser.
-  async getPendingMembershipInvitesForUser(userId: string): Promise<Group[]> {
+  // Also resolves who added them, same fallback chain as the deletion banner's
+  // requestedByDisplayName, so the banner can say "Danny added you" instead of
+  // a generic "a group admin" — pulled from group_players.addedBy, since the
+  // invite row itself doesn't store who triggered it.
+  async getPendingMembershipInvitesForUser(userId: string): Promise<Array<{ group: Group; addedByDisplayName: string }>> {
     const invites = await db.select().from(groupMembershipInvites)
       .where(and(eq(groupMembershipInvites.userId, userId), eq(groupMembershipInvites.status, 'pending')));
     if (invites.length === 0) return [];
@@ -2388,7 +2392,21 @@ export class DatabaseStorage implements IStorage {
     let candidateGroups = await db.select().from(groups).where(inArray(groups.id, groupIds));
     // Skip groups that got soft-deleted or are mid-deletion since the invite was queued.
     candidateGroups = await Promise.all(candidateGroups.map(g => this.checkAndFinalizeGroupDeletion(g)));
-    return candidateGroups.filter(g => !g.deletedAt);
+    candidateGroups = candidateGroups.filter(g => !g.deletedAt);
+    if (candidateGroups.length === 0) return [];
+
+    const result: Array<{ group: Group; addedByDisplayName: string }> = [];
+    for (const group of candidateGroups) {
+      const [rosterRow] = await db.select().from(groupPlayers)
+        .where(and(eq(groupPlayers.groupId, group.id), eq(groupPlayers.linkedUserId, userId)));
+      let addedByDisplayName = "A group admin";
+      if (rosterRow?.addedBy) {
+        const [adder] = await db.select().from(users).where(eq(users.id, rosterRow.addedBy));
+        addedByDisplayName = adder?.displayName || adder?.presetPlayerName || [adder?.firstName, adder?.lastName].filter(Boolean).join(' ') || "A group admin";
+      }
+      result.push({ group, addedByDisplayName });
+    }
+    return result;
   }
 
   async acceptMembershipInvite(groupId: number, userId: string): Promise<void> {
