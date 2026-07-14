@@ -4029,7 +4029,14 @@ Transcript to parse: "${transcript}"`;
       return res.status(403).json({ message: "Only group admins can delete groups" });
     }
     try {
-      const { group, immediatelyDeleted } = await storage.requestGroupDeletion(groupId, userId);
+      // Requester's own choice, captured up front, for what happens to THEM
+      // if another member later claims admin and rescues the group — stay on
+      // as a regular member (true/default) or be removed from membership
+      // entirely (false; their roster row/history is untouched either way).
+      // Sent as a query param since this is a DELETE request with no body.
+      const staysAsMemberParam = req.query.staysAsMember;
+      const staysAsMember = staysAsMemberParam === 'false' ? false : staysAsMemberParam === 'true' ? true : undefined;
+      const { group, immediatelyDeleted } = await storage.requestGroupDeletion(groupId, userId, staysAsMember);
       if (immediatelyDeleted) {
         return res.status(204).send();
       }

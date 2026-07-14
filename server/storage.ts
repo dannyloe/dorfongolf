@@ -121,7 +121,7 @@ export interface IStorage {
   updateGroup(groupId: number, data: { name?: string; description?: string | null }): Promise<Group>;
   deleteGroup(groupId: number): Promise<boolean>;
   // Group deletion (soft-delete + 14-day claim-admin window for non-solo groups)
-  requestGroupDeletion(groupId: number, requestedBy: string): Promise<{ group: Group; immediatelyDeleted: boolean }>;
+  requestGroupDeletion(groupId: number, requestedBy: string, staysAsMember?: boolean): Promise<{ group: Group; immediatelyDeleted: boolean }>;
   claimGroupAdmin(groupId: number, userId: string): Promise<Group>;
   dismissGroupDeletionWarning(groupId: number, userId: string): Promise<void>;
   getPendingDeletionWarningsForUser(userId: string): Promise<Array<{ group: Group; requestedByDisplayName: string }>>;
@@ -2279,21 +2279,26 @@ export class DatabaseStorage implements IStorage {
   // Admin requests deletion. Solo groups (creator is the only member) delete
   // immediately — there's no one else who'd want a heads-up. Non-solo groups
   // start the 14-day claim-admin window instead of deleting right away.
-  async requestGroupDeletion(groupId: number, requestedBy: string): Promise<{ group: Group; immediatelyDeleted: boolean }> {
+  // staysAsMember: captured from the requester at request time — if another
+  // member later claims admin and rescues this group, should the requester
+  // remain in it as a regular member (true), or have their membership removed
+  // entirely while keeping their roster/history intact (false)? Irrelevant for
+  // the immediate-delete (solo group) path since there's no one left to claim it.
+  async requestGroupDeletion(groupId: number, requestedBy: string, staysAsMember?: boolean): Promise<{ group: Group; immediatelyDeleted: boolean }> {
     const members = await db.select().from(groupMemberships).where(eq(groupMemberships.groupId, groupId));
     const [group] = await db.select().from(groups).where(eq(groups.id, groupId));
     if (!group) throw new Error("Group not found");
 
     if (members.length <= 1) {
       const [finalized] = await db.update(groups)
-        .set({ deletedAt: new Date(), deletionRequestedAt: null, deletionRequestedBy: null })
+        .set({ deletedAt: new Date(), deletionRequestedAt: null, deletionRequestedBy: null, deletionRequesterStaysAsMember: null })
         .where(eq(groups.id, groupId))
         .returning();
       return { group: finalized, immediatelyDeleted: true };
     }
 
     const [updated] = await db.update(groups)
-      .set({ deletionRequestedAt: new Date(), deletionRequestedBy: requestedBy })
+      .set({ deletionRequestedAt: new Date(), deletionRequestedBy: requestedBy, deletionRequesterStaysAsMember: staysAsMember ?? true })
       .where(eq(groups.id, groupId))
       .returning();
     // Clear old dismissals — this is a new deletion request, so anyone who
@@ -2304,6 +2309,20 @@ export class DatabaseStorage implements IStorage {
 
   // Any member can claim admin while a deletion request is pending — that's
   // the whole point of the window. Claiming cancels the pending deletion.
+  // Also resolves what happens to the original requester per their own stated
+  // preference (deletionRequesterStaysAsMember, captured at request time):
+  // true/null (default, back-compat with requests made before this field
+  // existed) -> requester is left alone, still admin, same as original
+  // behavior. false -> requester's group_memberships row is removed entirely
+  // (their group_players roster row is untouched, so history/pickability stays)
+  // and they no longer show up as a member or admin of this group.
+  //
+  // Note this deliberately bypasses the "creator can never leave/be removed/
+  // have their role changed" guard enforced on the manual member-management
+  // routes in routes.ts — that guard protects against another admin
+  // unilaterally acting on the creator. This is different: the creator/
+  // requester pre-declared their own preference at the moment they asked to
+  // delete the group, so it's self-determined, not imposed.
   async claimGroupAdmin(groupId: number, userId: string): Promise<Group> {
     const [group] = await db.select().from(groups).where(eq(groups.id, groupId));
     if (!group) throw new Error("Group not found");
@@ -2316,8 +2335,18 @@ export class DatabaseStorage implements IStorage {
       .set({ role: 'admin' })
       .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, userId)));
 
+    const requesterId = group.deletionRequestedBy;
+    const requesterStays = group.deletionRequesterStaysAsMember;
+    if (requesterId && requesterId !== userId) {
+      if (requesterStays === false) {
+        await db.delete(groupMemberships)
+          .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, requesterId)));
+      }
+      // true or null: leave the requester's membership/role untouched.
+    }
+
     const [updated] = await db.update(groups)
-      .set({ deletionRequestedAt: null, deletionRequestedBy: null })
+      .set({ deletionRequestedAt: null, deletionRequestedBy: null, deletionRequesterStaysAsMember: null })
       .where(eq(groups.id, groupId))
       .returning();
     await db.delete(groupDeletionDismissals).where(eq(groupDeletionDismissals.groupId, groupId));
