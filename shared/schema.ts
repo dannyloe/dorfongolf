@@ -148,8 +148,8 @@ export const matches = pgTable("matches", {
   courseName: text("course_name").notNull(),
   courseId: integer("course_id"),
   groupId: integer("group_id"),
-  ryderCupEventId: integer("ryder_cup_event_id"), // Links to Ryder Cup event for side matches
-  ryderCupDayNumber: integer("ryder_cup_day_number"), // Which day of the Ryder Cup event
+  eventId: integer("event_id"), // Links to a multi-day Event container (Ryder Cup, Buddy Trip, Tournament); a match is one day/round of that event
+  eventDayNumber: integer("event_day_number"), // Which day of the event this match represents
   creatorId: text("creator_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   completed: boolean("completed").default(false),
@@ -438,7 +438,7 @@ export const appSettings = pgTable("app_settings", {
 // Playing groups for events - organizer-defined tee groups for any event type
 export const eventPlayingGroups = pgTable("event_playing_groups", {
   id: serial("id").primaryKey(),
-  eventId: integer("event_id").notNull(), // References ryderCupEvents.id
+  eventId: integer("event_id").notNull(), // References events.id
   groupNumber: integer("group_number").notNull(), // 1-based index within the event
   generatedAt: timestamp("generated_at").defaultNow(),
 });
@@ -1046,7 +1046,11 @@ export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value,
   label,
 }));
 
-// === RYDER CUP EVENT TABLES ===
+// === EVENT TABLES ===
+// Generic multi-day event container (Ryder Cup, Buddy Trip, Tournament). Table name is
+// generic (`events`) even though most of the Ryder-Cup-only fields below (buyInAmount,
+// teamWinBonus, dailySkinsPot, targetPoints, useHandicaps) only matter for eventType
+// "ryder_cup" and just sit at their defaults, unused, for a Buddy Trip or Tournament.
 
 export const EVENT_TYPES = {
   RYDER_CUP: "ryder_cup",
@@ -1062,7 +1066,7 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   [EVENT_TYPES.TOURNAMENT]: "Tournament",
 };
 
-export const ryderCupEvents = pgTable("ryder_cup_events", {
+export const events = pgTable("events", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   eventType: text("event_type").notNull().default("ryder_cup"),
@@ -1176,7 +1180,7 @@ export const ryderCupSkins = pgTable("ryder_cup_skins", {
 // Ryder Cup event transactions (ledger entries for expenses)
 export const ryderCupTransactions = pgTable("ryder_cup_transactions", {
   id: serial("id").primaryKey(),
-  eventId: integer("event_id").notNull(), // References ryderCupEvents
+  eventId: integer("event_id").notNull(), // References events.id
   payerName: text("payer_name").notNull(), // Player who paid
   payerPresetPlayerId: integer("payer_preset_player_id"), // References presetPlayers.id for dynamic name updates
   description: text("description").notNull(),
@@ -1210,7 +1214,7 @@ export const manualBets = pgTable("manual_bets", {
   description: text("description").notNull(), // e.g. "Nassau side bet", "Putting contest"
   createdAt: timestamp("created_at").defaultNow(),
   creatorId: integer("creator_id"), // References users.id (optional)
-  ryderCupEventId: integer("ryder_cup_event_id"), // References ryderCupEvents.id (optional - for event-specific bets)
+  eventId: integer("event_id"), // References events.id (optional - for event-specific bets)
 });
 
 export const manualBetEntries = pgTable("manual_bet_entries", {
@@ -1244,7 +1248,7 @@ export const settlements = pgTable("settlements", {
   id: serial("id").primaryKey(),
   name: text("name"), // Optional name for the settlement period
   status: text("status").notNull().default("active"), // active, archived, completed
-  eventId: integer("event_id"), // References ryderCupEvents.id for event-specific settlements
+  eventId: integer("event_id"), // References events.id for event-specific settlements
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"), // When all payments are complete
   creatorId: text("creator_id"), // User who initiated
@@ -1276,13 +1280,13 @@ export const settlementPaymentsRelations = relations(settlementPayments, ({ one 
 
 // === RYDER CUP RELATIONS ===
 
-export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many }) => ({
+export const ryderCupEventsRelations = relations(events, ({ one, many }) => ({
   course: one(courses, {
-    fields: [ryderCupEvents.courseId],
+    fields: [events.courseId],
     references: [courses.id],
   }),
   creator: one(users, {
-    fields: [ryderCupEvents.creatorId],
+    fields: [events.creatorId],
     references: [users.id],
   }),
   teams: many(ryderCupTeams),
@@ -1290,9 +1294,9 @@ export const ryderCupEventsRelations = relations(ryderCupEvents, ({ one, many })
 }));
 
 export const ryderCupTeamsRelations = relations(ryderCupTeams, ({ one, many }) => ({
-  event: one(ryderCupEvents, {
+  event: one(events, {
     fields: [ryderCupTeams.eventId],
-    references: [ryderCupEvents.id],
+    references: [events.id],
   }),
   members: many(ryderCupTeamMembers),
   pairingSides: many(ryderCupPairingSides),
@@ -1306,9 +1310,9 @@ export const ryderCupTeamMembersRelations = relations(ryderCupTeamMembers, ({ on
 }));
 
 export const ryderCupDaysRelations = relations(ryderCupDays, ({ one, many }) => ({
-  event: one(ryderCupEvents, {
+  event: one(events, {
     fields: [ryderCupDays.eventId],
-    references: [ryderCupEvents.id],
+    references: [events.id],
   }),
   pairings: many(ryderCupPairings),
   skins: many(ryderCupSkins),
@@ -1374,9 +1378,9 @@ export const ryderCupSkinsRelations = relations(ryderCupSkins, ({ one }) => ({
 }));
 
 export const ryderCupTransactionsRelations = relations(ryderCupTransactions, ({ one, many }) => ({
-  event: one(ryderCupEvents, {
+  event: one(events, {
     fields: [ryderCupTransactions.eventId],
-    references: [ryderCupEvents.id],
+    references: [events.id],
   }),
   splits: many(ryderCupTransactionSplits),
 }));
@@ -1397,7 +1401,7 @@ export const ryderCupClosestToHoleRelations = relations(ryderCupClosestToHole, (
 
 // === RYDER CUP SCHEMAS ===
 
-export const insertRyderCupEventSchema = createInsertSchema(ryderCupEvents).omit({
+export const insertRyderCupEventSchema = createInsertSchema(events).omit({
   id: true,
   createdAt: true,
   creatorId: true,
@@ -1458,7 +1462,7 @@ export const insertRyderCupClosestToHoleSchema = createInsertSchema(ryderCupClos
 
 // === RYDER CUP TYPES ===
 
-export type RyderCupEvent = typeof ryderCupEvents.$inferSelect;
+export type RyderCupEvent = typeof events.$inferSelect;
 export type InsertRyderCupEvent = z.infer<typeof insertRyderCupEventSchema>;
 
 export type RyderCupTeam = typeof ryderCupTeams.$inferSelect;
