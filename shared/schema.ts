@@ -87,6 +87,28 @@ export const groupMembershipInvites = pgTable("group_membership_invites", {
   respondedAt: timestamp("responded_at"),
 });
 
+// === GLOBAL PLAYER IDENTITY (Phase A, 2026-07-15) ===
+// One row per real human being, whether or not they've signed up yet — the
+// canonical identity that group_players / ryder_cup_team_members / players
+// (match roster) rows will point to via a `personId` column, replacing the
+// current patchwork of loosely-linked, per-context guest/preset-player
+// references. See PLAYER_IDENTITY_MIGRATION_PLAN.md for the full plan.
+// Additive only for now — nothing reads/writes this yet (Phase A). Display
+// name intentionally does NOT live here; it stays local to each context
+// table (group_players.displayName, etc.) so the same person can be "Bob" in
+// one group and "Robert" in another, same identity underneath.
+export const people = pgTable("people", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").unique().references(() => users.id, { onDelete: "set null" }), // null = not yet claimed (a guest)
+  primaryName: text("primary_name").notNull(), // fallback display name; used only where no context-specific name is set
+  claimCode: text("claim_code").unique(), // null once there's no outstanding invite (never issued, or already claimed)
+  claimCodeClaimedAt: timestamp("claim_code_claimed_at"), // set when redeemed; code is single-use
+  mergedIntoPersonId: integer("merged_into_person_id"), // set if this row was merged into another (Phase D) — kept for audit trail, never hard-deleted
+  phone: text("phone"), // optional disambiguator when two people share a name
+  ghinNumber: text("ghin_number"), // optional, self-reported USGA handicap ID — another optional disambiguator
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Phase 4: the group-scoped player roster. One row per person per group —
 // the durable identity that matches will eventually reference, replacing
 // today's match-scoped `players` rows. Additive for now; nothing reads from
@@ -114,6 +136,11 @@ export const groupPlayers = pgTable("group_players", {
   // instead of the new signer having to search-and-pick themselves.
   guestClaimCode: text("guest_claim_code").unique(), // null once there's no outstanding invite (never issued, or already claimed)
   guestClaimCodeClaimedAt: timestamp("guest_claim_code_claimed_at"), // set when consumed; code is single-use, checked in claim logic
+  // Phase A of global player identity (2026-07-15): nullable link to the new
+  // canonical `people` table. Null = this row hasn't been backfilled/linked
+  // yet, or is intentionally a one-off/local-only player (see 3b in the
+  // migration plan) that was never "saved" as a real, searchable person.
+  personId: integer("person_id"),
 });
 
 export const courses = pgTable("courses", {
@@ -202,6 +229,11 @@ export const players = pgTable("players", {
   // added ahead of building that UI so counts start accumulating now instead
   // of needing a backfill later.
   groupPlayerId: integer("group_player_id"),
+  // Phase A of global player identity (2026-07-15): nullable link to the new
+  // canonical `people` table — see people table comment and
+  // PLAYER_IDENTITY_MIGRATION_PLAN.md. Null = not yet backfilled, or an
+  // intentional one-off/local-only match player never "saved" as a real player.
+  personId: integer("person_id"),
 });
 
 export const scores = pgTable("scores", {
@@ -671,6 +703,11 @@ export const insertGroupPlayerSchema = createInsertSchema(groupPlayers).omit({
   createdAt: true,
 });
 
+export const insertPersonSchema = createInsertSchema(people).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCourseSchema = createInsertSchema(courses).omit({
   id: true,
 });
@@ -804,6 +841,9 @@ export type InsertGroupJoinRequest = z.infer<typeof insertGroupJoinRequestSchema
 
 export type GroupPlayer = typeof groupPlayers.$inferSelect;
 export type InsertGroupPlayer = z.infer<typeof insertGroupPlayerSchema>;
+
+export type Person = typeof people.$inferSelect;
+export type InsertPerson = z.infer<typeof insertPersonSchema>;
 
 export type Course = typeof courses.$inferSelect;
 export type InsertCourse = z.infer<typeof insertCourseSchema>;
@@ -1103,6 +1143,11 @@ export const ryderCupTeamMembers = pgTable("ryder_cup_team_members", {
   presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name lookups
   handicapIndex: integer("handicap_index"), // stored as tenths
   courseHandicap: integer("course_handicap"), // calculated from index + course
+  // Phase A of global player identity (2026-07-15): nullable link to the new
+  // canonical `people` table — see people table comment and
+  // PLAYER_IDENTITY_MIGRATION_PLAN.md. Null = not yet backfilled, or an
+  // intentional one-off/local-only team member never "saved" as a real player.
+  personId: integer("person_id"),
 });
 
 export const ryderCupDays = pgTable("ryder_cup_days", {
