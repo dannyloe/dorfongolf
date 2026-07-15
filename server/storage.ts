@@ -4784,16 +4784,51 @@ export class DatabaseStorage implements IStorage {
   // Redeeming a code links this person's `people` row to the redeemer's real
   // account — "claim once, recognized everywhere" (plan §1), since every
   // group/trip/match row already points at this same people.id.
+  //
+  // The common case isn't "brand new user's first identity" — most real
+  // users already have their own `people` row by the time they redeem a
+  // code, from being added as a player somewhere else first (e.g. a friend
+  // adds "Big Foot" to a new group before realizing that's already you).
+  // In that case this isn't a simple update, it's a merge: the guest row and
+  // the claimer's existing row are the same person and need to become one —
+  // a self-service version of Phase D's manual merge tool, triggered by
+  // redeeming a code instead of an admin picking two rows by hand.
   async claimPersonByCode(claimCode: string, userId: string): Promise<Person | null> {
-    const [person] = await db.select().from(people).where(eq(people.claimCode, claimCode));
-    if (!person) return null;
-    if (person.claimCodeClaimedAt) return null; // single-use
-    if (person.userId) return null; // already linked to someone
-    const [updated] = await db.update(people)
-      .set({ userId, claimCodeClaimedAt: new Date(), saved: true })
-      .where(eq(people.id, person.id))
-      .returning();
-    return updated;
+    const [guestPerson] = await db.select().from(people).where(eq(people.claimCode, claimCode));
+    if (!guestPerson) return null;
+    if (guestPerson.claimCodeClaimedAt) return null; // single-use
+    if (guestPerson.userId) return null; // already linked to someone
+
+    const [existingCanonical] = await db.select().from(people).where(eq(people.userId, userId));
+
+    if (!existingCanonical) {
+      // No existing people row for this user yet — the simple case, just
+      // link the guest row directly.
+      const [updated] = await db.update(people)
+        .set({ userId, claimCodeClaimedAt: new Date(), saved: true })
+        .where(eq(people.id, guestPerson.id))
+        .returning();
+      return updated;
+    }
+
+    // Merge case: repoint every context row that pointed at the guest
+    // identity over to the claimer's real, existing identity, then mark the
+    // guest row merged (kept for audit trail, never deleted — plan §3).
+    return db.transaction(async (tx) => {
+      await tx.update(groupPlayers).set({ personId: existingCanonical.id }).where(eq(groupPlayers.personId, guestPerson.id));
+      await tx.update(ryderCupTeamMembers).set({ personId: existingCanonical.id }).where(eq(ryderCupTeamMembers.personId, guestPerson.id));
+      await tx.update(players).set({ personId: existingCanonical.id }).where(eq(players.personId, guestPerson.id));
+
+      await tx.update(people)
+        .set({ mergedIntoPersonId: existingCanonical.id, claimCodeClaimedAt: new Date() })
+        .where(eq(people.id, guestPerson.id));
+
+      const [finalCanonical] = await tx.update(people)
+        .set({ saved: true })
+        .where(eq(people.id, existingCanonical.id))
+        .returning();
+      return finalCanonical;
+    });
   }
 
   // Event-level teams (Phase 2 of the multi-day event wrapper): create/add/remove
