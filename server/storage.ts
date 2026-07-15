@@ -36,6 +36,7 @@ import {
   type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
   type Settlement, type SettlementPayment, type SettlementWithPayments,
   type PendingScorecardScan,
+  type Person,
   type PendingSmsBet, type ParsedSmsBet,
   type SmsOptIn,
   type ScanCorrectionLog,
@@ -74,6 +75,11 @@ export interface IStorage {
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
   getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]>;
   findOrCreatePersonForNewPlayer(name: string, userId?: string | null): Promise<number>;
+  savePerson(personId: number): Promise<Person>;
+  checkForSaveNudge(name: string, excludePersonId: number): Promise<Person | null>;
+  searchSavedPeople(query: string): Promise<Person[]>;
+  generatePersonClaimCode(personId: number): Promise<string>;
+  claimPersonByCode(claimCode: string, userId: string): Promise<Person | null>;
   createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
   deleteRyderCupTeam(teamId: number): Promise<void>;
   addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember>;
@@ -4707,11 +4713,87 @@ export class DatabaseStorage implements IStorage {
     if (userId) {
       const [existing] = await db.select().from(people).where(eq(people.userId, userId));
       if (existing) return existing.id;
-      const [created] = await db.insert(people).values({ userId, primaryName: trimmedName }).returning();
+      // Real accounts are always "saved" — they're a full user, not a
+      // one-off, so they should always be findable in the "add existing
+      // person" search (Phase C, plan §3b).
+      const [created] = await db.insert(people).values({ userId, primaryName: trimmedName, saved: true }).returning();
       return created.id;
     }
+    // Guests default to saved=false — a one-off until someone deliberately
+    // saves them (see savePerson / checkForSaveNudge below).
     const [created] = await db.insert(people).values({ primaryName: trimmedName }).returning();
     return created.id;
+  }
+
+  // Phase C: deliberate "save this player" action (plan §3c, moment 3 — the
+  // manual escape hatch) or the accepted nudge (moment 2). Flips a one-off
+  // guest into a real, searchable saved person. No-op if already saved.
+  async savePerson(personId: number): Promise<Person> {
+    const [updated] = await db.update(people)
+      .set({ saved: true })
+      .where(eq(people.id, personId))
+      .returning();
+    return updated;
+  }
+
+  // Phase C, plan §3c moment 2: "you've added this name before" nudge. Fires
+  // when the same (case-insensitive) name shows up on a second, different
+  // NOT-YET-SAVED people row — i.e. real signal of a repeat, not a guess.
+  // Excludes the row just created/used so it doesn't nudge against itself,
+  // and excludes already-saved people (already found via search, no nudge
+  // needed) and merged-away rows.
+  async checkForSaveNudge(name: string, excludePersonId: number): Promise<Person | null> {
+    const trimmedName = (name || "").trim();
+    if (!trimmedName) return null;
+    const candidates = await db.select().from(people)
+      .where(and(
+        eq(people.saved, false),
+        isNull(people.mergedIntoPersonId),
+        isNull(people.userId),
+        sql`lower(${people.primaryName}) = lower(${trimmedName})`,
+      ));
+    const other = candidates.find(p => p.id !== excludePersonId);
+    return other ?? null;
+  }
+
+  // Phase C, plan §3a: the "add existing person" search. Only ever returns
+  // saved=true people — one-off guests stay invisible here by design.
+  async searchSavedPeople(query: string): Promise<Person[]> {
+    const trimmedQuery = (query || "").trim();
+    if (!trimmedQuery) return [];
+    return db.select().from(people)
+      .where(and(
+        eq(people.saved, true),
+        isNull(people.mergedIntoPersonId),
+        sql`lower(${people.primaryName}) LIKE lower(${'%' + trimmedQuery + '%'})`,
+      ))
+      .limit(20);
+  }
+
+  // Phase C: one claim code per person (plan §4, Phase C), replacing the
+  // old per-group guestClaimCode. Generating a code for someone also saves
+  // them (an outstanding invite is a strong signal they're worth finding).
+  async generatePersonClaimCode(personId: number): Promise<string> {
+    const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+    await db.update(people)
+      .set({ claimCode: code, saved: true })
+      .where(eq(people.id, personId));
+    return code;
+  }
+
+  // Redeeming a code links this person's `people` row to the redeemer's real
+  // account — "claim once, recognized everywhere" (plan §1), since every
+  // group/trip/match row already points at this same people.id.
+  async claimPersonByCode(claimCode: string, userId: string): Promise<Person | null> {
+    const [person] = await db.select().from(people).where(eq(people.claimCode, claimCode));
+    if (!person) return null;
+    if (person.claimCodeClaimedAt) return null; // single-use
+    if (person.userId) return null; // already linked to someone
+    const [updated] = await db.update(people)
+      .set({ userId, claimCodeClaimedAt: new Date(), saved: true })
+      .where(eq(people.id, person.id))
+      .returning();
+    return updated;
   }
 
   // Event-level teams (Phase 2 of the multi-day event wrapper): create/add/remove

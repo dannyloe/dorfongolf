@@ -4526,6 +4526,88 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // === Global player identity (Phase C) ===
+  // One-off guests never show up here (saved=false) until someone deliberately
+  // saves them — see PLAYER_IDENTITY_MIGRATION_PLAN.md §3b/3c.
+
+  // "Add existing person" search (plan §3a) — only ever returns saved people.
+  app.get('/api/people/search', isAuthenticated, async (req, res) => {
+    try {
+      const q = (req.query.q as string) || "";
+      const results = await storage.searchSavedPeople(q);
+      res.json(results);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Manual "Save as a player" action (plan §3c, moment 3).
+  app.post('/api/people/:id/save', isAuthenticated, async (req, res) => {
+    try {
+      const personId = parseInt(req.params.id);
+      const person = await storage.savePerson(personId);
+      res.json(person);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Same-name nudge check (plan §3c, moment 2). Call this right after adding
+  // a new one-off guest player; if it returns a match, show the "you've
+  // added this name before — save them?" prompt.
+  app.get('/api/people/nudge-check', isAuthenticated, async (req, res) => {
+    try {
+      const name = (req.query.name as string) || "";
+      const excludePersonId = parseInt((req.query.excludePersonId as string) || "0");
+      const match = await storage.checkForSaveNudge(name, excludePersonId);
+      res.json(match);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Generate a one-per-person claim/invite code (plan §4 Phase C — replaces
+  // the old per-group guestClaimCode). Only the admin who added them, or an
+  // admin of a group/trip/match they're rostered in, should call this —
+  // enforcement of "who can generate a code for this person" is intentionally
+  // loose for now given the tiny, trusted user base; tighten if that changes.
+  app.post('/api/people/:id/claim-code', isAuthenticated, async (req, res) => {
+    try {
+      const personId = parseInt(req.params.id);
+      const code = await storage.generatePersonClaimCode(personId);
+      res.json({ claimCode: code });
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Redeem a claim code — "claim once, recognized everywhere" (plan §1).
+  // General endpoint, not scoped to Groups — works from anywhere (Groups, a
+  // trip, a match) since every context row already points at the same
+  // people.id.
+  app.post('/api/people/claim', isAuthenticated, async (req, res) => {
+    try {
+      const { code } = req.body;
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      if (!code || typeof code !== "string") {
+        return res.status(400).json({ message: "A claim code is required" });
+      }
+      const person = await storage.claimPersonByCode(code.trim().toUpperCase(), userId);
+      if (!person) {
+        return res.status(400).json({ message: "Invalid, expired, or already-claimed code" });
+      }
+      res.json(person);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Remove any group_players row by its own id — works regardless of which
   // add-path created it (guest, user-search, or legacy preset-player link).
   app.delete('/api/groups/:id/players/roster/:groupPlayerId', isAuthenticated, async (req, res) => {
