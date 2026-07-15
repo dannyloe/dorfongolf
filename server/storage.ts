@@ -3,7 +3,7 @@ import { db } from "./db";
 import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
-  groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites,
+  groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites, people,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
   events, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
@@ -73,6 +73,7 @@ export interface IStorage {
   updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
   getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]>;
+  findOrCreatePersonForNewPlayer(name: string, userId?: string | null): Promise<number>;
   createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
   deleteRyderCupTeam(teamId: number): Promise<void>;
   addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember>;
@@ -828,11 +829,16 @@ export class DatabaseStorage implements IStorage {
       teeId = firstCourseTeeId;
     }
     
+    // Phase B dual-write (global player identity): link/create a canonical
+    // people row for this new match player going forward.
+    const personId = await this.findOrCreatePersonForNewPlayer(player.name, player.userId ?? null);
+
     const [newPlayer] = await db.insert(players).values({
       ...player,
       handicapIndex,
       teeId,
       presetPlayerId,
+      personId,
     }).returning();
     return newPlayer;
   }
@@ -2028,12 +2034,15 @@ export class DatabaseStorage implements IStorage {
     const playerIdMap = new Map<number, number>();
 
     for (const player of sourcePlayers) {
+      // Carry over the source player's personId directly (this is literally
+      // the same person, not a new addition) rather than creating a new one.
       const [newPlayer] = await db.insert(players).values({
         matchId: newMatch.id,
         userId: player.userId,
         name: player.name,
         handicapIndex: player.handicapIndex,
         teeId: player.teeId,
+        personId: player.personId,
       }).returning();
       playerIdMap.set(player.id, newPlayer.id);
     }
@@ -2631,10 +2640,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addGroupPlayer(groupId: number, presetPlayerId: number, addedBy?: string): Promise<GroupPlayer> {
+    const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, presetPlayerId));
+    // Phase B dual-write: reuse/create the people row for a claimed account,
+    // else a brand-new guest people row (see findOrCreatePersonForNewPlayer).
+    const personId = await this.findOrCreatePersonForNewPlayer(preset?.name ?? "Player", preset?.userId ?? null);
     const [gp] = await db.insert(groupPlayers).values({
       groupId,
       presetPlayerId,
       addedBy: addedBy || null,
+      personId,
     }).returning();
     return gp;
   }
@@ -2645,14 +2659,19 @@ export class DatabaseStorage implements IStorage {
   async addGroupPlayerGuest(
     groupId: number,
     name: string,
-    opts: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string } = {}
+    // personId: pass the SOURCE row's personId through when this call is really
+    // "copy this existing person into another group" (see copy-from-my-groups
+    // route) rather than a brand-new guest — same person, don't mint a new one.
+    opts: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string; personId?: number } = {}
   ): Promise<GroupPlayer> {
+    const personId = opts.personId ?? await this.findOrCreatePersonForNewPlayer(name, null);
     const [gp] = await db.insert(groupPlayers).values({
       groupId,
       displayName: name,
       handicapIndex: opts.handicapIndex ?? null,
       teePreference: opts.teePreference ?? null,
       addedBy: opts.addedBy || null,
+      personId,
     }).returning();
     return gp;
   }
@@ -2685,6 +2704,9 @@ export class DatabaseStorage implements IStorage {
       || targetUser.username
       || "Player";
 
+    // Phase B dual-write: real account, so reuse/create the people row keyed
+    // on userId — safe, correct dedup (unlike name-based guest matching).
+    const personId = await this.findOrCreatePersonForNewPlayer(displayName, targetUserId);
     const [gp] = await db.insert(groupPlayers).values({
       groupId,
       linkedUserId: targetUserId,
@@ -2692,6 +2714,7 @@ export class DatabaseStorage implements IStorage {
       handicapIndex: targetUser.handicapIndex ?? null,
       teePreference: targetUser.teePreference ?? null,
       addedBy: addedBy || null,
+      personId,
     }).returning();
 
     // Admin-initiated link (search / copy / bulk-import) — the target user
@@ -4664,6 +4687,33 @@ export class DatabaseStorage implements IStorage {
     return updated || null;
   }
 
+  // === GLOBAL PLAYER IDENTITY — Phase B dual-write (2026-07-15) ===
+  // Every "add a player" path (group roster, event team, match) calls this so
+  // new rows going forward get a personId immediately, instead of waiting on
+  // another backfill later. See PLAYER_IDENTITY_MIGRATION_PLAN.md.
+  //
+  // If a real account is known (userId), reuse-or-create is safe and correct —
+  // userId is a true unique identifier, not a name guess. Two different add
+  // paths for the SAME real user will always resolve to the SAME people row.
+  //
+  // If there's no account (a guest/custom name), this deliberately creates a
+  // BRAND NEW people row every time rather than searching by name. This is the
+  // plan's "no automatic matching" principle: two different guests who happen
+  // to share a name are never silently merged by this function. Connecting
+  // them is a deliberate human action — Phase C's "save as a player" /
+  // same-name nudge, or Phase D's manual merge tool — not a guess made here.
+  async findOrCreatePersonForNewPlayer(name: string, userId?: string | null): Promise<number> {
+    const trimmedName = (name || "Player").trim() || "Player";
+    if (userId) {
+      const [existing] = await db.select().from(people).where(eq(people.userId, userId));
+      if (existing) return existing.id;
+      const [created] = await db.insert(people).values({ userId, primaryName: trimmedName }).returning();
+      return created.id;
+    }
+    const [created] = await db.insert(people).values({ primaryName: trimmedName }).returning();
+    return created.id;
+  }
+
   // Event-level teams (Phase 2 of the multi-day event wrapper): create/add/remove
   // teams and members independent of the rigid 6-per-side Ryder Cup setup flow, so
   // Buddy Trip/Tournament events can have any number of teams of any size. These
@@ -4700,11 +4750,17 @@ export class DatabaseStorage implements IStorage {
       const [ph] = await db.select().from(playerHandicaps).where(eq(playerHandicaps.presetPlayerName, playerName));
       resolvedHandicap = ph?.handicapIndex ?? null;
     }
+    // Phase B dual-write: if this name matches an already-claimed preset
+    // player, reuse/create the people row for that real account; otherwise
+    // this is a new guest and gets a brand-new people row (see
+    // findOrCreatePersonForNewPlayer's "no automatic matching" comment).
+    const personId = await this.findOrCreatePersonForNewPlayer(playerName, preset?.userId ?? null);
     const [member] = await db.insert(ryderCupTeamMembers).values({
       teamId,
       playerName,
       presetPlayerId: preset?.id ?? null,
       handicapIndex: resolvedHandicap,
+      personId,
     }).returning();
     return member;
   }

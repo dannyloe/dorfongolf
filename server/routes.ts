@@ -4517,6 +4517,7 @@ Transcript to parse: "${transcript}"`;
             handicapIndex: source.handicapIndex,
             teePreference: source.teePreference,
             addedBy: userId,
+            personId: source.personId ?? undefined, // same person, carry identity through rather than minting a new one
           });
       res.status(201).json(gp);
     } catch (err) {
