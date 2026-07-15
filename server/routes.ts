@@ -421,11 +421,16 @@ export async function registerRoutes(
         teeId: input.teeId ?? null,
         handicapIndex: input.handicapIndex ?? null,
       }, match?.courseId ?? undefined);
-      
+
       // Send notification to newly added player (non-blocking)
       notifyPlayerOfMatchInvitation(matchId, input.userId, match.name, userId).catch(() => {});
-      
-      res.status(201).json(player);
+
+      // Phase C save nudge — only relevant for a typed custom name (no
+      // account), same pattern as the group-guest-add route.
+      const saveNudge = (!input.userId && player.personId)
+        ? await storage.checkForSaveNudge(input.name, player.personId)
+        : null;
+      res.status(201).json({ ...player, saveNudge });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4441,7 +4446,11 @@ Transcript to parse: "${transcript}"`;
         teePreference: input.teePreference ?? null,
         addedBy: userId,
       });
-      res.status(201).json(gp);
+      // Phase C, plan §3c moment 2: check if this name has shown up before as
+      // a not-yet-saved guest elsewhere. If so, the client can surface the
+      // "you've added Bob before — save him?" nudge using saveNudge.id.
+      const saveNudge = gp.personId ? await storage.checkForSaveNudge(input.name, gp.personId) : null;
+      res.status(201).json({ ...gp, saveNudge });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4536,6 +4545,19 @@ Transcript to parse: "${transcript}"`;
       const q = (req.query.q as string) || "";
       const results = await storage.searchSavedPeople(q);
       res.json(results);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Most-played courses for a saved person (plan §3a) — call when showing
+  // the "is this the same person?" confirmation for a same-name search hit.
+  app.get('/api/people/:id/course-history', isAuthenticated, async (req, res) => {
+    try {
+      const personId = parseInt(req.params.id);
+      const courses = await storage.getPersonCourseHistory(personId);
+      res.json(courses);
     } catch (err) {
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
@@ -5068,7 +5090,9 @@ Transcript to parse: "${transcript}"`;
       const team = await storage.getRyderCupTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
       const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex);
-      res.status(201).json(member);
+      // Phase C save nudge — see the group-guest-add route for the same pattern.
+      const saveNudge = member.personId ? await storage.checkForSaveNudge(input.playerName, member.personId) : null;
+      res.status(201).json({ ...member, saveNudge });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });

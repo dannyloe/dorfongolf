@@ -78,6 +78,7 @@ export interface IStorage {
   savePerson(personId: number): Promise<Person>;
   checkForSaveNudge(name: string, excludePersonId: number): Promise<Person | null>;
   searchSavedPeople(query: string): Promise<Person[]>;
+  getPersonCourseHistory(personId: number, limit?: number): Promise<string[]>;
   generatePersonClaimCode(personId: number): Promise<string>;
   claimPersonByCode(claimCode: string, userId: string): Promise<Person | null>;
   createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
@@ -4761,13 +4762,40 @@ export class DatabaseStorage implements IStorage {
   async searchSavedPeople(query: string): Promise<Person[]> {
     const trimmedQuery = (query || "").trim();
     if (!trimmedQuery) return [];
-    return db.select().from(people)
+    const results = await db.select().from(people)
       .where(and(
         eq(people.saved, true),
         isNull(people.mergedIntoPersonId),
         sql`lower(${people.primaryName}) LIKE lower(${'%' + trimmedQuery + '%'})`,
       ))
       .limit(20);
+    // Mask phone to last 4 digits in list results (plan §3a) — enough to
+    // help tell two same-named people apart without exposing the full
+    // number to whoever's searching.
+    return results.map(p => ({
+      ...p,
+      phone: p.phone ? `••••${p.phone.slice(-4)}` : null,
+    }));
+  }
+
+  // Phase C, plan §3a: most-played courses for a saved person, derived from
+  // match history — zero extra data entry required from anyone. Used
+  // alongside phone/GHIN on the "is this the same person?" confirmation
+  // prompt when a same-name match is found. Returns [] for anyone with no
+  // recorded match history yet (a brand-new saved person, or a claimed
+  // guest who's never played a scored round).
+  async getPersonCourseHistory(personId: number, limit: number = 3): Promise<string[]> {
+    const rows = await db.select({
+      courseName: matches.courseName,
+      count: sql<number>`count(*)`.as('count'),
+    })
+      .from(players)
+      .innerJoin(matches, eq(players.matchId, matches.id))
+      .where(eq(players.personId, personId))
+      .groupBy(matches.courseName)
+      .orderBy(desc(sql`count(*)`))
+      .limit(limit);
+    return rows.map(r => r.courseName);
   }
 
   // Phase C: one claim code per person (plan §4, Phase C), replacing the
