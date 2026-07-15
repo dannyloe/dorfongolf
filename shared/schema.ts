@@ -107,6 +107,14 @@ export const people = pgTable("people", {
   phone: text("phone"), // optional disambiguator when two people share a name
   ghinNumber: text("ghin_number"), // optional, self-reported USGA handicap ID — another optional disambiguator
   createdAt: timestamp("created_at").defaultNow(),
+  // Phase C: one-off vs. saved player split (plan §3b). Every player row still
+  // gets a personId (dual-write, Phase B), but a one-off guest's people row
+  // stays saved=false — invisible to the "add existing person" search, and
+  // never surfaced by the same-name nudge. Only a deliberate "save this
+  // player" action (or claiming an account) flips this to true. This keeps
+  // one-round strangers from cluttering search, without reworking Phase B's
+  // always-create-a-personId behavior.
+  saved: boolean("saved").notNull().default(false),
 });
 
 // Phase 4: the group-scoped player roster. One row per person per group —
