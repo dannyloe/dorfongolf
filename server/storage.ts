@@ -84,12 +84,14 @@ export interface IStorage {
   claimPersonByCode(claimCode: string, userId: string): Promise<Person | null>;
   createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
   deleteRyderCupTeam(teamId: number): Promise<void>;
-  addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember>;
+  addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number): Promise<RyderCupTeamMember>;
   removeRyderCupTeamMember(memberId: number): Promise<void>;
 
   getRyderCupEventsForUser(userId: string): Promise<RyderCupEvent[]>;
   userCanAccessRyderCupEvent(eventId: number, userId: string): Promise<boolean>;
   updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent>;
+  updateRyderCupEvent(eventId: number, fields: { name?: string; courseName?: string; courseId?: number }): Promise<RyderCupEvent>;
+  reorderRyderCupDays(eventId: number, dayIds: number[]): Promise<RyderCupDay[]>;
   
   // Ryder Cup Payout methods
   updateRyderCupEventPayouts(eventId: number, payouts: {
@@ -4646,6 +4648,28 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // 2026-07-16: edit trip info after creation (name/overall course) — was
+  // previously not editable anywhere post-creation.
+  async updateRyderCupEvent(eventId: number, fields: { name?: string; courseName?: string; courseId?: number }): Promise<RyderCupEvent> {
+    const [updated] = await db.update(events)
+      .set(fields)
+      .where(eq(events.id, eventId))
+      .returning();
+    return updated;
+  }
+
+  // 2026-07-16: drag-to-reorder days within a trip. dayIds is the full,
+  // new-order list of every day belonging to the event; dayNumber is
+  // reassigned sequentially (1-based) to match.
+  async reorderRyderCupDays(eventId: number, dayIds: number[]): Promise<RyderCupDay[]> {
+    for (let i = 0; i < dayIds.length; i++) {
+      await db.update(ryderCupDays)
+        .set({ dayNumber: i + 1 })
+        .where(and(eq(ryderCupDays.id, dayIds[i]), eq(ryderCupDays.eventId, eventId)));
+    }
+    return db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId)).orderBy(ryderCupDays.dayNumber);
+  }
+
   async updateRyderCupEventClosestToHolePayout(eventId: number, closestToHolePayout: number): Promise<RyderCupEvent> {
     const [updated] = await db.update(events)
       .set({ closestToHolePayout })
@@ -4902,7 +4926,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(ryderCupTeams).where(eq(ryderCupTeams.id, teamId));
   }
 
-  async addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null): Promise<RyderCupTeamMember> {
+  async addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number): Promise<RyderCupTeamMember> {
     const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, playerName));
     let resolvedHandicap = handicapIndex ?? null;
     if (resolvedHandicap === null) {
@@ -4913,13 +4937,16 @@ export class DatabaseStorage implements IStorage {
     // player, reuse/create the people row for that real account; otherwise
     // this is a new guest and gets a brand-new people row (see
     // findOrCreatePersonForNewPlayer's "no automatic matching" comment).
-    const personId = await this.findOrCreatePersonForNewPlayer(playerName, preset?.userId ?? null);
+    // personId: pass an already-saved person's id through directly (Search
+    // tab, plan §3a) instead of resolving by name — same pattern as
+    // storage.addPlayer's fix (2026-07-16).
+    const resolvedPersonId = personId ?? await this.findOrCreatePersonForNewPlayer(playerName, preset?.userId ?? null);
     const [member] = await db.insert(ryderCupTeamMembers).values({
       teamId,
       playerName,
       presetPlayerId: preset?.id ?? null,
       handicapIndex: resolvedHandicap,
-      personId,
+      personId: resolvedPersonId,
     }).returning();
     return member;
   }

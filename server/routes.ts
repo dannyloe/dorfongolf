@@ -4929,6 +4929,8 @@ Transcript to parse: "${transcript}"`;
       res.json(updated);
 
       // Notify event group members when event becomes active
+      // (unrelated to updateInfo/reorder routes added below — kept here to
+      // avoid disturbing this handler's existing notification logic)
       if (input.status === 'active' && event.groupId) {
         const user = req.user as any;
         const requestingUserId = user?.claims?.sub;
@@ -4939,6 +4941,48 @@ Transcript to parse: "${transcript}"`;
           requestingUserId
         );
       }
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // 2026-07-16: edit trip name/overall course after creation — previously
+  // not editable anywhere once a trip was created.
+  app.patch(api.ryderCup.updateInfo.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.updateInfo.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      const updated = await storage.updateRyderCupEvent(id, {
+        name: input.name,
+        courseName: input.courseName,
+        courseId: input.courseId,
+      });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // 2026-07-16: drag-to-reorder days within a trip. dayIds is the full,
+  // new-order list of every day belonging to the event.
+  app.patch(api.ryderCup.reorderDays.path, isAuthenticated, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      const input = api.ryderCup.reorderDays.input.parse(req.body);
+      const event = await storage.getRyderCupEvent(id);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+      const updated = await storage.reorderRyderCupDays(id, input.dayIds);
+      res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -5125,7 +5169,7 @@ Transcript to parse: "${transcript}"`;
       const input = api.ryderCup.addTeamMember.input.parse(req.body);
       const team = await storage.getRyderCupTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
-      const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex);
+      const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex, input.personId ?? undefined);
       // Phase C save nudge — see the group-guest-add route for the same pattern.
       const saveNudge = member.personId ? await storage.checkForSaveNudge(input.playerName, member.personId) : null;
       res.status(201).json({ ...member, saveNudge });
