@@ -1476,6 +1476,7 @@ export const api = {
       input: z.object({
         playerName: z.string().min(1),
         handicapIndex: z.number().nullable().optional(),
+        personId: z.number().optional(),
       }),
       responses: {
         201: z.custom<typeof ryderCupTeamMembers.$inferSelect>(),
