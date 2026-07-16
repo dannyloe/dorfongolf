@@ -75,6 +75,7 @@ export interface IStorage {
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
   getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]>;
   findOrCreatePersonForNewPlayer(name: string, userId?: string | null): Promise<number>;
+  getPerson(personId: number): Promise<Person | undefined>;
   savePerson(personId: number): Promise<Person>;
   checkForSaveNudge(name: string, excludePersonId: number): Promise<Person | null>;
   searchSavedPeople(query: string): Promise<Person[]>;
@@ -838,7 +839,12 @@ export class DatabaseStorage implements IStorage {
     
     // Phase B dual-write (global player identity): link/create a canonical
     // people row for this new match player going forward.
-    const personId = await this.findOrCreatePersonForNewPlayer(player.name, player.userId ?? null);
+    // personId: pass an existing saved person's id through when this is
+    // really "add this already-known person to the match" (Search tab, plan
+    // §3a) rather than a brand-new name — same pattern as
+    // addGroupPlayerGuest's opts.personId. Falls back to the normal
+    // find-or-create for a typed custom name.
+    const personId = player.personId ?? await this.findOrCreatePersonForNewPlayer(player.name, player.userId ?? null);
 
     const [newPlayer] = await db.insert(players).values({
       ...player,
@@ -4724,6 +4730,14 @@ export class DatabaseStorage implements IStorage {
     // saves them (see savePerson / checkForSaveNudge below).
     const [created] = await db.insert(people).values({ primaryName: trimmedName }).returning();
     return created.id;
+  }
+
+  // 2026-07-16: look up a single canonical person by id — used when adding
+  // an already-saved person (found via /api/people/search) to a new group's
+  // roster, so the route can resolve their primaryName to pass through.
+  async getPerson(personId: number): Promise<Person | undefined> {
+    const [person] = await db.select().from(people).where(eq(people.id, personId));
+    return person;
   }
 
   // Phase C: deliberate "save this player" action (plan §3c, moment 3 — the

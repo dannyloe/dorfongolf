@@ -420,6 +420,9 @@ export async function registerRoutes(
         userId: input.userId,
         teeId: input.teeId ?? null,
         handicapIndex: input.handicapIndex ?? null,
+        // Search tab (plan §3a): adding an already-saved person passes their
+        // personId through directly instead of minting a new one.
+        personId: input.personId ?? undefined,
       }, match?.courseId ?? undefined);
 
       // Send notification to newly added player (non-blocking)
@@ -4420,6 +4423,39 @@ Transcript to parse: "${transcript}"`;
       const results = await storage.searchDiscoverableUsers(q, userId);
       res.json(results);
     } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Add an already-saved person (found via /api/people/search) to this
+  // group's roster — personId passthrough, same reasoning as the
+  // copy-from-my-groups route below, but sourced from global search instead
+  // of another group's roster row (2026-07-16).
+  app.post('/api/groups/:id/players/from-person', isAuthenticated, async (req, res) => {
+    const groupId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    const membership = await storage.getGroupMembership(groupId, userId);
+    if (!membership || membership.role !== 'admin') {
+      return res.status(403).json({ message: "Only group admins can add players" });
+    }
+    try {
+      const schema = z.object({ personId: z.number() });
+      const input = schema.parse(req.body);
+      const person = await storage.getPerson(input.personId);
+      if (!person) return res.status(404).json({ message: "Person not found" });
+      const gp = person.userId
+        ? await storage.addGroupPlayerFromUser(groupId, person.userId, userId)
+        : await storage.addGroupPlayerGuest(groupId, person.primaryName, {
+            addedBy: userId,
+            personId: person.id,
+          });
+      res.status(201).json(gp);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
     }
