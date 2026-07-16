@@ -80,6 +80,7 @@ export const api = {
         userId: z.string().optional(),
         teeId: z.number().nullable().optional(),
         handicapIndex: z.number().nullable().optional(),
+        personId: z.number().optional(),
       }),
       responses: {
         201: z.custom<typeof players.$inferSelect>(),
