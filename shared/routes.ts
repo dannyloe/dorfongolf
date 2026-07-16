@@ -1362,6 +1362,32 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    updateInfo: {
+            method: 'PATCH' as const,
+            path: '/api/ryder-cup/:id/info',
+            input: z.object({
+                      name: z.string().min(1).optional(),
+                      courseName: z.string().min(1).optional(),
+                      courseId: z.number().optional(),
+            }),
+            responses: {
+                      200: z.custom<typeof ryderCupEvents.$inferSelect>(),
+                      400: errorSchemas.validation,
+                      404: errorSchemas.notFound,
+            },
+    },
+        reorderDays: {
+                method: 'PATCH' as const,
+                path: '/api/ryder-cup/:id/days/reorder',
+                input: z.object({
+                          dayIds: z.array(z.number()).min(1),
+                }),
+                responses: {
+                          200: z.array(z.custom<typeof ryderCupDays.$inferSelect>()),
+                          400: errorSchemas.validation,
+                          404: errorSchemas.notFound,
+                },
+        },
     updateHandicaps: {
       method: 'PATCH' as const,
       path: '/api/ryder-cup/:id/handicaps',
