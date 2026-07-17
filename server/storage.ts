@@ -2817,6 +2817,17 @@ export class DatabaseStorage implements IStorage {
       // never shown — the displayName fallback below stops at username, never
       // falls through to the email address. 2026-07-12: added displayName as
       // the primary match/display field now that registration actually sets it.
+      //
+      // Phone search (decided 2026-07-17, plan §3e/§5), digit-normalized to
+      // match searchSavedPeople below — re-examined the 2026-07-12 incident
+      // above: what actually broke was a raw sql`` template concatenating
+      // firstName + lastName into one matchable string, a fundamentally
+      // different, more complex expression than a single-column
+      // regexp_replace() call. That simpler pattern is already proven safe
+      // elsewhere in this file (checkForSaveNudge's name match,
+      // searchSavedPeople's phone match), so it is safe here too — the
+      // earlier "avoid all raw SQL in this function" note was broader than
+      // the actual failure warranted.
       .where(and(
         eq(users.discoverable, true),
         or(
@@ -2826,16 +2837,9 @@ export class DatabaseStorage implements IStorage {
           ilike(users.lastName, `%${trimmed}%`),
           ilike(users.username, `%${trimmed}%`),
           ilike(users.email, `%${trimmed}%`),
-          // Phone search (decided 2026-07-17, plan §3e/§5). Deliberately a
-          // plain ilike on the stored value as typed — NOT digit-normalized
-          // via regexp_replace the way searchSavedPeople's phone match is,
-          // because this specific function has direct prior history of a
-          // raw sql`` template throwing a Postgres syntax error at runtime
-          // (see 2026-07-12 note above) and was rewritten to avoid raw SQL
-          // entirely. Known limitation: a typed "5015558765" won't match a
-          // stored "(501) 555-8765" — only exact-ish formatting matches.
-          // Fine for now; revisit if this turns out to matter in practice.
-          ilike(users.phone, `%${trimmed}%`),
+          ...(trimmed.replace(/\D/g, "").length >= 3
+            ? [sql`regexp_replace(coalesce(${users.phone}, ''), '[^0-9]', '', 'g') LIKE ${'%' + trimmed.replace(/\D/g, "") + '%'}`]
+            : []),
         )
       ));
     return rows
