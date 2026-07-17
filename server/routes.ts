@@ -307,12 +307,19 @@ export async function registerRoutes(
       });
       
       const currentUser = await storage.getUser(user.claims.sub);
-      // Use presetPlayerName if claimed, otherwise fall back to firstName/lastName, DB email, username, or JWT email
-      const name = currentUser?.presetPlayerName
+      // Fixed 2026-07-17: displayName is the app's canonical name field
+      // (used everywhere else — search, rosters, member lists) but this
+      // fallback never checked it, and put email ahead of username. That
+      // meant any account with no first/last name set showed their email
+      // address to every other player in the match — a privacy leak, not
+      // just a display quirk (the same "never show email" principle is
+      // already explicit in searchDiscoverableUsers' own comments; this
+      // one spot just never matched it). Email removed from the chain
+      // entirely, both the DB value and the JWT claim.
+      const name = (currentUser as any)?.displayName
+        || currentUser?.presetPlayerName
         || (currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : '')
-        || currentUser?.email
         || currentUser?.username
-        || user.claims.email
         || "Player";
 
       await storage.addPlayer({

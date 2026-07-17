@@ -1323,6 +1323,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Fixed 2026-07-17: same email-leak bug found in match creation's
+  // auto-add-creator fallback (see routes.ts POST /api/matches). This
+  // feeds GET /api/preset-players' claimedByName, visible to any
+  // authenticated user — an account with no first/last name set was
+  // showing its email address here. displayName added ahead of everything
+  // else (the app's canonical name field, not previously checked here
+  // either); email removed from the chain entirely.
   async getPresetPlayersClaimed(): Promise<{ presetPlayerName: string; userId: string; userName: string }[]> {
     const usersWithPreset = await db.select().from(users);
     return usersWithPreset
@@ -1330,7 +1337,10 @@ export class DatabaseStorage implements IStorage {
       .map(u => ({
         presetPlayerName: u.presetPlayerName!,
         userId: u.id,
-        userName: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Unknown',
+        userName: (u as any).displayName
+          || `${u.firstName || ''} ${u.lastName || ''}`.trim()
+          || u.username
+          || 'Unknown',
       }));
   }
 
@@ -4807,11 +4817,16 @@ export class DatabaseStorage implements IStorage {
   async syncPersonFromUser(userId: string): Promise<void> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     if (!user) return;
+    // Fixed 2026-07-17 (same day this was written): dropped the `|| user.email`
+    // fallback that was here — username is required and unique at signup so
+    // this was very unlikely to ever trigger, but it is inconsistent with the
+    // "never show email" principle just enforced on the two real match/roster
+    // exposures found in the same review (see notes above on
+    // getPresetPlayersClaimed and the match-creation auto-add-creator fix).
     const name = (user as any).displayName
       || user.presetPlayerName
       || `${user.firstName || ''} ${user.lastName || ''}`.trim()
       || user.username
-      || user.email
       || "Player";
     await db.update(people)
       .set({ primaryName: name, phone: user.phone || null })
