@@ -2826,6 +2826,16 @@ export class DatabaseStorage implements IStorage {
           ilike(users.lastName, `%${trimmed}%`),
           ilike(users.username, `%${trimmed}%`),
           ilike(users.email, `%${trimmed}%`),
+          // Phone search (decided 2026-07-17, plan §3e/§5). Deliberately a
+          // plain ilike on the stored value as typed — NOT digit-normalized
+          // via regexp_replace the way searchSavedPeople's phone match is,
+          // because this specific function has direct prior history of a
+          // raw sql`` template throwing a Postgres syntax error at runtime
+          // (see 2026-07-12 note above) and was rewritten to avoid raw SQL
+          // entirely. Known limitation: a typed "5015558765" won't match a
+          // stored "(501) 555-8765" — only exact-ish formatting matches.
+          // Fine for now; revisit if this turns out to matter in practice.
+          ilike(users.phone, `%${trimmed}%`),
         )
       ));
     return rows
@@ -4884,11 +4894,25 @@ export class DatabaseStorage implements IStorage {
   async searchSavedPeople(query: string): Promise<Person[]> {
     const trimmedQuery = (query || "").trim();
     if (!trimmedQuery) return [];
+    // Search by phone too (decided 2026-07-17, plan §3e/§5 — built same
+    // day after being flagged as missing). Strips formatting from the
+    // stored value at query time so "(501) 555-8765" and "5015558765"
+    // both match; raw sql`` is safe here specifically (unlike
+    // searchDiscoverableUsers below) — this file already uses the same
+    // sql`` LIKE pattern for name matching a few lines up, with no history
+    // of the raw-SQL syntax-error class noted elsewhere in this file.
+    const digitsOnly = trimmedQuery.replace(/\D/g, "");
+    const nameOrPhoneMatch = digitsOnly.length >= 3
+      ? or(
+          sql`lower(${people.primaryName}) LIKE lower(${'%' + trimmedQuery + '%'})`,
+          sql`regexp_replace(coalesce(${people.phone}, ''), '[^0-9]', '', 'g') LIKE ${'%' + digitsOnly + '%'}`,
+        )
+      : sql`lower(${people.primaryName}) LIKE lower(${'%' + trimmedQuery + '%'})`;
     const results = await db.select().from(people)
       .where(and(
         eq(people.saved, true),
         isNull(people.mergedIntoPersonId),
-        sql`lower(${people.primaryName}) LIKE lower(${'%' + trimmedQuery + '%'})`,
+        nameOrPhoneMatch,
       ))
       .limit(20);
     // Mask phone (area code + last 4 visible, decided 2026-07-17) in list
