@@ -4895,6 +4895,15 @@ export class DatabaseStorage implements IStorage {
 
   // Phase C, plan §3a: the "add existing person" search. Only ever returns
   // saved=true people — one-off guests stay invisible here by design.
+  //
+  // Bug fixed 2026-07-17: this must also exclude people rows that already
+  // have a userId — those are real accounts, findable via
+  // searchDiscoverableUsers/(/api/users/search) instead. Every real account
+  // now gets an eagerly-created people row at signup (saved: true), so
+  // without this exclusion a real user showed up TWICE in the same "Add
+  // Player" screen — once from each search endpoint the UI merges together
+  // (spotted when searching a real account by phone, which made the
+  // duplicate obvious, but the underlying gap existed for name search too).
   async searchSavedPeople(query: string): Promise<Person[]> {
     const trimmedQuery = (query || "").trim();
     if (!trimmedQuery) return [];
@@ -4916,6 +4925,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(people.saved, true),
         isNull(people.mergedIntoPersonId),
+        isNull(people.userId),
         nameOrPhoneMatch,
       ))
       .limit(20);
