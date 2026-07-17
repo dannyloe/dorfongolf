@@ -74,9 +74,10 @@ export interface IStorage {
   updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
   updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
   getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]>;
-  findOrCreatePersonForNewPlayer(name: string, userId?: string | null): Promise<number>;
+  findOrCreatePersonForNewPlayer(name: string, userId?: string | null, phone?: string | null): Promise<number>;
   getPerson(personId: number): Promise<Person | undefined>;
   savePerson(personId: number): Promise<Person>;
+  syncPersonFromUser(userId: string): Promise<void>;
   checkForSaveNudge(name: string, excludePersonId: number): Promise<Person | null>;
   searchSavedPeople(query: string): Promise<Person[]>;
   getPersonCourseHistory(personId: number, limit?: number): Promise<string[]>;
@@ -175,7 +176,7 @@ export interface IStorage {
   addGroupPlayerGuest(groupId: number, name: string, opts?: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string }): Promise<GroupPlayer>;
   addGroupPlayerFromUser(groupId: number, targetUserId: string, addedBy?: string): Promise<GroupPlayer>;
   getCopyFromMyGroupsCandidates(adminUserId: string, targetGroupId: number): Promise<GroupPlayer[]>;
-  searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string }>>;
+  searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string; phone: string | null }>>;
   removeGroupPlayerById(groupId: number, groupPlayerId: number): Promise<boolean>;
   getPresetPlayerByName(name: string): Promise<PresetPlayer | undefined>;
   // Phase 4 — guest claim flow: single-use personal code per guest roster row
@@ -2774,8 +2775,8 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  // Phase 4 — global player search. Discoverable users only, name only,
-  // no group affiliation or private data in the result.
+  // Phase 4 — global player search. Discoverable users only, name only —
+  // no group affiliation shown.
   //
   // Matches preset_player_name / first+last name first, but falls back to
   // username and email — most accounts right now (test signups, early real
@@ -2783,7 +2784,14 @@ export class DatabaseStorage implements IStorage {
   // Email/username are still only used to MATCH the search query; the
   // returned displayName never exposes them unless there's truly nothing
   // else to show (same fallback chain used at match-creation time).
-  async searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string }>> {
+  //
+  // Phone (added 2026-07-17, plan §3e): now included, masked the same way
+  // as saved-guest search (area code + last 4, via maskPhoneForSearch) —
+  // real accounts can share a name too (two different "Robert Davis"
+  // users), so this extends the same-name disambiguation already built for
+  // guests to real accounts. Deliberate change from the "no private data"
+  // stance this route used to take — full number is never returned.
+  async searchDiscoverableUsers(query: string, excludeUserId?: string): Promise<Array<{ id: string; displayName: string; phone: string | null }>> {
     const trimmed = query.trim();
     if (trimmed.length < 3) return [];
     const rows = await db.select({
@@ -2794,6 +2802,7 @@ export class DatabaseStorage implements IStorage {
       presetPlayerName: users.presetPlayerName,
       username: users.username,
       email: users.email,
+      phone: users.phone,
     }).from(users)
       // Switched from hand-written raw sql`` to Drizzle's own ilike()/or()/and()
       // helpers — two earlier attempts at a raw SQL fragment here both threw a
@@ -2828,6 +2837,7 @@ export class DatabaseStorage implements IStorage {
           || `${r.firstName || ''} ${r.lastName || ''}`.trim()
           || r.username
           || 'Player',
+        phone: r.phone ? this.maskPhoneForSearch(r.phone) : null,
       }));
   }
 
@@ -4772,6 +4782,26 @@ export class DatabaseStorage implements IStorage {
   async getPerson(personId: number): Promise<Person | undefined> {
     const [person] = await db.select().from(people).where(eq(people.id, personId));
     return person;
+  }
+
+  // Plan §3e: keep a real account's canonical `people` row in sync with
+  // their `users` row whenever profile fields that matter for identity
+  // (display name, phone) change. Assumes the `people` row already exists —
+  // it's created eagerly at signup (see registration flow), not lazily —
+  // so this is a plain update, never a create. No-op if somehow no such
+  // row exists yet (e.g. an account created before this was built).
+  async syncPersonFromUser(userId: string): Promise<void> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user) return;
+    const name = (user as any).displayName
+      || user.presetPlayerName
+      || `${user.firstName || ''} ${user.lastName || ''}`.trim()
+      || user.username
+      || user.email
+      || "Player";
+    await db.update(people)
+      .set({ primaryName: name, phone: user.phone || null })
+      .where(eq(people.userId, userId));
   }
 
   // Phase C: deliberate "save this player" action (plan §3c, moment 3 — the

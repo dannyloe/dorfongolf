@@ -4410,8 +4410,12 @@ Transcript to parse: "${transcript}"`;
 
   // === PHASE 4: GROUP-SCOPED ROSTER — THREE ADD-PLAYER PATHS ===
 
-  // Global player search — name only, discoverable users only, no group
-  // affiliation or private data in the response. 3-character minimum.
+  // Global player search — discoverable users only, no group affiliation
+  // shown. 3-character minimum. Phone is included (added 2026-07-17, plan
+  // §3e), but always masked to area code + last 4 via maskPhoneForSearch —
+  // same disambiguation this route's guest-search counterpart already had,
+  // extended here since two real accounts can share a name too. Full
+  // number is never returned.
   app.get('/api/users/search', isAuthenticated, async (req, res) => {
     try {
       const q = typeof req.query.q === 'string' ? req.query.q : '';
@@ -4733,21 +4737,37 @@ Transcript to parse: "${transcript}"`;
         teePreference: z.string().nullable().optional(),
         discoverable: z.boolean().optional(),
         displayName: z.string().trim().min(1).max(60).nullable().optional(),
+        // Added 2026-07-17, plan §3e: real accounts can now add/edit a phone
+        // number from Profile, same as at signup. Optional, no format
+        // enforcement here beyond non-empty — storage layer normalizes for
+        // display/search masking, not for validation.
+        phone: z.string().trim().min(1).nullable().optional(),
       });
       const input = schema.parse(req.body);
-      const updateData: { handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean; displayName?: string | null } = {};
+      const updateData: { handicapIndex?: number | null; teePreference?: string | null; discoverable?: boolean; displayName?: string | null; phone?: string | null } = {};
       if (input.handicapIndex !== undefined) updateData.handicapIndex = input.handicapIndex;
       if (input.teePreference !== undefined) updateData.teePreference = input.teePreference;
       if (input.discoverable !== undefined) updateData.discoverable = input.discoverable;
       if (input.displayName !== undefined) updateData.displayName = input.displayName;
+      if (input.phone !== undefined) updateData.phone = input.phone;
 
       const updated = await storage.updateUserProfile(userId, updateData);
+      // Plan §3e: keep the canonical people row (created eagerly at signup)
+      // in sync whenever phone or displayName changes here — no separate
+      // backfill/copy step needed since the row already exists for every
+      // real account by the time this route can be called.
+      if (input.phone !== undefined || input.displayName !== undefined) {
+        await storage.syncPersonFromUser(userId).catch((err) => {
+          console.error("[canonical-profile] failed to sync people row", err);
+        });
+      }
       res.json({
         id: updated.id,
         handicapIndex: updated.handicapIndex,
         teePreference: updated.teePreference,
         discoverable: updated.discoverable,
         displayName: updated.displayName,
+        phone: updated.phone,
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
