@@ -3,6 +3,7 @@ import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import bcrypt from "bcryptjs";
+import { storage as mainStorage } from "../../storage";
 
 declare module "express-session" {
   interface SessionData {
@@ -89,7 +90,7 @@ export async function initializeAuth(app: Express) {
   // POST /api/auth/register
   app.post("/api/auth/register", async (req, res) => {
         try {
-                const { username, password, email, firstName, lastName, displayName } = req.body;
+                const { username, password, email, firstName, lastName, displayName, phone } = req.body;
                 if (!username || !password) {
                           return res.status(400).json({ message: "Username and password required" });
                 }
@@ -112,7 +113,17 @@ export async function initializeAuth(app: Express) {
                           firstName: firstName || null,
                           lastName: lastName || null,
                           displayName: displayName || null,
+                    phone: phone || null,
                 });
+          // Plan 3e (2026-07-17): create this account canonical people row eagerly,
+          // at signup, instead of lazily on first use elsewhere, so there is always
+          // exactly one row for later profile edits (name, phone) to sync into.
+          // Non-blocking - a failure here should not block account creation itself.
+          const fullName = (firstName || "") + " " + (lastName || "");
+          const personName = displayName || fullName.trim() || trimmedUsername;
+          mainStorage.findOrCreatePersonForNewPlayer(personName, user.id, phone || null).catch((err) => {
+            console.error("[register] failed to create people row", err);
+          });
                 req.session.userId = user.id;
                 req.session.save((err) => {
                           if (err) {
