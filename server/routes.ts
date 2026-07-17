@@ -4475,12 +4475,16 @@ Transcript to parse: "${transcript}"`;
         name: z.string().min(1),
         handicapIndex: z.number().int().nullable().optional(),
         teePreference: z.string().nullable().optional(),
+        // Added 2026-07-17, plan §3d: present only when this name was picked
+        // via the device's Contacts instead of typed by hand.
+        phone: z.string().nullable().optional(),
       });
       const input = schema.parse(req.body);
       const gp = await storage.addGroupPlayerGuest(groupId, input.name, {
         handicapIndex: input.handicapIndex ?? null,
         teePreference: input.teePreference ?? null,
         addedBy: userId,
+        phone: input.phone ?? null,
       });
       // Phase C, plan §3c moment 2: check if this name has shown up before as
       // a not-yet-saved guest elsewhere. If so, the client can surface the

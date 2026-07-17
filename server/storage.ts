@@ -2677,9 +2677,12 @@ export class DatabaseStorage implements IStorage {
     // personId: pass the SOURCE row's personId through when this call is really
     // "copy this existing person into another group" (see copy-from-my-groups
     // route) rather than a brand-new guest — same person, don't mint a new one.
-    opts: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string; personId?: number } = {}
+    // phone: optional, only meaningfully set on a brand-new person — ignored
+    // when personId is already supplied, since that person's phone (if any)
+    // was already captured whenever they were first created.
+    opts: { handicapIndex?: number | null; teePreference?: string | null; addedBy?: string; personId?: number; phone?: string | null } = {}
   ): Promise<GroupPlayer> {
-    const personId = opts.personId ?? await this.findOrCreatePersonForNewPlayer(name, null);
+    const personId = opts.personId ?? await this.findOrCreatePersonForNewPlayer(name, null, opts.phone);
     const [gp] = await db.insert(groupPlayers).values({
       groupId,
       displayName: name,
@@ -4739,7 +4742,11 @@ export class DatabaseStorage implements IStorage {
   // to share a name are never silently merged by this function. Connecting
   // them is a deliberate human action — Phase C's "save as a player" /
   // same-name nudge, or Phase D's manual merge tool — not a guess made here.
-  async findOrCreatePersonForNewPlayer(name: string, userId?: string | null): Promise<number> {
+  // `phone` (added 2026-07-17, plan §3d): optional, populated when the name
+  // was sourced from the device's Contacts instead of typed — a phone
+  // number that arrives for free this way directly feeds the §3a
+  // disambiguator, with no extra question asked of whoever's adding them.
+  async findOrCreatePersonForNewPlayer(name: string, userId?: string | null, phone?: string | null): Promise<number> {
     const trimmedName = (name || "Player").trim() || "Player";
     if (userId) {
       const [existing] = await db.select().from(people).where(eq(people.userId, userId));
@@ -4752,7 +4759,10 @@ export class DatabaseStorage implements IStorage {
     }
     // Guests default to saved=false — a one-off until someone deliberately
     // saves them (see savePerson / checkForSaveNudge below).
-    const [created] = await db.insert(people).values({ primaryName: trimmedName }).returning();
+    const [created] = await db.insert(people).values({
+      primaryName: trimmedName,
+      phone: phone?.trim() || null,
+    }).returning();
     return created.id;
   }
 
@@ -4781,6 +4791,17 @@ export class DatabaseStorage implements IStorage {
   // Excludes the row just created/used so it doesn't nudge against itself,
   // and excludes already-saved people (already found via search, no nudge
   // needed) and merged-away rows.
+  //
+  // Dismissal cadence (decided 2026-07-17): don't nudge every single time —
+  // that's the exact nagging problem 3c was designed to avoid. Since a
+  // guest add always creates a brand-new unsaved `people` row (no
+  // name-based reuse — see findOrCreatePersonForNewPlayer above), the count
+  // of matching unsaved rows for this name IS the occurrence count; no
+  // separate dismissal counter needed. Nudge on the 2nd and 3rd occurrence,
+  // then only every 3rd occurrence after that (6th, 9th, 12th...) — a true
+  // one-off who reappears twice shouldn't get nagged forever, but someone
+  // who keeps coming back should still eventually get re-surfaced even
+  // after a few "Not now"s.
   async checkForSaveNudge(name: string, excludePersonId: number): Promise<Person | null> {
     const trimmedName = (name || "").trim();
     if (!trimmedName) return null;
@@ -4791,8 +4812,41 @@ export class DatabaseStorage implements IStorage {
         isNull(people.userId),
         sql`lower(${people.primaryName}) = lower(${trimmedName})`,
       ));
-    const other = candidates.find(p => p.id !== excludePersonId);
-    return other ?? null;
+    const others = candidates.filter(p => p.id !== excludePersonId);
+    if (others.length === 0) return null;
+    // occurrence = how many times this name has now been added as a guest,
+    // including the row that was just created (excludePersonId).
+    const occurrence = others.length + 1;
+    const shouldNudge = occurrence === 2 || occurrence % 3 === 0;
+    if (!shouldNudge) return null;
+    // Pick the oldest matching row to nudge about — the longest-standing
+    // duplicate is the most useful one to consolidate onto.
+    const oldest = others.reduce((a, b) => (a.id < b.id ? a : b));
+    return oldest;
+  }
+
+  // Phase C, plan §3a (masking format decided 2026-07-17): show area code +
+  // last 4 — e.g. "(501) XXX-8765" — so geography helps disambiguate two
+  // same-named people without exposing the full number. Handles plain
+  // 10-digit US numbers and 11-digit numbers with a leading country code
+  // (1). Anything else (non-US formats) falls back to a last-4-only mask —
+  // exact non-US masking rule is still an open item per the migration plan.
+  maskPhoneForSearch(rawPhone: string): string {
+    const digits = rawPhone.replace(/\D/g, "");
+    let tenDigit: string | null = null;
+    if (digits.length === 10) {
+      tenDigit = digits;
+    } else if (digits.length === 11 && digits.startsWith("1")) {
+      tenDigit = digits.slice(1);
+    }
+    if (tenDigit) {
+      const areaCode = tenDigit.slice(0, 3);
+      const last4 = tenDigit.slice(-4);
+      return `(${areaCode}) XXX-${last4}`;
+    }
+    // Fallback for anything not shaped like a US number.
+    const last4 = digits.slice(-4) || rawPhone.slice(-4);
+    return `••••${last4}`;
   }
 
   // Phase C, plan §3a: the "add existing person" search. Only ever returns
@@ -4807,12 +4861,12 @@ export class DatabaseStorage implements IStorage {
         sql`lower(${people.primaryName}) LIKE lower(${'%' + trimmedQuery + '%'})`,
       ))
       .limit(20);
-    // Mask phone to last 4 digits in list results (plan §3a) — enough to
-    // help tell two same-named people apart without exposing the full
-    // number to whoever's searching.
+    // Mask phone (area code + last 4 visible, decided 2026-07-17) in list
+    // results — enough to help tell two same-named people apart without
+    // exposing the full number to whoever's searching.
     return results.map(p => ({
       ...p,
-      phone: p.phone ? `••••${p.phone.slice(-4)}` : null,
+      phone: p.phone ? this.maskPhoneForSearch(p.phone) : null,
     }));
   }
 
