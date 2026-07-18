@@ -437,7 +437,19 @@ export async function registerRoutes(
 
       // Phase C save nudge — only relevant for a typed custom name (no
       // account), same pattern as the group-guest-add route.
-      const saveNudge = (!input.userId && player.personId)
+      //
+      // Bug fixed 2026-07-17: this comment always said "only relevant for a
+      // typed custom name," but the condition below never actually checked
+      // that — `input.personId` passes through unchanged when someone picks
+      // an already-saved guest from Search, so `player.personId` was truthy
+      // either way. That meant picking an existing saved person from Search
+      // could still trigger "you've added Bob before, save them?" if a
+      // different, still-unsaved one-off with the same name existed
+      // elsewhere — confusing, since the Bob you just added is already
+      // saved. Added the `!input.personId` check so the nudge only fires
+      // when addPlayer had to mint a brand-new personId for a typed name,
+      // never when one was passed in from Search.
+      const saveNudge = (!input.userId && !input.personId && player.personId)
         ? await storage.checkForSaveNudge(input.name, player.personId)
         : null;
       res.status(201).json({ ...player, saveNudge });
@@ -5201,8 +5213,14 @@ Transcript to parse: "${transcript}"`;
       const team = await storage.getRyderCupTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
       const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex, input.personId ?? undefined);
-      // Phase C save nudge — see the group-guest-add route for the same pattern.
-      const saveNudge = member.personId ? await storage.checkForSaveNudge(input.playerName, member.personId) : null;
+      // Phase C save nudge — see the group-guest-add route for the same
+      // pattern. Fixed 2026-07-17: same bug as the matches.addPlayer route
+      // (see its comment) — must not nudge when input.personId was already
+      // provided (an existing saved person picked from search), only when
+      // a personId was freshly minted for a typed name.
+      const saveNudge = (!input.personId && member.personId)
+        ? await storage.checkForSaveNudge(input.playerName, member.personId)
+        : null;
       res.status(201).json({ ...member, saveNudge });
     } catch (err) {
       if (err instanceof z.ZodError) {
