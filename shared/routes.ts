@@ -319,6 +319,7 @@ export const api = {
         // 1 Ball / 2nd3rd Ball specific bet amounts (in cents)
         oneTwoThreeBallOneBallBet: z.number().min(0).optional(),
         oneTwoThreeBallTwoThirdBallBet: z.number().min(0).optional(),
+        downPressFormat: z.enum(["nine_and_nine", "eighteen"]).optional(),
         // 1 Ball / 2nd3rd Ball auto-press toggles
         autoPressOneBallFront9: z.boolean().optional(),
         autoPressOneBallBack9: z.boolean().optional(),
@@ -439,7 +440,7 @@ export const api = {
       method: 'PATCH' as const,
       path: '/api/event-matches/:id/match-type',
       input: z.object({
-        matchType: z.enum(["match_play_1_ball", "match_play_2_ball", "stroke_play", "nassau", "skins", "five_five_five_three", "death_match", "two_three_ball", "one_two_three_ball"]),
+          matchType: z.enum(["match_play_1_ball", "match_play_2_ball", "stroke_play", "nassau", "skins", "five_five_five_three", "death_match", "two_three_ball", "one_two_three_ball", "one_down", "two_down"]),
       }),
       responses: {
         200: z.custom<typeof eventMatches.$inferSelect>(),
