@@ -645,7 +645,249 @@ export function calculateLedger(
           }
         }
       }
-    } else if (em.matchType === 'five_five_five_three') {
+        } else if (em.matchType === 'one_down' || em.matchType === 'two_down') {
+      // 1 Down / 2 Down: continuously tracks the match-play margin for each
+      // segment (Front 9 / Back 9, or all 18 holes). The first time either
+      // side reaches the trigger margin (1 down for 'one_down', 2 down for
+      // 'two_down'), a new full-value press is spawned starting on the next
+      // hole and running to the segment's end. Each bet-instance (the base
+      // bet, or any press it spawns) is only ever allowed to trigger ONE
+      // child press - even if its own margin returns to the trigger
+      // threshold again later. On the segment's final hole, if the side
+      // that was ever down is still net-down across the whole family of
+      // bets (base + all its children), enough same-size "breakeven"
+      // presses are added on that last hole so a win by the down side
+      // exactly zeroes their net for the segment.
+      const downThreshold = em.matchType === 'one_down' ? 1 : 2;
+      const downNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
+      const downFormat = (em as any).downPressFormat || 'nine_and_nine';
+      const downStartOnBack9 = em.startOnBack9 || false;
+
+      const downPlayerTeamIndex = new Map<number, number>();
+      for (const m of teamA.members) downPlayerTeamIndex.set(m.playerId, 0);
+      for (const m of teamB.members) downPlayerTeamIndex.set(m.playerId, 1);
+
+      type DownBetInstance = {
+        label: string;
+        startHole: number;
+        endHole: number;
+        results: HoleResult[];
+        triggeredChildAtHole: number | null;
+      };
+
+      const calcDownSegment = (holesInOrder: number[], segmentName: string) => {
+        const teamAPlayerIds = new Set(teamA.members.map((m) => m.playerId));
+        const teamBPlayerIds = new Set(teamB.members.map((m) => m.playerId));
+        const segmentEndHole = holesInOrder[holesInOrder.length - 1];
+
+        const baseInstance: DownBetInstance = {
+          label: segmentName,
+          startHole: holesInOrder[0],
+          endHole: segmentEndHole,
+          results: [],
+          triggeredChildAtHole: null,
+        };
+        const instances: DownBetInstance[] = [baseInstance];
+        const cumA = new Map<number, number>();
+        const cumB = new Map<number, number>();
+
+        for (let idx = 0; idx < holesInOrder.length; idx++) {
+          const hole = holesInOrder[idx];
+          const teamAScores = scores
+            .filter((s) => s.holeNumber === hole && teamAPlayerIds.has(s.playerId))
+            .map((s) => getScoreValue(s, downNetContext));
+          const teamBScores = scores
+            .filter((s) => s.holeNumber === hole && teamBPlayerIds.has(s.playerId))
+            .map((s) => getScoreValue(s, downNetContext));
+
+          const teamAHoleScore = getTeamHoleScore(teamAScores, 'match_play_1_ball');
+          const teamBHoleScore = getTeamHoleScore(teamBScores, 'match_play_1_ball');
+
+          let holeWinner: 'A' | 'B' | 'tie' | null = null;
+          if (teamAHoleScore !== null && teamBHoleScore !== null) {
+            if (teamAHoleScore < teamBHoleScore) holeWinner = 'A';
+            else if (teamBHoleScore < teamAHoleScore) holeWinner = 'B';
+            else holeWinner = 'tie';
+          }
+
+          const activeInstances = instances.filter((inst) => inst.startHole <= hole && inst.endHole >= hole);
+
+          for (const inst of activeInstances) {
+            const instIdx = instances.indexOf(inst);
+            let a = cumA.get(instIdx) ?? 0;
+            let b = cumB.get(instIdx) ?? 0;
+            if (holeWinner === 'A') a++;
+            else if (holeWinner === 'B') b++;
+            cumA.set(instIdx, a);
+            cumB.set(instIdx, b);
+
+            const diff = a - b;
+            let status = 'All Square';
+            if (diff > 0) status = `${teamA.name} ${diff} UP`;
+            else if (diff < 0) status = `${teamB.name} ${Math.abs(diff)} UP`;
+
+            inst.results.push({
+              holeNumber: hole,
+              teamAScore: teamAHoleScore,
+              teamBScore: teamBHoleScore,
+              winner: holeWinner,
+              cumulativeA: a,
+              cumulativeB: b,
+              status,
+            });
+
+            if (inst.triggeredChildAtHole === null && Math.abs(diff) >= downThreshold && hole < segmentEndHole) {
+              inst.triggeredChildAtHole = hole;
+              const childStart = holesInOrder[idx + 1];
+              instances.push({
+                label: `${segmentName} Press (H${childStart})`,
+                startHole: childStart,
+                endHole: segmentEndHole,
+                results: [],
+                triggeredChildAtHole: null,
+              });
+            }
+          }
+        }
+
+        const finalHoleNum = segmentEndHole;
+        const finalPlayed = baseInstance.results.find((r) => r.holeNumber === finalHoleNum);
+        const finalHoleActuallyPlayed = !!finalPlayed && finalPlayed.teamAScore !== null && finalPlayed.teamBScore !== null;
+
+        let breakevenCount = 0;
+        let breakevenWinner: 'A' | 'B' | 'tie' | null = null;
+
+        if (finalHoleActuallyPlayed) {
+          const secondToLastHoleNum = holesInOrder.length >= 2 ? holesInOrder[holesInOrder.length - 2] : null;
+          const preFinalDiffFor = (inst: DownBetInstance): number => {
+            if (secondToLastHoleNum === null || inst.startHole > secondToLastHoleNum) return 0;
+            const r = inst.results.find((rr) => rr.holeNumber === secondToLastHoleNum);
+            return r ? r.cumulativeA - r.cumulativeB : 0;
+          };
+
+          const sumPreFinalSign = instances.reduce((sum, inst) => sum + Math.sign(preFinalDiffFor(inst)), 0);
+
+          if (sumPreFinalSign !== 0) {
+            const downSide: 'A' | 'B' = sumPreFinalSign > 0 ? 'B' : 'A';
+            const hypotheticalTotalForDownSide = instances.reduce((sum, inst) => {
+              const pre = preFinalDiffFor(inst);
+              const hypo = pre + (downSide === 'A' ? 1 : -1);
+              const signForDownSide = downSide === 'A' ? Math.sign(hypo) : -Math.sign(hypo);
+              return sum + signForDownSide;
+            }, 0);
+
+            if (hypotheticalTotalForDownSide < 0) {
+              breakevenCount = Math.abs(hypotheticalTotalForDownSide);
+              breakevenWinner = finalPlayed!.winner;
+            }
+          }
+        }
+
+        return { segmentName, instances, breakevenCount, breakevenWinner, isComplete: finalHoleActuallyPlayed };
+      };
+
+      const downSegments = downFormat === 'eighteen'
+        ? [calcDownSegment(
+            downStartOnBack9
+              ? [10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+              : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+            '18 Holes'
+          )]
+        : [
+            calcDownSegment([1, 2, 3, 4, 5, 6, 7, 8, 9], 'Front 9'),
+            calcDownSegment([10, 11, 12, 13, 14, 15, 16, 17, 18], 'Back 9'),
+          ];
+
+      for (const seg of downSegments) {
+        for (const inst of seg.instances) {
+          const isPress = inst.startHole !== seg.instances[0].startHole;
+          const settlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, inst.results, 'match_play_1_ball', false);
+          const downResultText = buildResultText(inst.results, settlement.winner ?? (settlement.isTie ? 'tie' : null), settlement.isComplete);
+
+          for (const s of settlement.settlements) {
+            const teamIdx = downPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
+            entries.push({
+              matchId: em.id,
+              matchName: `${emDisplayName} - ${inst.label}`,
+              playerId: s.playerId,
+              playerName: s.playerName,
+              amount: s.amount,
+              isComplete: settlement.isComplete,
+              createdAt: em.createdAt,
+              betType: inst.label,
+              isAutoPress: isPress,
+              pressHole: isPress ? inst.startHole : pressHole,
+              teamAMembers,
+              teamBMembers,
+              teamName: s.teamName,
+              teamIndex: teamIdx,
+              resultText: downResultText || undefined,
+            });
+
+            if (settlement.isComplete) {
+              const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName.toLowerCase().trim()}`;
+              const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
+              if (s.amount > 0) {
+                existing.won += s.amount;
+              } else if (s.amount < 0) {
+                existing.lost += Math.abs(s.amount);
+              }
+              existing.matches.add(em.id);
+              playerTotals.set(stableKey, existing);
+            }
+          }
+        }
+
+        if (seg.breakevenCount > 0 && seg.breakevenWinner) {
+          const synthetic: HoleResult[] = [{
+            holeNumber: 0,
+            teamAScore: seg.breakevenWinner === 'A' ? 3 : 4,
+            teamBScore: seg.breakevenWinner === 'B' ? 3 : 4,
+            winner: seg.breakevenWinner,
+            cumulativeA: seg.breakevenWinner === 'A' ? 1 : 0,
+            cumulativeB: seg.breakevenWinner === 'B' ? 1 : 0,
+            status: '',
+          }];
+          const unitSettlement = calculateBetSettlements(em.unitAmount || 0, teamA, teamB, synthetic, 'match_play_1_ball', false);
+          const breakevenLabel = `${seg.segmentName} Breakeven Press (${seg.breakevenCount}x)`;
+          const breakevenResultText = buildResultText(synthetic, unitSettlement.winner ?? (unitSettlement.isTie ? 'tie' : null), unitSettlement.isComplete);
+
+          for (const s of unitSettlement.settlements) {
+            const teamIdx = downPlayerTeamIndex.get(s.playerId) ?? (s.teamName === teamA.name ? 0 : 1);
+            const scaledAmount = Math.round(s.amount * seg.breakevenCount * 100) / 100;
+            entries.push({
+              matchId: em.id,
+              matchName: `${emDisplayName} - ${breakevenLabel}`,
+              playerId: s.playerId,
+              playerName: s.playerName,
+              amount: scaledAmount,
+              isComplete: unitSettlement.isComplete,
+              createdAt: em.createdAt,
+              betType: breakevenLabel,
+              isAutoPress: true,
+              pressHole: seg.instances[0].endHole,
+              teamAMembers,
+              teamBMembers,
+              teamName: s.teamName,
+              teamIndex: teamIdx,
+              resultText: breakevenResultText || undefined,
+            });
+
+            if (unitSettlement.isComplete) {
+              const stableKey = playerIdToStableKey.get(s.playerId) || `guest:${s.playerName.toLowerCase().trim()}`;
+              const existing = playerTotals.get(stableKey) || { name: s.playerName, won: 0, lost: 0, matches: new Set<number>(), anyPlayerId: s.playerId };
+              if (scaledAmount > 0) {
+                existing.won += scaledAmount;
+              } else if (scaledAmount < 0) {
+                existing.lost += Math.abs(scaledAmount);
+              }
+              existing.matches.add(em.id);
+              playerTotals.set(stableKey, existing);
+            }
+          }
+        }
+      }
+} else if (em.matchType === 'five_five_five_three') {
       // 5-5-5-3 match - only process if complete to avoid $0 entries
       const fiveNetContext = em.useNetScoring && netContextMap ? netContextMap.get(em.id) || null : null;
       const fiveResult = calculateFiveMatchResults(em, scores, fiveNetContext);
