@@ -64,7 +64,7 @@ export interface IStorage {
   getMatches(): Promise<Match[]>;
   getMatch(id: number): Promise<Match | undefined>;
   getMatchPlayers(matchId: number): Promise<Player[]>;
-  addPlayer(player: InsertPlayer): Promise<Player>;
+  addPlayer(player: InsertPlayer, courseId?: number, phone?: string | null): Promise<Player>;
   getMatchScores(matchId: number): Promise<Score[]>;
   submitScore(score: InsertScore): Promise<Score>;
   
@@ -85,7 +85,7 @@ export interface IStorage {
   claimPersonByCode(claimCode: string, userId: string): Promise<Person | null>;
   createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
   deleteRyderCupTeam(teamId: number): Promise<void>;
-  addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number): Promise<RyderCupTeamMember>;
+  addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number, phone?: string | null): Promise<RyderCupTeamMember>;
   removeRyderCupTeamMember(memberId: number): Promise<void>;
 
   getRyderCupEventsForUser(userId: string): Promise<RyderCupEvent[]>;
@@ -769,7 +769,7 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  async addPlayer(player: InsertPlayer, courseId?: number): Promise<Player> {
+  async addPlayer(player: InsertPlayer, courseId?: number, phone?: string | null): Promise<Player> {
     // Copy default handicap and tee from player_handicaps if not already provided
     let handicapIndex: number | null = player.handicapIndex ?? null;
     let teeId: number | null = player.teeId ?? null;
@@ -847,7 +847,7 @@ export class DatabaseStorage implements IStorage {
     // §3a) rather than a brand-new name — same pattern as
     // addGroupPlayerGuest's opts.personId. Falls back to the normal
     // find-or-create for a typed custom name.
-    const personId = player.personId ?? await this.findOrCreatePersonForNewPlayer(player.name, player.userId ?? null);
+    const personId = player.personId ?? await this.findOrCreatePersonForNewPlayer(player.name, player.userId ?? null, phone ?? null);
 
     const [newPlayer] = await db.insert(players).values({
       ...player,
@@ -5063,7 +5063,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(ryderCupTeams).where(eq(ryderCupTeams.id, teamId));
   }
 
-  async addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number): Promise<RyderCupTeamMember> {
+  async addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number, phone?: string | null): Promise<RyderCupTeamMember> {
     const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, playerName));
     let resolvedHandicap = handicapIndex ?? null;
     if (resolvedHandicap === null) {
@@ -5077,7 +5077,7 @@ export class DatabaseStorage implements IStorage {
     // personId: pass an already-saved person's id through directly (Search
     // tab, plan §3a) instead of resolving by name — same pattern as
     // storage.addPlayer's fix (2026-07-16).
-    const resolvedPersonId = personId ?? await this.findOrCreatePersonForNewPlayer(playerName, preset?.userId ?? null);
+    const resolvedPersonId = personId ?? await this.findOrCreatePersonForNewPlayer(playerName, preset?.userId ?? null, phone ?? null);
     const [member] = await db.insert(ryderCupTeamMembers).values({
       teamId,
       playerName,

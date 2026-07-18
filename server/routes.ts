@@ -430,7 +430,7 @@ export async function registerRoutes(
         // Search tab (plan §3a): adding an already-saved person passes their
         // personId through directly instead of minting a new one.
         personId: input.personId ?? undefined,
-      }, match?.courseId ?? undefined);
+      }, match?.courseId ?? undefined, input.phone ?? null);
 
       // Send notification to newly added player (non-blocking)
       notifyPlayerOfMatchInvitation(matchId, input.userId, match.name, userId).catch(() => {});
@@ -5212,7 +5212,7 @@ Transcript to parse: "${transcript}"`;
       const input = api.ryderCup.addTeamMember.input.parse(req.body);
       const team = await storage.getRyderCupTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
-      const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex, input.personId ?? undefined);
+      const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex, input.personId ?? undefined, input.phone ?? null);
       // Phase C save nudge — see the group-guest-add route for the same
       // pattern. Fixed 2026-07-17: same bug as the matches.addPlayer route
       // (see its comment) — must not nudge when input.personId was already
