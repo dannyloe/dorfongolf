@@ -81,6 +81,7 @@ export const api = {
         teeId: z.number().nullable().optional(),
         handicapIndex: z.number().nullable().optional(),
         personId: z.number().optional(),
+        phone: z.string().nullable().optional(),
       }),
       responses: {
         201: z.custom<typeof players.$inferSelect>(),
@@ -1503,6 +1504,7 @@ export const api = {
         playerName: z.string().min(1),
         handicapIndex: z.number().nullable().optional(),
         personId: z.number().optional(),
+        phone: z.string().nullable().optional(),
       }),
       responses: {
         201: z.custom<typeof ryderCupTeamMembers.$inferSelect>(),
