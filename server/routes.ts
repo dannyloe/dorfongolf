@@ -5024,7 +5024,7 @@ Transcript to parse: "${transcript}"`;
       const input = api.ryderCup.reorderDays.input.parse(req.body);
       const event = await storage.getRyderCupEvent(id);
       if (!event) return res.status(404).json({ message: "Event not found" });
-      const updated = await storage.reorderRyderCupDays(id, input.dayIds);
+      const updated = await storage.reorderEventDays(id, input.dayIds);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5102,7 +5102,7 @@ Transcript to parse: "${transcript}"`;
     const userId = user.claims.sub;
     try {
       const input = api.ryderCup.updateTeam.input.parse(req.body);
-      const team = await storage.getRyderCupTeam(teamId);
+      const team = await storage.getEventTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
       
       // Get the event to check authorization
@@ -5117,7 +5117,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(403).json({ message: "Only the creator or admin can update team names" });
       }
       
-      const updated = await storage.updateRyderCupTeam(teamId, input);
+      const updated = await storage.updateEventTeam(teamId, input);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5132,7 +5132,7 @@ Transcript to parse: "${transcript}"`;
     const memberId = parseInt(req.params.memberId);
     try {
       const input = api.ryderCup.updateTeamMemberHandicap.input.parse(req.body);
-      const updated = await storage.updateRyderCupTeamMemberHandicap(memberId, input.handicapIndex);
+      const updated = await storage.updateEventTeamMemberHandicap(memberId, input.handicapIndex);
       if (!updated) return res.status(404).json({ message: "Team member not found" });
       res.json(updated);
     } catch (err) {
@@ -5148,7 +5148,7 @@ Transcript to parse: "${transcript}"`;
     const memberId = parseInt(req.params.memberId);
     try {
       const input = api.ryderCup.updateTeamMemberName.input.parse(req.body);
-      const updated = await storage.updateRyderCupTeamMemberName(memberId, input.playerName);
+      const updated = await storage.updateEventTeamMemberName(memberId, input.playerName);
       if (!updated) return res.status(404).json({ message: "Team member not found" });
       res.json(updated);
     } catch (err) {
@@ -5171,7 +5171,7 @@ Transcript to parse: "${transcript}"`;
       const input = api.ryderCup.createTeam.input.parse(req.body);
       const event = await storage.getRyderCupEvent(eventId);
       if (!event) return res.status(404).json({ message: "Event not found" });
-      const team = await storage.createRyderCupTeam(eventId, input.name, input.color);
+      const team = await storage.createEventTeam(eventId, input.name, input.color);
       res.status(201).json(team);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5190,7 +5190,7 @@ Transcript to parse: "${transcript}"`;
     const user = req.user as any;
     const userId = user.claims.sub;
     try {
-      const team = await storage.getRyderCupTeam(teamId);
+      const team = await storage.getEventTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
       const event = await storage.getRyderCupEvent(team.eventId);
       if (!event) return res.status(404).json({ message: "Event not found" });
@@ -5198,7 +5198,7 @@ Transcript to parse: "${transcript}"`;
       if (event.creatorId !== userId && !currentUser?.isAdmin) {
         return res.status(403).json({ message: "Only the creator or admin can delete a team" });
       }
-      await storage.deleteRyderCupTeam(teamId);
+      await storage.deleteEventTeam(teamId);
       res.status(204).send();
     } catch (err) {
       console.error("[route error]", err);
@@ -5210,9 +5210,9 @@ Transcript to parse: "${transcript}"`;
     const teamId = parseInt(req.params.teamId);
     try {
       const input = api.ryderCup.addTeamMember.input.parse(req.body);
-      const team = await storage.getRyderCupTeam(teamId);
+      const team = await storage.getEventTeam(teamId);
       if (!team) return res.status(404).json({ message: "Team not found" });
-      const member = await storage.addRyderCupTeamMember(teamId, input.playerName, input.handicapIndex, input.personId ?? undefined, input.phone ?? null);
+      const member = await storage.addEventTeamMember(teamId, input.playerName, input.handicapIndex, input.personId ?? undefined, input.phone ?? null);
       // Phase C save nudge — see the group-guest-add route for the same
       // pattern. Fixed 2026-07-17: same bug as the matches.addPlayer route
       // (see its comment) — must not nudge when input.personId was already
@@ -5234,7 +5234,7 @@ Transcript to parse: "${transcript}"`;
   app.delete(api.ryderCup.removeTeamMember.path, isAuthenticated, async (req, res) => {
     const memberId = parseInt(req.params.memberId);
     try {
-      await storage.removeRyderCupTeamMember(memberId);
+      await storage.removeEventTeamMember(memberId);
       res.status(204).send();
     } catch (err) {
       console.error("[route error]", err);
@@ -5519,7 +5519,7 @@ Transcript to parse: "${transcript}"`;
 
   app.get(api.ryderCup.getDaySkins.path, isAuthenticated, async (req, res) => {
     const dayId = parseInt(req.params.dayId);
-    const skins = await storage.getRyderCupDaySkins(dayId);
+    const skins = await storage.getEventDaySkins(dayId);
     res.json(skins);
   });
 
@@ -5584,7 +5584,7 @@ Transcript to parse: "${transcript}"`;
       const input = api.ryderCup.updateDayCourse.input.parse(req.body);
       
       // Get the day and check permissions
-      const day = await storage.getRyderCupDay(dayId);
+      const day = await storage.getEventDay(dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5600,7 +5600,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(403).json({ message: "Only event creator or admin can update course" });
       }
       
-      const updatedDay = await storage.updateRyderCupDayCourse(dayId, input.courseId, input.courseName);
+      const updatedDay = await storage.updateEventDayCourse(dayId, input.courseId, input.courseName);
       res.json(updatedDay);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5620,7 +5620,7 @@ Transcript to parse: "${transcript}"`;
       
       const input = api.ryderCup.updateDaySchedule.input.parse(req.body);
       
-      const day = await storage.getRyderCupDay(dayId);
+      const day = await storage.getEventDay(dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5635,7 +5635,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(403).json({ message: "Only event creator or admin can update schedule" });
       }
       
-      const updatedDay = await storage.updateRyderCupDaySchedule(dayId, input.date, input.teeTimes);
+      const updatedDay = await storage.updateEventDaySchedule(dayId, input.date, input.teeTimes);
       res.json(updatedDay);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5655,7 +5655,7 @@ Transcript to parse: "${transcript}"`;
       
       const input = api.ryderCup.updateDayStartOnBack9.input.parse(req.body);
       
-      const day = await storage.getRyderCupDay(dayId);
+      const day = await storage.getEventDay(dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5670,7 +5670,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(403).json({ message: "Only event creator or admin can update day settings" });
       }
       
-      const updatedDay = await storage.updateRyderCupDayStartOnBack9(dayId, input.startOnBack9);
+      const updatedDay = await storage.updateEventDayStartOnBack9(dayId, input.startOnBack9);
       res.json(updatedDay);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -5695,7 +5695,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(404).json({ message: "Pairing not found" });
       }
       
-      const day = await storage.getRyderCupDay(pairing.dayId);
+      const day = await storage.getEventDay(pairing.dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5730,7 +5730,7 @@ Transcript to parse: "${transcript}"`;
       
       const input = api.ryderCup.reorderPairings.input.parse(req.body);
       
-      const day = await storage.getRyderCupDay(dayId);
+      const day = await storage.getEventDay(dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5775,7 +5775,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(404).json({ message: "Pairing not found" });
       }
       
-      const day = await storage.getRyderCupDay(pairing.dayId);
+      const day = await storage.getEventDay(pairing.dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5825,7 +5825,7 @@ Transcript to parse: "${transcript}"`;
         return res.status(404).json({ message: "Pairing not found" });
       }
       
-      const day = await storage.getRyderCupDay(pairing.dayId);
+      const day = await storage.getEventDay(pairing.dayId);
       if (!day) {
         return res.status(404).json({ message: "Day not found" });
       }
@@ -5887,7 +5887,7 @@ Transcript to parse: "${transcript}"`;
       if (!event) {
         return res.status(404).json({ message: "Event not found" });
       }
-      const transactions = await storage.getRyderCupTransactions(eventId);
+      const transactions = await storage.getEventTransactions(eventId);
       res.json(transactions.map(t => ({
         ...t,
         createdAt: t.createdAt?.toISOString() || null,
@@ -5916,7 +5916,7 @@ Transcript to parse: "${transcript}"`;
       }
       
       const input = api.ryderCup.createTransaction.input.parse(req.body);
-      const transaction = await storage.createRyderCupTransaction(
+      const transaction = await storage.createEventTransaction(
         eventId,
         input.payerName,
         input.description,
@@ -5952,12 +5952,12 @@ Transcript to parse: "${transcript}"`;
         return res.status(403).json({ message: "Only event creator or admin can delete transactions" });
       }
       
-      const transaction = await storage.getRyderCupTransaction(transactionId);
+      const transaction = await storage.getEventTransaction(transactionId);
       if (!transaction || transaction.eventId !== eventId) {
         return res.status(404).json({ message: "Transaction not found" });
       }
       
-      await storage.deleteRyderCupTransaction(transactionId);
+      await storage.deleteEventTransaction(transactionId);
       res.json({ success: true });
     } catch (err) {
       console.error("[route error]", err);

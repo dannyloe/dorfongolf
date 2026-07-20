@@ -5,7 +5,7 @@ import {
   matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
   groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites, people,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
-  events, ryderCupTeams, ryderCupTeamMembers, ryderCupDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, ryderCupTransactions, ryderCupTransactionSplits, ryderCupClosestToHole,
+  events, eventTeams, eventTeamMembers, eventDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, eventTransactions, eventTransactionSplits, ryderCupClosestToHole,
   manualBets, manualBetEntries,
   settlements, settlementPayments,
   pendingScorecardScans,
@@ -30,9 +30,9 @@ import {
   type PlayerAlias, type InsertPlayerAlias,
   type MatchRole, type InsertMatchRole,
   type VerificationCode, type NotificationPreferences, type Message, type Notification,
-  type RyderCupEvent, type RyderCupTeam, type RyderCupTeamMember, type RyderCupDay, 
+  type RyderCupEvent, type EventTeam, type EventTeamMember, type EventDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
-  type RyderCupTransaction, type RyderCupTransactionSplit, type RyderCupClosestToHole,
+  type EventTransaction, type EventTransactionSplit, type RyderCupClosestToHole,
   type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
   type Settlement, type SettlementPayment, type SettlementWithPayments,
   type PendingScorecardScan,
@@ -69,11 +69,11 @@ export interface IStorage {
   submitScore(score: InsertScore): Promise<Score>;
   
   // Ryder Cup Team methods
-  getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null>;
-  updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null>;
-  updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null>;
-  updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null>;
-  getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]>;
+  getEventTeam(teamId: number): Promise<EventTeam | null>;
+  updateEventTeam(teamId: number, updates: { name?: string; color?: string }): Promise<EventTeam | null>;
+  updateEventTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<EventTeamMember | null>;
+  updateEventTeamMemberName(memberId: number, playerName: string): Promise<EventTeamMember | null>;
+  getEventTeamsForEvent(eventId: number): Promise<EventTeam[]>;
   findOrCreatePersonForNewPlayer(name: string, userId?: string | null, phone?: string | null): Promise<number>;
   getPerson(personId: number): Promise<Person | undefined>;
   savePerson(personId: number): Promise<Person>;
@@ -83,16 +83,16 @@ export interface IStorage {
   getPersonCourseHistory(personId: number, limit?: number): Promise<string[]>;
   generatePersonClaimCode(personId: number): Promise<string>;
   claimPersonByCode(claimCode: string, userId: string): Promise<Person | null>;
-  createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam>;
-  deleteRyderCupTeam(teamId: number): Promise<void>;
-  addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number, phone?: string | null): Promise<RyderCupTeamMember>;
-  removeRyderCupTeamMember(memberId: number): Promise<void>;
+  createEventTeam(eventId: number, name: string, color?: string | null): Promise<EventTeam>;
+  deleteEventTeam(teamId: number): Promise<void>;
+  addEventTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number, phone?: string | null): Promise<EventTeamMember>;
+  removeEventTeamMember(memberId: number): Promise<void>;
 
   getRyderCupEventsForUser(userId: string): Promise<RyderCupEvent[]>;
   userCanAccessRyderCupEvent(eventId: number, userId: string): Promise<boolean>;
   updateRyderCupEventStatus(eventId: number, status: string): Promise<RyderCupEvent>;
   updateRyderCupEvent(eventId: number, fields: { name?: string; courseName?: string; courseId?: number }): Promise<RyderCupEvent>;
-  reorderRyderCupDays(eventId: number, dayIds: number[]): Promise<RyderCupDay[]>;
+  reorderEventDays(eventId: number, dayIds: number[]): Promise<EventDay[]>;
   
   // Ryder Cup Payout methods
   updateRyderCupEventPayouts(eventId: number, payouts: {
@@ -1534,7 +1534,7 @@ export class DatabaseStorage implements IStorage {
     const ryderCupScoresByEventAndDay: Record<number, Record<number, Record<string, Record<number, number>>>> = {};
 
     if (ryderCupEventIds.length > 0) {
-      const allDayRows = await db.select().from(ryderCupDays).where(inArray(ryderCupDays.eventId, ryderCupEventIds));
+      const allDayRows = await db.select().from(eventDays).where(inArray(eventDays.eventId, ryderCupEventIds));
       const allDayIds = allDayRows.map(d => d.id);
 
       const allPairingRows = allDayIds.length > 0
@@ -1556,7 +1556,7 @@ export class DatabaseStorage implements IStorage {
 
       const [allRcMemberRows, allPairingScoreRows] = await Promise.all([
         allRcMemberIds.length > 0
-          ? db.select().from(ryderCupTeamMembers).where(inArray(ryderCupTeamMembers.id, allRcMemberIds))
+          ? db.select().from(eventTeamMembers).where(inArray(eventTeamMembers.id, allRcMemberIds))
           : Promise.resolve([]),
         allSideIds.length > 0
           ? db.select().from(ryderCupPairingScores).where(inArray(ryderCupPairingScores.sideId, allSideIds))
@@ -3402,16 +3402,16 @@ export class DatabaseStorage implements IStorage {
     const [presetPlayer] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, newName));
     const presetPlayerId = presetPlayer?.id ?? null;
     
-    // Update ryderCupTeamMembers to cascade name changes AND link presetPlayerId
-    await db.update(ryderCupTeamMembers)
+    // Update eventTeamMembers to cascade name changes AND link presetPlayerId
+    await db.update(eventTeamMembers)
       .set({ playerName: newName, presetPlayerId })
-      .where(eq(ryderCupTeamMembers.playerName, oldName));
+      .where(eq(eventTeamMembers.playerName, oldName));
     
     // Also update members that have this presetPlayerId to get the new name
     if (presetPlayerId) {
-      await db.update(ryderCupTeamMembers)
+      await db.update(eventTeamMembers)
         .set({ playerName: newName })
-        .where(eq(ryderCupTeamMembers.presetPlayerId, presetPlayerId));
+        .where(eq(eventTeamMembers.presetPlayerId, presetPlayerId));
     }
     
     // Update ryderCupPairingSides player1Name
@@ -3454,24 +3454,24 @@ export class DatabaseStorage implements IStorage {
         .where(eq(players.presetPlayerId, presetPlayerId));
     }
     
-    // Update ryderCupTransactions payerName by name AND by presetPlayerId
-    await db.update(ryderCupTransactions)
+    // Update eventTransactions payerName by name AND by presetPlayerId
+    await db.update(eventTransactions)
       .set({ payerName: newName, payerPresetPlayerId: presetPlayerId })
-      .where(eq(ryderCupTransactions.payerName, oldName));
+      .where(eq(eventTransactions.payerName, oldName));
     if (presetPlayerId) {
-      await db.update(ryderCupTransactions)
+      await db.update(eventTransactions)
         .set({ payerName: newName })
-        .where(eq(ryderCupTransactions.payerPresetPlayerId, presetPlayerId));
+        .where(eq(eventTransactions.payerPresetPlayerId, presetPlayerId));
     }
     
-    // Update ryderCupTransactionSplits playerName by name AND by presetPlayerId
-    await db.update(ryderCupTransactionSplits)
+    // Update eventTransactionSplits playerName by name AND by presetPlayerId
+    await db.update(eventTransactionSplits)
       .set({ playerName: newName, presetPlayerId })
-      .where(eq(ryderCupTransactionSplits.playerName, oldName));
+      .where(eq(eventTransactionSplits.playerName, oldName));
     if (presetPlayerId) {
-      await db.update(ryderCupTransactionSplits)
+      await db.update(eventTransactionSplits)
         .set({ playerName: newName })
-        .where(eq(ryderCupTransactionSplits.presetPlayerId, presetPlayerId));
+        .where(eq(eventTransactionSplits.presetPlayerId, presetPlayerId));
     }
     
     return { oldName, newName };
@@ -3492,10 +3492,10 @@ export class DatabaseStorage implements IStorage {
   async getRyderCupEventsForUser(userId: string): Promise<RyderCupEvent[]> {
     const created = await db.select().from(events).where(eq(events.creatorId, userId));
 
-    const linkedRows = await db.select({ eventId: ryderCupTeams.eventId })
-      .from(ryderCupTeamMembers)
-      .innerJoin(presetPlayers, eq(ryderCupTeamMembers.presetPlayerId, presetPlayers.id))
-      .innerJoin(ryderCupTeams, eq(ryderCupTeamMembers.teamId, ryderCupTeams.id))
+    const linkedRows = await db.select({ eventId: eventTeams.eventId })
+      .from(eventTeamMembers)
+      .innerJoin(presetPlayers, eq(eventTeamMembers.presetPlayerId, presetPlayers.id))
+      .innerJoin(eventTeams, eq(eventTeamMembers.teamId, eventTeams.id))
       .where(eq(presetPlayers.userId, userId));
 
     const linkedEventIds = Array.from(new Set(linkedRows.map((r) => r.eventId)));
@@ -3518,11 +3518,11 @@ export class DatabaseStorage implements IStorage {
     const [event] = await db.select().from(events).where(eq(events.id, eventId));
     if (!event) return false;
     if (event.creatorId === userId) return true;
-    const [linked] = await db.select({ id: ryderCupTeamMembers.id })
-      .from(ryderCupTeamMembers)
-      .innerJoin(presetPlayers, eq(ryderCupTeamMembers.presetPlayerId, presetPlayers.id))
-      .innerJoin(ryderCupTeams, eq(ryderCupTeamMembers.teamId, ryderCupTeams.id))
-      .where(and(eq(ryderCupTeams.eventId, eventId), eq(presetPlayers.userId, userId)));
+    const [linked] = await db.select({ id: eventTeamMembers.id })
+      .from(eventTeamMembers)
+      .innerJoin(presetPlayers, eq(eventTeamMembers.presetPlayerId, presetPlayers.id))
+      .innerJoin(eventTeams, eq(eventTeamMembers.teamId, eventTeams.id))
+      .where(and(eq(eventTeams.eventId, eventId), eq(presetPlayers.userId, userId)));
     return !!linked;
   }
 
@@ -3531,8 +3531,8 @@ export class DatabaseStorage implements IStorage {
     return event;
   }
 
-  async getRyderCupDay(dayId: number): Promise<RyderCupDay | undefined> {
-    const [day] = await db.select().from(ryderCupDays).where(eq(ryderCupDays.id, dayId));
+  async getEventDay(dayId: number): Promise<EventDay | undefined> {
+    const [day] = await db.select().from(eventDays).where(eq(eventDays.id, dayId));
     return day;
   }
 
@@ -3561,48 +3561,48 @@ export class DatabaseStorage implements IStorage {
     const newPlayerName = newPresetPlayer.name;
 
     // Get teams for this event
-    const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    const teams = await db.select().from(eventTeams).where(eq(eventTeams.eventId, eventId));
     const teamIds = teams.map(t => t.id);
 
     // Validate: Check if old player is actually in the event
     if (teamIds.length > 0) {
-      const [oldMember] = await db.select().from(ryderCupTeamMembers).where(and(
-        inArray(ryderCupTeamMembers.teamId, teamIds),
-        eq(ryderCupTeamMembers.presetPlayerId, oldPresetPlayerId)
+      const [oldMember] = await db.select().from(eventTeamMembers).where(and(
+        inArray(eventTeamMembers.teamId, teamIds),
+        eq(eventTeamMembers.presetPlayerId, oldPresetPlayerId)
       ));
       if (!oldMember) {
         throw new Error("Player to replace is not a member of any team in this event");
       }
 
       // Validate: Check if new player is already in the event
-      const [existingMember] = await db.select().from(ryderCupTeamMembers).where(and(
-        inArray(ryderCupTeamMembers.teamId, teamIds),
-        eq(ryderCupTeamMembers.presetPlayerId, newPresetPlayerId)
+      const [existingMember] = await db.select().from(eventTeamMembers).where(and(
+        inArray(eventTeamMembers.teamId, teamIds),
+        eq(eventTeamMembers.presetPlayerId, newPresetPlayerId)
       ));
       if (existingMember) {
         throw new Error("Replacement player is already a member of a team in this event");
       }
     }
 
-    // Update ryderCupTeamMembers - replace old player with new player using presetPlayerId (primary)
+    // Update eventTeamMembers - replace old player with new player using presetPlayerId (primary)
     if (teamIds.length > 0) {
-      await db.update(ryderCupTeamMembers)
+      await db.update(eventTeamMembers)
         .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
-          inArray(ryderCupTeamMembers.teamId, teamIds),
-          eq(ryderCupTeamMembers.presetPlayerId, oldPresetPlayerId)
+          inArray(eventTeamMembers.teamId, teamIds),
+          eq(eventTeamMembers.presetPlayerId, oldPresetPlayerId)
         ));
       // Fallback: also update by name for legacy records without presetPlayerId
-      await db.update(ryderCupTeamMembers)
+      await db.update(eventTeamMembers)
         .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
-          inArray(ryderCupTeamMembers.teamId, teamIds),
-          eq(ryderCupTeamMembers.playerName, oldPlayerName)
+          inArray(eventTeamMembers.teamId, teamIds),
+          eq(eventTeamMembers.playerName, oldPlayerName)
         ));
     }
 
     // Get days for this event to scope pairing updates
-    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    const days = await db.select().from(eventDays).where(eq(eventDays.eventId, eventId));
     const dayIds = days.map(d => d.id);
 
     if (dayIds.length > 0) {
@@ -3659,38 +3659,38 @@ export class DatabaseStorage implements IStorage {
         ));
     }
 
-    // Update ryderCupTransactions payerName using presetPlayerId (primary)
-    await db.update(ryderCupTransactions)
+    // Update eventTransactions payerName using presetPlayerId (primary)
+    await db.update(eventTransactions)
       .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
       .where(and(
-        eq(ryderCupTransactions.eventId, eventId),
-        eq(ryderCupTransactions.payerPresetPlayerId, oldPresetPlayerId)
+        eq(eventTransactions.eventId, eventId),
+        eq(eventTransactions.payerPresetPlayerId, oldPresetPlayerId)
       ));
     // Fallback: also update by name for legacy records without presetPlayerId
-    await db.update(ryderCupTransactions)
+    await db.update(eventTransactions)
       .set({ payerName: newPlayerName, payerPresetPlayerId: newPresetPlayerId })
       .where(and(
-        eq(ryderCupTransactions.eventId, eventId),
-        eq(ryderCupTransactions.payerName, oldPlayerName)
+        eq(eventTransactions.eventId, eventId),
+        eq(eventTransactions.payerName, oldPlayerName)
       ));
 
-    // Update ryderCupTransactionSplits using presetPlayerId (primary)
-    const transactions = await db.select().from(ryderCupTransactions).where(eq(ryderCupTransactions.eventId, eventId));
+    // Update eventTransactionSplits using presetPlayerId (primary)
+    const transactions = await db.select().from(eventTransactions).where(eq(eventTransactions.eventId, eventId));
     const transactionIds = transactions.map(t => t.id);
 
     if (transactionIds.length > 0) {
-      await db.update(ryderCupTransactionSplits)
+      await db.update(eventTransactionSplits)
         .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
-          inArray(ryderCupTransactionSplits.transactionId, transactionIds),
-          eq(ryderCupTransactionSplits.presetPlayerId, oldPresetPlayerId)
+          inArray(eventTransactionSplits.transactionId, transactionIds),
+          eq(eventTransactionSplits.presetPlayerId, oldPresetPlayerId)
         ));
       // Fallback: also update by name for legacy records without presetPlayerId
-      await db.update(ryderCupTransactionSplits)
+      await db.update(eventTransactionSplits)
         .set({ playerName: newPlayerName, presetPlayerId: newPresetPlayerId })
         .where(and(
-          inArray(ryderCupTransactionSplits.transactionId, transactionIds),
-          eq(ryderCupTransactionSplits.playerName, oldPlayerName)
+          inArray(eventTransactionSplits.transactionId, transactionIds),
+          eq(eventTransactionSplits.playerName, oldPlayerName)
         ));
     }
 
@@ -3717,10 +3717,10 @@ export class DatabaseStorage implements IStorage {
     return { oldPlayerName, newPlayerName };
   }
 
-  async updateRyderCupDayCourse(dayId: number, courseId: number, courseName: string): Promise<RyderCupDay> {
-    const [updated] = await db.update(ryderCupDays)
+  async updateEventDayCourse(dayId: number, courseId: number, courseName: string): Promise<EventDay> {
+    const [updated] = await db.update(eventDays)
       .set({ courseId, courseName })
-      .where(eq(ryderCupDays.id, dayId))
+      .where(eq(eventDays.id, dayId))
       .returning();
     
     // Also update all side matches linked to this day
@@ -3737,8 +3737,8 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateRyderCupDaySchedule(dayId: number, date?: string, teeTimes?: string[]): Promise<RyderCupDay> {
-    const updateData: Partial<RyderCupDay> = {};
+  async updateEventDaySchedule(dayId: number, date?: string, teeTimes?: string[]): Promise<EventDay> {
+    const updateData: Partial<EventDay> = {};
     if (date !== undefined) {
       updateData.date = new Date(date);
     }
@@ -3763,17 +3763,17 @@ export class DatabaseStorage implements IStorage {
           .where(eq(ryderCupPairings.id, sortedPairings[i].id));
       }
     }
-    const [updated] = await db.update(ryderCupDays)
+    const [updated] = await db.update(eventDays)
       .set(updateData)
-      .where(eq(ryderCupDays.id, dayId))
+      .where(eq(eventDays.id, dayId))
       .returning();
     return updated;
   }
 
-  async updateRyderCupDayStartOnBack9(dayId: number, startOnBack9: boolean): Promise<RyderCupDay> {
-    const [updated] = await db.update(ryderCupDays)
+  async updateEventDayStartOnBack9(dayId: number, startOnBack9: boolean): Promise<EventDay> {
+    const [updated] = await db.update(eventDays)
       .set({ startOnBack9 })
-      .where(eq(ryderCupDays.id, dayId))
+      .where(eq(eventDays.id, dayId))
       .returning();
     return updated;
   }
@@ -3803,7 +3803,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Re-assign tee times based on new order
-    const day = await this.getRyderCupDay(dayId);
+    const day = await this.getEventDay(dayId);
     if (day?.teeTimes && day.teeTimes.length > 0) {
       for (let i = 0; i < pairingOrder.length; i++) {
         const pairingId = pairingOrder[i];
@@ -3902,7 +3902,7 @@ export class DatabaseStorage implements IStorage {
     );
 
     // Get course and event from the day
-    const day = await this.getRyderCupDay(pairing.dayId);
+    const day = await this.getEventDay(pairing.dayId);
     let course: Course | null = null;
     let courseHolesData: CourseHole[] = [];
     let courseTeesData: CourseTee[] = [];
@@ -3923,10 +3923,10 @@ export class DatabaseStorage implements IStorage {
     const event = await this.getRyderCupEvent(id);
     if (!event) return undefined;
 
-    const teamsList = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, id));
+    const teamsList = await db.select().from(eventTeams).where(eq(eventTeams.eventId, id));
     const teamsWithMembers = await Promise.all(
       teamsList.map(async (team) => {
-        const membersRaw = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, team.id));
+        const membersRaw = await db.select().from(eventTeamMembers).where(eq(eventTeamMembers.teamId, team.id));
         const members = await Promise.all(
           membersRaw.map(async (member) => {
             let displayName = member.playerName;
@@ -3941,7 +3941,7 @@ export class DatabaseStorage implements IStorage {
       })
     );
 
-    const daysList = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, id)).orderBy(ryderCupDays.dayNumber);
+    const daysList = await db.select().from(eventDays).where(eq(eventDays.eventId, id)).orderBy(eventDays.dayNumber);
     const daysWithPairings = await Promise.all(
       daysList.map(async (day) => {
         const pairingsList = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id)).orderBy(ryderCupPairings.matchNumber);
@@ -3960,7 +3960,7 @@ export class DatabaseStorage implements IStorage {
                 let player2Name = side.player2Name;
                 
                 if (side.player1Id) {
-                  const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+                  const [member1] = await db.select().from(eventTeamMembers).where(eq(eventTeamMembers.id, side.player1Id));
                   if (member1) {
                     if (member1.presetPlayerId) {
                       const [preset1] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, member1.presetPlayerId));
@@ -3971,7 +3971,7 @@ export class DatabaseStorage implements IStorage {
                   }
                 }
                 if (side.player2Id) {
-                  const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+                  const [member2] = await db.select().from(eventTeamMembers).where(eq(eventTeamMembers.id, side.player2Id));
                   if (member2) {
                     if (member2.presetPlayerId) {
                       const [preset2] = await db.select().from(presetPlayers).where(eq(presetPlayers.id, member2.presetPlayerId));
@@ -4024,7 +4024,7 @@ export class DatabaseStorage implements IStorage {
     }).returning();
 
     if (data.teamA && data.teamB) {
-      const [teamA] = await db.insert(ryderCupTeams).values({
+      const [teamA] = await db.insert(eventTeams).values({
         eventId: event.id,
         name: data.teamA.name,
         color: data.teamA.color || "#3b82f6",
@@ -4032,7 +4032,7 @@ export class DatabaseStorage implements IStorage {
 
       for (const member of data.teamA.members) {
         const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
-        await db.insert(ryderCupTeamMembers).values({
+        await db.insert(eventTeamMembers).values({
           teamId: teamA.id,
           playerName: member.playerName,
           presetPlayerId: preset?.id ?? null,
@@ -4040,7 +4040,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
 
-      const [teamB] = await db.insert(ryderCupTeams).values({
+      const [teamB] = await db.insert(eventTeams).values({
         eventId: event.id,
         name: data.teamB.name,
         color: data.teamB.color || "#ef4444",
@@ -4048,7 +4048,7 @@ export class DatabaseStorage implements IStorage {
 
       for (const member of data.teamB.members) {
         const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, member.playerName));
-        await db.insert(ryderCupTeamMembers).values({
+        await db.insert(eventTeamMembers).values({
           teamId: teamB.id,
           playerName: member.playerName,
           presetPlayerId: preset?.id ?? null,
@@ -4062,7 +4062,7 @@ export class DatabaseStorage implements IStorage {
     for (let dayNum = 1; dayNum <= numberOfDays; dayNum++) {
       // Check for per-day course config
       const dayConfig = data.dayConfigs?.find(d => d.dayNumber === dayNum);
-      await db.insert(ryderCupDays).values({
+      await db.insert(eventDays).values({
         eventId: event.id,
         dayNumber: dayNum,
         date: dayConfig?.date ? new Date(dayConfig.date) : null,
@@ -4077,10 +4077,10 @@ export class DatabaseStorage implements IStorage {
 
   private async getPlayerIdByName(teamId: number, playerName: string): Promise<number | null> {
     const [member] = await db.select()
-      .from(ryderCupTeamMembers)
+      .from(eventTeamMembers)
       .where(and(
-        eq(ryderCupTeamMembers.teamId, teamId),
-        eq(ryderCupTeamMembers.playerName, playerName)
+        eq(eventTeamMembers.teamId, teamId),
+        eq(eventTeamMembers.playerName, playerName)
       ));
     return member?.id || null;
   }
@@ -4289,11 +4289,11 @@ export class DatabaseStorage implements IStorage {
     const [pairing] = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.id, pairingId));
     if (!pairing || !pairing.isPrimary) return; // Only update for primary matches
 
-    const [day] = await db.select().from(ryderCupDays).where(eq(ryderCupDays.id, pairing.dayId));
+    const [day] = await db.select().from(eventDays).where(eq(eventDays.id, pairing.dayId));
     if (!day) return;
 
     // Get all completed primary pairings for this event
-    const allDays = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, day.eventId));
+    const allDays = await db.select().from(eventDays).where(eq(eventDays.eventId, day.eventId));
     const dayIds = allDays.map(d => d.id);
 
     const allPairings = await db.select().from(ryderCupPairings)
@@ -4302,7 +4302,7 @@ export class DatabaseStorage implements IStorage {
         eq(ryderCupPairings.isPrimary, true)
       ));
 
-    const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, day.eventId));
+    const teams = await db.select().from(eventTeams).where(eq(eventTeams.eventId, day.eventId));
     const teamPoints: Record<number, number> = {};
     teams.forEach(t => { teamPoints[t.id] = 0; });
 
@@ -4327,9 +4327,9 @@ export class DatabaseStorage implements IStorage {
 
     // Update team totals
     for (const team of teams) {
-      await db.update(ryderCupTeams)
+      await db.update(eventTeams)
         .set({ totalPoints: teamPoints[team.id] || 0 })
-        .where(eq(ryderCupTeams.id, team.id));
+        .where(eq(eventTeams.id, team.id));
     }
 
     // Check for winner
@@ -4381,7 +4381,7 @@ export class DatabaseStorage implements IStorage {
     return skin;
   }
 
-  async getRyderCupDaySkins(dayId: number): Promise<RyderCupSkin[]> {
+  async getEventDaySkins(dayId: number): Promise<RyderCupSkin[]> {
     return db.select().from(ryderCupSkins).where(eq(ryderCupSkins.dayId, dayId)).orderBy(ryderCupSkins.holeNumber);
   }
 
@@ -4428,7 +4428,7 @@ export class DatabaseStorage implements IStorage {
 
   async getAllClosestToHoleWinners(eventId: number): Promise<RyderCupClosestToHole[]> {
     // Get all days for this event, then all CTH winners for those days
-    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    const days = await db.select().from(eventDays).where(eq(eventDays.eventId, eventId));
     const dayIds = days.map(d => d.id);
     if (dayIds.length === 0) return [];
     return db.select().from(ryderCupClosestToHole)
@@ -4444,7 +4444,7 @@ export class DatabaseStorage implements IStorage {
     // Fetch matches and days in parallel — both are independent of each other
     const [allMatches, days] = await Promise.all([
       db.select().from(matches).where(eq(matches.eventId, eventId)).orderBy(matches.createdAt),
-      db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId)),
+      db.select().from(eventDays).where(eq(eventDays.eventId, eventId)),
     ]);
 
     const matchIds = allMatches.map((m) => m.id);
@@ -4484,7 +4484,7 @@ export class DatabaseStorage implements IStorage {
     const teamIds = allTeams.map((t) => t.id);
     const sideIds = allPairingSides.map((s) => s.id);
 
-    // Collect all ryderCupTeamMember IDs referenced by sides
+    // Collect all eventTeamMember IDs referenced by sides
     const referencedMemberIds = Array.from(
       new Set(
         allPairingSides.flatMap((s) =>
@@ -4501,7 +4501,7 @@ export class DatabaseStorage implements IStorage {
         ? db.select().from(ryderCupPairingScores).where(inArray(ryderCupPairingScores.sideId, sideIds))
         : Promise.resolve([]),
       referencedMemberIds.length > 0
-        ? db.select().from(ryderCupTeamMembers).where(inArray(ryderCupTeamMembers.id, referencedMemberIds))
+        ? db.select().from(eventTeamMembers).where(inArray(eventTeamMembers.id, referencedMemberIds))
         : Promise.resolve([]),
       eventMatchIds.length > 0
         ? db.select().from(matchPlayerHandicaps).where(inArray(matchPlayerHandicaps.eventMatchId, eventMatchIds))
@@ -4530,7 +4530,7 @@ export class DatabaseStorage implements IStorage {
     // Build player lookup map
     const playerMap = new Map(allPlayers.map((p) => [p.id, p]));
 
-    // Build ryderCupTeamMember lookup map
+    // Build eventTeamMember lookup map
     const rcMemberMap = new Map(allTeamMemberRows.map((m) => [m.id, m]));
 
     // Build team members grouped by teamId
@@ -4702,13 +4702,13 @@ export class DatabaseStorage implements IStorage {
   // 2026-07-16: drag-to-reorder days within a trip. dayIds is the full,
   // new-order list of every day belonging to the event; dayNumber is
   // reassigned sequentially (1-based) to match.
-  async reorderRyderCupDays(eventId: number, dayIds: number[]): Promise<RyderCupDay[]> {
+  async reorderEventDays(eventId: number, dayIds: number[]): Promise<EventDay[]> {
     for (let i = 0; i < dayIds.length; i++) {
-      await db.update(ryderCupDays)
+      await db.update(eventDays)
         .set({ dayNumber: i + 1 })
-        .where(and(eq(ryderCupDays.id, dayIds[i]), eq(ryderCupDays.eventId, eventId)));
+        .where(and(eq(eventDays.id, dayIds[i]), eq(eventDays.eventId, eventId)));
     }
-    return db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId)).orderBy(ryderCupDays.dayNumber);
+    return db.select().from(eventDays).where(eq(eventDays.eventId, eventId)).orderBy(eventDays.dayNumber);
   }
 
   async updateRyderCupEventClosestToHolePayout(eventId: number, closestToHolePayout: number): Promise<RyderCupEvent> {
@@ -4735,32 +4735,32 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateRyderCupTeam(teamId: number, updates: { name?: string; color?: string }): Promise<RyderCupTeam | null> {
-    const [updated] = await db.update(ryderCupTeams)
+  async updateEventTeam(teamId: number, updates: { name?: string; color?: string }): Promise<EventTeam | null> {
+    const [updated] = await db.update(eventTeams)
       .set(updates)
-      .where(eq(ryderCupTeams.id, teamId))
+      .where(eq(eventTeams.id, teamId))
       .returning();
     return updated || null;
   }
 
-  async getRyderCupTeam(teamId: number): Promise<RyderCupTeam | null> {
-    const [team] = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.id, teamId));
+  async getEventTeam(teamId: number): Promise<EventTeam | null> {
+    const [team] = await db.select().from(eventTeams).where(eq(eventTeams.id, teamId));
     return team || null;
   }
 
-  async updateRyderCupTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<RyderCupTeamMember | null> {
-    const [updated] = await db.update(ryderCupTeamMembers)
+  async updateEventTeamMemberHandicap(memberId: number, handicapIndex: number | null): Promise<EventTeamMember | null> {
+    const [updated] = await db.update(eventTeamMembers)
       .set({ handicapIndex })
-      .where(eq(ryderCupTeamMembers.id, memberId))
+      .where(eq(eventTeamMembers.id, memberId))
       .returning();
     return updated || null;
   }
 
-  async updateRyderCupTeamMemberName(memberId: number, playerName: string): Promise<RyderCupTeamMember | null> {
+  async updateEventTeamMemberName(memberId: number, playerName: string): Promise<EventTeamMember | null> {
     const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, playerName));
-    const [updated] = await db.update(ryderCupTeamMembers)
+    const [updated] = await db.update(eventTeamMembers)
       .set({ playerName, presetPlayerId: preset?.id ?? null })
-      .where(eq(ryderCupTeamMembers.id, memberId))
+      .where(eq(eventTeamMembers.id, memberId))
       .returning();
     return updated || null;
   }
@@ -5023,7 +5023,7 @@ export class DatabaseStorage implements IStorage {
     // guest row merged (kept for audit trail, never deleted — plan §3).
     return db.transaction(async (tx) => {
       await tx.update(groupPlayers).set({ personId: existingCanonical.id }).where(eq(groupPlayers.personId, guestPerson.id));
-      await tx.update(ryderCupTeamMembers).set({ personId: existingCanonical.id }).where(eq(ryderCupTeamMembers.personId, guestPerson.id));
+      await tx.update(eventTeamMembers).set({ personId: existingCanonical.id }).where(eq(eventTeamMembers.personId, guestPerson.id));
       await tx.update(players).set({ personId: existingCanonical.id }).where(eq(players.personId, guestPerson.id));
 
       await tx.update(people)
@@ -5043,18 +5043,18 @@ export class DatabaseStorage implements IStorage {
   // Buddy Trip/Tournament events can have any number of teams of any size. These
   // teams are a default/pre-fill only — bet creation still allows any subset of
   // players, so nothing here restricts match/bet participant selection.
-  async getRyderCupTeamsForEvent(eventId: number): Promise<RyderCupTeam[]> {
-    return db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+  async getEventTeamsForEvent(eventId: number): Promise<EventTeam[]> {
+    return db.select().from(eventTeams).where(eq(eventTeams.eventId, eventId));
   }
 
-  async createRyderCupTeam(eventId: number, name: string, color?: string | null): Promise<RyderCupTeam> {
+  async createEventTeam(eventId: number, name: string, color?: string | null): Promise<EventTeam> {
     const trimmedName = name.trim();
-    const existingTeams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    const existingTeams = await db.select().from(eventTeams).where(eq(eventTeams.eventId, eventId));
     const duplicate = existingTeams.some((t) => t.name.trim().toLowerCase() === trimmedName.toLowerCase());
     if (duplicate) {
       throw new Error(`DUPLICATE_TEAM_NAME: A team named "${trimmedName}" already exists in this trip.`);
     }
-    const [team] = await db.insert(ryderCupTeams).values({
+    const [team] = await db.insert(eventTeams).values({
       eventId,
       name: trimmedName,
       color: color ?? null,
@@ -5062,12 +5062,12 @@ export class DatabaseStorage implements IStorage {
     return team;
   }
 
-  async deleteRyderCupTeam(teamId: number): Promise<void> {
-    await db.delete(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, teamId));
-    await db.delete(ryderCupTeams).where(eq(ryderCupTeams.id, teamId));
+  async deleteEventTeam(teamId: number): Promise<void> {
+    await db.delete(eventTeamMembers).where(eq(eventTeamMembers.teamId, teamId));
+    await db.delete(eventTeams).where(eq(eventTeams.id, teamId));
   }
 
-  async addRyderCupTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number, phone?: string | null): Promise<RyderCupTeamMember> {
+  async addEventTeamMember(teamId: number, playerName: string, handicapIndex?: number | null, personId?: number, phone?: string | null): Promise<EventTeamMember> {
     const [preset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, playerName));
     let resolvedHandicap = handicapIndex ?? null;
     if (resolvedHandicap === null) {
@@ -5082,7 +5082,7 @@ export class DatabaseStorage implements IStorage {
     // tab, plan §3a) instead of resolving by name — same pattern as
     // storage.addPlayer's fix (2026-07-16).
     const resolvedPersonId = personId ?? await this.findOrCreatePersonForNewPlayer(playerName, preset?.userId ?? null, phone ?? null);
-    const [member] = await db.insert(ryderCupTeamMembers).values({
+    const [member] = await db.insert(eventTeamMembers).values({
       teamId,
       playerName,
       presetPlayerId: preset?.id ?? null,
@@ -5092,13 +5092,13 @@ export class DatabaseStorage implements IStorage {
     return member;
   }
 
-  async removeRyderCupTeamMember(memberId: number): Promise<void> {
-    await db.delete(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, memberId));
+  async removeEventTeamMember(memberId: number): Promise<void> {
+    await db.delete(eventTeamMembers).where(eq(eventTeamMembers.id, memberId));
   }
 
   async deleteRyderCupEvent(eventId: number): Promise<void> {
     // Delete all related data
-    const days = await db.select().from(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    const days = await db.select().from(eventDays).where(eq(eventDays.eventId, eventId));
     for (const day of days) {
       const pairings = await db.select().from(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
       for (const pairing of pairings) {
@@ -5108,13 +5108,13 @@ export class DatabaseStorage implements IStorage {
       await db.delete(ryderCupPairings).where(eq(ryderCupPairings.dayId, day.id));
       await db.delete(ryderCupSkins).where(eq(ryderCupSkins.dayId, day.id));
     }
-    await db.delete(ryderCupDays).where(eq(ryderCupDays.eventId, eventId));
+    await db.delete(eventDays).where(eq(eventDays.eventId, eventId));
 
-    const teams = await db.select().from(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    const teams = await db.select().from(eventTeams).where(eq(eventTeams.eventId, eventId));
     for (const team of teams) {
-      await db.delete(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.teamId, team.id));
+      await db.delete(eventTeamMembers).where(eq(eventTeamMembers.teamId, team.id));
     }
-    await db.delete(ryderCupTeams).where(eq(ryderCupTeams.eventId, eventId));
+    await db.delete(eventTeams).where(eq(eventTeams.eventId, eventId));
 
     await db.delete(events).where(eq(events.id, eventId));
   }
@@ -5310,34 +5310,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Ryder Cup Transaction methods
-  async getRyderCupTransactions(eventId: number): Promise<(RyderCupTransaction & { splits: RyderCupTransactionSplit[] })[]> {
-    const transactions = await db.select().from(ryderCupTransactions)
-      .where(eq(ryderCupTransactions.eventId, eventId))
-      .orderBy(desc(ryderCupTransactions.createdAt));
+  async getEventTransactions(eventId: number): Promise<(EventTransaction & { splits: EventTransactionSplit[] })[]> {
+    const transactions = await db.select().from(eventTransactions)
+      .where(eq(eventTransactions.eventId, eventId))
+      .orderBy(desc(eventTransactions.createdAt));
     
-    const result: (RyderCupTransaction & { splits: RyderCupTransactionSplit[] })[] = [];
+    const result: (EventTransaction & { splits: EventTransactionSplit[] })[] = [];
     
     for (const transaction of transactions) {
-      const splits = await db.select().from(ryderCupTransactionSplits)
-        .where(eq(ryderCupTransactionSplits.transactionId, transaction.id));
+      const splits = await db.select().from(eventTransactionSplits)
+        .where(eq(eventTransactionSplits.transactionId, transaction.id));
       result.push({ ...transaction, splits });
     }
     
     return result;
   }
 
-  async createRyderCupTransaction(
+  async createEventTransaction(
     eventId: number,
     payerName: string,
     description: string,
     amount: number,
     splitPlayerNames: string[]
-  ): Promise<RyderCupTransaction> {
+  ): Promise<EventTransaction> {
     // Look up payer's presetPlayerId
     const [payerPreset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, payerName));
     const payerPresetPlayerId = payerPreset?.id ?? null;
     
-    const [transaction] = await db.insert(ryderCupTransactions)
+    const [transaction] = await db.insert(eventTransactions)
       .values({ eventId, payerName, payerPresetPlayerId, description, amount })
       .returning();
     
@@ -5352,7 +5352,7 @@ export class DatabaseStorage implements IStorage {
       const [splitPlayerPreset] = await db.select().from(presetPlayers).where(eq(presetPlayers.name, splitPlayerNames[i]));
       const presetPlayerId = splitPlayerPreset?.id ?? null;
       
-      await db.insert(ryderCupTransactionSplits)
+      await db.insert(eventTransactionSplits)
         .values({
           transactionId: transaction.id,
           playerName: splitPlayerNames[i],
@@ -5364,19 +5364,19 @@ export class DatabaseStorage implements IStorage {
     return transaction;
   }
 
-  async deleteRyderCupTransaction(transactionId: number): Promise<void> {
+  async deleteEventTransaction(transactionId: number): Promise<void> {
     // Delete splits first (child records)
-    await db.delete(ryderCupTransactionSplits)
-      .where(eq(ryderCupTransactionSplits.transactionId, transactionId));
+    await db.delete(eventTransactionSplits)
+      .where(eq(eventTransactionSplits.transactionId, transactionId));
     
     // Delete transaction
-    await db.delete(ryderCupTransactions)
-      .where(eq(ryderCupTransactions.id, transactionId));
+    await db.delete(eventTransactions)
+      .where(eq(eventTransactions.id, transactionId));
   }
 
-  async getRyderCupTransaction(transactionId: number): Promise<RyderCupTransaction | null> {
-    const [transaction] = await db.select().from(ryderCupTransactions)
-      .where(eq(ryderCupTransactions.id, transactionId));
+  async getEventTransaction(transactionId: number): Promise<EventTransaction | null> {
+    const [transaction] = await db.select().from(eventTransactions)
+      .where(eq(eventTransactions.id, transactionId));
     return transaction || null;
   }
 
@@ -5384,10 +5384,10 @@ export class DatabaseStorage implements IStorage {
     const convertedScores: Score[] = [];
     
     // Get the day for this event
-    const [day] = await db.select().from(ryderCupDays)
+    const [day] = await db.select().from(eventDays)
       .where(and(
-        eq(ryderCupDays.eventId, eventId),
-        eq(ryderCupDays.dayNumber, dayNumber)
+        eq(eventDays.eventId, eventId),
+        eq(eventDays.dayNumber, dayNumber)
       ));
     
     if (!day) return [];
@@ -5414,11 +5414,11 @@ export class DatabaseStorage implements IStorage {
         let player2Name = side.player2Name;
         
         if (side.player1Id) {
-          const [member1] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player1Id));
+          const [member1] = await db.select().from(eventTeamMembers).where(eq(eventTeamMembers.id, side.player1Id));
           if (member1) player1Name = member1.playerName;
         }
         if (side.player2Id) {
-          const [member2] = await db.select().from(ryderCupTeamMembers).where(eq(ryderCupTeamMembers.id, side.player2Id));
+          const [member2] = await db.select().from(eventTeamMembers).where(eq(eventTeamMembers.id, side.player2Id));
           if (member2) player2Name = member2.playerName;
         }
         
