@@ -1087,6 +1087,7 @@ export class DatabaseStorage implements IStorage {
       autoPressTwoThirdBallFront9: data.autoPressTwoThirdBallFront9 ?? true,
       autoPressTwoThirdBallBack9: data.autoPressTwoThirdBallBack9 ?? true,
       autoPressTwoThirdBallOverall: data.autoPressTwoThirdBallOverall ?? true,
+      downPressFormat: data.downPressFormat ?? 'nine_and_nine',
     }).returning();
 
     // Check if using multiple teams (for 5-5-5-3)
@@ -1213,6 +1214,9 @@ export class DatabaseStorage implements IStorage {
     // the same engine as the parent.
     const parentMatch = await this.getEventMatchWithTeams(parentMatchId);
     if (!parentMatch) throw new Error("Parent match not found");
+    if (parentMatch.matchType === 'one_down' || parentMatch.matchType === 'two_down') {
+      throw new Error("1 Down / 2 Down bets press themselves automatically — manual presses aren't supported for this bet type");
+    }
 
     // For Death Match presses, determine the correct press amount
     let pressUnitAmount = parentMatch.unitAmount;
