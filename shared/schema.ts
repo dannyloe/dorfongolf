@@ -299,6 +299,13 @@ export const eventMatches = pgTable("event_matches", {
   autoPressTwoThirdBallFront9: boolean("auto_press_two_third_ball_front9").notNull().default(true),
   autoPressTwoThirdBallBack9: boolean("auto_press_two_third_ball_back9").notNull().default(true),
   autoPressTwoThirdBallOverall: boolean("auto_press_two_third_ball_overall").notNull().default(true),
+  // 1 Down / 2 Down specific config. These bet types auto-create a press the
+  // first time a bet-instance (the base bet, or a previously-spawned press)
+  // reaches the trigger margin (1 down / 2 down) — each bet-instance is only
+  // ever allowed to trigger ONE child press. See matchplay.ts calculateLedger's
+  // 'one_down'/'two_down' branch for the full mechanic, including the
+  // last-hole "breakeven" top-up.
+  downPressFormat: text("down_press_format").notNull().default("nine_and_nine"), // "nine_and_nine" (independent Front 9 + Back 9 legs) | "eighteen" (single 18-hole bet)
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1018,6 +1025,8 @@ export type CreateEventMatchRequest = {
   autoPressTwoThirdBallFront9?: boolean;
   autoPressTwoThirdBallBack9?: boolean;
   autoPressTwoThirdBallOverall?: boolean;
+  // 1 Down / 2 Down format
+  downPressFormat?: string; // "nine_and_nine" | "eighteen"
   sourceSmsBetId?: number;
 };
 
@@ -1073,6 +1082,8 @@ export const MATCH_TYPES = {
   DEATH_MATCH: "death_match",
   TWO_THREE_BALL: "two_three_ball",
   ONE_TWO_THREE_BALL: "one_two_three_ball",
+  ONE_DOWN: "one_down",
+  TWO_DOWN: "two_down",
 } as const;
 
 export type MatchType = typeof MATCH_TYPES[keyof typeof MATCH_TYPES];
@@ -1087,6 +1098,19 @@ export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
   [MATCH_TYPES.DEATH_MATCH]: "Death Match",
   [MATCH_TYPES.TWO_THREE_BALL]: "2 Ball / 3rd Ball",
   [MATCH_TYPES.ONE_TWO_THREE_BALL]: "1 Ball / 2nd3rd Ball",
+  [MATCH_TYPES.ONE_DOWN]: "1 Down",
+  [MATCH_TYPES.TWO_DOWN]: "2 Down",
+};
+
+// Format options for 1 Down / 2 Down bets
+export const DOWN_PRESS_FORMATS = {
+  NINE_AND_NINE: "nine_and_nine",
+  EIGHTEEN: "eighteen",
+} as const;
+export type DownPressFormat = typeof DOWN_PRESS_FORMATS[keyof typeof DOWN_PRESS_FORMATS];
+export const DOWN_PRESS_FORMAT_LABELS: Record<DownPressFormat, string> = {
+  [DOWN_PRESS_FORMATS.NINE_AND_NINE]: "Front 9 + Back 9 (two 9-hole bets)",
+  [DOWN_PRESS_FORMATS.EIGHTEEN]: "Single 18-hole bet",
 };
 
 export const MATCH_TYPE_OPTIONS = Object.entries(MATCH_TYPE_LABELS).map(([value, label]) => ({
