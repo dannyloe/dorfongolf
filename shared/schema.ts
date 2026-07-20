@@ -1309,7 +1309,7 @@ export const quotaPools = pgTable("quota_pools", {
   // Ordered list of { rank, percent } — percent of the total pool (entryFeeCents * entry
   // count) paid to that finishing rank. Tied ranks split their combined percent evenly.
   payoutSplits: jsonb("payout_splits").$type<Array<{ rank: number; percent: number }>>().notNull().default([]),
-  createdBy: integer("created_by").notNull(),
+  createdBy: text("created_by").notNull(), // Replit user id (claims.sub), same convention as matches.creatorId — fixed 2026-07-20, was wrongly typed integer in Phase 1
   isComplete: boolean("is_complete").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
