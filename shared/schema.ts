@@ -1291,6 +1291,160 @@ export const ryderCupClosestToHole = pgTable("ryder_cup_closest_to_hole", {
   winnerPresetPlayerId: integer("winner_preset_player_id"), // References presetPlayers.id for dynamic name updates
 });
 
+// === QUOTA GAME (2026-07-19) ===
+// Entry-fee pool game, ranked leaderboard by points-over-quota, NOT a two-sided bet.
+// Deliberately does not reuse eventMatches/teams/teamMembers (every other bet type
+// assumes exactly two competing sides) or MATCH_TYPES (that enum + MATCH_TYPE_OPTIONS
+// drive the existing Team A/Team B bet-creation picker, which Quota doesn't fit and
+// shouldn't appear in). See QUOTA_GAME_PLAN.md in the Press folder for full design.
+
+export const quotaPools = pgTable("quota_pools", {
+  id: serial("id").primaryKey(),
+  matchId: integer("match_id"), // set for a single-day pool; mutually exclusive with eventId
+  eventId: integer("event_id"), // set for a multi-day pool (points accumulate across each day's match); mutually exclusive with matchId
+  name: text("name").notNull(),
+  mode: text("mode").notNull(), // "individual" | "team"
+  teamSize: integer("team_size"), // only used when mode = "team"
+  entryFeeCents: integer("entry_fee_cents").notNull().default(0),
+  // Ordered list of { rank, percent } — percent of the total pool (entryFeeCents * entry
+  // count) paid to that finishing rank. Tied ranks split their combined percent evenly.
+  payoutSplits: jsonb("payout_splits").$type<Array<{ rank: number; percent: number }>>().notNull().default([]),
+  createdBy: integer("created_by").notNull(),
+  isComplete: boolean("is_complete").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const quotaEntries = pgTable("quota_entries", {
+  id: serial("id").primaryKey(),
+  quotaPoolId: integer("quota_pool_id").notNull(),
+  playerId: integer("player_id"), // individual mode — this day's match player row (single-day pools only)
+  // Individual mode, multi-day pools: REQUIRED (enforced at the API layer, not a DB
+  // constraint, since single-day pools legitimately leave this null). Cross-day scoring
+  // joins on this, not playerId, since a match player row is scoped to one day's match.
+  personId: integer("person_id"),
+  teamName: text("team_name"), // team mode
+  courseHandicap: integer("course_handicap"), // individual mode only; team mode sums from quotaEntryMembers
+  quota: integer("quota"), // cached: 36 - courseHandicap, or 36*teamSize - sum(member handicaps)
+  pointsTotal: integer("points_total").notNull().default(0), // cached, recomputed on score write
+  netScore: integer("net_score"), // pointsTotal - quota
+  rank: integer("rank"), // computed at leaderboard read/finalize time
+  payoutCents: integer("payout_cents"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const quotaEntryMembers = pgTable("quota_entry_members", { // team mode only
+  id: serial("id").primaryKey(),
+  quotaEntryId: integer("quota_entry_id").notNull(),
+  playerId: integer("player_id"), // this day's match player row (single-day pools only)
+  personId: integer("person_id"), // required for multi-day pools, same rule as quotaEntries.personId
+  courseHandicap: integer("course_handicap").notNull(),
+});
+
+export const quotaSidePots = pgTable("quota_side_pots", {
+  id: serial("id").primaryKey(),
+  quotaPoolId: integer("quota_pool_id").notNull(),
+  name: text("name").notNull(), // e.g. "Closest to Hole #4", "Long Drive", "Day Money"
+  amountCents: integer("amount_cents").notNull(),
+  winnerCriteria: text("winner_criteria").notNull().default("manual"), // "manual" | "most_birdies" | "closest_to_quota" (computed criteria are a later phase, not v1)
+  winnerEntryId: integer("winner_entry_id"), // references quotaEntries.id, once decided
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Side-pot settlement — same shape as eventTransactions/eventTransactionSplits, but keyed
+// to a quota pool instead of an event, since a standalone (single-day) pool has no eventId
+// to hang a settlement off. Deliberately a separate table rather than loosening that one's
+// notNull eventId constraint.
+export const quotaSidePotSettlements = pgTable("quota_side_pot_settlements", {
+  id: serial("id").primaryKey(),
+  quotaSidePotId: integer("quota_side_pot_id").notNull(),
+  payerName: text("payer_name").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+});
+
+export const quotaPoolsRelations = relations(quotaPools, ({ many }) => ({
+  entries: many(quotaEntries),
+  sidePots: many(quotaSidePots),
+}));
+
+export const quotaEntriesRelations = relations(quotaEntries, ({ one, many }) => ({
+  pool: one(quotaPools, {
+    fields: [quotaEntries.quotaPoolId],
+    references: [quotaPools.id],
+  }),
+  members: many(quotaEntryMembers),
+}));
+
+export const quotaEntryMembersRelations = relations(quotaEntryMembers, ({ one }) => ({
+  entry: one(quotaEntries, {
+    fields: [quotaEntryMembers.quotaEntryId],
+    references: [quotaEntries.id],
+  }),
+}));
+
+export const quotaSidePotsRelations = relations(quotaSidePots, ({ one, many }) => ({
+  pool: one(quotaPools, {
+    fields: [quotaSidePots.quotaPoolId],
+    references: [quotaPools.id],
+  }),
+  settlements: many(quotaSidePotSettlements),
+}));
+
+export const quotaSidePotSettlementsRelations = relations(quotaSidePotSettlements, ({ one }) => ({
+  sidePot: one(quotaSidePots, {
+    fields: [quotaSidePotSettlements.quotaSidePotId],
+    references: [quotaSidePots.id],
+  }),
+}));
+
+export const insertQuotaPoolSchema = createInsertSchema(quotaPools).omit({
+  id: true,
+  isComplete: true,
+  createdAt: true,
+});
+
+export const insertQuotaEntrySchema = createInsertSchema(quotaEntries).omit({
+  id: true,
+  pointsTotal: true,
+  netScore: true,
+  rank: true,
+  payoutCents: true,
+  createdAt: true,
+});
+
+export const insertQuotaEntryMemberSchema = createInsertSchema(quotaEntryMembers).omit({
+  id: true,
+});
+
+export const insertQuotaSidePotSchema = createInsertSchema(quotaSidePots).omit({
+  id: true,
+  winnerEntryId: true,
+  createdAt: true,
+});
+
+export const insertQuotaSidePotSettlementSchema = createInsertSchema(quotaSidePotSettlements).omit({
+  id: true,
+});
+
+export type QuotaPool = typeof quotaPools.$inferSelect;
+export type InsertQuotaPool = z.infer<typeof insertQuotaPoolSchema>;
+
+export type QuotaEntry = typeof quotaEntries.$inferSelect;
+export type InsertQuotaEntry = z.infer<typeof insertQuotaEntrySchema>;
+
+export type QuotaEntryMember = typeof quotaEntryMembers.$inferSelect;
+export type InsertQuotaEntryMember = z.infer<typeof insertQuotaEntryMemberSchema>;
+
+export type QuotaSidePot = typeof quotaSidePots.$inferSelect;
+export type InsertQuotaSidePot = z.infer<typeof insertQuotaSidePotSchema>;
+
+export type QuotaSidePotSettlement = typeof quotaSidePotSettlements.$inferSelect;
+export type InsertQuotaSidePotSettlement = z.infer<typeof insertQuotaSidePotSettlementSchema>;
+
+export type QuotaPoolWithEntries = QuotaPool & {
+  entries: (QuotaEntry & { members: QuotaEntryMember[] })[];
+  sidePots: (QuotaSidePot & { settlements: QuotaSidePotSettlement[] })[];
+};
+
 // === MANUAL BETS ===
 // For recording bet results that weren't tracked automatically
 
