@@ -25,6 +25,15 @@ import {
   calculateAllEventMatchResults,
   type StorableEventMatchResult,
 } from './matchplay';
+import {
+  calculateQuotaPoints,
+  rankQuotaEntries,
+  calculateQuotaPayouts,
+  type QuotaHoleScore,
+  type QuotaEntryForRanking,
+  type QuotaPayoutSplit,
+  type QuotaEntryWithPayout,
+} from './quota';
 
 export async function calculateMatchBets(
   matchId: number
@@ -214,6 +223,7 @@ export async function calculateMatchBets(
       autoPressTwoThirdBallFront9: em.autoPressTwoThirdBallFront9,
       autoPressTwoThirdBallBack9: em.autoPressTwoThirdBallBack9,
       autoPressTwoThirdBallOverall: em.autoPressTwoThirdBallOverall,
+      downPressFormat: (em as any).downPressFormat ?? 'nine_and_nine',
       createdAt: em.createdAt?.toISOString(),
       teams,
     };
@@ -241,4 +251,180 @@ export async function calculateMatchBets(
     out[k] = v;
   });
   return out;
+}
+
+/**
+ * calculateQuotaPool — Phase 2 (2026-07-20).
+ *
+ * Deliberately a separate top-level function, not a branch inside calculateMatchBets:
+ * a Quota pool spans either one match (single-day) or every match under an Event
+ * (multi-day), never exactly one eventMatch the way calculateMatchBets assumes, and
+ * the response shape is a ranked leaderboard, not per-eventMatch dollar settlements.
+ * See QUOTA_GAME_PLAN.md's Phase 2 section — this is the "DB-loading" half of the
+ * calc engine; server/betting/quota.ts holds the pure point/rank/payout math this
+ * calls into, same split as calculateMatchBets/matchplay.ts.
+ *
+ * Read-only, same as calculateMatchBets — does not write pointsTotal/rank/payoutCents
+ * back to the quotaEntries rows. Persisting is a Phase 3 (API endpoint) concern.
+ */
+export interface QuotaLeaderboardEntry extends QuotaEntryWithPayout {
+  displayName: string; // team name (team mode) or resolved player name (individual mode)
+}
+
+export async function calculateQuotaPool(
+  quotaPoolId: number
+): Promise<{ pool: typeof schema.quotaPools.$inferSelect; entries: QuotaLeaderboardEntry[] } | null> {
+  // ── 1. Pool row ────────────────────────────────────────────────────────────
+  const [pool] = await db
+    .select()
+    .from(schema.quotaPools)
+    .where(eq(schema.quotaPools.id, quotaPoolId))
+    .limit(1);
+
+  if (!pool) return null;
+
+  // ── 2. Which match(es) feed this pool ───────────────────────────────────────
+  // Single-day: exactly the one match. Multi-day: every match under the Event.
+  // (Phase 3 enforces exactly one of matchId/eventId is set at creation time.)
+  const matchRows = pool.matchId
+    ? await db.select().from(schema.matches).where(eq(schema.matches.id, pool.matchId))
+    : pool.eventId
+      ? await db.select().from(schema.matches).where(eq(schema.matches.eventId, pool.eventId))
+      : [];
+
+  if (matchRows.length === 0) return { pool, entries: [] };
+
+  const matchIds = matchRows.map((m) => m.id);
+
+  // ── 3. Per-match pars, players, scores ──────────────────────────────────────
+  const [allPlayerRows, allScoreRows] = await Promise.all([
+    db.select().from(schema.players).where(inArray(schema.players.matchId, matchIds)),
+    db.select().from(schema.scores).where(inArray(schema.scores.matchId, matchIds)),
+  ]);
+
+  interface MatchContext {
+    pars: number[];
+    playersByPersonId: Map<number, typeof allPlayerRows[number]>;
+    playersById: Map<number, typeof allPlayerRows[number]>;
+    scoresByPlayerId: Map<number, QuotaHoleScore[]>;
+  }
+
+  const matchContexts = new Map<number, MatchContext>();
+  for (const match of matchRows) {
+    const courseHoles = match.courseId
+      ? await db.select().from(schema.courseHoles).where(eq(schema.courseHoles.courseId, match.courseId))
+      : [];
+    const pars = Array.from({ length: 18 }, (_, i) => {
+      const hole = courseHoles.find((h) => h.holeNumber === i + 1);
+      return hole?.par ?? 4;
+    });
+
+    const playersInMatch = allPlayerRows.filter((p) => p.matchId === match.id);
+    const playersByPersonId = new Map<number, typeof allPlayerRows[number]>();
+    const playersById = new Map<number, typeof allPlayerRows[number]>();
+    for (const p of playersInMatch) {
+      playersById.set(p.id, p);
+      if (p.personId != null) playersByPersonId.set(p.personId, p);
+    }
+
+    const scoresByPlayerId = new Map<number, QuotaHoleScore[]>();
+    for (const s of allScoreRows.filter((s) => s.matchId === match.id)) {
+      const arr = scoresByPlayerId.get(s.playerId) ?? [];
+      arr.push({ holeNumber: s.holeNumber, strokes: s.strokes });
+      scoresByPlayerId.set(s.playerId, arr);
+    }
+
+    matchContexts.set(match.id, { pars, playersByPersonId, playersById, scoresByPlayerId });
+  }
+
+  // Resolves one player-or-member's identity to their points in one match. Falls
+  // back to 0 (not an error) when that person didn't play that day's match —
+  // matches the "someone sat out that day" rule from QUOTA_GAME_PLAN.md Phase 3.
+  function pointsForOneMatch(
+    ctx: MatchContext,
+    personId: number | null,
+    playerId: number | null
+  ): number {
+    const player = personId != null
+      ? ctx.playersByPersonId.get(personId)
+      : playerId != null
+        ? ctx.playersById.get(playerId)
+        : undefined;
+    if (!player) return 0;
+    const scores = ctx.scoresByPlayerId.get(player.id) ?? [];
+    return calculateQuotaPoints(ctx.pars, scores);
+  }
+
+  // ── 4. Entries (+ members for team mode) ────────────────────────────────────
+  const entryRows = await db
+    .select()
+    .from(schema.quotaEntries)
+    .where(eq(schema.quotaEntries.quotaPoolId, quotaPoolId));
+
+  const entryIds = entryRows.map((e) => e.id);
+  const memberRows =
+    pool.mode === 'team' && entryIds.length > 0
+      ? await db.select().from(schema.quotaEntryMembers).where(inArray(schema.quotaEntryMembers.quotaEntryId, entryIds))
+      : [];
+
+  const membersByEntryId = new Map<number, typeof memberRows>();
+  for (const m of memberRows) {
+    const arr = membersByEntryId.get(m.quotaEntryId) ?? [];
+    arr.push(m);
+    membersByEntryId.set(m.quotaEntryId, arr);
+  }
+
+  // ── 5. Points per entry, summed across every match this pool spans ─────────
+  const forRanking: Array<QuotaEntryForRanking & { displayName: string }> = entryRows.map((entry) => {
+    let pointsTotal = 0;
+
+    if (pool.mode === 'team') {
+      for (const member of membersByEntryId.get(entry.id) ?? []) {
+        for (const ctx of matchContexts.values()) {
+          pointsTotal += pointsForOneMatch(ctx, member.personId ?? null, member.playerId ?? null);
+        }
+      }
+    } else {
+      for (const ctx of matchContexts.values()) {
+        pointsTotal += pointsForOneMatch(ctx, entry.personId ?? null, entry.playerId ?? null);
+      }
+    }
+
+    const displayName =
+      pool.mode === 'team'
+        ? entry.teamName ?? `Team ${entry.id}`
+        : (() => {
+            for (const ctx of matchContexts.values()) {
+              const player = entry.personId != null
+                ? ctx.playersByPersonId.get(entry.personId)
+                : entry.playerId != null
+                  ? ctx.playersById.get(entry.playerId)
+                  : undefined;
+              if (player) return player.name;
+            }
+            return `Entry ${entry.id}`;
+          })();
+
+    return {
+      entryId: entry.id,
+      pointsTotal,
+      quota: entry.quota ?? 0,
+      displayName,
+    };
+  });
+
+  // ── 6. Rank, then apply payout splits ───────────────────────────────────────
+  const ranked = rankQuotaEntries(forRanking);
+  const payoutSplits = (pool.payoutSplits ?? []) as QuotaPayoutSplit[];
+  const withPayouts = calculateQuotaPayouts(ranked, pool.entryFeeCents, payoutSplits);
+
+  // rankQuotaEntries/calculateQuotaPayouts don't carry displayName through (pure
+  // functions only know entryId/pointsTotal/quota) — rejoin it here by entryId.
+  const displayNameByEntryId = new Map(forRanking.map((e) => [e.entryId, e.displayName]));
+  const entries: QuotaLeaderboardEntry[] = withPayouts.map((e) => ({
+    ...e,
+    displayName: displayNameByEntryId.get(e.entryId) ?? `Entry ${e.entryId}`,
+  }));
+
+  return { pool, entries };
 }
