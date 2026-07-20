@@ -6,8 +6,11 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { db } from "./db";
 import { presetPlayers, playerAliases, matches as matchesTable, eventMatches as eventMatchesTable, users as usersTable, smsOptIns } from "@shared/schema";
+import type { QuotaPool, InsertQuotaPool, InsertQuotaEntry, InsertQuotaSidePot } from "@shared/schema";
 import { eq, sql, count, and as drizzleAnd } from "drizzle-orm";
-import { calculateMatchBets } from "./betting/calculate";
+import { calculateMatchBets, calculateQuotaPool } from "./betting/calculate";
+import { calculateIndividualQuota, calculateTeamQuota } from "./betting/quota";
+import { calculateCourseHandicap } from "./betting/handicap";
 // import { ai } from "./replit_integrations/image/client";
 // import { Type as GenAIType } from "@google/genai";
 // import { sendSMS, sendMatchInvitation, sendScoreUpdate, sendBetResult, getPlivoFromPhoneNumber } from "./plivo";
@@ -6694,6 +6697,345 @@ Transcript to parse: "${transcript}"`;
       
       res.json({ success: true });
     } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ===== QUOTA GAME (2026-07-20, Phase 3) =====
+  // Entry-fee pool, ranked leaderboard, paid out by finishing position — not a
+  // two-sided bet, so these routes don't go through the eventMatches/teams
+  // machinery above, and Quota is deliberately not in MATCH_TYPES. See
+  // QUOTA_GAME_PLAN.md in the Press folder for the full design.
+
+  const quotaPayoutSplitSchema = z.object({
+    rank: z.number().int().min(1),
+    percent: z.number().min(0).max(100),
+  });
+
+  const quotaSidePotInputSchema = z.object({
+    name: z.string().min(1),
+    amountCents: z.number().int().min(0),
+    winnerCriteria: z.string().optional(),
+  });
+
+  // Single-day entries reference this match's own players table (playerId) —
+  // handicap comes from that player's stored handicapIndex + tee, calculated
+  // fresh against this match's course.
+  const quotaSingleDayEntrySchema = z.union([
+    z.object({ playerId: z.number().int() }),
+    z.object({ teamName: z.string().min(1), memberPlayerIds: z.array(z.number().int()).min(1) }),
+  ]);
+
+  const quotaSingleDayBodySchema = z.object({
+    name: z.string().min(1),
+    mode: z.enum(["individual", "team"]),
+    teamSize: z.number().int().min(1).optional(),
+    entryFeeCents: z.number().int().min(0),
+    payoutSplits: z.array(quotaPayoutSplitSchema),
+    entries: z.array(quotaSingleDayEntrySchema).min(1),
+    sidePots: z.array(quotaSidePotInputSchema).optional(),
+  });
+
+  // Multi-day entries reference the Event's team roster (eventTeamMemberId) —
+  // eventTeamMembers already carries a cached courseHandicap (computed when the
+  // trip roster was set up), so there's no per-match course to look up here.
+  const quotaMultiDayEntrySchema = z.union([
+    z.object({ eventTeamMemberId: z.number().int() }),
+    z.object({ teamName: z.string().min(1), eventTeamMemberIds: z.array(z.number().int()).min(1) }),
+  ]);
+
+  const quotaMultiDayBodySchema = z.object({
+    name: z.string().min(1),
+    mode: z.enum(["individual", "team"]),
+    teamSize: z.number().int().min(1).optional(),
+    entryFeeCents: z.number().int().min(0),
+    payoutSplits: z.array(quotaPayoutSplitSchema),
+    entries: z.array(quotaMultiDayEntrySchema).min(1),
+    sidePots: z.array(quotaSidePotInputSchema).optional(),
+  });
+
+  // Shared tail end of both create-pool handlers: given the pool row and a list
+  // of { personId, playerId, courseHandicap, teamName? } resolved per the
+  // single-day/multi-day rules above, writes quotaEntries/quotaEntryMembers/
+  // quotaSidePots and returns the assembled response. Kept separate from the
+  // two handlers' validation logic above (which differs meaningfully between
+  // single-day and multi-day) rather than one large branching function.
+  async function finishCreatingQuotaPool(
+    pool: QuotaPool,
+    mode: "individual" | "team",
+    resolvedEntries: Array<{
+      teamName?: string;
+      members: Array<{ playerId: number | null; personId: number | null; courseHandicap: number }>;
+    }>,
+    sidePotsInput: Array<{ name: string; amountCents: number; winnerCriteria?: string }>
+  ) {
+    const entries = [];
+    for (const re of resolvedEntries) {
+      if (mode === "team") {
+        const teamQuota = calculateTeamQuota(re.members.map(m => m.courseHandicap));
+        const entry = await storage.createQuotaEntry({
+          quotaPoolId: pool.id,
+          teamName: re.teamName ?? null,
+          quota: teamQuota,
+        } as InsertQuotaEntry);
+        const members = [];
+        for (const m of re.members) {
+          members.push(await storage.createQuotaEntryMember({
+            quotaEntryId: entry.id,
+            playerId: m.playerId,
+            personId: m.personId,
+            courseHandicap: m.courseHandicap,
+          }));
+        }
+        entries.push({ ...entry, members });
+      } else {
+        const only = re.members[0];
+        const quota = calculateIndividualQuota(only.courseHandicap);
+        const entry = await storage.createQuotaEntry({
+          quotaPoolId: pool.id,
+          playerId: only.playerId,
+          personId: only.personId,
+          courseHandicap: only.courseHandicap,
+          quota,
+        } as InsertQuotaEntry);
+        entries.push({ ...entry, members: [] as any[] });
+      }
+    }
+
+    const sidePots = [];
+    for (const sp of sidePotsInput) {
+      sidePots.push(await storage.createQuotaSidePot({
+        quotaPoolId: pool.id,
+        name: sp.name,
+        amountCents: sp.amountCents,
+        winnerCriteria: sp.winnerCriteria ?? "manual",
+      } as InsertQuotaSidePot));
+    }
+
+    return { ...pool, entries, sidePots: sidePots.map(sp => ({ ...sp, settlements: [] as any[] })) };
+  }
+
+  // POST /api/matches/:id/quota-pools — single-day pool.
+  app.post('/api/matches/:id/quota-pools', isAuthenticated, async (req, res) => {
+    const matchId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const match = await storage.getMatch(matchId);
+      if (!match) return res.status(404).json({ message: "Match not found" });
+
+      // Same creator/organizer check as eventMatches.create — Quota is a bet
+      // type from the match's perspective even though it isn't in MATCH_TYPES.
+      const isAdmin = userId === ADMIN_USER_ID;
+      const isCreator = match.creatorId === userId;
+      const matchRole = await storage.getMatchRole(matchId, userId);
+      const isOrganizer = matchRole?.role === 'organizer';
+      if (!isAdmin && !isCreator && !isOrganizer) {
+        return res.status(403).json({ message: "Only the creator or organizer can create bets" });
+      }
+
+      const input = quotaSingleDayBodySchema.parse(req.body);
+      if (input.mode === "team" && input.teamSize) {
+        for (const e of input.entries) {
+          if ("memberPlayerIds" in e && e.memberPlayerIds.length !== input.teamSize) {
+            return res.status(400).json({ message: `Team "${e.teamName}" has ${e.memberPlayerIds.length} players but the pool's team size is ${input.teamSize}` });
+          }
+        }
+      }
+
+      if (!match.courseId) {
+        return res.status(400).json({ message: "This match has no course set — required to calculate Quota handicaps" });
+      }
+      const [courseHoles, courseTees] = await Promise.all([
+        storage.getCourseHoles(match.courseId),
+        storage.getCourseTees(match.courseId),
+      ]);
+      const coursePar = courseHoles.length > 0 ? courseHoles.reduce((sum, h) => sum + (h.par ?? 0), 0) : null;
+      const teeById = new Map(courseTees.map(t => [t.id, t]));
+
+      // Resolves one playerId to a course handicap, or throws a 400-friendly error.
+      // Quota requires a real handicap at entry time — no manual override path,
+      // unlike matchPlayerHandicaps for other bet types.
+      const resolvePlayerHandicap = async (playerId: number): Promise<{ playerId: number; personId: number | null; courseHandicap: number }> => {
+        const player = await storage.getPlayerById(playerId);
+        if (!player || player.matchId !== matchId) {
+          throw { status: 400, message: `Player ${playerId} is not part of this match` };
+        }
+        if (player.handicapIndex == null) {
+          throw { status: 400, message: `${player.name} has no handicap index on file — required for Quota, no override allowed` };
+        }
+        if (player.teeId == null) {
+          throw { status: 400, message: `${player.name} has no tee selected — required to calculate a Quota handicap` };
+        }
+        const tee = teeById.get(player.teeId);
+        if (!tee) {
+          throw { status: 400, message: `${player.name}'s selected tee could not be found on this course` };
+        }
+        const courseHandicap = calculateCourseHandicap(player.handicapIndex, tee.slopeRating, tee.courseRating, coursePar);
+        return { playerId: player.id, personId: player.personId ?? null, courseHandicap };
+      };
+
+      const resolvedEntries = [];
+      for (const e of input.entries) {
+        if ("memberPlayerIds" in e) {
+          const members = [];
+          for (const pid of e.memberPlayerIds) members.push(await resolvePlayerHandicap(pid));
+          resolvedEntries.push({ teamName: e.teamName, members });
+        } else {
+          resolvedEntries.push({ members: [await resolvePlayerHandicap(e.playerId)] });
+        }
+      }
+
+      const pool = await storage.createQuotaPool({
+        matchId,
+        eventId: null,
+        name: input.name,
+        mode: input.mode,
+        teamSize: input.teamSize ?? null,
+        entryFeeCents: input.entryFeeCents,
+        payoutSplits: input.payoutSplits,
+        createdBy: userId,
+      } as unknown as InsertQuotaPool);
+
+      const result = await finishCreatingQuotaPool(pool, input.mode, resolvedEntries, input.sidePots ?? []);
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err && typeof err.status === "number") {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/events/:id/quota-pools — multi-day pool, sourced from the
+  // Event's team roster rather than a single day's match players.
+  app.post('/api/events/:id/quota-pools', isAuthenticated, async (req, res) => {
+    const eventId = parseInt(req.params.id);
+    const user = req.user as any;
+    const userId = user.claims.sub;
+
+    try {
+      const event = await storage.getRyderCupEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+
+      const input = quotaMultiDayBodySchema.parse(req.body);
+      if (input.mode === "team" && input.teamSize) {
+        for (const e of input.entries) {
+          if ("eventTeamMemberIds" in e && e.eventTeamMemberIds.length !== input.teamSize) {
+            return res.status(400).json({ message: `Team "${e.teamName}" has ${e.eventTeamMemberIds.length} players but the pool's team size is ${input.teamSize}` });
+          }
+        }
+      }
+
+      // Multi-day pools join across days on personId, never playerId (which
+      // resets every day) — so every entrant must already be a saved person,
+      // not a bare guest. No override: block creation and say who's missing.
+      const resolveTeamMemberHandicap = async (id: number): Promise<{ playerId: number | null; personId: number | null; courseHandicap: number }> => {
+        const member = await storage.getEventTeamMemberById(id);
+        if (!member) throw { status: 400, message: `Team member ${id} not found` };
+        if (member.courseHandicap == null) {
+          throw { status: 400, message: `${member.playerName} has no course handicap on file — required for Quota` };
+        }
+        if (member.personId == null) {
+          throw { status: 400, message: `${member.playerName} hasn't been saved as a real player yet — multi-day Quota pools need that to match them across days. Save them from the trip roster first.` };
+        }
+        return { playerId: null, personId: member.personId, courseHandicap: member.courseHandicap };
+      };
+
+      const resolvedEntries = [];
+      for (const e of input.entries) {
+        if ("eventTeamMemberIds" in e) {
+          const members = [];
+          for (const id of e.eventTeamMemberIds) members.push(await resolveTeamMemberHandicap(id));
+          resolvedEntries.push({ teamName: e.teamName, members });
+        } else {
+          resolvedEntries.push({ members: [await resolveTeamMemberHandicap(e.eventTeamMemberId)] });
+        }
+      }
+
+      const pool = await storage.createQuotaPool({
+        matchId: null,
+        eventId,
+        name: input.name,
+        mode: input.mode,
+        teamSize: input.teamSize ?? null,
+        entryFeeCents: input.entryFeeCents,
+        payoutSplits: input.payoutSplits,
+        createdBy: userId,
+      } as unknown as InsertQuotaPool);
+
+      const result = await finishCreatingQuotaPool(pool, input.mode, resolvedEntries, input.sidePots ?? []);
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err && typeof err.status === "number") {
+        return res.status(err.status).json({ message: err.message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/quota-pools/:id/leaderboard — ranked entries with points/quota/
+  // net/rank/payout. Single-day or multi-day both handled by calculateQuotaPool
+  // (Phase 2) since it branches on the pool's own matchId/eventId.
+  app.get('/api/quota-pools/:id/leaderboard', isAuthenticated, async (req, res) => {
+    const poolId = parseInt(req.params.id);
+    try {
+      const result = await calculateQuotaPool(poolId);
+      if (!result) return res.status(404).json({ message: "Quota pool not found" });
+      res.json(result);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // POST /api/quota-pools/:id/side-pots/:sidePotId/winner — record a manual
+  // side-pot winner (closest to hole, long drive, day money, etc.). Same
+  // even-split-with-remainder math as createEventTransaction, but payerNames
+  // is supplied by the caller rather than re-derived server-side — the client
+  // already has the pool's entrant list from the leaderboard it just fetched.
+  app.post('/api/quota-pools/:id/side-pots/:sidePotId/winner', isAuthenticated, async (req, res) => {
+    const poolId = parseInt(req.params.id);
+    const sidePotId = parseInt(req.params.sidePotId);
+
+    try {
+      const bodySchema = z.object({
+        winnerEntryId: z.number().int(),
+        payerNames: z.array(z.string().min(1)).min(1),
+      });
+      const input = bodySchema.parse(req.body);
+
+      const pool = await storage.getQuotaPool(poolId);
+      if (!pool) return res.status(404).json({ message: "Quota pool not found" });
+
+      const sidePot = await storage.getQuotaSidePot(sidePotId);
+      if (!sidePot || sidePot.quotaPoolId !== poolId) {
+        return res.status(404).json({ message: "Side pot not found on this pool" });
+      }
+
+      const entries = await storage.getQuotaEntriesForPool(poolId);
+      if (!entries.some(e => e.id === input.winnerEntryId)) {
+        return res.status(400).json({ message: "winnerEntryId is not an entry in this pool" });
+      }
+
+      await storage.setQuotaSidePotWinner(sidePotId, input.winnerEntryId);
+      const settlements = await storage.createQuotaSidePotSettlements(sidePotId, sidePot.amountCents, input.payerNames);
+
+      res.json({ sidePot: { ...sidePot, winnerEntryId: input.winnerEntryId }, settlements });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
       console.error("[route error]", err);
       res.status(500).json({ message: "Internal server error" });
     }

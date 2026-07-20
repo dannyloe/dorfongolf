@@ -6,6 +6,7 @@ import {
   groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites, people,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
   events, eventTeams, eventTeamMembers, eventDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, eventTransactions, eventTransactionSplits, ryderCupClosestToHole,
+  quotaPools, quotaEntries, quotaEntryMembers, quotaSidePots, quotaSidePotSettlements,
   manualBets, manualBetEntries,
   settlements, settlementPayments,
   pendingScorecardScans,
@@ -33,6 +34,9 @@ import {
   type RyderCupEvent, type EventTeam, type EventTeamMember, type EventDay, 
   type RyderCupPairing, type RyderCupPairingSide, type RyderCupPairingResult, type RyderCupSkin, type RyderCupPairingScore,
   type EventTransaction, type EventTransactionSplit, type RyderCupClosestToHole,
+  type QuotaPool, type InsertQuotaPool, type QuotaEntry, type InsertQuotaEntry,
+  type QuotaEntryMember, type InsertQuotaEntryMember, type QuotaSidePot, type InsertQuotaSidePot,
+  type QuotaSidePotSettlement, type InsertQuotaSidePotSettlement,
   type ManualBet, type ManualBetEntry, type ManualBetWithEntries,
   type Settlement, type SettlementPayment, type SettlementWithPayments,
   type PendingScorecardScan,
@@ -5378,6 +5382,94 @@ export class DatabaseStorage implements IStorage {
     const [transaction] = await db.select().from(eventTransactions)
       .where(eq(eventTransactions.id, transactionId));
     return transaction || null;
+  }
+
+  // Quota game (2026-07-20, Phase 3). Entry-fee pool, ranked leaderboard, paid
+  // out by finishing position — not a two-sided bet, so these are independent
+  // of the eventMatches/teams/teamMembers CRUD above. See QUOTA_GAME_PLAN.md.
+
+  async getPlayerById(playerId: number): Promise<Player | null> {
+    const [player] = await db.select().from(players).where(eq(players.id, playerId));
+    return player || null;
+  }
+
+  async getEventTeamMemberById(id: number): Promise<EventTeamMember | null> {
+    const [member] = await db.select().from(eventTeamMembers).where(eq(eventTeamMembers.id, id));
+    return member || null;
+  }
+
+  async createQuotaPool(input: InsertQuotaPool): Promise<QuotaPool> {
+    const [pool] = await db.insert(quotaPools).values(input).returning();
+    return pool;
+  }
+
+  async getQuotaPool(id: number): Promise<QuotaPool | null> {
+    const [pool] = await db.select().from(quotaPools).where(eq(quotaPools.id, id));
+    return pool || null;
+  }
+
+  async createQuotaEntry(input: InsertQuotaEntry): Promise<QuotaEntry> {
+    const [entry] = await db.insert(quotaEntries).values(input).returning();
+    return entry;
+  }
+
+  async getQuotaEntriesForPool(quotaPoolId: number): Promise<QuotaEntry[]> {
+    return db.select().from(quotaEntries).where(eq(quotaEntries.quotaPoolId, quotaPoolId));
+  }
+
+  async createQuotaEntryMember(input: InsertQuotaEntryMember): Promise<QuotaEntryMember> {
+    const [member] = await db.insert(quotaEntryMembers).values(input).returning();
+    return member;
+  }
+
+  async getQuotaEntryMembers(quotaEntryId: number): Promise<QuotaEntryMember[]> {
+    return db.select().from(quotaEntryMembers).where(eq(quotaEntryMembers.quotaEntryId, quotaEntryId));
+  }
+
+  async createQuotaSidePot(input: InsertQuotaSidePot): Promise<QuotaSidePot> {
+    const [pot] = await db.insert(quotaSidePots).values(input).returning();
+    return pot;
+  }
+
+  async getQuotaSidePots(quotaPoolId: number): Promise<QuotaSidePot[]> {
+    return db.select().from(quotaSidePots).where(eq(quotaSidePots.quotaPoolId, quotaPoolId));
+  }
+
+  async getQuotaSidePot(id: number): Promise<QuotaSidePot | null> {
+    const [pot] = await db.select().from(quotaSidePots).where(eq(quotaSidePots.id, id));
+    return pot || null;
+  }
+
+  async setQuotaSidePotWinner(sidePotId: number, winnerEntryId: number): Promise<void> {
+    await db.update(quotaSidePots).set({ winnerEntryId }).where(eq(quotaSidePots.id, sidePotId));
+  }
+
+  // Even-split-with-remainder among payerNames, same math as createEventTransaction
+  // (formerly createRyderCupTransaction) — extra cents go to the first names in
+  // the given order, so callers should pass a deterministically-ordered list.
+  async createQuotaSidePotSettlements(
+    quotaSidePotId: number,
+    amountCents: number,
+    payerNames: string[]
+  ): Promise<QuotaSidePotSettlement[]> {
+    const n = payerNames.length;
+    if (n === 0) return [];
+    const base = Math.floor(amountCents / n);
+    const remainder = amountCents - base * n;
+
+    const results: QuotaSidePotSettlement[] = [];
+    for (let i = 0; i < n; i++) {
+      const amt = base + (i < remainder ? 1 : 0);
+      const [row] = await db.insert(quotaSidePotSettlements)
+        .values({ quotaSidePotId, payerName: payerNames[i], amountCents: amt })
+        .returning();
+      results.push(row);
+    }
+    return results;
+  }
+
+  async getQuotaSidePotSettlements(quotaSidePotId: number): Promise<QuotaSidePotSettlement[]> {
+    return db.select().from(quotaSidePotSettlements).where(eq(quotaSidePotSettlements.quotaSidePotId, quotaSidePotId));
   }
 
   async getRyderCupScoresForSideMatch(eventId: number, dayNumber: number, matchPlayers: Player[]): Promise<Score[]> {
