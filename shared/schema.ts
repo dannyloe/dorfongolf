@@ -89,7 +89,7 @@ export const groupMembershipInvites = pgTable("group_membership_invites", {
 
 // === GLOBAL PLAYER IDENTITY (Phase A, 2026-07-15) ===
 // One row per real human being, whether or not they've signed up yet — the
-// canonical identity that group_players / ryder_cup_team_members / players
+// canonical identity that group_players / event_team_members / players
 // (match roster) rows will point to via a `personId` column, replacing the
 // current patchwork of loosely-linked, per-context guest/preset-player
 // references. See PLAYER_IDENTITY_MIGRATION_PLAN.md for the full plan.
@@ -494,7 +494,7 @@ export const eventPlayingGroupMembers = pgTable("event_playing_group_members", {
   id: serial("id").primaryKey(),
   groupId: integer("group_id").notNull(), // References eventPlayingGroups.id
   playerName: text("player_name").notNull(),
-  teamMemberId: integer("team_member_id"), // Optional FK to ryderCupTeamMembers.id for integrity
+  teamMemberId: integer("team_member_id"), // Optional FK to eventTeamMembers.id for integrity
   memberIndex: integer("member_index").notNull().default(0), // order within group
   isLocked: boolean("is_locked").notNull().default(false), // true = part of a locked pair/group
 });
@@ -1160,7 +1160,11 @@ export const events = pgTable("events", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const ryderCupTeams = pgTable("ryder_cup_teams", {
+// Renamed from ryder_cup_teams 2026-07-19 (Phase 0 of the Quota game work) — this is
+// generic event-roster infrastructure used by Buddy Trip/Tournament events too, not just
+// Ryder Cup. Distinct from the separate `teams` table (id, eventMatchId, name), which is
+// the two-sided bet-team model used by Nassau/skins/etc. — don't conflate the two.
+export const eventTeams = pgTable("event_teams", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull(),
   name: text("name").notNull(),
@@ -1168,7 +1172,8 @@ export const ryderCupTeams = pgTable("ryder_cup_teams", {
   totalPoints: integer("total_points").notNull().default(0), // stored as tenths (65 = 6.5)
 });
 
-export const ryderCupTeamMembers = pgTable("ryder_cup_team_members", {
+// Renamed from ryder_cup_team_members 2026-07-19 (Phase 0) — see eventTeams comment above.
+export const eventTeamMembers = pgTable("event_team_members", {
   id: serial("id").primaryKey(),
   teamId: integer("team_id").notNull(),
   playerName: text("player_name").notNull(),
@@ -1182,7 +1187,8 @@ export const ryderCupTeamMembers = pgTable("ryder_cup_team_members", {
   personId: integer("person_id"),
 });
 
-export const ryderCupDays = pgTable("ryder_cup_days", {
+// Renamed from ryder_cup_days 2026-07-19 (Phase 0) — generic, used by all event types.
+export const eventDays = pgTable("event_days", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull(),
   dayNumber: integer("day_number").notNull(), // 1-4
@@ -1212,12 +1218,12 @@ export const ryderCupPairings = pgTable("ryder_cup_pairings", {
 export const ryderCupPairingSides = pgTable("ryder_cup_pairing_sides", {
   id: serial("id").primaryKey(),
   pairingId: integer("pairing_id").notNull(),
-  teamId: integer("team_id").notNull(), // which ryder cup team this side belongs to
+  teamId: integer("team_id").notNull(), // which event team this side belongs to
   player1Name: text("player1_name").notNull(),
   player2Name: text("player2_name"),
-  // Player IDs for name lookups (references ryderCupTeamMembers)
-  player1Id: integer("player1_id"), // References ryderCupTeamMembers.id for dynamic name updates
-  player2Id: integer("player2_id"), // References ryderCupTeamMembers.id for dynamic name updates
+  // Player IDs for name lookups (references eventTeamMembers)
+  player1Id: integer("player1_id"), // References eventTeamMembers.id for dynamic name updates
+  player2Id: integer("player2_id"), // References eventTeamMembers.id for dynamic name updates
   // Player 1 handicap/tee
   player1HandicapIndex: integer("player1_handicap_index"), // Stored as tenths (e.g., 124 = 12.4)
   player1TeeId: integer("player1_tee_id"), // References courseTees
@@ -1254,8 +1260,9 @@ export const ryderCupSkins = pgTable("ryder_cup_skins", {
   useNetScoring: boolean("use_net_scoring").notNull().default(false),
 });
 
-// Ryder Cup event transactions (ledger entries for expenses)
-export const ryderCupTransactions = pgTable("ryder_cup_transactions", {
+// Event transactions (ledger entries for expenses) — renamed from ryder_cup_transactions
+// 2026-07-19 (Phase 0); generic, used by all event types, not just Ryder Cup.
+export const eventTransactions = pgTable("event_transactions", {
   id: serial("id").primaryKey(),
   eventId: integer("event_id").notNull(), // References events.id
   payerName: text("payer_name").notNull(), // Player who paid
@@ -1265,10 +1272,11 @@ export const ryderCupTransactions = pgTable("ryder_cup_transactions", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Transaction splits - who owes what portion of the transaction
-export const ryderCupTransactionSplits = pgTable("ryder_cup_transaction_splits", {
+// Transaction splits - who owes what portion of the transaction. Renamed from
+// ryder_cup_transaction_splits 2026-07-19 (Phase 0).
+export const eventTransactionSplits = pgTable("event_transaction_splits", {
   id: serial("id").primaryKey(),
-  transactionId: integer("transaction_id").notNull(), // References ryderCupTransactions
+  transactionId: integer("transaction_id").notNull(), // References eventTransactions
   playerName: text("player_name").notNull(), // Player who owes
   presetPlayerId: integer("preset_player_id"), // References presetPlayers.id for dynamic name updates
   amount: integer("amount").notNull(), // Amount owed in cents
@@ -1277,7 +1285,7 @@ export const ryderCupTransactionSplits = pgTable("ryder_cup_transaction_splits",
 // Closest to Hole winners for each par 3 on each day
 export const ryderCupClosestToHole = pgTable("ryder_cup_closest_to_hole", {
   id: serial("id").primaryKey(),
-  dayId: integer("day_id").notNull(), // References ryderCupDays
+  dayId: integer("day_id").notNull(), // References eventDays
   holeNumber: integer("hole_number").notNull(), // Par 3 hole number
   winnerName: text("winner_name"), // Player name who won CTH (null if no winner set)
   winnerPresetPlayerId: integer("winner_preset_player_id"), // References presetPlayers.id for dynamic name updates
@@ -1366,29 +1374,29 @@ export const ryderCupEventsRelations = relations(events, ({ one, many }) => ({
     fields: [events.creatorId],
     references: [users.id],
   }),
-  teams: many(ryderCupTeams),
-  days: many(ryderCupDays),
+  teams: many(eventTeams),
+  days: many(eventDays),
 }));
 
-export const ryderCupTeamsRelations = relations(ryderCupTeams, ({ one, many }) => ({
+export const eventTeamsRelations = relations(eventTeams, ({ one, many }) => ({
   event: one(events, {
-    fields: [ryderCupTeams.eventId],
+    fields: [eventTeams.eventId],
     references: [events.id],
   }),
-  members: many(ryderCupTeamMembers),
+  members: many(eventTeamMembers),
   pairingSides: many(ryderCupPairingSides),
 }));
 
-export const ryderCupTeamMembersRelations = relations(ryderCupTeamMembers, ({ one }) => ({
-  team: one(ryderCupTeams, {
-    fields: [ryderCupTeamMembers.teamId],
-    references: [ryderCupTeams.id],
+export const eventTeamMembersRelations = relations(eventTeamMembers, ({ one }) => ({
+  team: one(eventTeams, {
+    fields: [eventTeamMembers.teamId],
+    references: [eventTeams.id],
   }),
 }));
 
-export const ryderCupDaysRelations = relations(ryderCupDays, ({ one, many }) => ({
+export const eventDaysRelations = relations(eventDays, ({ one, many }) => ({
   event: one(events, {
-    fields: [ryderCupDays.eventId],
+    fields: [eventDays.eventId],
     references: [events.id],
   }),
   pairings: many(ryderCupPairings),
@@ -1396,9 +1404,9 @@ export const ryderCupDaysRelations = relations(ryderCupDays, ({ one, many }) => 
 }));
 
 export const ryderCupPairingsRelations = relations(ryderCupPairings, ({ one, many }) => ({
-  day: one(ryderCupDays, {
+  day: one(eventDays, {
     fields: [ryderCupPairings.dayId],
-    references: [ryderCupDays.id],
+    references: [eventDays.id],
   }),
   sides: many(ryderCupPairingSides),
   result: one(ryderCupPairingResults, {
@@ -1412,18 +1420,18 @@ export const ryderCupPairingSidesRelations = relations(ryderCupPairingSides, ({ 
     fields: [ryderCupPairingSides.pairingId],
     references: [ryderCupPairings.id],
   }),
-  team: one(ryderCupTeams, {
+  team: one(eventTeams, {
     fields: [ryderCupPairingSides.teamId],
-    references: [ryderCupTeams.id],
+    references: [eventTeams.id],
   }),
-  player1: one(ryderCupTeamMembers, {
+  player1: one(eventTeamMembers, {
     fields: [ryderCupPairingSides.player1Id],
-    references: [ryderCupTeamMembers.id],
+    references: [eventTeamMembers.id],
     relationName: "player1",
   }),
-  player2: one(ryderCupTeamMembers, {
+  player2: one(eventTeamMembers, {
     fields: [ryderCupPairingSides.player2Id],
-    references: [ryderCupTeamMembers.id],
+    references: [eventTeamMembers.id],
     relationName: "player2",
   }),
   scores: many(ryderCupPairingScores),
@@ -1448,31 +1456,31 @@ export const ryderCupPairingResultsRelations = relations(ryderCupPairingResults,
 }));
 
 export const ryderCupSkinsRelations = relations(ryderCupSkins, ({ one }) => ({
-  day: one(ryderCupDays, {
+  day: one(eventDays, {
     fields: [ryderCupSkins.dayId],
-    references: [ryderCupDays.id],
+    references: [eventDays.id],
   }),
 }));
 
-export const ryderCupTransactionsRelations = relations(ryderCupTransactions, ({ one, many }) => ({
+export const eventTransactionsRelations = relations(eventTransactions, ({ one, many }) => ({
   event: one(events, {
-    fields: [ryderCupTransactions.eventId],
+    fields: [eventTransactions.eventId],
     references: [events.id],
   }),
-  splits: many(ryderCupTransactionSplits),
+  splits: many(eventTransactionSplits),
 }));
 
-export const ryderCupTransactionSplitsRelations = relations(ryderCupTransactionSplits, ({ one }) => ({
-  transaction: one(ryderCupTransactions, {
-    fields: [ryderCupTransactionSplits.transactionId],
-    references: [ryderCupTransactions.id],
+export const eventTransactionSplitsRelations = relations(eventTransactionSplits, ({ one }) => ({
+  transaction: one(eventTransactions, {
+    fields: [eventTransactionSplits.transactionId],
+    references: [eventTransactions.id],
   }),
 }));
 
 export const ryderCupClosestToHoleRelations = relations(ryderCupClosestToHole, ({ one }) => ({
-  day: one(ryderCupDays, {
+  day: one(eventDays, {
     fields: [ryderCupClosestToHole.dayId],
-    references: [ryderCupDays.id],
+    references: [eventDays.id],
   }),
 }));
 
@@ -1486,16 +1494,16 @@ export const insertRyderCupEventSchema = createInsertSchema(events).omit({
   status: true,
 });
 
-export const insertRyderCupTeamSchema = createInsertSchema(ryderCupTeams).omit({
+export const insertEventTeamSchema = createInsertSchema(eventTeams).omit({
   id: true,
   totalPoints: true,
 });
 
-export const insertRyderCupTeamMemberSchema = createInsertSchema(ryderCupTeamMembers).omit({
+export const insertEventTeamMemberSchema = createInsertSchema(eventTeamMembers).omit({
   id: true,
 });
 
-export const insertRyderCupDaySchema = createInsertSchema(ryderCupDays).omit({
+export const insertEventDaySchema = createInsertSchema(eventDays).omit({
   id: true,
   skinsCarryover: true,
   skinsDistributed: true,
@@ -1524,12 +1532,12 @@ export const insertRyderCupSkinSchema = createInsertSchema(ryderCupSkins).omit({
   id: true,
 });
 
-export const insertRyderCupTransactionSchema = createInsertSchema(ryderCupTransactions).omit({
+export const insertEventTransactionSchema = createInsertSchema(eventTransactions).omit({
   id: true,
   createdAt: true,
 });
 
-export const insertRyderCupTransactionSplitSchema = createInsertSchema(ryderCupTransactionSplits).omit({
+export const insertEventTransactionSplitSchema = createInsertSchema(eventTransactionSplits).omit({
   id: true,
 });
 
@@ -1542,14 +1550,14 @@ export const insertRyderCupClosestToHoleSchema = createInsertSchema(ryderCupClos
 export type RyderCupEvent = typeof events.$inferSelect;
 export type InsertRyderCupEvent = z.infer<typeof insertRyderCupEventSchema>;
 
-export type RyderCupTeam = typeof ryderCupTeams.$inferSelect;
-export type InsertRyderCupTeam = z.infer<typeof insertRyderCupTeamSchema>;
+export type EventTeam = typeof eventTeams.$inferSelect;
+export type InsertEventTeam = z.infer<typeof insertEventTeamSchema>;
 
-export type RyderCupTeamMember = typeof ryderCupTeamMembers.$inferSelect;
-export type InsertRyderCupTeamMember = z.infer<typeof insertRyderCupTeamMemberSchema>;
+export type EventTeamMember = typeof eventTeamMembers.$inferSelect;
+export type InsertEventTeamMember = z.infer<typeof insertEventTeamMemberSchema>;
 
-export type RyderCupDay = typeof ryderCupDays.$inferSelect;
-export type InsertRyderCupDay = z.infer<typeof insertRyderCupDaySchema>;
+export type EventDay = typeof eventDays.$inferSelect;
+export type InsertEventDay = z.infer<typeof insertEventDaySchema>;
 
 export type RyderCupPairing = typeof ryderCupPairings.$inferSelect;
 export type InsertRyderCupPairing = z.infer<typeof insertRyderCupPairingSchema>;
@@ -1566,11 +1574,11 @@ export type InsertRyderCupPairingResult = z.infer<typeof insertRyderCupPairingRe
 export type RyderCupSkin = typeof ryderCupSkins.$inferSelect;
 export type InsertRyderCupSkin = z.infer<typeof insertRyderCupSkinSchema>;
 
-export type RyderCupTransaction = typeof ryderCupTransactions.$inferSelect;
-export type InsertRyderCupTransaction = z.infer<typeof insertRyderCupTransactionSchema>;
+export type EventTransaction = typeof eventTransactions.$inferSelect;
+export type InsertEventTransaction = z.infer<typeof insertEventTransactionSchema>;
 
-export type RyderCupTransactionSplit = typeof ryderCupTransactionSplits.$inferSelect;
-export type InsertRyderCupTransactionSplit = z.infer<typeof insertRyderCupTransactionSplitSchema>;
+export type EventTransactionSplit = typeof eventTransactionSplits.$inferSelect;
+export type InsertEventTransactionSplit = z.infer<typeof insertEventTransactionSplitSchema>;
 
 export type RyderCupClosestToHole = typeof ryderCupClosestToHole.$inferSelect;
 export type InsertRyderCupClosestToHole = z.infer<typeof insertRyderCupClosestToHoleSchema>;
@@ -1662,8 +1670,8 @@ export type RyderCupPairingSideWithScores = RyderCupPairingSide & {
 };
 
 export type RyderCupEventResponse = RyderCupEvent & {
-  teams: (RyderCupTeam & { members: RyderCupTeamMember[] })[];
-  days: (RyderCupDay & { 
+  teams: (EventTeam & { members: EventTeamMember[] })[];
+  days: (EventDay & {
     pairings: (RyderCupPairing & { 
       sides: RyderCupPairingSideWithScores[];
       result?: RyderCupPairingResult;
