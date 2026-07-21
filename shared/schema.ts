@@ -1826,10 +1826,16 @@ export type RyderCupPairingSideWithScores = RyderCupPairingSide & {
 export type RyderCupEventResponse = RyderCupEvent & {
   teams: (EventTeam & { members: EventTeamMember[] })[];
   days: (EventDay & {
-    pairings: (RyderCupPairing & { 
+    pairings: (RyderCupPairing & {
       sides: RyderCupPairingSideWithScores[];
       result?: RyderCupPairingResult;
     })[];
+    // 2026-07-21: generic `matches` rows tagged with this day (eventId +
+    // eventDayNumber) — Buddy Trip/Tournament rounds, and Ryder Cup side
+    // matches. Lets the iOS Days list drill into an existing round, or offer
+    // to create one, instead of being a dead-end (see CLAUDE.md "Home /
+    // Matches / Trips Scoping & Navigation Plan").
+    matches: { id: number; name: string | null; completed: boolean | null }[];
   })[];
 };
 
