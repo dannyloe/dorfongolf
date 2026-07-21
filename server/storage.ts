@@ -762,6 +762,57 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  // Scoped version of getMatchesWithPlayers for the standalone Home/Matches
+  // feed (2026-07-21). Previously GET /api/matches returned every match in
+  // the database to every user — same class of bug already fixed on
+  // /api/groups/my and getRyderCupEventsForUser. Hybrid scope: creator OR
+  // a listed player OR any match in a group you belong to ("isMine" is
+  // false for that last, group-only case, so the client can offer a
+  // Mine/My-Groups toggle without a second round trip). Also excludes any
+  // match with an eventId set — trip-linked rounds (Ryder Cup side matches,
+  // Buddy Trip/Tournament days) stay inside their trip's own "envelope"
+  // and are surfaced through Events/Trips instead.
+  async getMatchesForUser(userId: string): Promise<(Match & { players: Player[]; isMine: boolean })[]> {
+    await this.autoCompleteOldMatches();
+
+    const memberships = await db.select({ groupId: groupMemberships.groupId })
+      .from(groupMemberships)
+      .innerJoin(groups, eq(groups.id, groupMemberships.groupId))
+      .where(and(eq(groupMemberships.userId, userId), isNull(groups.deletedAt)));
+    const myGroupIds = Array.from(new Set(memberships.map(m => m.groupId)));
+
+    const playerMatchIdRows = await db.select({ matchId: players.matchId })
+      .from(players)
+      .where(and(eq(players.userId, userId), isNull(players.deletedAt)));
+    const playerMatchIds = Array.from(new Set(playerMatchIdRows.map(r => r.matchId)));
+
+    const scopeConditions = [eq(matches.creatorId, userId)];
+    if (playerMatchIds.length > 0) scopeConditions.push(inArray(matches.id, playerMatchIds));
+    if (myGroupIds.length > 0) scopeConditions.push(inArray(matches.groupId, myGroupIds));
+
+    const allMatches = await db.select().from(matches)
+      .where(and(or(...scopeConditions), isNull(matches.eventId)))
+      .orderBy(matches.createdAt);
+
+    const matchIds = allMatches.map(m => m.id);
+    const allPlayers = matchIds.length > 0
+      ? await db.select().from(players).where(and(inArray(players.matchId, matchIds), isNull(players.deletedAt)))
+      : [];
+
+    const playersByMatch = new Map<number, Player[]>();
+    for (const player of allPlayers) {
+      if (!playersByMatch.has(player.matchId)) playersByMatch.set(player.matchId, []);
+      playersByMatch.get(player.matchId)!.push(player);
+    }
+
+    const playerMatchIdSet = new Set(playerMatchIds);
+    return allMatches.map(match => ({
+      ...match,
+      players: playersByMatch.get(match.id) || [],
+      isMine: match.creatorId === userId || playerMatchIdSet.has(match.id),
+    }));
+  }
+
   async getMatch(id: number): Promise<Match | undefined> {
     const [match] = await db.select().from(matches).where(eq(matches.id, id));
     return match;
@@ -3993,7 +4044,17 @@ export class DatabaseStorage implements IStorage {
             return { ...pairing, sides: sidesWithScores, result };
           })
         );
-        return { ...day, pairings: pairingsWithDetails };
+        // Generic `matches` rows for this day (2026-07-21) — see the
+        // Home/Matches/Trips envelope plan in CLAUDE.md. These are the
+        // Buddy Trip/Tournament "actual round" rows, or Ryder Cup side
+        // matches; never the core Ryder Cup pairings above, which live
+        // entirely in ryderCupPairings and have no matches row.
+        const dayMatches = await db.select({
+          id: matches.id,
+          name: matches.name,
+          completed: matches.completed,
+        }).from(matches).where(and(eq(matches.eventId, id), eq(matches.eventDayNumber, day.dayNumber)));
+        return { ...day, pairings: pairingsWithDetails, matches: dayMatches };
       })
     );
 

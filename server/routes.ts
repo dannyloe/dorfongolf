@@ -260,7 +260,13 @@ export async function registerRoutes(
   });
 
   app.get(api.matches.list.path, isAuthenticated, async (req, res) => {
-    const matches = await storage.getMatchesWithPlayers();
+    const user = req.user as any;
+    const userId = user.claims.sub;
+    // Scoped to matches the user created, is a player in, or belongs to via a
+    // shared group (was previously every match in the system — same class of
+    // bug fixed on /api/groups/my and /api/ryder-cup). Trip-linked matches are
+    // excluded here; they're surfaced through Events/Trips instead.
+    const matches = await storage.getMatchesForUser(userId);
     res.json(matches);
   });
 
