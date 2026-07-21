@@ -325,10 +325,23 @@ export async function registerRoutes(
         || currentUser?.username
         || "Player";
 
+      // Fixed 2026-07-20: this was the actual cause of a real account (e.g.
+      // a real user with a canonical handicap on file) showing up in their
+      // own brand-new match with NO handicap at all. The "add from group
+      // roster" path (/api/matches/:id/players/from-roster, below) already
+      // correctly copies a handicap in at add time — this self-add-at-
+      // creation path just never looked anywhere for one. Now mirrors that:
+      // pulls the creator's real canonical handicap (users.handicapIndex,
+      // set via Edit Profile -> PATCH /api/users/canonical-profile) and
+      // seeds it into this match's players row. addPlayer's own internal
+      // fallback (legacy name-keyed player_handicaps) only kicks in when
+      // handicapIndex is left undefined, so passing the real value here
+      // takes priority, same as it does on the from-roster path.
       await storage.addPlayer({
         matchId: match.id,
         userId: user.claims.sub,
         name: name,
+        handicapIndex: (currentUser as any)?.handicapIndex ?? null,
       }, match.courseId ?? undefined);
 
       res.status(201).json(match);
