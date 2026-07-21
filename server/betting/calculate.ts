@@ -40,7 +40,7 @@ export async function calculateMatchBets(
   matchId: number
 ): Promise<Record<number, StorableEventMatchResult[]>> {
 
-  // ── 1. Match row (courseId, isHandicapped) ───────────────────────────────
+  // ── 1. Match row (courseId) ───────────────────────────────────────────────
   const [matchRow] = await db
     .select()
     .from(schema.matches)
@@ -50,7 +50,9 @@ export async function calculateMatchBets(
   if (!matchRow) return {};
 
   const courseId = matchRow.courseId;
-  const isHandicapped = matchRow.isHandicapped ?? false;
+  // matches.isHandicapped intentionally not read here anymore (2026-07-20) —
+  // it's a UI-only default for the "Net scoring" toggle when creating a new
+  // bet, not a gate on whether net scoring can run. See the step 7 comment.
 
   // ── 2. Event matches for this match ──────────────────────────────────────
   const eventMatchRows = await db
@@ -117,10 +119,22 @@ export async function calculateMatchBets(
   }
 
   // ── 7. Course data for net scoring ───────────────────────────────────────
+  // Fixed 2026-07-20: was gated on `isHandicapped` in addition to `courseId`.
+  // Danny's call: matches.isHandicapped is only ever meant as the default
+  // starting value for a new bet's "Net scoring" toggle (matches how the
+  // web client already treats it — client/src/pages/MatchDetail.tsx only
+  // reads match.isHandicapped once, to pre-check the creation form's
+  // checkbox — it was never a hard requirement over there). Gating course
+  // data on it here meant a bet in a non-"handicapped" match could have
+  // useNetScoring turned on (once iOS exposes that toggle unconditionally)
+  // and this function would still never fetch hole/tee data for it, so net
+  // scoring would silently never apply. iOS's own fetchCourseHoles() in
+  // BetsTabView.swift already has no isHandicapped check, for the same
+  // reason — this brings the server in line with that.
   let courseHoles: (typeof schema.courseHoles.$inferSelect)[] = [];
   let courseTees: (typeof schema.courseTees.$inferSelect)[] = [];
 
-  if (courseId && isHandicapped) {
+  if (courseId) {
     [courseHoles, courseTees] = await Promise.all([
       db.select().from(schema.courseHoles).where(eq(schema.courseHoles.courseId, courseId)),
       db.select().from(schema.courseTees).where(eq(schema.courseTees.courseId, courseId)),
@@ -152,12 +166,13 @@ export async function calculateMatchBets(
   }
 
   // ── 10. Net scoring context per event match ───────────────────────────────
-  // Built when: match is handicapped, course holes have handicap ranks,
-  // and the specific event match has useNetScoring enabled.
+  // Built when: course holes have handicap ranks, tees exist, and the
+  // specific event match has useNetScoring enabled. No longer additionally
+  // gated on matches.isHandicapped — see the comment on step 7.
   const hasHoleHandicaps = courseHoles.some((h) => h.handicap !== null);
   const netContextMap = new Map<number, NetScoringContext>();
 
-  if (isHandicapped && hasHoleHandicaps && courseTees.length > 0) {
+  if (hasHoleHandicaps && courseTees.length > 0) {
     for (const em of eventMatchRows) {
       if (!em.useNetScoring) continue;
 
