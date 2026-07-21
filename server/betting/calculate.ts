@@ -20,6 +20,7 @@ import {
   buildNetScoringContext,
   type PlayerHandicapInfo,
   type NetScoringContext,
+  type CourseHandicapOverride,
 } from './handicap';
 import {
   calculateAllEventMatchResults,
@@ -91,6 +92,30 @@ export async function calculateMatchBets(
     .from(schema.scores)
     .where(eq(schema.scores.matchId, matchId));
 
+  // ── 6b. Per-bet handicap overrides ───────────────────────────────────────
+  // Fixed 2026-07-20: this table (and the "Course Handicaps (click to
+  // edit)" UI that saves to it) has always been fully wired on the web
+  // client, which builds its own net-scoring context in the browser and
+  // already fetches+applies these overrides (client/src/pages/MatchDetail.tsx,
+  // buildMatchNetContext). This server-side calculator — the one the iOS
+  // app actually calls via GET /api/matches/:id/calculate — never fetched
+  // them, so any override saved from the web app (or, once built, from iOS)
+  // was silently ignored for every real bet's calculated payout. Same query
+  // storage.getAllMatchPlayerHandicapsForMatch already runs for the
+  // /all-player-handicaps route, inlined here since this function loads its
+  // own DB rows directly rather than going through storage.ts.
+  const overrideRows = await db
+    .select()
+    .from(schema.matchPlayerHandicaps)
+    .where(inArray(schema.matchPlayerHandicaps.eventMatchId, eventMatchIds));
+
+  const overridesByEventMatch = new Map<number, CourseHandicapOverride[]>();
+  for (const o of overrideRows) {
+    const arr = overridesByEventMatch.get(o.eventMatchId) ?? [];
+    arr.push({ playerId: o.playerId, courseHandicap: o.courseHandicap });
+    overridesByEventMatch.set(o.eventMatchId, arr);
+  }
+
   // ── 7. Course data for net scoring ───────────────────────────────────────
   let courseHoles: (typeof schema.courseHoles.$inferSelect)[] = [];
   let courseTees: (typeof schema.courseTees.$inferSelect)[] = [];
@@ -158,7 +183,12 @@ export async function calculateMatchBets(
         .filter((x): x is PlayerHandicapInfo => x !== null);
 
       if (playerInfos.length > 0) {
-        const ctx = buildNetScoringContext(playerInfos, courseTees, courseHoles);
+        const ctx = buildNetScoringContext(
+          playerInfos,
+          courseTees,
+          courseHoles,
+          overridesByEventMatch.get(em.id)
+        );
         netContextMap.set(em.id, ctx);
       }
     }
