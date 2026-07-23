@@ -351,6 +351,21 @@ export const playerCourseDefaults = pgTable("player_course_defaults", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Per-course default tee for a real user account (2026-07-21, tee-selection
+// Phase 2) — distinct from playerCourseDefaults above, which is the legacy
+// preset-player-name-keyed version and doesn't tie to a real users.id at
+// all. This one is set explicitly from the iOS Profile screen only — never
+// auto-updated as a side effect of playing a round (Phase 3's multi-day
+// carry-forward is its own separate mechanism, deliberately not layered on
+// top of this, per Danny's 2026-07-21 decision).
+export const userCourseTeeDefaults = pgTable("user_course_tee_defaults", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  courseId: integer("course_id").notNull(),
+  teeId: integer("tee_id").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   eventMatchId: integer("event_match_id").notNull(),
@@ -782,6 +797,11 @@ export const insertPlayerCourseDefaultSchema = createInsertSchema(playerCourseDe
   updatedAt: true,
 });
 
+export const insertUserCourseTeeDefaultSchema = createInsertSchema(userCourseTeeDefaults).omit({
+  id: true,
+  updatedAt: true,
+});
+
 export const insertPresetPlayerSchema = createInsertSchema(presetPlayers).omit({
   id: true,
   createdAt: true,
@@ -898,6 +918,9 @@ export type InsertMatchPlayerHandicap = z.infer<typeof insertMatchPlayerHandicap
 
 export type PlayerCourseDefault = typeof playerCourseDefaults.$inferSelect;
 export type InsertPlayerCourseDefault = z.infer<typeof insertPlayerCourseDefaultSchema>;
+
+export type UserCourseTeeDefault = typeof userCourseTeeDefaults.$inferSelect;
+export type InsertUserCourseTeeDefault = z.infer<typeof insertUserCourseTeeDefaultSchema>;
 
 export type PresetPlayer = typeof presetPlayers.$inferSelect;
 export type InsertPresetPlayer = z.infer<typeof insertPresetPlayerSchema>;
