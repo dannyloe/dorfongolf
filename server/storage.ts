@@ -832,13 +832,18 @@ export class DatabaseStorage implements IStorage {
     let presetPlayerId: number | null = null;
     
     // Get available tees for this course to validate tee selection
-    // If courseId not provided, derive it from the match
+    // If courseId not provided, derive it from the match. Also keep the full
+    // match record around (not just courseId) — Phase 3's multi-day
+    // carry-forward below needs eventId/eventDayNumber off the same row.
     let effectiveCourseId = courseId;
-    if (!effectiveCourseId && player.matchId) {
-      const match = await this.getMatch(player.matchId);
-      effectiveCourseId = match?.courseId ?? undefined;
+    let matchRecord: Match | undefined;
+    if (player.matchId) {
+      matchRecord = await this.getMatch(player.matchId);
+      if (!effectiveCourseId) {
+        effectiveCourseId = matchRecord?.courseId ?? undefined;
+      }
     }
-    
+
     let courseTeeIds: Set<number> = new Set();
     let firstCourseTeeId: number | null = null;
     if (effectiveCourseId) {
@@ -852,6 +857,46 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    // Multi-day tee carry-forward (2026-07-23, tee-selection Phase 3) — an
+    // explicit day-to-day copy, deliberately separate from Phase 2's saved
+    // profile default just below (per Danny's 2026-07-21 decision: playing a
+    // round must never silently update the profile default, and this
+    // carry-forward must not silently read from it either — it looks at the
+    // actual previous day's match, not the profile). When this match is day
+    // N of a multi-day event (matches.eventId + matches.eventDayNumber both
+    // set, N >= 2) and the immediately preceding day (eventDayNumber - 1) has
+    // a match at the SAME course, copy this same real user's teeId from
+    // their player row on that day N-1 match. Takes priority over Phase 2's
+    // general profile default below (more specific to this trip), but never
+    // overrides an explicitly-provided teeId.
+    const eventIdForCarryForward: number | null = matchRecord?.eventId ?? null;
+    const eventDayNumberForCarryForward: number | null = matchRecord?.eventDayNumber ?? null;
+    if (
+      teeId === null &&
+      player.userId &&
+      eventIdForCarryForward !== null &&
+      eventDayNumberForCarryForward !== null &&
+      eventDayNumberForCarryForward >= 2
+    ) {
+      // Joined directly against players (rather than finding the prior day's
+      // match first, then querying players separately) so that if more than
+      // one match happened to be played at that course on the prior day, we
+      // pick up the row for THIS specific player rather than an arbitrary
+      // first match.
+      const [priorDayPlayerRow] = await db.select({ teeId: players.teeId })
+        .from(players)
+        .innerJoin(matches, eq(players.matchId, matches.id))
+        .where(and(
+          eq(matches.eventId, eventIdForCarryForward),
+          eq(matches.eventDayNumber, eventDayNumberForCarryForward - 1),
+          eq(matches.courseId, effectiveCourseId ?? -1),
+          eq(players.userId, player.userId)
+        ));
+      if (priorDayPlayerRow?.teeId != null) {
+        teeId = priorDayPlayerRow.teeId;
+      }
+    }
+
     // Real-account per-course tee default (2026-07-21, tee-selection Phase 2)
     // — takes priority over the legacy name-keyed player_course_defaults
     // fallback below, since this is tied to the actual logged-in user
