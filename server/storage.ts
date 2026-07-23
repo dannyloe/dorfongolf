@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import { db } from "./db";
 import { PRESET_PLAYERS, PLAYER_ALIASES } from "@shared/models/auth";
 import { 
-  matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, groups, presetPlayers, playerAliases, matchRoles,
+  matches, players, scores, users, eventMatches, eventMatchResults, teams, teamMembers, courses, courseHoles, playerHandicaps, courseTees, matchPlayerHandicaps, playerCourseDefaults, userCourseTeeDefaults, groups, presetPlayers, playerAliases, matchRoles,
   groupMemberships, groupJoinRequests, groupPlayers, groupDeletionDismissals, groupMembershipInvites, people,
   verificationCodes, notificationPreferences, messages, devicePushTokens, notifications,
   events, eventTeams, eventTeamMembers, eventDays, ryderCupPairings, ryderCupPairingSides, ryderCupPairingResults, ryderCupSkins, ryderCupPairingScores, eventTransactions, eventTransactionSplits, ryderCupClosestToHole,
@@ -25,6 +25,7 @@ import {
   type CourseTee, type InsertCourseTee,
   type MatchPlayerHandicap, type InsertMatchPlayerHandicap,
   type PlayerCourseDefault, type InsertPlayerCourseDefault,
+  type UserCourseTeeDefault, type InsertUserCourseTeeDefault,
   type Group, type InsertGroup,
   type GroupMembership, type GroupJoinRequest, type GroupPlayer, type GroupWithDetails,
   type PresetPlayer, type InsertPresetPlayer,
@@ -851,6 +852,19 @@ export class DatabaseStorage implements IStorage {
       }
     }
     
+    // Real-account per-course tee default (2026-07-21, tee-selection Phase 2)
+    // — takes priority over the legacy name-keyed player_course_defaults
+    // fallback below, since this is tied to the actual logged-in user
+    // rather than a possibly-shared preset-player name. Only ever set
+    // explicitly from the Profile screen (never auto-updated by playing a
+    // round), so this is a genuine user preference, not a side effect.
+    if (teeId === null && player.userId && effectiveCourseId) {
+      const userDefault = await this.getUserCourseTeeDefault(player.userId, effectiveCourseId);
+      if (userDefault?.teeId !== undefined) {
+        teeId = userDefault.teeId;
+      }
+    }
+
     if (player.name) {
       // Look up preset player ID for dynamic name updates — case-insensitive to avoid duplicates
       const [preset] = await db.select().from(presetPlayers)
@@ -2096,6 +2110,50 @@ export class DatabaseStorage implements IStorage {
 
   async getAllPlayerCourseDefaults(): Promise<PlayerCourseDefault[]> {
     return db.select().from(playerCourseDefaults);
+  }
+
+  // Per-course default tees for real user accounts (2026-07-21, tee-selection
+  // Phase 2) — same shape/pattern as playerCourseDefaults above, keyed by
+  // the real users.id instead of a legacy preset-player name.
+  async getUserCourseTeeDefaults(userId: string): Promise<UserCourseTeeDefault[]> {
+    return db.select().from(userCourseTeeDefaults).where(eq(userCourseTeeDefaults.userId, userId));
+  }
+
+  async getUserCourseTeeDefault(userId: string, courseId: number): Promise<UserCourseTeeDefault | undefined> {
+    const [result] = await db.select().from(userCourseTeeDefaults)
+      .where(and(
+        eq(userCourseTeeDefaults.userId, userId),
+        eq(userCourseTeeDefaults.courseId, courseId)
+      ));
+    return result;
+  }
+
+  async upsertUserCourseTeeDefault(data: InsertUserCourseTeeDefault): Promise<UserCourseTeeDefault> {
+    const existing = await db.select().from(userCourseTeeDefaults)
+      .where(and(
+        eq(userCourseTeeDefaults.userId, data.userId),
+        eq(userCourseTeeDefaults.courseId, data.courseId)
+      ));
+    if (existing.length > 0) {
+      const [updated] = await db.update(userCourseTeeDefaults)
+        .set({ teeId: data.teeId, updatedAt: new Date() })
+        .where(and(
+          eq(userCourseTeeDefaults.userId, data.userId),
+          eq(userCourseTeeDefaults.courseId, data.courseId)
+        ))
+        .returning();
+      return updated;
+    }
+    const [inserted] = await db.insert(userCourseTeeDefaults).values(data).returning();
+    return inserted;
+  }
+
+  async deleteUserCourseTeeDefault(userId: string, courseId: number): Promise<void> {
+    await db.delete(userCourseTeeDefaults)
+      .where(and(
+        eq(userCourseTeeDefaults.userId, userId),
+        eq(userCourseTeeDefaults.courseId, courseId)
+      ));
   }
 
   async cloneEvent(sourceEventId: number, creatorId: string): Promise<Match> {

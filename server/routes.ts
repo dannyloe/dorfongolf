@@ -4767,6 +4767,61 @@ Transcript to parse: "${transcript}"`;
     }
   });
 
+  // Per-course default tee for a real user account (2026-07-21, tee-selection
+  // Phase 2). Distinct from the legacy player_course_defaults table used at
+  // addPlayer time for name-keyed guest/preset players — this is the real
+  // account's own saved preference, set explicitly from the iOS Profile
+  // screen. addPlayer (storage.ts) already checks this ahead of the legacy
+  // fallback when a real userId is present and no teeId was otherwise given.
+  app.get('/api/users/course-tee-defaults', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const results = await storage.getUserCourseTeeDefaults(userId);
+      res.json(results);
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.put('/api/users/course-tee-defaults/:courseId', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const courseId = parseInt(req.params.courseId);
+      if (isNaN(courseId)) {
+        return res.status(400).json({ message: "Invalid course id" });
+      }
+      const schema = z.object({ teeId: z.number().int() });
+      const input = schema.parse(req.body);
+      const result = await storage.upsertUserCourseTeeDefault({ userId, courseId, teeId: input.teeId });
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete('/api/users/course-tee-defaults/:courseId', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims.sub;
+      const courseId = parseInt(req.params.courseId);
+      if (isNaN(courseId)) {
+        return res.status(400).json({ message: "Invalid course id" });
+      }
+      await storage.deleteUserCourseTeeDefault(userId, courseId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("[route error]", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Canonical profile fields used for push-down (Phase 4). Separate from the
   // legacy /api/users/profile route to avoid touching existing behavior there.
   app.patch('/api/users/canonical-profile', isAuthenticated, async (req, res) => {
