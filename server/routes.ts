@@ -537,7 +537,21 @@ export async function registerRoutes(
       }
 
       const existingPlayers = await storage.getMatchPlayers(matchId);
-      const name = gp.displayName || "Player";
+      // Fixed 2026-07-24: this only ever checked gp.displayName, which
+      // storage.getGroupPlayers only overwrites for a linked real account
+      // (live users.displayName) — a roster row added via a preset player
+      // with no linked account (the normal case for most roster names) has
+      // a blank group_players.display_name and its real name only in
+      // gp.presetPlayer.name. Every such roster player degraded to the
+      // literal "Player" fallback, and since that string was IDENTICAL for
+      // every one of them, the alreadyByName check below treated every
+      // pick after the first as "already added" and silently returned the
+      // first one's row instead of creating a new player — so out of a
+      // whole group roster selected at once, only one placeholder "Player"
+      // row would ever actually get created. Confirmed via psql: 16 roster
+      // players selected, 0 got their real name, only 1-2 stray "Player"
+      // rows landed depending on how many separate attempts were made.
+      const name = gp.displayName || gp.presetPlayer?.name || "Player";
       const alreadyByUser = gp.linkedUserId && existingPlayers.find(p => p.userId === gp.linkedUserId);
       const alreadyByName = existingPlayers.find(p => p.name.toLowerCase() === name.toLowerCase());
       if (alreadyByUser) return res.status(200).json(alreadyByUser);
