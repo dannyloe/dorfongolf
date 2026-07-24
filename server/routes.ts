@@ -304,13 +304,26 @@ export async function registerRoutes(
     try {
       const input = api.matches.create.input.parse(req.body);
       const user = req.user as any;
+      // Fixed 2026-07-24: this handler still read input.ryderCupEventId /
+      // input.ryderCupDayNumber, left over from before the Phase 0 rename
+      // (2026-07-14) that renamed those matches columns to eventId /
+      // eventDayNumber. api.matches.create.input is insertMatchSchema,
+      // generated straight off the matches table's real column names —
+      // so input.ryderCupEventId was ALWAYS undefined regardless of what
+      // the client sent, meaning eventId/eventDayNumber silently landed
+      // as null on every match ever created here. Confirmed via psql:
+      // every "Day -> Match" trip round created since the rename came
+      // back with event_id/event_day_number NULL — each was actually an
+      // orphaned standalone match, invisible to its event/day, which is
+      // also why re-opening a day always looked empty and created yet
+      // another fresh match instead of reusing the existing one.
       const match = await storage.createMatch({
         name: input.name || null,
         courseName: input.courseName,
         creatorId: user.claims.sub,
         groupId: input.groupId ?? null,
-        eventId: input.ryderCupEventId ?? null,
-        eventDayNumber: input.ryderCupDayNumber ?? null,
+        eventId: input.eventId ?? null,
+        eventDayNumber: input.eventDayNumber ?? null,
         courseId: input.courseId ?? null,
         isHandicapped: input.isHandicapped ?? false,
       });
